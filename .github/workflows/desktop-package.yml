@@ -1,0 +1,116 @@
+name: Package desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_repository:
+        description: 官方内核仓库
+        required: true
+        default: deepseek-ai/deepseek-harness
+        type: string
+      kernel_ref:
+        description: 内核的分支、tag 或提交
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-package
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-14
+            package_script: package:desktop:mac:arm64:unsigned
+            artifact_glob: apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts/**
+          - name: windows-x64
+            os: windows-2022
+            package_script: package:desktop:win:x64:unsigned
+            artifact_glob: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/**
+
+    steps:
+      - name: Checkout dsh-x
+        uses: actions/checkout@v4
+        with:
+          path: dsh-x
+
+      - name: Checkout kernel
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.kernel_repository }}
+          ref: ${{ inputs.kernel_ref }}
+          path: deepseek-harness
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: deepseek-harness/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install kernel dependencies
+        working-directory: deepseek-harness
+        run: pnpm install --frozen-lockfile
+
+      - name: Write Windows packaging env
+        if: matrix.name == 'windows-x64'
+        working-directory: deepseek-harness
+        shell: pwsh
+        env:
+          APP_ID: ${{ vars.DSH_DESKTOP_APP_ID }}
+          UPDATE_ORIGIN: ${{ vars.DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:APP_ID)) {
+            throw '仓库变量 DSH_DESKTOP_APP_ID 未设置'
+          }
+          if ($env:UPDATE_ORIGIN -notmatch '^https://') {
+            throw '仓库变量 DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN 必须是 https:// 开头'
+          }
+          $config = @{ allowedAuthOrigins = @($env:UPDATE_ORIGIN) } | ConvertTo-Json -Compress
+          @(
+            "DSH_DESKTOP_APP_ID=$($env:APP_ID)"
+            "DSH_DESKTOP_AUTO_UPDATE_ENV=test"
+            "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=$($env:UPDATE_ORIGIN)"
+            "DSH_DESKTOP_MANDATORY_UPDATE_CONFIG=$config"
+          ) | Set-Content -Encoding utf8 apps/desktop/.env.windows
+
+      - name: Package unsigned desktop
+        working-directory: deepseek-harness
+        run: pnpm run ${{ matrix.package_script }}
+
+      - name: Write build manifest
+        working-directory: deepseek-harness
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/.desktop-build/manifest
+          cat > apps/desktop/.desktop-build/manifest/build-manifest.json <<EOF
+          {
+            "kernelRepository": "${{ inputs.kernel_repository }}",
+            "kernelRef": "${{ inputs.kernel_ref }}",
+            "kernelSha": "$(git rev-parse HEAD)",
+            "dshXSha": "$(git -C "$GITHUB_WORKSPACE/dsh-x" rev-parse HEAD)",
+            "target": "${{ matrix.name }}",
+            "packageScript": "${{ matrix.package_script }}"
+          }
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            deepseek-harness/apps/desktop/.desktop-build/manifest/build-manifest.json
+            deepseek-harness/${{ matrix.artifact_glob }}
