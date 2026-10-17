@@ -1,0 +1,8 @@
+# Keep the SAME IDs as standalone bundles. The official Loader keys a live
+# entry by ID, so a same-version standalone installation and this suite must
+# share one activation. The packed-install test exercises both layer orders.
+- insert:
+    - id: dsh-x-agents
+      name: dsh-x-agents
+    - id: dsh-x-code
+      name: dsh-x-code

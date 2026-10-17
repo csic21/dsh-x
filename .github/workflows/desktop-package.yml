@@ -1,6 +1,20 @@
 name: Package desktop
 
 on:
+  push:
+    branches: [work/stock-chat-plugins]
+    paths:
+      - packages/dsh-x-browser/**
+      - scripts/desktop-browser-smoke.mjs
+      - scripts/desktop-opencode-proof.mjs
+      - scripts/desktop-opencode-preflight.mjs
+      - test/desktop-opencode-preflight.test.js
+      - scripts/lib/opencode-proof-policy.mjs
+      - scripts/desktop-build-cache.mjs
+      - test/desktop-build-cache.test.js
+      - scripts/fixtures/desktop-opencode-driver/**
+      - scripts/fixtures/desktop-browser-smoke/**
+      - .github/workflows/desktop-package.yml
   workflow_dispatch:
     inputs:
       kernel_repository:
@@ -17,11 +31,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-package
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'push' && format('desktop-proof-{0}', github.ref) || format('desktop-package-manual-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/work/stock-chat-plugins' && contains(github.event.head_commit.message, '[replace-failed-proof]') }}
 
 jobs:
   package:
+    if: github.event_name == 'workflow_dispatch'
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -114,3 +129,216 @@ jobs:
           path: |
             deepseek-harness/apps/desktop/.desktop-build/manifest/build-manifest.json
             deepseek-harness/${{ matrix.artifact_glob }}
+
+  browser-smoke:
+    name: Actual Windows Desktop browser smoke
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+      # Exact upstream source reviewed for the plugin guest-lease contract.
+      DSH_SMOKE_KERNEL_SHA: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dsh-x
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+          path: deepseek-harness
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: deepseek-harness/package.json
+      - name: Build plugin clients
+        working-directory: dsh-x
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix packages/dsh-x-browser run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Configure isolated unsigned smoke package
+        working-directory: deepseek-harness
+        run: |
+          # Reserved .invalid endpoint: no SSO, real update service, or credentials.
+          # "production" selects anonymous policy semantics, NOT publication.
+          @(
+            'DSH_DESKTOP_APP_ID=com.deepseek.harness.smoke'
+            'DSH_DESKTOP_AUTO_UPDATE_ENV=production'
+            'DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://dsh-smoke.invalid'
+          ) | Set-Content -Encoding utf8 apps/desktop/.env.windows
+      # Cache only the pristine official package, before any profile/plugin launch.
+      # Exact keys and hashes detect input drift/corruption; producer workflow trust
+      # is still required. Never cache user data, profiles, or provider state.
+      - name: Fingerprint official package inputs
+        id: desktop-inputs
+        run: |
+          $pnpmVersion = (pnpm --version).Trim()
+          $json = node dsh-x/scripts/desktop-build-cache.mjs fingerprint --kernel deepseek-harness --pnpm-version $pnpmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $inputs = $json | ConvertFrom-Json
+          "key=$($inputs.key)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "DSH_BUILD_PNPM_VERSION=$pnpmVersion" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Restore exact trusted official package cache
+        id: desktop-cache
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.desktop-inputs.outputs.key }}
+          path: |
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/dsh-build-cache-manifest.json
+      - name: Reject nonexact cache restoration
+        if: (steps.desktop-cache.outputs.cache-hit == 'true' || steps.desktop-cache.outputs.cache-matched-key != '') && (steps.desktop-cache.outputs.cache-hit != 'true' || steps.desktop-cache.outputs.cache-matched-key != steps.desktop-inputs.outputs.key)
+        run: throw 'Nonexact official package cache restore refused; no cached executable was launched'
+      - name: Verify every restored official package file
+        if: steps.desktop-cache.outputs.cache-hit == 'true' && steps.desktop-cache.outputs.cache-matched-key == steps.desktop-inputs.outputs.key
+        run: node dsh-x/scripts/desktop-build-cache.mjs verify --kernel deepseek-harness --pnpm-version "$env:DSH_BUILD_PNPM_VERSION"
+      - name: Install official kernel dependencies
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
+        working-directory: deepseek-harness
+        run: pnpm install --frozen-lockfile
+      - name: Build official unsigned unpacked Windows application
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
+        working-directory: deepseek-harness
+        run: pnpm --filter @deepseek-ai/dsh-desktop run package win-x64 --unsigned --dir
+      - name: Hash pristine official package before any execution
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
+        run: node dsh-x/scripts/desktop-build-cache.mjs write --kernel deepseek-harness --pnpm-version "$env:DSH_BUILD_PNPM_VERSION"
+      - name: Save pristine package for exact-input proof iterations
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.desktop-inputs.outputs.key }}
+          path: |
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/dsh-build-cache-manifest.json
+      - name: Record verified package cache provenance
+        env:
+          EXPECTED_CACHE_KEY: ${{ steps.desktop-inputs.outputs.key }}
+          EXACT_CACHE_HIT: ${{ steps.desktop-cache.outputs.cache-hit }}
+        run: |
+          $manifestPath = 'deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/dsh-build-cache-manifest.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          New-Item -ItemType Directory -Force desktop-smoke-evidence | Out-Null
+          @{
+            key = $env:EXPECTED_CACHE_KEY
+            exactHit = ($env:EXACT_CACHE_HIT -eq 'true')
+            manifestSha256 = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            producer = $manifest.producer
+            inputs = $manifest.inputs
+            fileCount = $manifest.files.Count
+            trust = 'Reviewed producer workflow; manifest verifies integrity, not independent authenticity'
+          } | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 desktop-smoke-evidence/cache-provenance.json
+          "Official package cache exact hit: $($env:EXACT_CACHE_HIT -eq 'true'); verified files: $($manifest.files.Count)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - name: Install pinned official Electron test driver
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/desktop-driver" | Out-Null
+          npm install --prefix "$env:RUNNER_TEMP/desktop-driver" --no-audit --no-fund playwright@1.61.1
+      - name: Exercise actual visible native guest
+        working-directory: dsh-x
+        env:
+          DSH_SMOKE_KERNEL: ${{ github.workspace }}/deepseek-harness
+          DSH_SMOKE_HOME: ${{ runner.temp }}/dsh-browser-smoke-home
+          DSH_SMOKE_OUTPUT: ${{ github.workspace }}/desktop-smoke-evidence
+          DSH_SMOKE_DRIVER: ${{ runner.temp }}/desktop-driver
+        run: node scripts/desktop-browser-smoke.mjs
+      - name: Retain proof or failure evidence (never a distributable installer)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-browser-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: desktop-smoke-evidence/**
+
+      - name: Windows native Agents boundary
+        run: Write-Output 'Native OpenCode is unsupported under the pinned Windows partial file-effect enforcement; no policy was relaxed. Real provider proof runs on macOS Seatbelt.'
+
+  opencode-macos-proof:
+    needs: browser-smoke
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[opencode-public-proof]')
+    name: Actual macOS Desktop OpenCode public proof
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+      DSH_SMOKE_KERNEL_SHA: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dsh-x
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+          path: deepseek-harness
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: deepseek-harness/package.json
+      - name: Verify native Apple Silicon host
+        run: |
+          test "$(uname -m)" = arm64
+          node -e "if(process.platform!=='darwin'||process.arch!=='arm64')process.exit(1)"
+      - name: Download and verify official OpenCode arm64
+        run: |
+          curl --fail --location 'https://github.com/anomalyco/opencode/releases/download/v1.19.3/opencode-darwin-arm64.zip' -o "$RUNNER_TEMP/opencode.zip"
+          echo "c2d0fecd27acf6e08be02c1f5d384614d07495587766bcc4a6bff3971749bb64  $RUNNER_TEMP/opencode.zip" | shasum -a 256 -c -
+          mkdir "$RUNNER_TEMP/opencode-public-proof"
+          unzip -q "$RUNNER_TEMP/opencode.zip" -d "$RUNNER_TEMP/opencode-public-proof"
+          test -x "$RUNNER_TEMP/opencode-public-proof/opencode"
+          echo "DSH_OPENCODE_EXE=$RUNNER_TEMP/opencode-public-proof/opencode" >> "$GITHUB_ENV"
+      - name: Install plugin and official kernel dependencies
+        run: |
+          cd dsh-x
+          npm ci
+          npm run build
+          npm --prefix packages/dsh-x-browser run build
+          cd ../deepseek-harness
+          pnpm install --frozen-lockfile
+      - name: Preflight full official Seatbelt and requested public catalog
+        timeout-minutes: 8
+        working-directory: dsh-x
+        env:
+          DSH_SMOKE_KERNEL: ${{ github.workspace }}/deepseek-harness
+          DSH_SMOKE_OUTPUT: ${{ github.workspace }}/desktop-opencode-preflight
+          DSH_OPENCODE_PREFLIGHT_CATALOG: '1'
+        run: node scripts/desktop-opencode-preflight.mjs
+      - name: Build official unsigned macOS application
+        working-directory: deepseek-harness
+        run: pnpm --filter @deepseek-ai/dsh-desktop run package mac-arm64 --unsigned --dir
+      - name: Install pinned official Electron test driver
+        run: npm install --prefix "$RUNNER_TEMP/desktop-driver" --no-audit --no-fund playwright@1.61.1
+      - name: Requested real OpenCode free hello and visible Google proof
+        timeout-minutes: 20
+        working-directory: dsh-x
+        env:
+          DSH_SMOKE_KERNEL: ${{ github.workspace }}/deepseek-harness
+          DSH_SMOKE_HOME: ${{ runner.temp }}/dsh-opencode-public-home
+          DSH_SMOKE_OUTPUT: ${{ github.workspace }}/desktop-opencode-evidence
+          DSH_SMOKE_DRIVER: ${{ runner.temp }}/desktop-driver
+        run: node scripts/desktop-opencode-proof.mjs
+      - name: Retain macOS public proof and preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-opencode-macos-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            desktop-opencode-evidence/**
+            desktop-opencode-preflight/**

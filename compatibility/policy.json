@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh",
+  "registry": "https://registry.npmjs.org",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "baseline": {
+    "version": "0.2.1-alpha.5",
+    "integrity": "sha512-ehpWvmRskdQp+CXO66BeK2HBYB0PQitwdWY13VzUVaspPSFxk0E+cZtvQhDPgc77ZeREbz9InXQzfDJjQ2Wy7g==",
+    "status": "configured-verified-baseline",
+    "inspectedSourceCommit": "1517a4dbca0a2789ff1d41ba439600f8547d23fa"
+  },
+  "prereleases": "explicit-opt-in",
+  "admission": "exact-engines-and-human-qualification",
+  "pluginDirectories": [
+    "packages/dsh-x-stock",
+    "packages/dsh-x-chat",
+    "packages/dsh-x-plan",
+    "packages/dsh-x-agents",
+    "packages/dsh-x-code",
+    "packages/dsh-x-suite"
+  ],
+  "packageManager": {
+    "name": "pnpm",
+    "version": "11.28.5"
+  }
+}

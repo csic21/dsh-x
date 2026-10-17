@@ -1,0 +1,12 @@
+{
+  "name": "dsh-x-suite",
+  "version": "0.1.0",
+  "description": "DSH-X developer suite: Code and dormant native Agents, using the official DSH host.",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js", "cordis.patch.yml", "README.md"],
+  "exports": { ".": "./index.js", "./package.json": "./package.json" },
+  "engines": { "node": "^22.19.0 || >=24.0.0", "dsh": "0.2.1-alpha.5" },
+  "dependencies": { "dsh-x-agents": "0.1.0", "dsh-x-code": "0.1.0" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

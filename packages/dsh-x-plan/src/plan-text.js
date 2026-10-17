@@ -17,19 +17,19 @@ export function parseAcceptance(text) {
     const line = raw.trim()
     if (line === '' || line.startsWith('#')) continue
     if (line.length > MAX_COMMAND_CHARS) {
-      return { error: `验收命令超过 ${MAX_COMMAND_CHARS} 个字符。` }
+      return { code: 'ACCEPTANCE_LENGTH', error: `验收命令超过 ${MAX_COMMAND_CHARS} 个字符。` }
     }
     commands.push(line)
   }
   if (commands.length > MAX_ACCEPTANCE_COMMANDS) {
-    return { error: `验收命令超过 ${MAX_ACCEPTANCE_COMMANDS} 条。` }
+    return { code: 'ACCEPTANCE_COUNT', error: `验收命令超过 ${MAX_ACCEPTANCE_COMMANDS} 条。` }
   }
   return { commands }
 }
 
 /**
  * Pull `pass` or `fail` from the last verdict fence.
- * A missing or unknown verdict is a failure, and the gap text says so.
+ * A missing or unknown verdict is inconclusive, and the gap text says so.
  * @param {string} text
  * @returns {{ verdict: 'pass' | 'fail', gaps: string }}
  */
@@ -37,9 +37,9 @@ export function parseVerdict(text) {
   const body = lastFence(text, VERDICT_FENCE)
   const gaps = text.replace(new RegExp(VERDICT_FENCE.source, 'g'), '').trim()
   const verdict = body?.trim()
-  if (verdict === 'pass' || verdict === 'fail') return { verdict, gaps }
-  const note = '验收结论缺少只含 pass 或 fail 的 dsh-x-verdict 代码块。'
-  return { verdict: 'fail', gaps: gaps === '' ? note : `${gaps}\n\n${note}` }
+  if (verdict === 'pass' || verdict === 'fail' || verdict === 'inconclusive') return { verdict, gaps, body: gaps, missingVerdict: false }
+  const note = '验收结论缺少只含 pass、fail 或 inconclusive 的 dsh-x-verdict 代码块。'
+  return { verdict: 'inconclusive', body: gaps, missingVerdict: true, gaps: gaps === '' ? note : `${gaps}\n\n${note}` }
 }
 
 function lastFence(text, pattern) {
