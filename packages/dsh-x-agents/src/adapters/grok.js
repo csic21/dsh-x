@@ -116,6 +116,44 @@ export function createGrokAdapter({ spawn, config = {} } = {}) {
     }
   }
 
+  // Unlike discover(), this requires explicit approval for native startup.
+  // initialize advertises models even when no supported login is configured.
+  async function discoverModels({ cwd, signal, sandboxPolicy } = {}) {
+    let child, wire, result;
+    const checkCancelled = () => { if (signal?.aborted) throw failure('Grok model discovery cancelled.', 'ABORT_ERR'); };
+    checkCancelled();
+    if (!validPolicy(cwd, sandboxPolicy)) throw failure('Grok model discovery requires the bound host sandbox policy and workspace.');
+    try {
+      const version = await versionOf(spawn, options, cwd, signal);
+      checkCancelled();
+      child = await spawn(spec(options, cwd, signal));
+      checkCancelled();
+      wire = new GrokRpc(child, { ...options, onNotification: async () => {},
+        onRequest: async () => { throw failure('Grok requested an unsupported client action during model discovery.'); },
+      });
+      const init = object(await wire.request('initialize', { protocolVersion: 1,
+        clientInfo: { name: 'dsh-x-agents', version: '0.1.0' },
+        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      }, signal));
+      if (init.protocolVersion !== 1 || init._meta?.grokShell !== true || init._meta?.agentVersion !== version || init.agentCapabilities?.loadSession !== true) throw failure('The executable did not negotiate the official Grok ACP contract.');
+      if (init._meta.modelState == null) throw failure('Grok did not advertise a native model catalog.');
+      const models = modelsFrom(init._meta.modelState);
+      const auth = init._meta.defaultAuthMethodId;
+      const configured = ['cached_token', 'xai.api_key'].includes(auth) && Array.isArray(init.authMethods) && init.authMethods.some(method => method.id === auth);
+      await wire.guard(wire.notifications, signal);
+      if (wire.serverRequests.size) throw failure('Grok requested an unsupported client action during model discovery.');
+      checkCancelled();
+      result = { available: true, version, authenticated: null, models,
+        capabilities: { ...CAPABILITIES, models: models.length > 0 },
+        authentication: { state: configured ? 'configured-unverified' : auth == null ? 'unconfigured' : 'unsupported', source: 'native-initialize' },
+      };
+    } finally {
+      if (child) await cleanupGrokChild(child, wire, options.cleanupTimeoutMs);
+    }
+    checkCancelled();
+    return result;
+  }
+
   async function run({ prompt, model, cwd, nativeSessionId, sandboxPolicy, signal, onEvent, requestPermission, requestInput } = {}) {
     let sessionId = nativeSessionId ?? null, child, wire, blockReason, usage, answer = '', prompting = false, terminal = false;
     const result = (status, reason) => ({ nativeSessionId: sessionId, status, summary: safeText(answer), ...(reason ? { reason } : {}), ...(usage ? { usage } : {}) });
@@ -339,5 +377,5 @@ export function createGrokAdapter({ spawn, config = {} } = {}) {
       if (child) await cleanupGrokChild(child, wire, options.cleanupTimeoutMs);
     }
   }
-  return { id: 'grok', transport: 'acp-stdio-v1', capabilities: CAPABILITIES, backendIdentity, discover, run };
+  return { id: 'grok', transport: 'acp-stdio-v1', capabilities: CAPABILITIES, backendIdentity, discover, discoverModels, run };
 }

@@ -41,6 +41,16 @@ for (const runtime of ['claude','grok']) {
   const second = await h.invoke('dsh_x_agents_run', { runtime, prompt: 'Continue synthetic fixture', scope: first.value.scope, taskId: first.value.task.id, expectedRevision: first.value.revision })
   assert.equal(second.value.task.state, 'completed', JSON.stringify(second.value.task)); assert.equal(second.value.task.nativeSessionId, first.value.task.nativeSessionId)
  })
+ test(`${runtime}: approved directory preparation enables model choice before the first task`, async t => {
+  const h=await harness(t,runtime)
+  const setup=await h.invoke('dsh_x_agents_inspect')
+  const prepared=await h.invoke('dsh_x_agents_models',{runtime,scope:setup.value.scope})
+  assert.equal(prepared.isError,false,JSON.stringify(prepared));assert.equal(prepared.value.task,null)
+  const item=prepared.value.catalog.find(item=>item.id===runtime)
+  assert.ok(item.models.length);assert.equal(item.modelCatalog.status,'fresh');assert.equal(item.authenticated,null);assert.equal(h.approvals.length,1)
+  const run=await h.invoke('dsh_x_agents_run',{runtime,prompt:'Synthetic fixture only',model:item.models[0].id,scope:setup.value.scope})
+  assert.equal(run.value.task.state,'completed',JSON.stringify(run));assert.equal(run.value.task.model,item.models[0].id)
+ })
  test(`${runtime}: rejected launch sends no native prompt`, async t => {
   const h = await harness(t, runtime, { reject: true })
   const result = await h.invoke('dsh_x_agents_run', { runtime, prompt: 'Synthetic fixture only' })

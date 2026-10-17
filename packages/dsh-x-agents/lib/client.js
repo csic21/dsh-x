@@ -41,10 +41,12 @@ var CAPABILITIES = ["nativeSessions", "resume", "streaming", "tools", "plans", "
 var EVENT_TYPES = ["session", "assistant", "tool", "plan", "permission", "input", "usage", "status", "diagnostic"];
 var ACTIONS = ["request-start", "request-continue", "cancel", "inspect"];
 var PROTOCOL = "dsh-x-agents";
+var MODEL_CATALOG_STATES = ["not-loaded", "fresh", "stale", "failed"];
 var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 var string = (value, max = 12e3) => typeof value === "string" && value.length <= max;
 var id = (value) => string(value, 512) && value.length > 0;
 var revision = (value) => Number.isSafeInteger(value) && value >= 0;
+var timestamp = (value) => value === null || typeof value === "string" && value.length <= 100 && Number.isFinite(Date.parse(value));
 function readSnapshot(value, sessionId) {
   if (!isRecord(value) || !id(value.scope) || value.sessionId !== sessionId || !revision(value.revision) || !Array.isArray(value.catalog)) return null;
   const ids = /* @__PURE__ */ new Set();
@@ -52,6 +54,11 @@ function readSnapshot(value, sessionId) {
     if (!isRecord(agent) || !id(agent.id) || ids.has(agent.id) || !string(agent.label, 200) || !string(agent.transport, 200) || ![true, false, null].includes(agent.available) || ![true, false, null].includes(agent.authenticated) || !Array.isArray(agent.models) || !isRecord(agent.capabilities)) return null;
     if (agent.version != null && !string(agent.version, 200)) return null;
     if (agent.reason != null && !string(agent.reason, 2e3)) return null;
+    if (agent.modelCatalog != null) {
+      const catalog = agent.modelCatalog;
+      if (!isRecord(catalog) || !MODEL_CATALOG_STATES.includes(catalog.status) || !timestamp(catalog.fetchedAt) || !timestamp(catalog.expiresAt) || !string(catalog.source, 200) || typeof catalog.truncated !== "boolean" || catalog.error != null && !string(catalog.error, 2e3)) return null;
+      if (catalog.accessVerified !== void 0 && typeof catalog.accessVerified !== "boolean") return null;
+    }
     if (CAPABILITIES.some((key) => agent.capabilities[key] !== void 0 && typeof agent.capabilities[key] !== "boolean")) return null;
     const models = /* @__PURE__ */ new Set();
     for (const model of agent.models) {
@@ -60,6 +67,7 @@ function readSnapshot(value, sessionId) {
     }
     ids.add(agent.id);
   }
+  if (value.operation != null && (!isRecord(value.operation) || value.operation.kind !== "models" || !ids.has(value.operation.runtime) || !["waiting_permission", "discovering", "blocked"].includes(value.operation.state) || value.operation.reason != null && !string(value.operation.reason, 2e3))) return null;
   const task = value.task;
   if (task !== null) {
     if (!isRecord(task) || !id(task.id) || !revision(task.revision) || !string(task.title) || !id(task.runtime) || !STATES.includes(task.state) || !Array.isArray(task.events) || !Array.isArray(task.allowedActions) || task.allowedActions.some((action) => !ACTIONS.includes(action))) return null;
@@ -87,6 +95,12 @@ function parseAddress(address) {
 }
 function canPrepare(agent) {
   return Boolean(agent && ["codex", "opencode", "claude", "grok"].includes(agent.id) && agent.reason !== "not-integrated" && agent.available !== false && agent.capabilities?.nativeSessions === true);
+}
+function prepareModels(snapshot, runtime) {
+  const agent = snapshot?.catalog.find((item) => item.id === runtime);
+  if (!canPrepare(agent)) throw new Error("runtime-unavailable");
+  if (snapshot.operation || snapshot.task && !snapshot.task.allowedActions.some((action) => ["request-start", "request-continue"].includes(action))) throw new Error("action-unavailable");
+  return { runtime, scope: snapshot.scope };
 }
 function presentationEvents(events) {
   const rows = [], messages = /* @__PURE__ */ new Map();
@@ -124,6 +138,7 @@ function eventDataPreview(event) {
 function prepareRun(snapshot, { runtime, model = "", prompt, continueTask = false }) {
   const agent = snapshot?.catalog.find((item) => item.id === runtime);
   if (!canPrepare(agent)) throw new Error("runtime-unavailable");
+  if (snapshot.operation) throw new Error("action-unavailable");
   if (typeof prompt !== "string" || !prompt.trim() || prompt.trim().length > 12e3) throw new Error("goal-required");
   const task = snapshot.task;
   if (task && !task.allowedActions.includes(continueTask ? "request-continue" : "request-start")) throw new Error("action-unavailable");
@@ -375,6 +390,8 @@ var en = {
   loading: "Checking this session\u2026",
   unavailable: "Current state is unavailable",
   retry: "Refresh state",
+  snapshotRefresh: "Refresh panel",
+  snapshotRefreshHint: "Read the current state. This does not fetch models or start a native runtime.",
   scopeChanged: "The connection or profile changed. Reopen Agents from this conversation.",
   invalidAddress: "This workspace does not belong to the current conversation.",
   host: "DSH coordinates \xB7 the selected Agent executes",
@@ -394,6 +411,31 @@ var en = {
   inspectRequest: "Please call dsh_x_agents_inspect with {} to check the configured Agent runtimes and their available models. Do not install software or change authentication settings.",
   inspect: "Prepare connection check",
   inspectHint: "A check request is added to the conversation for you to send. No login or installation is performed here.",
+  modelsGet: "Get model catalog",
+  modelsUpdate: "Update model catalog",
+  modelCatalogTitle: "Model catalog",
+  modelsRequest: "Please call dsh_x_agents_models with these exact arguments to fetch the runtime model catalog only. Do not start or replace a task. If native initialization requires approval, use the official permission prompt:",
+  modelsRequestHint: "Adds a request for you to send. Native initialization may then require official approval; nothing initializes in the background.",
+  modelsNotVerified: "A listed model is not proof of account access, available credit or quota.",
+  modelsDetails: "Catalog details",
+  modelsFetched: "Fetched",
+  modelsExpires: "Expires",
+  modelsSource: "Source",
+  modelsPartial: "Only part of the catalog was returned.",
+  modelsCount: "{count} models returned",
+  modelsEmpty: "The runtime returned no selectable models. The selector retains the Agent default option.",
+  modelsUntimed: "Existing model list; freshness is not recorded.",
+  "modelCatalog.not-loaded": "Model catalog not fetched",
+  "modelCatalog.fresh": "Catalog updated",
+  "modelCatalog.stale": "Cached catalog may be out of date",
+  "modelCatalog.failed": "Catalog update failed",
+  "modelsOperation.waiting_permission": "Model catalog: waiting for approval",
+  "modelsOperation.discovering": "Fetching model catalog",
+  "modelsOperation.blocked": "Model catalog operation blocked",
+  modelsOperationRunning: "Model catalog operation in progress",
+  modelsApprovalHint: "Approve or reject native initialization in the conversation. This panel cannot grant permission.",
+  modelsDiscoveringHint: "Reading the native model catalog without starting or replacing a task. Use the conversation Stop button to cancel.",
+  modelsBlockedHint: "Native cleanup is not confirmed. Verify that the native process stopped before manual recovery. No automatic retry or unlock is performed.",
   first: "No Agent task in this conversation yet.",
   task: "Current task",
   nextTurn: "Continue this task",
@@ -506,6 +548,8 @@ var zh = {
   loading: "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u4F1A\u8BDD\u2026",
   unavailable: "\u5F53\u524D\u72B6\u6001\u4E0D\u53EF\u7528",
   retry: "\u5237\u65B0\u72B6\u6001",
+  snapshotRefresh: "\u5237\u65B0\u9762\u677F",
+  snapshotRefreshHint: "\u4EC5\u8BFB\u53D6\u5F53\u524D\u72B6\u6001\uFF0C\u4E0D\u83B7\u53D6\u6A21\u578B\u76EE\u5F55\uFF0C\u4E5F\u4E0D\u542F\u52A8\u539F\u751F\u8FD0\u884C\u65F6\u3002",
   scopeChanged: "\u8FDE\u63A5\u6216 profile \u5DF2\u66F4\u6539\u3002\u8BF7\u4ECE\u5F53\u524D\u4F1A\u8BDD\u91CD\u65B0\u6253\u5F00 Agents\u3002",
   invalidAddress: "\u8FD9\u4E2A\u5DE5\u4F5C\u533A\u4E0D\u5C5E\u4E8E\u5F53\u524D\u4F1A\u8BDD\u3002",
   host: "DSH \u534F\u8C03 \xB7 \u6240\u9009 Agent \u6267\u884C",
@@ -525,6 +569,31 @@ var zh = {
   inspectRequest: "\u8BF7\u4EE5 {} \u8C03\u7528 dsh_x_agents_inspect\uFF0C\u68C0\u67E5\u5DF2\u914D\u7F6E\u7684 Agent \u8FD0\u884C\u65F6\u4E0E\u53EF\u7528\u6A21\u578B\u3002\u4E0D\u8981\u5B89\u88C5\u8F6F\u4EF6\u6216\u66F4\u6539\u8BA4\u8BC1\u8BBE\u7F6E\u3002",
   inspect: "\u51C6\u5907\u68C0\u67E5\u8FDE\u63A5",
   inspectHint: "\u68C0\u67E5\u8BF7\u6C42\u4F1A\u52A0\u5165\u5F53\u524D\u4F1A\u8BDD\uFF0C\u7531\u4F60\u786E\u8BA4\u540E\u53D1\u9001\u3002\u8FD9\u91CC\u4E0D\u4F1A\u6267\u884C\u767B\u5F55\u6216\u5B89\u88C5\u3002",
+  modelsGet: "\u83B7\u53D6\u6A21\u578B\u76EE\u5F55",
+  modelsUpdate: "\u66F4\u65B0\u6A21\u578B\u76EE\u5F55",
+  modelCatalogTitle: "\u6A21\u578B\u76EE\u5F55",
+  modelsRequest: "\u8BF7\u4F7F\u7528\u4EE5\u4E0B\u51C6\u786E\u53C2\u6570\u8C03\u7528 dsh_x_agents_models\uFF0C\u4EC5\u83B7\u53D6\u8FD0\u884C\u65F6\u7684\u6A21\u578B\u76EE\u5F55\u3002\u4E0D\u8981\u542F\u52A8\u6216\u66FF\u6362\u4EFB\u52A1\uFF1B\u539F\u751F\u521D\u59CB\u5316\u9700\u8981\u6279\u51C6\u65F6\uFF0C\u8BF7\u4F7F\u7528\u5B98\u65B9\u6743\u9650\u5BA1\u6279\uFF1A",
+  modelsRequestHint: "\u8BF7\u6C42\u4F1A\u52A0\u5165\u4F1A\u8BDD\uFF0C\u7531\u4F60\u53D1\u9001\uFF1B\u968F\u540E\u53EF\u80FD\u9700\u8981\u5B98\u65B9\u542F\u52A8\u6279\u51C6\u3002\u8FD9\u91CC\u4E0D\u4F1A\u540E\u53F0\u521D\u59CB\u5316\u3002",
+  modelsNotVerified: "\u5217\u51FA\u6A21\u578B\u4E0D\u4EE3\u8868\u5DF2\u9A8C\u8BC1\u8D26\u6237\u53EF\u8C03\u7528\u3001\u4F59\u989D\u6216\u989D\u5EA6\u3002",
+  modelsDetails: "\u76EE\u5F55\u4FE1\u606F",
+  modelsFetched: "\u83B7\u53D6\u65F6\u95F4",
+  modelsExpires: "\u8FC7\u671F\u65F6\u95F4",
+  modelsSource: "\u6765\u6E90",
+  modelsPartial: "\u4EC5\u8FD4\u56DE\u4E86\u90E8\u5206\u6A21\u578B\u76EE\u5F55\u3002",
+  modelsCount: "\u5DF2\u8FD4\u56DE {count} \u4E2A\u6A21\u578B",
+  modelsEmpty: "\u8FD0\u884C\u65F6\u6CA1\u6709\u8FD4\u56DE\u53EF\u9009\u6A21\u578B\uFF0C\u9009\u62E9\u5668\u4FDD\u7559 Agent \u9ED8\u8BA4\u6A21\u578B\u9009\u9879\u3002",
+  modelsUntimed: "\u5DF2\u6709\u6A21\u578B\u5217\u8868\uFF0C\u5C1A\u65E0\u66F4\u65B0\u65F6\u95F4\u8BB0\u5F55\u3002",
+  "modelCatalog.not-loaded": "\u5C1A\u672A\u83B7\u53D6\u6A21\u578B\u76EE\u5F55",
+  "modelCatalog.fresh": "\u6A21\u578B\u76EE\u5F55\u5DF2\u66F4\u65B0",
+  "modelCatalog.stale": "\u7F13\u5B58\u76EE\u5F55\u53EF\u80FD\u5DF2\u8FC7\u671F",
+  "modelCatalog.failed": "\u6A21\u578B\u76EE\u5F55\u66F4\u65B0\u5931\u8D25",
+  "modelsOperation.waiting_permission": "\u6A21\u578B\u76EE\u5F55\uFF1A\u7B49\u5F85\u6388\u6743",
+  "modelsOperation.discovering": "\u6B63\u5728\u83B7\u53D6\u6A21\u578B\u76EE\u5F55",
+  "modelsOperation.blocked": "\u6A21\u578B\u76EE\u5F55\u64CD\u4F5C\u53D7\u963B",
+  modelsOperationRunning: "\u6A21\u578B\u76EE\u5F55\u64CD\u4F5C\u8FDB\u884C\u4E2D",
+  modelsApprovalHint: "\u8BF7\u5728\u4F1A\u8BDD\u4E2D\u6279\u51C6\u6216\u62D2\u7EDD\u539F\u751F\u521D\u59CB\u5316\uFF0C\u8FD9\u4E2A\u9762\u677F\u4E0D\u80FD\u6388\u4E88\u6743\u9650\u3002",
+  modelsDiscoveringHint: "\u6B63\u5728\u8BFB\u53D6\u539F\u751F\u6A21\u578B\u76EE\u5F55\uFF0C\u4E0D\u4F1A\u5F00\u59CB\u4EFB\u52A1\u6216\u66FF\u6362\u5DF2\u6709\u4EFB\u52A1\u3002\u53EF\u7528\u4F1A\u8BDD\u4E2D\u7684\u505C\u6B62\u6309\u94AE\u53D6\u6D88\u3002",
+  modelsBlockedHint: "\u539F\u751F\u8FDB\u7A0B\u6E05\u7406\u5C1A\u672A\u786E\u8BA4\u3002\u8BF7\u5148\u68C0\u67E5\u539F\u751F\u8FDB\u7A0B\u5DF2\u505C\u6B62\uFF0C\u518D\u4EBA\u5DE5\u5904\u7406\u3002\u7CFB\u7EDF\u4E0D\u4F1A\u81EA\u52A8\u91CD\u8BD5\u6216\u89E3\u9501\u3002",
   first: "\u5F53\u524D\u4F1A\u8BDD\u8FD8\u6CA1\u6709 Agent \u4EFB\u52A1\u3002",
   task: "\u5F53\u524D\u4EFB\u52A1",
   nextTurn: "\u7EE7\u7EED\u5F53\u524D\u4EFB\u52A1",
@@ -636,12 +705,17 @@ var errorKey = (code) => Object.hasOwn(en, `error.${code}`) ? `error.${code}` : 
 // src/client/components.jsx
 function AgentsEntry({ useAgents, openAgents, t }) {
   const state = useAgents((state2) => state2);
-  const task = state.snapshot?.task;
-  return /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxa-entry", onClick: openAgents, disabled: state.status === "loading", title: state.status === "loading" ? t("loading") : state.status === "live" ? t("open") : t("retry") }, /* @__PURE__ */ import_react.default.createElement("span", { "aria-hidden": "true", className: "dxa-mark" }, "A"), /* @__PURE__ */ import_react.default.createElement("span", null, t("title")), state.status === "live" && task && /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-entry-state" }, t(`state.${task.cancellationRequested ? "stopping" : task.state}`)), state.status === "failed" && /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-entry-state" }, t("retry")));
+  const task = state.snapshot?.task, operation = state.snapshot?.operation;
+  return /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxa-entry", onClick: openAgents, disabled: state.status === "loading", title: state.status === "loading" ? t("loading") : state.status === "live" ? t("open") : t("retry") }, /* @__PURE__ */ import_react.default.createElement("span", { "aria-hidden": "true", className: "dxa-mark" }, "A"), /* @__PURE__ */ import_react.default.createElement("span", null, t("title")), state.status === "live" && (operation || task) && /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-entry-state" }, operation ? t(`modelsOperation.${operation.state}`) : t(`state.${task.cancellationRequested ? "stopping" : task.state}`)), state.status === "failed" && /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-entry-state" }, t("retry")));
 }
 function Availability({ agent, t }) {
   const availability = agent.reason === "not-integrated" ? "not-integrated" : agent.available === true ? "available" : agent.available === false ? "unavailable" : "unknown";
   return /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-availability" }, t(`availability.${availability}`), availability !== "not-integrated" && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, " \xB7 ", t(agent.authenticated === true ? "auth.yes" : agent.authenticated === false ? "auth.no" : "auth.unknown")));
+}
+function ModelCatalog({ agent, t, formatTime }) {
+  const catalog = agent.modelCatalog;
+  const status = catalog ? `modelCatalog.${catalog.status}` : agent.models.length ? "modelsUntimed" : "modelCatalog.not-loaded";
+  return /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-model-catalog", "data-catalog-state": catalog?.status ?? "legacy" }, /* @__PURE__ */ import_react.default.createElement("p", { className: ["stale", "failed"].includes(catalog?.status) ? "dxa-warning" : "dxa-muted", role: "status" }, t(status), (catalog?.fetchedAt || agent.models.length > 0) && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, " \xB7 ", t("modelsCount", { count: agent.models.length }))), catalog?.truncated && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-warning" }, t("modelsPartial")), catalog?.status === "fresh" && agent.models.length === 0 && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("modelsEmpty")), catalog?.error && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-raw dxa-warning" }, catalog.error), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("modelsNotVerified")), catalog && /* @__PURE__ */ import_react.default.createElement("details", null, /* @__PURE__ */ import_react.default.createElement("summary", null, t("modelsDetails")), /* @__PURE__ */ import_react.default.createElement("dl", { className: "dxa-record" }, /* @__PURE__ */ import_react.default.createElement("dt", null, t("modelsFetched")), /* @__PURE__ */ import_react.default.createElement("dd", null, catalog.fetchedAt ? formatTime(catalog.fetchedAt) : t("noSession")), /* @__PURE__ */ import_react.default.createElement("dt", null, t("modelsExpires")), /* @__PURE__ */ import_react.default.createElement("dd", null, catalog.expiresAt ? formatTime(catalog.expiresAt) : t("noSession")), /* @__PURE__ */ import_react.default.createElement("dt", null, t("modelsSource")), /* @__PURE__ */ import_react.default.createElement("dd", null, catalog.source || t("noSession")))));
 }
 function Connections({ catalog, t, prepareInspect, enabled }) {
   return /* @__PURE__ */ import_react.default.createElement("details", { className: "dxa-details dxa-connections" }, /* @__PURE__ */ import_react.default.createElement("summary", null, t("connections")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("connectionHint")), catalog.map((agent) => /* @__PURE__ */ import_react.default.createElement("section", { key: agent.id, className: "dxa-connection", "data-agent": agent.id }, /* @__PURE__ */ import_react.default.createElement("strong", null, agent.label), /* @__PURE__ */ import_react.default.createElement(Availability, { agent, t }), /* @__PURE__ */ import_react.default.createElement("dl", { className: "dxa-record" }, /* @__PURE__ */ import_react.default.createElement("dt", null, t("transport")), /* @__PURE__ */ import_react.default.createElement("dd", null, agent.transport), /* @__PURE__ */ import_react.default.createElement("dt", null, t("version")), /* @__PURE__ */ import_react.default.createElement("dd", null, agent.version || t("unknownVersion"))), agent.reason && agent.reason !== "not-integrated" && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-raw" }, agent.reason), agent.providerAuthentication && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("providerAuth"), ": ", agent.providerAuthentication === "unverified" ? t("providerUnverified") : agent.providerAuthentication), Array.isArray(agent.limitations) && agent.limitations.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-limitations" }, /* @__PURE__ */ import_react.default.createElement("strong", null, t("limitations")), /* @__PURE__ */ import_react.default.createElement("ul", null, agent.limitations.filter((item) => typeof item === "string").map((item, index) => /* @__PURE__ */ import_react.default.createElement("li", { key: index }, item)))), agent.sandbox != null && /* @__PURE__ */ import_react.default.createElement("details", null, /* @__PURE__ */ import_react.default.createElement("summary", null, t("sandbox")), /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw" }, typeof agent.sandbox === "string" ? agent.sandbox : JSON.stringify(agent.sandbox, null, 2))), Array.isArray(agent.capabilities.permissionScopes) && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("permissionScopes"), ": ", agent.capabilities.permissionScopes.filter((item) => typeof item === "string").join(", ")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("capabilities")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-capabilities" }, CAPABILITIES.filter((key) => agent.capabilities[key] === true).map((key) => /* @__PURE__ */ import_react.default.createElement("span", { key }, t(`cap.${key}`)))))), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: prepareInspect, disabled: !enabled }, t("inspect")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("inspectHint")));
@@ -655,7 +729,7 @@ function Events({ events, t }) {
   }))));
 }
 function Workspace({ state, sessionId, inputActions, cancel, refresh, t, formatTime }) {
-  const snapshot = state.snapshot, task = snapshot.task;
+  const snapshot = state.snapshot, task = snapshot.task, operation = snapshot.operation;
   const defaultContinue = task?.allowedActions.includes("request-continue") ?? false;
   const [continueTask, setContinueTask] = (0, import_react.useState)(defaultContinue);
   const [choice, setChoice] = (0, import_react.useState)(snapshot.catalog.find(canPrepare)?.id ?? "");
@@ -664,7 +738,7 @@ function Workspace({ state, sessionId, inputActions, cancel, refresh, t, formatT
   const [notice, setNotice] = (0, import_react.useState)(null);
   (0, import_react.useEffect)(() => {
     setNotice((current) => current?.key === "inserted" ? null : current);
-  }, [task?.id, task?.runId, task?.state]);
+  }, [task?.id, task?.runId, task?.state, operation?.runtime, operation?.state]);
   const alive = (0, import_react.useRef)(true);
   (0, import_react.useEffect)(() => () => {
     alive.current = false;
@@ -673,13 +747,14 @@ function Workspace({ state, sessionId, inputActions, cancel, refresh, t, formatT
   const model = continueTask && task ? task.model ?? "" : chosenModel;
   const agent = snapshot.catalog.find((item) => item.id === runtime);
   const live = state.status === "live" && !state.pending;
-  const canStart = live && (!task || task.allowedActions.includes("request-start"));
-  const canContinue = live && Boolean(task?.allowedActions.includes("request-continue"));
+  const canStart = live && !operation && (!task || task.allowedActions.includes("request-start"));
+  const canContinue = live && !operation && Boolean(task?.allowedActions.includes("request-continue"));
   const models = agent?.capabilities.models === true ? agent.models : [];
   const modelValid = !model || models.some((item) => item.id === model);
   const canInsert = (continueTask ? canContinue : canStart) && canPrepare(agent) && modelValid;
   const needsSetup = !snapshot.catalog.some(canPrepare);
   const hasRequestAction = !task || task.allowedActions.some((action) => ["request-start", "request-continue"].includes(action));
+  const canGetModels = live && !operation && canPrepare(agent) && hasRequestAction;
   const put = (text) => {
     try {
       const inserted = insertRequest(inputActions, text);
@@ -697,11 +772,19 @@ ${JSON.stringify(args, null, 2)}`);
       setNotice({ key: errorKey(error.message), error: true });
     }
   };
+  const getModels = () => {
+    try {
+      put(`${t("modelsRequest")}
+${JSON.stringify(prepareModels(snapshot, runtime), null, 2)}`);
+    } catch (error) {
+      setNotice({ key: errorKey(error.message), error: true });
+    }
+  };
   const stop = async () => {
     const result = await cancel({ scope: snapshot.scope, taskId: task.id, runId: task.runId });
     if (alive.current && !result.ok) setNotice({ key: errorKey(result.error?.code), error: true });
   };
-  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-workspace", "aria-label": t("title"), "data-agents-session": sessionId, "data-state": task?.state ?? "none" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "dxa-header" }, /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("h2", null, t("title")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("host"))), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: refresh, disabled: state.pending }, t("retry"))), state.status !== "live" && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-notice dxa-warning", role: "alert" }, t("stale")), state.error && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-notice dxa-warning", role: "alert" }, t(errorKey(state.error.code)), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-muted" }, " ", state.error.code)), task ? /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-current" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-task-heading" }, /* @__PURE__ */ import_react.default.createElement("h3", null, task.title || t("task")), /* @__PURE__ */ import_react.default.createElement("span", { className: `dxa-status dxa-state-${task.state}`, role: "status" }, t(`state.${task.cancellationRequested ? "stopping" : task.state}`))), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-task-agent" }, snapshot.catalog.find((item) => item.id === task.runtime)?.label ?? task.runtime, task.model ? ` \xB7 ${task.model}` : ""), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-next" }, t(task.cancellationRequested ? "stopping" : task.state)), task.summary && /* @__PURE__ */ import_react.default.createElement("section", null, /* @__PURE__ */ import_react.default.createElement("h3", null, t("summary")), /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw dxa-summary" }, task.summary)), task.reason && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-raw dxa-warning" }, task.reason), task.allowedActions.includes("cancel") && task.runId && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-stop" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", disabled: !live, onClick: stop }, t(state.pending ? "cancelling" : "cancel")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-muted" }, t("stopHint")))) : /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-empty" }, t("first")), hasRequestAction && /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-prepare" }, /* @__PURE__ */ import_react.default.createElement("h3", null, t("delegation")), needsSetup && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-notice" }, /* @__PURE__ */ import_react.default.createElement("p", null, t("setupFirst")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxa-primary", disabled: !live, onClick: () => put(t("inspectRequest")) }, t("inspect"))), task && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-modes" }, task.allowedActions.includes("request-continue") && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-pressed": continueTask, onClick: () => {
+  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-workspace", "aria-label": t("title"), "data-agents-session": sessionId, "data-state": task?.state ?? "none" }, /* @__PURE__ */ import_react.default.createElement("header", { className: "dxa-header" }, /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("h2", null, t("title")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("host"))), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: refresh, disabled: state.pending, title: t("snapshotRefreshHint") }, t("snapshotRefresh"))), state.status !== "live" && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-notice dxa-warning", role: "alert" }, t("stale")), state.error && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-notice dxa-warning", role: "alert" }, t(errorKey(state.error.code)), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-muted" }, " ", state.error.code)), operation && /* @__PURE__ */ import_react.default.createElement("section", { className: `dxa-notice dxa-model-operation${operation.state === "blocked" ? " dxa-warning" : ""}`, role: "status" }, /* @__PURE__ */ import_react.default.createElement("strong", null, snapshot.catalog.find((item) => item.id === operation.runtime)?.label ?? operation.runtime, " \xB7 ", t(`modelsOperation.${operation.state}`)), /* @__PURE__ */ import_react.default.createElement("p", null, t(operation.state === "waiting_permission" ? "modelsApprovalHint" : operation.state === "blocked" ? "modelsBlockedHint" : "modelsDiscoveringHint")), operation.reason && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-raw" }, operation.reason)), task ? /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-current" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-task-heading" }, /* @__PURE__ */ import_react.default.createElement("h3", null, task.title || t("task")), /* @__PURE__ */ import_react.default.createElement("span", { className: `dxa-status dxa-state-${task.state}`, role: "status" }, t(`state.${task.cancellationRequested ? "stopping" : task.state}`))), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-task-agent" }, snapshot.catalog.find((item) => item.id === task.runtime)?.label ?? task.runtime, task.model ? ` \xB7 ${task.model}` : ""), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-next" }, t(task.cancellationRequested ? "stopping" : task.state)), task.summary && /* @__PURE__ */ import_react.default.createElement("section", null, /* @__PURE__ */ import_react.default.createElement("h3", null, t("summary")), /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw dxa-summary" }, task.summary)), task.reason && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-raw dxa-warning" }, task.reason), task.allowedActions.includes("cancel") && task.runId && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-stop" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", disabled: !live, onClick: stop }, t(state.pending ? "cancelling" : "cancel")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-muted" }, t("stopHint")))) : /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-empty" }, t("first")), hasRequestAction && /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-prepare" }, /* @__PURE__ */ import_react.default.createElement("h3", null, t("delegation")), needsSetup && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-notice" }, /* @__PURE__ */ import_react.default.createElement("p", null, t("setupFirst")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxa-primary", disabled: !live || Boolean(operation), onClick: () => put(t("inspectRequest")) }, t("inspect"))), task && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-modes" }, task.allowedActions.includes("request-continue") && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-pressed": continueTask, onClick: () => {
     setContinueTask(true);
     setModel("");
     setNotice(null);
@@ -713,10 +796,10 @@ ${JSON.stringify(args, null, 2)}`);
     setChoice(event.target.value);
     setModel("");
     setNotice(null);
-  }, disabled: !live || continueTask }, !runtime && /* @__PURE__ */ import_react.default.createElement("option", { value: "" }, t("chooseAgent")), snapshot.catalog.map((item) => /* @__PURE__ */ import_react.default.createElement("option", { key: item.id, value: item.id, disabled: !canPrepare(item) }, item.label, item.reason === "not-integrated" ? ` \xB7 ${t("availability.not-integrated")}` : item.available === false ? ` \xB7 ${t("availability.unavailable")}` : "")))), /* @__PURE__ */ import_react.default.createElement("label", null, t("model"), /* @__PURE__ */ import_react.default.createElement("select", { value: model, disabled: !live || continueTask || models.length === 0 && !model, onChange: (event) => setModel(event.target.value) }, /* @__PURE__ */ import_react.default.createElement("option", { value: "" }, t("nativeDefault")), !modelValid && /* @__PURE__ */ import_react.default.createElement("option", { value: model, disabled: true }, model, " \xB7 ", t("availability.unavailable")), models.map((item) => /* @__PURE__ */ import_react.default.createElement("option", { key: item.id, value: item.id }, item.label))))), !modelValid && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-warning", role: "alert" }, t("error.model-unavailable")), agent && /* @__PURE__ */ import_react.default.createElement(Availability, { agent, t }), agent?.providerAuthentication && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("providerAuth"), ": ", agent.providerAuthentication === "unverified" ? t("providerUnverified") : agent.providerAuthentication), Array.isArray(agent?.limitations) && agent.limitations.length > 0 && /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxa-limitations" }, agent.limitations.filter((item) => typeof item === "string").slice(0, 2).map((item, index) => /* @__PURE__ */ import_react.default.createElement("li", { key: index }, item))), agent && (agent.available !== true || agent.authenticated !== true) && canPrepare(agent) && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-notice" }, t("unknownBeforeRun")), !agent && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t(needsSetup ? "noRuntime" : "chooseAgent")), agent && models.length === 0 && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("noModel")), task && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t(continueTask ? "continueHint" : "newHint")), !needsSetup && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("label", { className: "dxa-goal" }, t("goal"), /* @__PURE__ */ import_react.default.createElement("textarea", { value: goal, onChange: (event) => {
+  }, disabled: !live || continueTask }, !runtime && /* @__PURE__ */ import_react.default.createElement("option", { value: "" }, t("chooseAgent")), snapshot.catalog.map((item) => /* @__PURE__ */ import_react.default.createElement("option", { key: item.id, value: item.id, disabled: !canPrepare(item) }, item.label, item.reason === "not-integrated" ? ` \xB7 ${t("availability.not-integrated")}` : item.available === false ? ` \xB7 ${t("availability.unavailable")}` : "")))), /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("label", null, t("model"), /* @__PURE__ */ import_react.default.createElement("select", { value: model, disabled: !live || continueTask || models.length === 0 && !model, onChange: (event) => setModel(event.target.value) }, /* @__PURE__ */ import_react.default.createElement("option", { value: "" }, t("nativeDefault")), !modelValid && /* @__PURE__ */ import_react.default.createElement("option", { value: model, disabled: true }, model, " \xB7 ", t("availability.unavailable")), models.map((item) => /* @__PURE__ */ import_react.default.createElement("option", { key: item.id, value: item.id }, item.label)))), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxa-model-request", onClick: getModels, disabled: !canGetModels, title: t("modelsRequestHint") }, t(agent?.modelCatalog?.fetchedAt || models.length ? "modelsUpdate" : "modelsGet")))), agent && /* @__PURE__ */ import_react.default.createElement(ModelCatalog, { agent, t, formatTime }), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("modelsRequestHint")), !modelValid && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-warning", role: "alert" }, t("error.model-unavailable")), agent && /* @__PURE__ */ import_react.default.createElement(Availability, { agent, t }), agent?.providerAuthentication && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("providerAuth"), ": ", agent.providerAuthentication === "unverified" ? t("providerUnverified") : agent.providerAuthentication), Array.isArray(agent?.limitations) && agent.limitations.length > 0 && /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxa-limitations" }, agent.limitations.filter((item) => typeof item === "string").slice(0, 2).map((item, index) => /* @__PURE__ */ import_react.default.createElement("li", { key: index }, item))), agent && (agent.available !== true || agent.authenticated !== true) && canPrepare(agent) && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-notice" }, t("unknownBeforeRun")), !agent && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t(needsSetup ? "noRuntime" : "chooseAgent")), agent && models.length === 0 && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("noModel")), task && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t(continueTask ? "continueHint" : "newHint")), !needsSetup && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("label", { className: "dxa-goal" }, t("goal"), /* @__PURE__ */ import_react.default.createElement("textarea", { value: goal, onChange: (event) => {
     setGoal(event.target.value);
     setNotice(null);
-  }, placeholder: t("goalPlaceholder"), rows: 3, maxLength: 12e3, disabled: !live })), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxa-primary", disabled: !canInsert || !goal.trim(), onClick: prepare }, t("insert"))), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("hostHint"))), notice && /* @__PURE__ */ import_react.default.createElement("p", { className: `dxa-notice ${notice.error ? "dxa-warning" : ""}`, role: notice.error ? "alert" : "status" }, t(notice.key)), task && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement(Events, { key: task.id, events: task.events, t }), /* @__PURE__ */ import_react.default.createElement("details", { className: "dxa-details" }, /* @__PURE__ */ import_react.default.createElement("summary", null, t("technical")), /* @__PURE__ */ import_react.default.createElement("dl", { className: "dxa-record" }, [["taskId", task.id], ["revision", task.revision], ["nativeSession", task.nativeSessionId || t("noSession")], ["cwd", task.cwd || t("noSession")], ["updated", formatTime(task.updatedAt)]].map(([label, value]) => /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, { key: label }, /* @__PURE__ */ import_react.default.createElement("dt", null, t(label)), /* @__PURE__ */ import_react.default.createElement("dd", null, value)))))), /* @__PURE__ */ import_react.default.createElement(Connections, { catalog: snapshot.catalog, t, enabled: live, prepareInspect: () => put(t("inspectRequest")) }));
+  }, placeholder: t("goalPlaceholder"), rows: 3, maxLength: 12e3, disabled: !live })), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxa-primary", disabled: !canInsert || !goal.trim(), onClick: prepare }, t("insert"))), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("hostHint"))), notice && /* @__PURE__ */ import_react.default.createElement("p", { className: `dxa-notice ${notice.error ? "dxa-warning" : ""}`, role: notice.error ? "alert" : "status" }, t(notice.key)), task && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement(Events, { key: task.id, events: task.events, t }), /* @__PURE__ */ import_react.default.createElement("details", { className: "dxa-details" }, /* @__PURE__ */ import_react.default.createElement("summary", null, t("technical")), /* @__PURE__ */ import_react.default.createElement("dl", { className: "dxa-record" }, [["taskId", task.id], ["revision", task.revision], ["nativeSession", task.nativeSessionId || t("noSession")], ["cwd", task.cwd || t("noSession")], ["updated", formatTime(task.updatedAt)]].map(([label, value]) => /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, { key: label }, /* @__PURE__ */ import_react.default.createElement("dt", null, t(label)), /* @__PURE__ */ import_react.default.createElement("dd", null, value)))))), /* @__PURE__ */ import_react.default.createElement(Connections, { catalog: snapshot.catalog, t, enabled: live && !operation, prepareInspect: () => put(t("inspectRequest")) }));
 }
 function AgentsPanel({ sessionId, useTabInfo, useResource, inputActions, cancel, refresh, t, formatTime }) {
   const tab = useTabInfo(), address = tab.tab.navigation.address;
@@ -729,15 +812,18 @@ function AgentsPanel({ sessionId, useTabInfo, useResource, inputActions, cancel,
   }
   return /* @__PURE__ */ import_react.default.createElement(Workspace, { key: `${target.scope}/${sessionId}`, state, sessionId, inputActions, cancel, refresh, t, formatTime });
 }
-function AgentsToolRow({ phase, block, inspect, openCurrent, t }) {
+function AgentsToolRow({ phase, block, inspect, openCurrent, operationKind, t, formatTime = (value) => value || "\u2014" }) {
   const meta = block?.meta;
   const snapshot = !block?.isError && meta?.kind === "dsh-x-agents.result" && meta.version === 1 ? readSnapshot(meta, meta.sessionId) : null;
   const task = snapshot?.task;
-  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-tool", "aria-label": t("title") }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-task-heading" }, /* @__PURE__ */ import_react.default.createElement("strong", null, t("title")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-status", role: "status" }, phase !== "result" ? t("operationRunning") : block?.isError ? t("operationFailed") : task ? t(`state.${task.cancellationRequested ? "stopping" : task.state}`) : t("historyResult"))), phase === "result" && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, snapshot ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("historyResult"), " \xB7 ", t("host")), task && /* @__PURE__ */ import_react.default.createElement("p", null, task.title), task?.summary && /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw" }, task.summary.slice(0, 1400), task.summary.length > 1400 ? "\u2026" : ""), task && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t(task.state))) : /* @__PURE__ */ import_react.default.createElement("p", null, t("unsupportedResult")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-stop" }, snapshot && openCurrent && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => openCurrent(snapshot) }, t("openCurrent")), inspect && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: inspect }, t("inspectRecord")))));
+  const modelsOperation = operationKind === "models";
+  const modelAgent = modelsOperation ? snapshot?.catalog.find((agent) => agent.id === meta?.modelRuntime) : null;
+  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-tool", "aria-label": t("title") }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-task-heading" }, /* @__PURE__ */ import_react.default.createElement("strong", null, t(modelsOperation ? "modelCatalogTitle" : "title")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-status", role: "status" }, phase !== "result" ? t(modelsOperation ? "modelsOperationRunning" : "operationRunning") : block?.isError ? t("operationFailed") : modelsOperation ? t(modelAgent?.modelCatalog ? `modelCatalog.${modelAgent.modelCatalog.status}` : "historyResult") : task ? t(`state.${task.cancellationRequested ? "stopping" : task.state}`) : t("historyResult"))), phase === "result" && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, snapshot ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("historyResult"), !modelsOperation && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, " \xB7 ", t("host"))), modelsOperation ? modelAgent ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("strong", null, modelAgent.label), /* @__PURE__ */ import_react.default.createElement(ModelCatalog, { agent: modelAgent, t, formatTime })) : /* @__PURE__ */ import_react.default.createElement("p", null, t("unsupportedResult")) : /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, task && /* @__PURE__ */ import_react.default.createElement("p", null, task.title), task?.summary && /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw" }, task.summary.slice(0, 1400), task.summary.length > 1400 ? "\u2026" : ""), task && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t(task.state)))) : /* @__PURE__ */ import_react.default.createElement("p", null, t("unsupportedResult")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-stop" }, snapshot && openCurrent && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => openCurrent(snapshot) }, t("openCurrent")), inspect && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: inspect }, t("inspectRecord")))));
 }
 
 // src/client/styles.js
 var CSS = `
+.dxa-workspace .dxa-model-request{margin-top:6px;font-size:12px}.dxa-model-catalog{margin-top:8px}.dxa-model-catalog summary{font-size:12px;cursor:pointer}.dxa-model-operation{margin-top:14px}
 .dxa-entry{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;color:var(--dsw-alias-label-secondary,#62666d);background:transparent;border:1px solid var(--dsw-alias-border-l2,#d9dce0);border-radius:7px;padding:5px 8px;margin:0 0 7px;font:12px/1.4 system-ui,sans-serif;cursor:pointer;max-width:260px;min-width:0}.dxa-entry:disabled{opacity:.65;cursor:default}.dxa-mark{border:1px solid currentColor;border-radius:4px;font-size:10px;line-height:15px;width:16px;text-align:center}.dxa-entry-state{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px}
 .dxa-tool{padding:12px;color:var(--dsw-alias-label-primary,#202124);font:13px/1.55 system-ui,sans-serif;overflow-wrap:anywhere}.dxa-tool button{color:inherit;font:inherit;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,#cfd2d6);border-radius:6px;padding:6px 9px;cursor:pointer}.dxa-tool button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4169e1);outline-offset:3px}.dxa-limitations{font-size:12px}.dxa-limitations ul{padding-inline-start:20px}
 .dxa-workspace,.dxa-message{box-sizing:border-box;width:100%;max-width:100%;min-width:0;padding:20px;color:var(--dsw-alias-label-primary,#202124);font:13px/1.55 system-ui,sans-serif;overflow-wrap:anywhere}.dxa-workspace *,.dxa-message *{box-sizing:border-box;min-width:0}.dxa-workspace h2{font-size:18px;line-height:1.4;margin:0}.dxa-workspace h3{font-size:13px;line-height:1.5;margin:0 0 8px;font-weight:600}.dxa-workspace p{margin:8px 0}.dxa-muted{font-size:12px;color:var(--dsw-alias-label-secondary,#62666d)}.dxa-header,.dxa-task-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.dxa-header{padding-bottom:15px;border-bottom:1px solid var(--dsw-alias-border-l2,#d9dce0)}.dxa-header>div{flex:1}.dxa-header p{margin-bottom:0}.dxa-current,.dxa-prepare,.dxa-events{margin:20px 0}.dxa-task-heading h3{font-size:15px;flex:1}.dxa-task-agent{font-size:12px;color:var(--dsw-alias-label-secondary,#62666d)}.dxa-status{flex:0 1 auto;border:1px solid var(--dsw-alias-border-l2,#d9dce0);padding:2px 7px;border-radius:5px;font-size:11px;white-space:normal;font-weight:500;background:var(--dsw-alias-bg-layer-2,#f3f4f5)}
@@ -803,11 +889,11 @@ function apply(ctx) {
     locale: NS,
     inject: face
   }, AgentsPanel));
-  for (const key of ["dsh_x_agents_inspect", "dsh_x_agents_run"]) ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
+  for (const key of ["dsh_x_agents_inspect", "dsh_x_agents_run", "dsh_x_agents_models"]) ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
     name: "tool.call.toolview",
     key,
     locale: NS,
-    inject: () => ({ openCurrent: (snapshot) => {
+    inject: () => ({ operationKind: key === "dsh_x_agents_models" ? "models" : null, formatTime, openCurrent: (snapshot) => {
       if (ctx.sidebarRight.mounted?.getSnapshot() !== snapshot.sessionId) return;
       ctx.sidebarRight.openResource(addressFor(snapshot.scope, snapshot.sessionId));
     } })

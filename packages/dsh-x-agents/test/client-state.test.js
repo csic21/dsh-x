@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createAgentsController } from '../src/client/controller.js'
-import { ACTIONS, CAPABILITIES, STATES, addressFor, canPrepare, eventDataPreview, insertRequest, parseAddress, prepareRun, presentationEvents, readSnapshot } from '../src/client/model.js'
+import { ACTIONS, CAPABILITIES, STATES, addressFor, canPrepare, eventDataPreview, insertRequest, parseAddress, prepareModels, prepareRun, presentationEvents, readSnapshot } from '../src/client/model.js'
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
 const caps = Object.fromEntries(CAPABILITIES.map(key => [key, true]))
@@ -64,6 +64,30 @@ test('all four runtimes require catalog capability and availability, while unver
   }
   assert.equal(canPrepare(agent('unknown-runtime')), false)
   assert.equal(canPrepare(null), false)
+})
+
+test('model catalog schema supports old snapshots and separate guarded preparation without creating or replacing a task', () => {
+  const metadata = { status: 'fresh', fetchedAt: '2026-10-17T08:00:00Z', expiresAt: '2026-10-17T08:05:00Z', source: 'native-protocol', truncated: false, accessVerified: false }
+  assert.ok(readSnapshot(snapshot(), 'session-a'))
+  for (const status of ['not-loaded', 'fresh', 'stale', 'failed']) assert.ok(readSnapshot(snapshot({ catalog: [agent('claude', { modelCatalog: { ...metadata, status } })] }), 'session-a'))
+  for (const bad of [{ status: 'ready' }, { fetchedAt: 'not-a-date' }, { expiresAt: 123 }, { truncated: 'yes' }, { source: {} }, { accessVerified: 'yes' }]) assert.equal(readSnapshot(snapshot({ catalog: [agent('claude', { modelCatalog: { ...metadata, ...bad } })] }), 'session-a'), null)
+  for (const runtime of ['codex', 'opencode', 'claude', 'grok']) {
+    const existing = snapshot({ catalog: [agent(runtime, { capabilities: { ...caps, models: false }, modelCatalog: { ...metadata, status: 'not-loaded', fetchedAt: null, expiresAt: null } })], task: task() })
+    const before = structuredClone(existing)
+    assert.deepEqual(prepareModels(existing, runtime), { runtime, scope: 'profile-a' })
+    assert.deepEqual(existing, before)
+    for (const state of ['waiting_permission', 'discovering', 'blocked']) {
+      const busy = { ...existing, operation: { kind: 'models', runtime, state, reason: state === 'blocked' ? 'Cleanup not confirmed' : undefined } }
+      assert.ok(readSnapshot(busy, 'session-a'))
+      assert.throws(() => prepareModels(busy, runtime), /action-unavailable/)
+      assert.throws(() => prepareRun(busy, { runtime, prompt: 'Do work' }), /action-unavailable/)
+    }
+    assert.throws(() => prepareModels({ ...existing, task: task({ state: 'running', allowedActions: ['cancel'] }) }, runtime), /action-unavailable/)
+    assert.throws(() => prepareModels({ ...existing, task: task({ state: 'interrupted', allowedActions: ['inspect'] }) }, runtime), /action-unavailable/)
+    assert.deepEqual(prepareModels({ ...existing, task: null }, runtime), { runtime, scope: 'profile-a' })
+  }
+  assert.equal(readSnapshot(snapshot({ operation: { kind: 'models', runtime: 'codex', state: 'completed' } }), 'session-a'), null)
+  assert.equal(readSnapshot(snapshot({ operation: { kind: 'models', runtime: 'unknown', state: 'discovering' } }), 'session-a'), null)
 })
 
 test('session reads abort on unmount and reset discards late old-profile replies', async () => {

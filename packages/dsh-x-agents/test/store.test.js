@@ -47,3 +47,13 @@ test('discovery quarantine records the runtime that failed rather than defaultin
  const a=make();a.quarantine('session-1','Fixture cleanup uncertainty','grok')
  assert.equal(a.snapshot('session-1').task.runtime,'grok');assert.equal(a.hasLock('session-1'),true)
 })
+
+test('model operation fence survives restart without inventing or replacing a task',()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'agents-model-operation-')),store=createTaskStore(dir)
+ const id=store.claimOperation('model-session','grok')
+ assert.equal(store.read('model-session').task,null)
+ const restarted=createTaskStore(dir)
+ assert.equal(restarted.operationLock('model-session').state,'blocked');assert.equal(restarted.operationLock('model-session').runtime,'grok')
+ assert.throws(()=>restarted.releaseOperation('model-session',id),/another owner/)
+ store.releaseOperation('model-session',id);assert.equal(store.operationLock('model-session'),null)
+})

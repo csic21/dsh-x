@@ -115,6 +115,17 @@ export function createClaudeAdapter({ spawn, config = {} } = {}) {
     return walk(sanitized);
   };
   const isComplete = value => JSON.stringify(redact(value)) === JSON.stringify(value);
+  const modelCatalog = advertised => {
+    if (!Array.isArray(advertised) || advertised.length > 100) throw failure('Invalid Claude native model catalog.');
+    const ids = new Set();
+    return advertised.map(item => {
+      object(item); identifier(item.value);
+      if (item.value.length > 160 || item.value.trim() !== item.value || /[\0\r\n]/.test(item.value) || !isComplete(item.value)
+        || ids.has(item.value) || typeof item.displayName !== 'string' || !item.displayName.trim() || item.displayName.length > 512) throw failure('Invalid Claude model.');
+      ids.add(item.value);
+      return { id: item.value, label: redactText(item.displayName) };
+    });
+  };
   const backendIdentity = JSON.stringify({ runtime: 'claude', transport: 'agent-sdk', sdk: CLAUDE_SDK_VERSION,
     executable: options.executable ?? 'sdk-bundled-native', configDir: options.configDir, settings: 'isolated-default-once',
     providerRouting: Object.fromEntries(Object.entries(options.env).filter(([key]) => /^(CLAUDE_CODE_USE_|AWS_PROFILE$|AWS_REGION$|AWS_DEFAULT_REGION$|ANTHROPIC_VERTEX_PROJECT_ID$|CLOUD_ML_REGION$|GOOGLE_APPLICATION_CREDENTIALS$|ANTHROPIC_FOUNDRY_RESOURCE$|ANTHROPIC_BASE_URL$|ANTHROPIC_FOUNDRY_BASE_URL$)/.test(key)).sort(([a], [b]) => a.localeCompare(b))),
@@ -146,6 +157,40 @@ export function createClaudeAdapter({ spawn, config = {} } = {}) {
     } catch {
       return { ...result, reason: signal?.aborted ? 'Claude discovery cancelled.' : 'The official Claude binary could not report its version. No native initialization or model request was sent.' };
     } finally { controller.abort(); signal?.removeEventListener('abort', cancel); await owner.close(); }
+  }
+
+  // The host must approve and fence this native initialization independently of
+  // ordinary version-only discovery. This operation never submits a user turn.
+  async function discoverModels({ cwd, signal, sandboxPolicy } = {}) {
+    const result = { available: false, authenticated: null, version: null, models: [], capabilities: CAPABILITIES,
+      authentication: { state: 'requires-native-initialization', source: 'version-only', reason: 'Native configuration has not been initialized.' },
+      modelCatalog: { source: 'native-initialization', accessVerified: false } };
+    if (!validPolicy(cwd, sandboxPolicy)) return { ...result, reason: 'Claude model discovery requires a host sandbox policy and an absolute workspace folder.' };
+    if (!options.executable) return { ...result, reason: 'Install the pinned official Claude Agent SDK native binary for this platform.' };
+    const owner = new ClaudeProcessOwner(spawn, options), controller = new AbortController(), gate = deferred(), stop = deferred();
+    let query, unexpectedRequest = false;
+    const cancel = () => { controller.abort(); stop.resolve(false); gate.resolve(false); };
+    signal?.addEventListener('abort', cancel, { once: true }); if (signal?.aborted) cancel();
+    try {
+      controller.signal.throwIfAborted();
+      query = nativeQuery({ prompt: gatedPrompt(gate, stop), options: {
+        ...sdkOptions(options, owner, controller, cwd, true),
+        canUseTool: async () => { unexpectedRequest = true; return { behavior: 'deny', message: 'Model discovery cannot execute tools.', interrupt: true }; },
+        onElicitation: async () => { unexpectedRequest = true; return { action: 'cancel' }; },
+        onUserDialog: async () => { unexpectedRequest = true; return { behavior: 'cancelled' }; },
+      } });
+      const initialized = object(await deadline(owner.guard(query.initializationResult(), controller.signal), options.requestTimeoutMs, controller.signal));
+      if (initialized.claude_code_version !== CLI_VERSION) return { ...result, reason: 'The installed Claude binary does not match the pinned SDK version.' };
+      const auth = authentication(await owner.guard(query.accountInfo(), controller.signal));
+      const models = modelCatalog(await owner.guard(query.supportedModels(), controller.signal));
+      if (unexpectedRequest) throw failure('Claude requested an action during model discovery.');
+      return { ...result, available: true, version: CLI_VERSION, models, authentication: auth,
+        reason: `The native runtime advertised this model catalog; model access and billing are unverified. ${auth.reason}` };
+    } catch {
+      return { ...result, reason: signal?.aborted ? 'Claude model discovery cancelled.' : 'Claude model discovery failed. No user prompt was submitted.' };
+    } finally {
+      cancel(); signal?.removeEventListener('abort', cancel); await owner.close(query);
+    }
   }
 
   async function run({ prompt, model, cwd, nativeSessionId, sandboxPolicy, signal, onEvent, requestPermission, requestInput } = {}) {
@@ -245,9 +290,7 @@ export function createClaudeAdapter({ spawn, config = {} } = {}) {
       if (initialized.claude_code_version !== CLI_VERSION) return result('blocked', 'The installed Claude binary does not match the pinned SDK version.');
       const auth = authentication(await owner.guard(query.accountInfo(), controller.signal));
       if (auth.state !== 'configured-unverified') return result('blocked', auth.reason);
-      const advertised = await owner.guard(query.supportedModels(), controller.signal);
-      if (!Array.isArray(advertised) || advertised.length > 100) throw failure('Invalid Claude native model catalog.');
-      models = advertised.map(item => { identifier(item.value); if (typeof item.displayName !== 'string' || !complete(item.value)) throw failure('Invalid Claude model.'); return { id: item.value, label: safeText(item.displayName) }; });
+      models = modelCatalog(await owner.guard(query.supportedModels(), controller.signal));
       if (model && !models.some(item => item.id === model)) return result('blocked', 'The selected model is not advertised by this Claude runtime.');
       // The SDK's native system/init arrives only after the first user message.
       // Persist the exact host-assigned SDK session reservation BEFORE releasing it.
@@ -320,5 +363,5 @@ export function createClaudeAdapter({ spawn, config = {} } = {}) {
       await deadline(Promise.allSettled([eventTail, ...handlers]), options.cleanupTimeoutMs).catch(() => { throw failure('Claude callback cleanup could not be confirmed.', 'AGENTS_CLEANUP_UNCONFIRMED'); });
     }
   }
-  return { id: 'claude', transport: 'agent-sdk', capabilities: CAPABILITIES, backendIdentity, discover, run };
+  return { id: 'claude', transport: 'agent-sdk', capabilities: CAPABILITIES, backendIdentity, discover, discoverModels, run };
 }

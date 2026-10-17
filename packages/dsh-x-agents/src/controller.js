@@ -13,11 +13,11 @@ export function validateRun(args) {
   if (args.model !== undefined && (typeof args.model !== 'string' || !args.model.trim() || args.model.length > 160)) throw fail('AGENTS_MODEL', 'Invalid model identifier.')
   if (args.taskId !== undefined && (typeof args.taskId !== 'string' || !Number.isSafeInteger(args.expectedRevision) || typeof args.scope !== 'string')) throw fail('AGENTS_STALE', 'Continuing requires the exact task, revision and profile scope.')
 }
-export function createAgentsController({ store, adapter, cwdOf, policyOf, approve, askInput, trustedExternalRuntime = false }) {
-  const running = new Map(), catalogs = new Map(), inspecting = new Map(), starting = new Map(), nativeModels = new Map()
+export function createAgentsController({ store, adapter, cwdOf, policyOf, approve, askInput, trustedExternalRuntime = false, now = () => Date.now(), modelTtlMs = 5 * 60_000 }) {
+  const running = new Map(), catalogs = new Map(), inspecting = new Map(), starting = new Map(), preparing = new Map(), nativeModels = new Map()
   const modelsOf = models => {
     const seen = new Set()
-    return (Array.isArray(models) ? models : []).slice(0,100).flatMap(model => {
+    return (Array.isArray(models) ? models : []).slice(0,2000).flatMap(model => {
       const id = safeText(model?.id,160), label = safeText(model?.label ?? model?.id,160)
       if (!id || id !== model?.id || seen.has(id)) return []
       seen.add(id); return [{id,label}]
@@ -35,6 +35,8 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
   function snapshot(sessionId) {
     validSession(sessionId)
     const value = store.snapshot(sessionId), task = value.task
+    const catalog = structuredClone(catalogs.get(sessionId) ?? defaultCatalog())
+    for (const item of catalog) if (item.modelCatalog?.status === 'fresh' && Date.parse(item.modelCatalog.expiresAt) <= now()) item.modelCatalog.status = 'stale'
     if (task) {
       delete task.hostId
       task.cancellationRequested = running.get(sessionId)?.controller.signal.aborted === true
@@ -42,7 +44,7 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
         : task.state === 'interrupted' || store.hasLock(sessionId) ? ['inspect']
         : task.nativeSessionId ? ['request-start','request-continue','inspect'] : ['request-start','inspect']
     }
-    return { scope: store.scope, sessionId, revision: value.revision, catalog: catalogs.get(sessionId) ?? defaultCatalog(), task, history: value.history }
+    return { scope: store.scope, sessionId, revision: value.revision, catalog, operation: preparing.has(sessionId) ? {kind:'models',runtime:preparing.get(sessionId).runtime,state:preparing.get(sessionId).state} : store.operationLock(sessionId), task, history: value.history }
   }
   async function discover(exec, selectedRuntime = null) {
     const sessionId = validSession(exec.agent?.session?.id)
@@ -57,22 +59,78 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
         const found = await driver.discover({ cwd, signal: exec.signal, sandboxPolicy: discoveredBinding.policy, trustedExternalRuntime })
         const savedModels = nativeModels.get(`${sessionId}:${item.id}`)
         const models = modelsOf(found.models)
-        const cachedNative = ['claude','grok'].includes(item.id) && found.authentication?.source === 'version-only' && savedModels?.backendIdentity === (driver.backendIdentity ?? item.id) ? savedModels : null
+        const cachedNative = ['claude','grok'].includes(item.id) && found.authentication?.source === 'version-only' && savedModels?.backendIdentity === (driver.backendIdentity ?? item.id) && savedModels.cwd === cwd && savedModels.version === safeText(found.version,100) ? savedModels : null
         if (!models.length && cachedNative) models.push(...cachedNative.models)
         Object.assign(item, { available: found.available === true, authenticated: found.authenticated === true ? true : found.authenticated === false ? false : null,
           version: safeText(found.version, 100), reason: safeText(found.reason, 500),
           models,
           capabilities: { ...safeData(driver.capabilities ?? {}), ...safeData(found.capabilities ?? {}), ...Object.fromEntries(Object.keys(capabilities).map(key => [key, typeof found.capabilities?.[key] === 'boolean' ? found.capabilities[key] : driver.capabilities?.[key] === true])) },
           authentication: safeData(found.authentication ?? null), providerAuthentication: safeText(found.providerAuthentication ?? 'unverified', 100), limitations: safeData(found.limitations ?? driver.capabilities?.limitations ?? []), sandbox: safeData(found.sandbox ?? driver.capabilities?.sandbox ?? null) })
-        if (cachedNative) Object.assign(item.capabilities, cachedNative.capabilities, { models: models.length > 0 })
+        if (cachedNative) { Object.assign(item.capabilities, cachedNative.capabilities, { models: models.length > 0 }); item.modelCatalog = cachedNative.modelCatalog }
+        else item.modelCatalog = found.modelCatalog?.status === 'failed' ? {status:'failed',fetchedAt:null,expiresAt:null,source:'native-discovery',truncated:false,error:safeText(found.modelCatalog.error,1000)} : found.authentication?.source === 'version-only' ? {status:'not-loaded',fetchedAt:null,expiresAt:null,source:'version-only',truncated:false} : catalogInfo(found.models, 'native-discovery')
       } catch (error) { if (error.code === 'AGENTS_CLEANUP_UNCONFIRMED') { if (!running.has(sessionId)) store.quarantine(sessionId, error.message, item.id); throw error }; item.available = false; item.reason = safeText(error.message, 500) }
     }
     catalogs.set(sessionId, catalog)
     return snapshot(sessionId)
   }
+  function catalogInfo(models, source) {
+    return {status:'fresh', fetchedAt:new Date(now()).toISOString(), expiresAt:new Date(now()+modelTtlMs).toISOString(), source, truncated:Array.isArray(models) && models.length > 2000, accessVerified:false}
+  }
+  async function models(args, exec) {
+    if (!args || !RUNTIMES.includes(args.runtime) || args.scope !== store.scope) throw fail('AGENTS_STALE', 'Model discovery requires the current profile scope and runtime.')
+    const runtime = args.runtime, sessionId = validSession(exec.agent?.session?.id)
+    if (preparing.has(sessionId) || starting.has(sessionId) || running.has(sessionId) || inspecting.has(sessionId) || store.hasLock(sessionId)) throw fail('AGENTS_BUSY', 'A runtime operation already owns this session.')
+    const controller = new AbortController()
+    let settle; const settlement = new Promise(resolve => { settle = resolve })
+    const signal = exec.signal ? AbortSignal.any([exec.signal, controller.signal]) : controller.signal
+    const handle = {runtime, controller, settlement, state:'waiting_permission'}
+    preparing.set(sessionId, handle)
+    let operationId, retained = false
+    try {
+      operationId = store.claimOperation(sessionId, runtime)
+      const boundExec = {...exec, signal}, initial = await binding(boundExec)
+      const driver = await adapter(runtime, {discover:false, exec:boundExec, binding:initial})
+      const identity = driver.backendIdentity ?? runtime
+      const assertLive = async () => {
+        signal.throwIfAborted()
+        const current = await binding(boundExec)
+        const currentDriver = await adapter(runtime, {discover:false, exec:boundExec, binding:current})
+        signal.throwIfAborted()
+        if (preparing.get(sessionId) !== handle || current.cwd !== initial.cwd || JSON.stringify(current.policy) !== JSON.stringify(initial.policy) || (currentDriver.backendIdentity ?? runtime) !== identity) throw fail('AGENTS_BINDING', 'Runtime configuration or host policy changed during model discovery.')
+      }
+      if (runtime === 'opencode' && (initial.policy.mode !== 'danger-full-access' || !trustedExternalRuntime)) throw fail('AGENTS_SANDBOX', 'OpenCode model discovery requires explicitly trusted external runtime mode; no settings were changed.')
+      signal.throwIfAborted()
+      const outcome = await approve(boundExec, {title:`Read ${runtime} model catalog`, details:`Runtime: ${runtime}\nDirectory: ${initial.cwd}\nStart the native runtime only to read its advertised model catalog. No task prompt, login or credential creation is requested. Initialization may read native configuration, run managed hooks, maintain native state or contact services. The same host file-effect policy applies. Listed models do not prove account access, quota or billing eligibility.\n读取模型目录；原生初始化可能加载配置、运行托管 hooks 或维护原生状态。不发送任务，不登录；列表不代表账户可调用。`}, signal)
+      if (outcome !== true && outcome !== 'allowed-once') throw fail('AGENTS_APPROVAL', 'Model catalog initialization was not approved.')
+      await assertLive(); handle.state = 'discovering'
+      const found = await (driver.discoverModels ?? driver.discover).call(driver, {cwd:initial.cwd, signal, sandboxPolicy:initial.policy, trustedExternalRuntime})
+      await assertLive()
+      if (!found || found.available !== true || !Array.isArray(found.models) || found.modelCatalog?.status === 'failed') throw fail('AGENTS_SETUP', found?.reason || 'The native model catalog is unavailable.')
+      const catalog = catalogs.get(sessionId) ?? defaultCatalog(), item = catalog.find(item => item.id === runtime)
+      const advertised = modelsOf(found.models), modelCatalog = catalogInfo(found.models, found.modelCatalog?.source ?? 'native-initialization')
+      Object.assign(item, {available:true, version:safeText(found.version,100), authenticated:found.authenticated === true ? true : found.authenticated === false ? false : null,
+        models:advertised, modelCatalog, reason:safeText(found.reason,500), authentication:safeData(found.authentication ?? null),
+        capabilities:{...safeData(driver.capabilities ?? {}), ...safeData(found.capabilities ?? {}), models:advertised.length>0},
+        providerAuthentication:safeText(found.providerAuthentication ?? 'unverified',100), limitations:safeData(found.limitations ?? driver.capabilities?.limitations ?? [])})
+      catalogs.set(sessionId,catalog)
+      if (['claude','grok'].includes(runtime)) nativeModels.set(`${sessionId}:${runtime}`, {backendIdentity:identity,cwd:initial.cwd,version:safeText(found.version,100),models:advertised,capabilities:item.capabilities,modelCatalog})
+    } catch (error) {
+      retained = error.code === 'AGENTS_CLEANUP_UNCONFIRMED'
+      const catalog = catalogs.get(sessionId) ?? defaultCatalog(), item = catalog.find(item => item.id === runtime)
+      item.modelCatalog = {...(item.modelCatalog ?? {fetchedAt:null,expiresAt:null,source:'native-initialization',truncated:false}),status:'failed',error:safeText(error.message,1000)}
+      catalogs.set(sessionId,catalog)
+      const cached = nativeModels.get(`${sessionId}:${runtime}`)
+      if (cached) cached.modelCatalog = item.modelCatalog
+      throw error
+    } finally {
+      try { if (operationId && !retained) store.releaseOperation(sessionId,operationId) }
+      finally { preparing.delete(sessionId); settle() }
+    }
+    return {...snapshot(sessionId), modelRuntime:runtime}
+  }
   async function inspect(exec) {
     const sessionId = validSession(exec.agent?.session?.id)
-    if (starting.has(sessionId) || running.has(sessionId) || inspecting.has(sessionId) || store.hasLock(sessionId)) return snapshot(sessionId)
+    if (preparing.has(sessionId) || starting.has(sessionId) || running.has(sessionId) || inspecting.has(sessionId) || store.hasLock(sessionId)) return snapshot(sessionId)
     const controller = new AbortController()
     let settle; const settlement = new Promise(resolve => { settle = resolve })
     const signal = exec.signal ? AbortSignal.any([exec.signal, controller.signal]) : controller.signal
@@ -81,7 +139,7 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
   }
   async function run(args, exec) {
     const sessionId = validSession(exec.agent?.session?.id)
-    if (starting.has(sessionId) || running.has(sessionId) || inspecting.has(sessionId)) throw fail('AGENTS_BUSY', 'A runtime operation already owns this session.')
+    if (preparing.has(sessionId) || starting.has(sessionId) || running.has(sessionId) || inspecting.has(sessionId)) throw fail('AGENTS_BUSY', 'A runtime operation already owns this session.')
     const controller = new AbortController()
     let settle; const settlement = new Promise(resolve => { settle = resolve })
     starting.set(sessionId, { controller, settlement })
@@ -145,9 +203,10 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
           if (['claude','grok'].includes(args.runtime) && event.type === 'session' && event.data?.nativeSessionId && Array.isArray(event.data.models)) {
             const models = modelsOf(event.data.models)
             const observed = Object.fromEntries(Object.keys(capabilities).filter(key => typeof event.data.capabilities?.[key] === 'boolean').map(key => [key, event.data.capabilities[key]]))
-            nativeModels.set(`${sessionId}:${args.runtime}`, { backendIdentity, models, capabilities: observed })
+            const modelCatalog = catalogInfo(event.data.models, 'native-session')
+            nativeModels.set(`${sessionId}:${args.runtime}`, { backendIdentity, cwd: initial.cwd, version: available.version, models, capabilities: observed, modelCatalog })
             const catalog = catalogs.get(sessionId)?.find(item => item.id === args.runtime)
-            if (catalog) { catalog.models = models; Object.assign(catalog.capabilities, observed, { models: models.length > 0 }) }
+            if (catalog) { catalog.modelCatalog = modelCatalog; catalog.models = models; Object.assign(catalog.capabilities, observed, { models: models.length > 0 }) }
           }
         },
         requestPermission: async request => {
@@ -206,5 +265,5 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
     handle.controller.abort(new Error('Cancelled by the user'))
     return snapshot(args.sessionId)
   }
-  return { snapshot, inspect, run, cancel, isRunning: sessionId => starting.has(sessionId) || running.has(sessionId) || inspecting.has(sessionId), dispose: async () => { const handles = [...running.values(), ...inspecting.values(), ...starting.values()]; for (const run of handles) run.controller.abort(new Error('Plugin unloaded')); await Promise.all(handles.map(run => run.settlement)) } }
+  return { snapshot, inspect, models, run, cancel, isRunning: sessionId => preparing.has(sessionId) || starting.has(sessionId) || running.has(sessionId) || inspecting.has(sessionId), dispose: async () => { const handles = [...preparing.values(), ...running.values(), ...inspecting.values(), ...starting.values()]; for (const run of handles) run.controller.abort(new Error('Plugin unloaded')); await Promise.all(handles.map(run => run.settlement)) } }
 }

@@ -10,7 +10,7 @@ const cwd = '/workspace/project', sandboxPolicy = { mode: 'workspace-write', wor
 const input = { prompt: 'Inspect the synthetic fixture.', cwd, sandboxPolicy };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const executable = fileURLToPath(new URL('./fixtures/claude-cli.mjs', import.meta.url));
-function fixture({ onUser, onResponse, account, version, waitForExit, spawnDelay, config = {}, onSpawn } = {}) {
+function fixture({ onUser, onResponse, account, models, version, waitForExit, spawnDelay, config = {}, onSpawn } = {}) {
   const spawns = [], messages = [], children = [], errors = [];
   const spawn = async spec => {
     spawns.push(spec); await spawnDelay?.();
@@ -22,7 +22,7 @@ function fixture({ onUser, onResponse, account, version, waitForExit, spawnDelay
       raw(value) { stdout.write(value); },
       frame(value) { stdout.write(`${JSON.stringify(value)}\n`); },
     };
-    const protocol = createClaudeFixture({ argv: spec.argv, send: child.frame, onUser, onResponse, account, version });
+    const protocol = createClaudeFixture({ argv: spec.argv, send: child.frame, onUser, onResponse, account, models, version });
     child.protocol = protocol;
     let buffer = '';
     child.stdin = new Writable({ write(chunk, encoding, callback) {
@@ -49,6 +49,86 @@ test('discovery runs only --version, never initializes the SDK or claims authent
   assert.deepEqual(found.models, []); assert.equal(found.authentication.state, 'requires-native-initialization'); assert.equal(found.authentication.source, 'version-only');
   assert.deepEqual(f.spawns.map(item => item.argv), [[executable, '--version']]); assert.equal(f.messages.length, 0);
   assert.ok(f.children.every(child => child.terminated === 1 && child.waited === 1));
+});
+
+test('approved model discovery initializes the real SDK without a prompt or persisted session reservation', async () => {
+  const f = fixture();
+  const found = await f.adapter.discoverModels({ cwd, sandboxPolicy });
+  assert.equal(found.available, true); assert.equal(found.version, '2.1.302'); assert.equal(found.authenticated, null);
+  assert.equal(found.authentication.state, 'configured-unverified');
+  assert.deepEqual(found.models, [{ id: 'fixture-model', label: 'Synthetic fixture model' }]);
+  assert.deepEqual(found.modelCatalog, { source: 'native-initialization', accessVerified: false });
+  assert.equal(found.nativeSessionId, undefined);
+  assert.equal(f.messages.filter(message => message.type === 'user').length, 0);
+  assert.deepEqual(f.messages.filter(message => message.type === 'control_request').map(message => message.request.subtype), ['initialize']);
+  assert.equal(f.spawns.length, 1); assert.ok(f.spawns[0].argv.includes('--no-session-persistence'));
+  assert.ok(f.spawns[0].argv.includes('--tools=')); assert.ok(f.spawns[0].argv.includes('--setting-sources='));
+  assert.ok(!f.spawns[0].argv.some(arg => /^--(?:resume|session-id|continue|model)(?:=|$)/.test(arg)));
+  assert.ok(f.children.every(child => child.terminated === 1 && child.waited === 1));
+});
+
+test('native model catalog is returned without representing missing or unsupported auth as validated', async () => {
+  for (const [account, state] of [[{}, 'unconfigured'], [{ apiProvider: 'firstParty', tokenSource: 'oauth', subscriptionType: 'max' }, 'unsupported']]) {
+    const f = fixture({ account });
+    const found = await f.adapter.discoverModels({ cwd, sandboxPolicy });
+    assert.equal(found.available, true); assert.equal(found.authentication.state, state); assert.equal(found.authenticated, null);
+    assert.equal(found.models[0].id, 'fixture-model'); assert.equal(f.messages.some(message => message.type === 'user'), false);
+  }
+});
+
+test('model discovery validates bounded exact native model rows without inventing or truncating a catalog', async () => {
+  const valid = { value: 'native-alias', resolvedModel: 'native-wire-id', displayName: 'Native fixture model', description: 'Synthetic' };
+  for (const models of [[valid], []]) {
+    const f = fixture({ models }), found = await f.adapter.discoverModels({ cwd, sandboxPolicy });
+    assert.equal(found.available, true); assert.deepEqual(found.models, models.map(item => ({ id: item.value, label: item.displayName })));
+  }
+  for (const models of ['invalid', [null], [{ ...valid, value: ' padded ' }], [{ ...valid, value: 'x'.repeat(161) }],
+    [{ ...valid, displayName: '' }], [valid, valid], Array.from({ length: 101 }, (_, i) => ({ ...valid, value: `model-${i}` }))]) {
+    const f = fixture({ models }), found = await f.adapter.discoverModels({ cwd, sandboxPolicy });
+    assert.equal(found.available, false); assert.deepEqual(found.models, []); assert.equal(f.messages.some(message => message.type === 'user'), false);
+  }
+});
+
+test('model discovery rejects version mismatch and unexpected requests without exposing an approval surface', async () => {
+  const mismatch = fixture({ version: '2.1.301' });
+  assert.equal((await mismatch.adapter.discoverModels({ cwd, sandboxPolicy })).available, false);
+  let response;
+  const f = fixture({ onSpawn(spec, child) {
+    const receive = child.protocol.receive;
+    child.protocol.receive = async message => {
+      if (message.type === 'control_request' && message.request.subtype === 'initialize') { child.protocol.permission(); await tick(); }
+      await receive(message);
+    };
+  }, onResponse(helper, message) { response = message.response.response; } });
+  assert.equal((await f.adapter.discoverModels({ cwd, sandboxPolicy })).available, false);
+  assert.equal(response.behavior, 'deny'); assert.equal(f.messages.some(message => message.type === 'user'), false);
+});
+
+test('model discovery cancellation and timeout send no prompt and await managed cleanup', async () => {
+  for (const cancel of [true, false]) {
+    const initialized = deferred(), controller = new AbortController();
+    const f = fixture({ config: { requestTimeoutMs: 30 }, onSpawn(spec, child) {
+      child.protocol.receive = async message => { if (message.request?.subtype === 'initialize') initialized.resolve(); };
+    } });
+    const task = f.adapter.discoverModels({ cwd, sandboxPolicy, signal: controller.signal });
+    await initialized.promise; if (cancel) controller.abort();
+    const found = await task;
+    assert.equal(found.available, false); assert.deepEqual(found.models, []);
+    if (cancel) assert.match(found.reason, /cancelled/);
+    assert.ok(f.children.every(child => child.terminated === 1 && child.waited === 1));
+    assert.equal(f.messages.some(message => message.type === 'user'), false);
+  }
+  const controller = new AbortController(); controller.abort(); const f = fixture();
+  assert.equal((await f.adapter.discoverModels({ cwd, sandboxPolicy, signal: controller.signal })).available, false);
+  assert.equal(f.spawns.length, 0);
+});
+
+test('model discovery redacts configured secrets from native labels', async () => {
+  const secret = 'synthetic-model-label-credential';
+  const f = fixture({ config: { env: { ANTHROPIC_API_KEY: secret } }, models: [{ value: 'fixture-model', displayName: `Native ${secret}` }] });
+  const found = await f.adapter.discoverModels({ cwd, sandboxPolicy });
+  assert.equal(found.available, true); assert.equal(found.models[0].label, 'Native [redacted]');
+  assert.ok(!JSON.stringify(found).includes(secret));
 });
 
 test('official SDK initializes through managed spawn, sends one prompt and checkpoints session/models', async () => {
@@ -128,14 +208,14 @@ test('cancel pending permission invalidates its answer and awaits the full manag
 });
 
 test('unknown managed range cleanup throws the quarantine code, including on discovery', async () => {
-  for (const method of ['run', 'discover']) {
+  for (const method of ['run', 'discover', 'discoverModels']) {
     const f = fixture({ waitForExit: async () => false });
     await assert.rejects(f.adapter[method](input), { code: 'AGENTS_CLEANUP_UNCONFIRMED' });
   }
 });
 
 test('a rejected host spawn preserves explicit cleanup uncertainty for discovery and run', async () => {
-  for (const method of ['run', 'discover']) {
+  for (const method of ['run', 'discover', 'discoverModels']) {
     for (const code of ['AGENTS_CLEANUP_UNCONFIRMED', 'ENOENT']) {
       const adapter = createClaudeAdapter({
         spawn: async () => { throw Object.assign(new Error('Synthetic host spawn rejection'), { code }); },

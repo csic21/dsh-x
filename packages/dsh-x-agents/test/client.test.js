@@ -48,15 +48,18 @@ test('production client uses owned slots, scoped workspace, truthful native stat
       sidebarRight: { mounted: { getSnapshot: () => 'session-a' }, openResource() {} },
       slots: { inject(_name, fn) { const dispose = fn(); effects.push(dispose); return dispose }, register(options, component) { const entry = { options, component }; registrations.push(entry); return () => registrations.splice(registrations.indexOf(entry), 1) } },
     })
-    assert.equal(registrations.length, 4)
+    assert.equal(registrations.length, 5)
     assert.equal(registrations.filter(entry => entry.options.name === 'conversation.input.dock').length, 1)
     assert.equal(registrations.filter(entry => entry.options.name === 'conversation.session.header.actions').length, 0)
     const panel = registrations.find(entry => entry.options.name === 'sidebar.right.pane.tab')
     const entry = registrations.find(entry => entry.options.name === 'conversation.input.dock')
     const tool = registrations.find(entry => entry.options.key === 'dsh_x_agents_run')
+    const modelsTool = registrations.find(entry => entry.options.key === 'dsh_x_agents_models')
+    assert.equal(modelsTool.options.inject().operationKind, 'models')
+    assert.equal(tool.options.inject().operationKind, null)
     const { createRoot } = await import('react-dom/client')
     root = createRoot(document.getElementById('app'))
-    let current = { status: 'live', snapshot: snapshot(), error: null, pending: false }, sessionId = 'session-a', address = addressFor('scope-a','session-a'), inserted, rejectInsertion = false, stopped, mode = 'panel'
+    let current = { status: 'live', snapshot: snapshot(), error: null, pending: false }, sessionId = 'session-a', address = addressFor('scope-a','session-a'), inserted, rejectInsertion = false, stopped, mode = 'panel', refreshes = 0
     const inputActions = {
       captureInsertion: () => ({ start: 2, end: 8, draftRev: 7 }),
       insertText(text, span) { inserted = { text, span }; return !rejectInsertion }, persistDraft() {},
@@ -73,8 +76,8 @@ test('production client uses owned slots, scoped workspace, truthful native stat
       })
       return mode === 'panel' ? React.createElement(panel.component, {
         sessionId, useTabInfo: () => ({ tab: { navigation: { address } } }), useResource: () => ({ status: 'live', value: current }), inputActions,
-        cancel: async target => { stopped = target; return { ok: true } }, refresh() {}, t, formatTime: value => value || '—',
-      }) : React.createElement(tool.component, { phase: 'result', block: { meta: { kind: 'dsh-x-agents.result', version: 1, ...current.snapshot }, isError: false }, t, inspect() {}, openCurrent() {} })
+        cancel: async target => { stopped = target; return { ok: true } }, refresh() { refreshes++ }, t, formatTime: value => value || '—',
+      }) : React.createElement(mode === 'models-tool' ? modelsTool.component : tool.component, { phase: 'result', block: { meta: { kind: 'dsh-x-agents.result', version: 1, ...current.snapshot, ...(mode === 'models-tool' ? { modelRuntime: 'claude' } : {}) }, isError: false }, operationKind: mode === 'models-tool' ? 'models' : null, t, inspect() {}, openCurrent() {} })
     }
     const render = () => act(async () => root.render(React.createElement(Render)))
     const click = async element => act(async () => element.click())
@@ -210,6 +213,90 @@ test('production client uses owned slots, scoped workspace, truthful native stat
     await click(document.querySelector('.dxa-prepare .dxa-primary'))
     assert.match(inserted.text, /dsh_x_agents_inspect/)
     assert.doesNotMatch(inserted.text, /dsh_x_agents_run/)
+
+    // Catalog discovery is an explicit, draft-preserving tool request. It can
+    // run before any task, and its states never masquerade as task completion.
+    const notLoaded = { status: 'not-loaded', fetchedAt: null, expiresAt: null, source: 'native-protocol', truncated: false, accessVerified: false }
+    const modelsSnapshot = { ...snapshot(), catalog: catalog().map(item => ({ ...item, available: true, authenticated: null, reason: 'requires-native-initialization', models: [], capabilities: { ...caps, models: false }, modelCatalog: notLoaded })) }
+    current = { status: 'live', snapshot: modelsSnapshot, error: null, pending: false }; await render()
+    await change(document.querySelector('select'), 'claude')
+    await change(document.querySelector('textarea'), 'Keep this task goal')
+    const beforeModels = structuredClone(current.snapshot)
+    assert.equal(document.querySelectorAll('select')[1].value, '')
+    assert.equal(document.querySelector('.dxa-model-request').textContent, en.modelsGet)
+    assert.equal(document.querySelector('.dxa-model-request').disabled, false)
+    await click(document.querySelector('.dxa-model-request'))
+    assert.match(inserted.text, /dsh_x_agents_models/)
+    assert.deepEqual(JSON.parse(inserted.text.slice(inserted.text.indexOf('{'))), { runtime: 'claude', scope: 'scope-a' })
+    assert.doesNotMatch(inserted.text, /"prompt"|"taskId"|"expectedRevision"/)
+    assert.deepEqual(current.snapshot, beforeModels)
+    assert.match(document.body.textContent, /The request was added without sending/)
+    rejectInsertion = true
+    await click(document.querySelector('.dxa-model-request'))
+    assert.match(document.querySelector('[role="alert"]').textContent, /Nothing was inserted/)
+    rejectInsertion = false
+    await click(document.querySelector('.dxa-model-request'))
+    current = { ...current, snapshot: { ...modelsSnapshot, operation: { kind: 'models', runtime: 'claude', state: 'waiting_permission' } } }; await render()
+    assert.match(document.querySelector('.dxa-model-operation').textContent, /waiting for approval/)
+    assert.match(document.querySelector('.dxa-model-operation').textContent, /panel cannot grant permission/)
+    assert.doesNotMatch(document.body.textContent, /The request was added without sending/)
+    assert.equal(document.querySelector('.dxa-current'), null)
+    assert.equal(document.querySelector('.dxa-model-request').disabled, true)
+    assert.equal(document.querySelector('.dxa-prepare .dxa-primary').disabled, true)
+    assert.equal(document.querySelector('.dxa-connections button').disabled, true)
+    assert.equal(document.querySelector('textarea').value, 'Keep this task goal')
+    assert.equal([...document.querySelectorAll('button')].some(button => /^(Allow|Approve|允许|批准)$/.test(button.textContent)), false)
+    current = { ...current, snapshot: { ...modelsSnapshot, operation: { kind: 'models', runtime: 'claude', state: 'discovering' } } }; await render()
+    assert.match(document.querySelector('.dxa-model-operation').textContent, /conversation Stop button/)
+    assert.equal(document.querySelector('textarea').value, 'Keep this task goal')
+    const blocked = { kind: 'models', runtime: 'claude', state: 'blocked', reason: 'Native cleanup is not confirmed after restart' }
+    current = { ...current, snapshot: { ...modelsSnapshot, revision: 0, operation: blocked } }; await render()
+    assert.match(document.querySelector('.dxa-model-operation').textContent, /manual recovery/)
+    assert.match(document.querySelector('.dxa-model-operation').textContent, /after restart/)
+    assert.doesNotMatch(document.querySelector('.dxa-model-operation').textContent, /Reading the native model catalog/)
+    assert.equal(document.querySelector('.dxa-prepare .dxa-primary').disabled, true)
+    assert.equal(document.querySelector('.dxa-model-request').disabled, true)
+    current = { ...current, snapshot: { ...unchecked, revision: 0, operation: blocked } }; await render()
+    assert.equal(document.querySelector('.dxa-prepare .dxa-primary').textContent, en.inspect)
+    assert.equal(document.querySelector('.dxa-prepare .dxa-primary').disabled, true)
+    assert.equal(document.querySelector('.dxa-connections button').disabled, true)
+    const fresh = { ...notLoaded, status: 'fresh', fetchedAt: '2026-10-17T08:00:00Z', expiresAt: '2026-10-17T08:05:00Z', source: 'native-model-advertisement' }
+    const fetchedSnapshot = { ...modelsSnapshot, catalog: modelsSnapshot.catalog.map(item => item.id === 'claude' ? { ...item, capabilities: { ...caps, models: true }, models: [{ id: 'claude-advertised', label: 'Native Claude model' }], modelCatalog: fresh } : item) }
+    current = { ...current, snapshot: fetchedSnapshot }; await render()
+    assert.equal(document.querySelector('.dxa-model-request').textContent, en.modelsUpdate)
+    assert.equal(document.querySelectorAll('select')[1].disabled, false)
+    assert.equal(document.querySelectorAll('select')[1].value, '')
+    assert.deepEqual([...document.querySelectorAll('select')[1].options].map(option => option.value), ['', 'claude-advertised'])
+    assert.match(document.querySelector('.dxa-model-catalog').textContent, /1 models returned/)
+    assert.match(document.querySelector('.dxa-model-catalog').textContent, /not proof of account access, available credit or quota/)
+    assert.match(document.querySelector('.dxa-model-catalog details').textContent, /native-model-advertisement/)
+    assert.equal(document.querySelector('.dxa-model-catalog details').open, false)
+    assert.equal(document.querySelector('textarea').value, 'Keep this task goal')
+    await change(document.querySelectorAll('select')[1], 'claude-advertised')
+    for (const status of ['stale', 'failed']) {
+      current = { ...current, snapshot: { ...fetchedSnapshot, catalog: fetchedSnapshot.catalog.map(item => item.id === 'claude' ? { ...item, modelCatalog: { ...fresh, status, ...(status === 'failed' ? { error: 'Native catalog request failed' } : {}) } } : item) } }; await render()
+      assert.equal(document.querySelectorAll('select')[1].value, 'claude-advertised')
+      assert.equal(document.querySelector('.dxa-model-request').disabled, false)
+      assert.equal(document.querySelector('.dxa-model-catalog').dataset.catalogState, status)
+      assert.match(document.querySelector('.dxa-model-catalog .dxa-warning').textContent, status === 'stale' ? /out of date/ : /update failed/)
+    }
+    assert.match(document.querySelector('.dxa-model-catalog').textContent, /Native catalog request failed/)
+    const previousInserted = inserted.text
+    await click(document.querySelector('.dxa-header button'))
+    assert.equal(refreshes, 1)
+    assert.equal(inserted.text, previousInserted)
+    assert.equal(document.querySelector('.dxa-header button').textContent, en.snapshotRefresh)
+    await act(async () => locale.setLocale('zh'))
+    assert.equal(document.querySelector('.dxa-model-request').textContent, zh.modelsUpdate)
+    assert.match(document.querySelector('.dxa-model-catalog').textContent, /不代表已验证账户可调用、余额或额度/)
+    assert.equal(document.querySelector('textarea').value, 'Keep this task goal')
+    await act(async () => locale.setLocale('en'))
+    current = { ...current, snapshot: { ...fetchedSnapshot, task: task() } }; mode = 'models-tool'; await render()
+    assert.match(document.body.textContent, /Model catalog/)
+    assert.match(document.body.textContent, /Catalog updated/)
+    assert.match(document.body.textContent, /claude/)
+    assert.doesNotMatch(document.body.textContent, /Fix the login test|Native output|Turn ended/)
+    assert.equal(document.querySelectorAll('button').length, 2)
     current = { status: 'live', snapshot: snapshot(task()), error: null, pending: false }; mode = 'tool'; await render()
     assert.match(document.body.textContent, /Historical operation result/)
     assert.match(document.body.textContent, /does not by itself mean/)

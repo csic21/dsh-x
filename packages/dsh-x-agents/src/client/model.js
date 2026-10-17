@@ -3,10 +3,12 @@ export const CAPABILITIES = ['nativeSessions', 'resume', 'streaming', 'tools', '
 export const EVENT_TYPES = ['session', 'assistant', 'tool', 'plan', 'permission', 'input', 'usage', 'status', 'diagnostic']
 export const ACTIONS = ['request-start', 'request-continue', 'cancel', 'inspect']
 export const PROTOCOL = 'dsh-x-agents'
+export const MODEL_CATALOG_STATES = ['not-loaded', 'fresh', 'stale', 'failed']
 export const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const string = (value, max = 12000) => typeof value === 'string' && value.length <= max
 const id = value => string(value, 512) && value.length > 0
 const revision = value => Number.isSafeInteger(value) && value >= 0
+const timestamp = value => value === null || typeof value === 'string' && value.length <= 100 && Number.isFinite(Date.parse(value))
 
 // Treat an unknown server contract as unavailable, never as a successful run.
 export function readSnapshot(value, sessionId) {
@@ -16,6 +18,11 @@ export function readSnapshot(value, sessionId) {
     if (!isRecord(agent) || !id(agent.id) || ids.has(agent.id) || !string(agent.label, 200) || !string(agent.transport, 200) || ![true, false, null].includes(agent.available) || ![true, false, null].includes(agent.authenticated) || !Array.isArray(agent.models) || !isRecord(agent.capabilities)) return null
     if (agent.version != null && !string(agent.version, 200)) return null
     if (agent.reason != null && !string(agent.reason, 2000)) return null
+    if (agent.modelCatalog != null) {
+      const catalog = agent.modelCatalog
+      if (!isRecord(catalog) || !MODEL_CATALOG_STATES.includes(catalog.status) || !timestamp(catalog.fetchedAt) || !timestamp(catalog.expiresAt) || !string(catalog.source, 200) || typeof catalog.truncated !== 'boolean' || catalog.error != null && !string(catalog.error, 2000)) return null
+      if (catalog.accessVerified !== undefined && typeof catalog.accessVerified !== 'boolean') return null
+    }
     if (CAPABILITIES.some(key => agent.capabilities[key] !== undefined && typeof agent.capabilities[key] !== 'boolean')) return null
     const models = new Set()
     for (const model of agent.models) {
@@ -24,6 +31,7 @@ export function readSnapshot(value, sessionId) {
     }
     ids.add(agent.id)
   }
+  if (value.operation != null && (!isRecord(value.operation) || value.operation.kind !== 'models' || !ids.has(value.operation.runtime) || !['waiting_permission', 'discovering', 'blocked'].includes(value.operation.state) || value.operation.reason != null && !string(value.operation.reason, 2000))) return null
   const task = value.task
   if (task !== null) {
     if (!isRecord(task) || !id(task.id) || !revision(task.revision) || !string(task.title) || !id(task.runtime) || !STATES.includes(task.state) || !Array.isArray(task.events) || !Array.isArray(task.allowedActions) || task.allowedActions.some(action => !ACTIONS.includes(action))) return null
@@ -52,6 +60,13 @@ export function parseAddress(address) {
 export function canPrepare(agent) {
   return Boolean(agent && ['codex', 'opencode', 'claude', 'grok'].includes(agent.id)
     && agent.reason !== 'not-integrated' && agent.available !== false && agent.capabilities?.nativeSessions === true)
+}
+
+export function prepareModels(snapshot, runtime) {
+  const agent = snapshot?.catalog.find(item => item.id === runtime)
+  if (!canPrepare(agent)) throw new Error('runtime-unavailable')
+  if (snapshot.operation || snapshot.task && !snapshot.task.allowedActions.some(action => ['request-start', 'request-continue'].includes(action))) throw new Error('action-unavailable')
+  return { runtime, scope: snapshot.scope }
 }
 
 export function presentationEvents(events) {
@@ -85,6 +100,7 @@ export function eventDataPreview(event) {
 export function prepareRun(snapshot, { runtime, model = '', prompt, continueTask = false }) {
   const agent = snapshot?.catalog.find(item => item.id === runtime)
   if (!canPrepare(agent)) throw new Error('runtime-unavailable')
+  if (snapshot.operation) throw new Error('action-unavailable')
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.trim().length > 12000) throw new Error('goal-required')
   const task = snapshot.task
   if (task && !task.allowedActions.includes(continueTask ? 'request-continue' : 'request-start')) throw new Error('action-unavailable')

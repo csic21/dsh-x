@@ -80,6 +80,92 @@ test('discovery rejects unrelated or obsolete executables and drains secrets fro
   const adapter = createGrokAdapter({ spawn() { throw new Error('SECRET=hidden'); } });
   assert.ok(!JSON.stringify(await adapter.discover({ cwd })).includes('hidden'));
 });
+test('approved model discovery reads initialize catalog with or without configured authentication and never creates a session', async () => {
+  for (const configured of [false, true]) {
+    const f = fixture({ configured });
+    const result = await f.adapter.discoverModels({ cwd, sandboxPolicy });
+    assert.equal(result.available, true); assert.equal(result.version, '1.0.62'); assert.equal(result.authenticated, null);
+    assert.deepEqual(result.models, [{ id: 'grok-4.6', label: 'Grok 4.6' }, { id: 'grok-4.5', label: 'Grok 4.5' }]);
+    assert.deepEqual(result.authentication, { state: configured ? 'configured-unverified' : 'unconfigured', source: 'native-initialize' });
+    assert.deepEqual(f.messages.map(message => message.method), ['initialize']);
+    assert.deepEqual(f.messages[0].params.clientCapabilities, { fs: { readTextFile: false, writeTextFile: false }, terminal: false });
+    assert.deepEqual(f.spawns.map(spec => spec.argv), [['grok', '--version'], ['grok', 'agent', '--no-leader', 'stdio']]);
+    assert.ok(f.children.every(child => child.terminated && child.waited));
+  }
+});
+test('model discovery requires a bound policy and honors cancellation before spawning', async () => {
+  const f = fixture(), controller = new AbortController(); controller.abort();
+  await assert.rejects(f.adapter.discoverModels({ cwd, sandboxPolicy, signal: controller.signal }), { code: 'ABORT_ERR' });
+  await assert.rejects(f.adapter.discoverModels({ cwd }));
+  await assert.rejects(f.adapter.discoverModels({ cwd: '/elsewhere', sandboxPolicy }));
+  assert.equal(f.spawns.length, 0);
+});
+test('model discovery rejects malformed, missing or oversized catalogs and mismatched native identity', async () => {
+  for (const mutate of [
+    init => { delete init._meta.modelState; },
+    init => { init._meta.modelState = {}; },
+    init => { init._meta.modelState.availableModels = Array.from({ length: 101 }, (_, i) => ({ modelId: `model-${i}` })); },
+    init => { init._meta.modelState.availableModels.push(init._meta.modelState.availableModels[0]); },
+    init => { init._meta.agentVersion = '1.0.99'; },
+    init => { init._meta.grokShell = false; },
+  ]) {
+    const f = fixture({ onMessage(message, child) { if (message.method !== 'initialize') return; const init = structuredClone(capturedInit); mutate(init); child.reply(message, init); return true; } });
+    await assert.rejects(f.adapter.discoverModels({ cwd, sandboxPolicy }));
+    assert.deepEqual(f.messages.map(message => message.method), ['initialize']);
+    assert.ok(f.children.every(child => child.terminated && child.waited));
+  }
+});
+test('empty native model catalogs remain empty and unsupported authentication is not verified', async () => {
+  const f = fixture({ onMessage(message, child) {
+    if (message.method !== 'initialize') return;
+    const init = structuredClone(capturedInit); init._meta.modelState.availableModels = []; init._meta.defaultAuthMethodId = 'unknown-auth'; child.reply(message, init); return true;
+  } });
+  const result = await f.adapter.discoverModels({ cwd, sandboxPolicy });
+  assert.deepEqual(result.models, []); assert.equal(result.capabilities.models, false); assert.equal(result.authenticated, null);
+  assert.deepEqual(result.authentication, { state: 'unsupported', source: 'native-initialize' });
+});
+test('model discovery cancellation during initialize drains and terminates its owned process', async () => {
+  const controller = new AbortController(), entered = deferred();
+  const f = fixture({ onMessage(message) { if (message.method === 'initialize') { entered.resolve(); return true; } } });
+  const running = f.adapter.discoverModels({ cwd, sandboxPolicy, signal: controller.signal });
+  await entered.promise; controller.abort();
+  await assert.rejects(running, { code: 'ABORT_ERR' });
+  assert.deepEqual(f.messages.map(message => message.method), ['initialize']);
+  assert.ok(f.children.every(child => child.terminated && child.waited));
+});
+test('model discovery rejects unexpected client actions instead of performing them', async () => {
+  const f = fixture({ onMessage(message, child) {
+    if (message.method !== 'initialize') return;
+    child.frame({ id: 'client-action', method: 'fs/read_text_file', params: { sessionId: 'not-created', path: '/private' } });
+    child.reply(message, structuredClone(capturedInit)); return true;
+  } });
+  await assert.rejects(f.adapter.discoverModels({ cwd, sandboxPolicy }));
+  assert.ok(f.children.every(child => child.terminated && child.waited));
+  assert.ok(!f.messages.some(message => message.id === 'client-action' && Object.hasOwn(message, 'result')));
+});
+test('model discovery cleanup uncertainty is thrown even after a valid catalog or cancellation', async () => {
+  for (const cancelled of [false, true]) {
+    const controller = new AbortController(); let checks = 0;
+    const f = fixture({ waitForExit: () => ++checks === 1,
+      onMessage(message) { if (cancelled && message.method === 'initialize') { controller.abort(); return true; } },
+    });
+    await assert.rejects(f.adapter.discoverModels({ cwd, sandboxPolicy, signal: controller.signal }), { code: 'AGENTS_CLEANUP_UNCONFIRMED' });
+  }
+});
+test('model discovery cancellation during successful cleanup cannot publish a catalog', async () => {
+  const controller = new AbortController(); let checks = 0;
+  const f = fixture({ waitForExit() { if (++checks === 2) controller.abort(); return true; } });
+  await assert.rejects(f.adapter.discoverModels({ cwd, sandboxPolicy, signal: controller.signal }), { code: 'ABORT_ERR' });
+  assert.ok(f.children.every(child => child.terminated && child.waited));
+});
+test('model discovery initialize and cleanup deadlines fail without publishing a catalog', async () => {
+  const timedOut = fixture({ config: { requestTimeoutMs: 15 }, onMessage(message) { if (message.method === 'initialize') return true; } });
+  await assert.rejects(timedOut.adapter.discoverModels({ cwd, sandboxPolicy }), { code: 'AGENTS_GROK_TIMEOUT' });
+  assert.ok(timedOut.children.every(child => child.terminated && child.waited));
+  let checks = 0;
+  const unknown = fixture({ config: { cleanupTimeoutMs: 15 }, waitForExit: () => ++checks === 1 ? true : new Promise(() => {}) });
+  await assert.rejects(unknown.adapter.discoverModels({ cwd, sandboxPolicy }), { code: 'AGENTS_CLEANUP_UNCONFIRMED' });
+});
 test('new run checkpoints native session before model selection or prompt and publishes actual models', async () => {
   const f = fixture(); const events = [];
   const result = await f.adapter.run({ ...input, model: 'grok-4.5', onEvent: async event => {

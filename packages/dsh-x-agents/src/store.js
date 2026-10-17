@@ -126,6 +126,23 @@ export function createTaskStore(profileDirectory) {
     if (owner.hostId !== hostId || owner.taskId !== taskId || owner.runId !== runId) throw fail('AGENTS_BUSY', 'Run lock belongs to another host.')
     unlinkSync(lock)
   }
+  function claimOperation(sessionId, runtime) {
+    const operationId = randomUUID()
+    try { writeFileSync(lockname(sessionId), JSON.stringify({hostId, operationId, runtime, kind:'models'}), {flag:'wx', mode:0o600}) }
+    catch (error) { if (error.code === 'EEXIST') throw fail('AGENTS_BUSY', 'A previous runtime operation still owns this session.'); throw error }
+    return operationId
+  }
+  function releaseOperation(sessionId, operationId) {
+    const owner = json(lockname(sessionId), 2048)
+    if (owner.hostId !== hostId || owner.operationId !== operationId) throw fail('AGENTS_BUSY', 'Runtime operation lock belongs to another owner.')
+    unlinkSync(lockname(sessionId))
+  }
+  function operationLock(sessionId) {
+    if (!existsSync(lockname(sessionId))) return null
+    const owner = json(lockname(sessionId), 2048)
+    if (owner.kind !== 'models') return null
+    return {kind:'models',runtime:owner.runtime,state:'blocked',reason:'A previous model-directory operation may still own a native process. Verify it has stopped before recovering; automatic replay is disabled.'}
+  }
   function quarantine(sessionId, reason, runtime = 'unknown') {
     const lock = lockname(sessionId)
     try { writeFileSync(lock, JSON.stringify({ hostId, reason: 'discovery-cleanup-unconfirmed' }), { flag: 'wx', mode: 0o600 }) } catch (error) { if (error.code !== 'EEXIST') throw error }
@@ -134,5 +151,5 @@ export function createTaskStore(profileDirectory) {
       value.task.state = 'interrupted'; value.task.reason = safeText(reason, 2000)
     })
   }
-  return { scope, root, hostId, read, snapshot, claim, event, state, release, quarantine, hasLock: sessionId => existsSync(lockname(sessionId)) }
+  return { scope, root, hostId, read, snapshot, claim, event, state, release, quarantine, claimOperation, releaseOperation, operationLock, hasLock: sessionId => existsSync(lockname(sessionId)) }
 }

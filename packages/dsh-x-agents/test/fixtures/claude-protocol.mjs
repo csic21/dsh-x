@@ -1,7 +1,7 @@
 // Synthetic Claude Agent SDK 0.3.302 / CLI 2.1.302 protocol fixtures.
 // No model, provider, account or real command executes in this fixture.
 import { randomUUID } from 'node:crypto';
-export function createClaudeFixture({ send, argv = [], onUser, onResponse, account, version = '2.1.302' }) {
+export function createClaudeFixture({ send, argv = [], onUser, onResponse, account, models, version = '2.1.302' }) {
   const value = flag => { const at = argv.indexOf(flag); return at >= 0 ? argv[at + 1] : argv.find(arg => arg.startsWith(`${flag}=`))?.slice(flag.length + 1); };
   let session = value('--resume') ?? value('--session-id') ?? randomUUID();
   const frame = event => send({ uuid: randomUUID(), session_id: session, ...event });
@@ -18,7 +18,7 @@ export function createClaudeFixture({ send, argv = [], onUser, onResponse, accou
     if (message.type === 'control_request') {
       const response = message.request.subtype === 'initialize' ? {
         commands: [], agents: [], output_style: 'default', available_output_styles: ['default'], claude_code_version: version,
-        models: [{ value: 'fixture-model', displayName: 'Synthetic fixture model', description: 'No model calls' }],
+        models: models ?? [{ value: 'fixture-model', displayName: 'Synthetic fixture model', description: 'No model calls' }],
         account: account ?? { apiProvider: 'firstParty', apiKeySource: 'ANTHROPIC_API_KEY' },
       } : message.request.subtype === 'interrupt' ? { still_queued: [], cancelled: [] } : {};
       send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response } });

@@ -519,3 +519,8 @@ test('a reused RPC id with different scope fails without a second approval', asy
   assert.ok(calls <= 1);
   assert.ok(!f.messages.some(message => message.result?.decision === 'accept'));
 });
+
+test('failed pagination discards partial directory rather than presenting it as complete',async()=>{
+ const f=fixture({onMessage(message,child){if(message.method!=='model/list')return;child.reply(message,{data:[{id:'partial'}],nextCursor:'repeat'});return true;}})
+ const result=await f.adapter.discover({cwd,sandboxPolicy});assert.deepEqual(result.models,[]);assert.equal(result.modelCatalog.status,'failed');
+})

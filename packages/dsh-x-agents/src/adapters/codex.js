@@ -149,6 +149,8 @@ export function createCodexAdapter({ spawn, config = {} } = {}) {
       } catch {
         if (signal?.aborted) throw failure('Codex discovery cancelled.', 'ABORT_ERR');
         result.reason ??= 'Codex is installed, but its model list could not be verified.';
+        result.models = [];
+        result.modelCatalog = { status: 'failed', source: 'native-discovery', error: 'Native model pagination or catalog validation failed.' };
       }
       if (result.authenticated === false) result.reason = 'Sign in using the official Codex CLI, then check again.';
       else if (result.authenticated === null) result.reason ??= 'Codex account authentication is unknown; no login or model request was attempted.';

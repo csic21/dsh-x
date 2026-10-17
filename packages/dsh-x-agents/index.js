@@ -60,7 +60,7 @@ export function apply(ctx, config = {}) {
   ctx.on('tools/execute', async (exec, next) => {
     const id = exec.agent?.session?.id
     if (!id || reads.has(exec.name)) return next()
-    if (exec.name === 'dsh_x_agents_run') {
+    if (['dsh_x_agents_run','dsh_x_agents_models'].includes(exec.name)) {
       if (mutations.get(id)?.size || pending.has(id)) throw fail('AGENTS_BUSY', 'Another operation is still writing in this session.')
       pending.set(id, exec.token)
       try { return await next() } finally { if (pending.get(id) === exec.token) pending.delete(id) }
@@ -70,10 +70,11 @@ export function apply(ctx, config = {}) {
     try { return await next() } finally { active.delete(exec.token); if (!active.size) mutations.delete(id) }
   })
   ctx.effect(() => () => controller.dispose(), 'agents: runtime lifetime')
-  ctx.effect(() => ctx.systemPrompt.section({ name, order: 8100, interpolate: false, text: 'Agents is an explicit native-runtime delegation workflow. When the user selects it, use dsh_x_agents_inspect to check setup and dsh_x_agents_run to send their task to the selected runtime. DSH coordinates while the external native agent executes. Continue an existing task only with its exact scope/taskId/revision and unchanged runtime/model. A completed native turn does not prove tests or task acceptance. Never bypass an active Plan workflow, native permission request, unavailable authentication, or uncertain cleanup. Do not send credentials as prompt text. Do not automatically start another runtime or change host permissions when one is blocked.' }), 'agents: instructions')
+  ctx.effect(() => ctx.systemPrompt.section({ name, order: 8100, interpolate: false, text: 'Agents is an explicit native-runtime delegation workflow. When the user selects it, use dsh_x_agents_inspect to check setup, dsh_x_agents_models with runtime and current scope to explicitly prepare or refresh model catalogs without a task prompt, and dsh_x_agents_run to send their task to the selected runtime. DSH coordinates while the external native agent executes. Continue an existing task only with its exact scope/taskId/revision and unchanged runtime/model. A completed native turn does not prove tests or task acceptance. Never bypass an active Plan workflow, native permission request, unavailable authentication, or uncertain cleanup. Do not send credentials as prompt text. Do not automatically start another runtime or change host permissions when one is blocked.' }), 'agents: instructions')
   const present = value => ({ kind: 'dsh-x-agents.result', version: 1, ...value })
   const output = { schema: { type: 'object', additionalProperties: true, properties: {} }, presentationMeta: (_args, value) => present(value), render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
   ctx.tools.register(defineTool({ name: 'dsh_x_agents_inspect', description: 'Read native runtime setup and current task. Does not authenticate, install software, or call a model.', parameters: {}, output, execute: (_args, exec) => controller.inspect(exec) }))
+  ctx.tools.register(defineTool({ name: 'dsh_x_agents_models', description: 'Explicitly initialize one native runtime to read its model catalog without a task prompt. Requires official approval; initialization can load native configuration. A listed model is not verified account access.', parameters: {runtime:{type:'string',required:true,enum:[...RUNTIMES]},scope:{type:'string',required:true}}, output, execute:(args,exec)=>controller.models(args,exec) }))
   ctx.tools.register(defineTool({ name: 'dsh_x_agents_run', description: 'Delegate one turn to Codex, OpenCode, Claude or Grok native agent. Requests official approval, preserves native session identity, streams actual events. Setup or policy gaps block execution.', parameters: {
     runtime: { type: 'string', required: true, enum: [...RUNTIMES] }, prompt: { type: 'string', required: true }, model: { type: 'string' }, taskId: { type: 'string' }, expectedRevision: { type: 'integer' }, scope: { type: 'string' },
   }, output, execute: (args, exec) => controller.run(args, exec) }))

@@ -103,3 +103,44 @@ test('native advertised models survive version-only refresh only for the same ba
  const changed=await h.controller.run({runtime:'grok',model:'native-model',prompt:'Other backend'},h.exec)
  assert.equal(changed.task.state,'blocked');assert.match(changed.task.reason,/not advertised/)
 })
+
+test('model preparation is approved, prompt-free and does not create or replace a task',async()=>{
+ const h=fixture();let probes=0
+ h.driver.discoverModels=async()=>{probes++;return{available:true,authenticated:null,version:'1',models:[{id:'listed',label:'Listed'}],authentication:{state:'unconfigured',source:'native-initialize'}}}
+ const empty=await h.controller.models({runtime:'grok',scope:h.store.scope},h.exec)
+ assert.equal(empty.task,null);assert.equal(empty.modelRuntime,'grok');assert.equal(empty.catalog.find(x=>x.id==='grok').models[0].id,'listed');assert.equal(h.counts().calls,0)
+ const first=await h.controller.run(args,h.exec), before=structuredClone(first.task)
+ const after=await h.controller.models({runtime:'claude',scope:h.store.scope},h.exec)
+ assert.deepEqual(after.task,before);assert.equal(after.catalog.find(x=>x.id==='claude').authenticated,null);assert.equal(probes,2)
+})
+test('model preparation denial and stale profile dispatch nothing',async()=>{
+ const h=fixture({approve:async()=>false});let probes=0;h.driver.discoverModels=async()=>{probes++;return{available:true,models:[]}}
+ await assert.rejects(()=>h.controller.models({runtime:'grok',scope:'wrong'},h.exec),/scope/)
+ await assert.rejects(()=>h.controller.models({runtime:'grok',scope:h.store.scope},h.exec),/not approved/)
+ assert.equal(probes,0);assert.equal(h.store.snapshot('session-one').task,null);assert.equal(h.store.hasLock('session-one'),false)
+})
+test('model cleanup uncertainty keeps a durable fence without overwriting task',async()=>{
+ const h=fixture();const before=await h.controller.run(args,h.exec)
+ h.driver.discoverModels=async()=>{throw Object.assign(new Error('Unknown cleanup'),{code:'AGENTS_CLEANUP_UNCONFIRMED'})}
+ await assert.rejects(()=>h.controller.models({runtime:'claude',scope:h.store.scope},h.exec),{code:'AGENTS_CLEANUP_UNCONFIRMED'})
+ assert.equal(h.store.hasLock('session-one'),true);assert.deepEqual(h.store.read('session-one').task.id,before.task.id)
+ await assert.rejects(()=>h.controller.models({runtime:'grok',scope:h.store.scope},h.exec),/owns/)
+})
+test('model directory preserves more than one hundred advertised models',async()=>{
+ const h=fixture();h.driver.discoverModels=async()=>({available:true,models:Array.from({length:230},(_,i)=>({id:`m-${i}`,label:`Model ${i}`}))})
+ const result=await h.controller.models({runtime:'codex',scope:h.store.scope},h.exec)
+ assert.equal(result.catalog[0].models.length,230);assert.equal(result.catalog[0].modelCatalog.truncated,false)
+})
+
+test('catalog expiry is honest and status refresh does not extend native freshness',async()=>{
+ let time=1_700_000_000_000;const dir=mkdtempSync(path.join(tmpdir(),'agents-model-ttl-')),store=createTaskStore(dir)
+ const driver={backendIdentity:'fixed',capabilities:{nativeSessions:true,models:true},discover:async()=>({available:true,version:'1',authenticated:null,models:[],authentication:{state:'requires-native-initialization',source:'version-only'}}),discoverModels:async()=>({available:true,version:'1',authenticated:null,models:[{id:'listed',label:'Listed'}]})}
+ const c=createAgentsController({store,adapter:async()=>driver,cwdOf:async()=>dir,policyOf:()=>({mode:'workspace-write',workspaceRoot:dir}),approve:async()=>true,now:()=>time,modelTtlMs:100})
+ const exec={agent:{session:{id:'ttl-session'}},signal:new AbortController().signal}
+ const first=await c.models({runtime:'grok',scope:store.scope},exec),stamp=first.catalog[3].modelCatalog.fetchedAt
+ time+=101;assert.equal(c.snapshot('ttl-session').catalog[3].modelCatalog.status,'stale')
+ const next=await c.inspect(exec);assert.equal(next.catalog[3].modelCatalog.status,'stale');assert.equal(next.catalog[3].modelCatalog.fetchedAt,stamp)
+ driver.discoverModels=async()=>{throw new Error('fixture offline')}
+ await assert.rejects(()=>c.models({runtime:'grok',scope:store.scope},exec),/offline/)
+ const failed=await c.inspect(exec);assert.equal(failed.catalog[3].modelCatalog.status,'failed');assert.equal(failed.catalog[3].models[0].id,'listed')
+})

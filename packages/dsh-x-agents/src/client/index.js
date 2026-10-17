@@ -44,8 +44,8 @@ export function apply(ctx) {
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: previewId, locale: NS, inject: face,
   }, AgentsPanel))
-  for (const key of ['dsh_x_agents_inspect', 'dsh_x_agents_run']) ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
-    name: 'tool.call.toolview', key, locale: NS, inject: () => ({ openCurrent: snapshot => {
+  for (const key of ['dsh_x_agents_inspect', 'dsh_x_agents_run', 'dsh_x_agents_models']) ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+    name: 'tool.call.toolview', key, locale: NS, inject: () => ({ operationKind: key === 'dsh_x_agents_models' ? 'models' : null, formatTime, openCurrent: snapshot => {
       if (ctx.sidebarRight.mounted?.getSnapshot() !== snapshot.sessionId) return
       ctx.sidebarRight.openResource(addressFor(snapshot.scope, snapshot.sessionId))
     } }),
