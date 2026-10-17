@@ -26,8 +26,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-package
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'push' && format('desktop-proof-{0}', github.ref) || format('desktop-package-manual-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/work/stock-chat-plugins' && contains(github.event.head_commit.message, '[replace-failed-proof]') }}
 
 jobs:
   package:

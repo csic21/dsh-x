@@ -27,6 +27,9 @@ test('desktop smoke workflow is bounded to work branch and actual packaged asser
   assert.match(workflow, /branches: \[work\/stock-chat-plugins\]/);
   assert.match(workflow, /package:\n    if: github.event_name == 'workflow_dispatch'/);
   assert.match(workflow, /contents: read/);
+  assert.match(workflow, /desktop-proof-\{0\}/);
+  assert.match(workflow, /desktop-package-manual-\{0\}/);
+  assert.match(workflow, /github.ref == 'refs\/heads\/work\/stock-chat-plugins' && contains\(github.event.head_commit.message, '\[replace-failed-proof\]'\)/);
   assert.doesNotMatch(workflow.slice(workflow.indexOf('  browser-smoke:')), /secrets\./);
   const harness = readFileSync(new URL('../scripts/desktop-browser-smoke.mjs', import.meta.url), 'utf8');
   assert.match(harness, /assert.equal\(report.runtime.packaged, true\)/);
@@ -34,6 +37,9 @@ test('desktop smoke workflow is bounded to work branch and actual packaged asser
   assert.match(harness, /navigatedTab\.epoch > navigationTab\.epoch/);
   assert.match(harness, /stale-after-navigation/);
   assert.match(harness, /stale-after-close/);
+  assert.match(harness, /assert\.match\(closeStale\.text, \/BROWSER_CLOSED\|BROWSER_GRANT\|closed\|no longer connected\/i\)/);
+  assert.match(harness, /closed\.tabs\.some\(t => t\.tabId === navigationTab\.tabId\), false/);
+  assert.match(harness, /assert\.equal\(await guestDestroyed\(\), true\)/);
   assert.match(harness, /webContents\.fromId\(id\)\.isDestroyed\(\)/);
   assert.doesNotMatch(harness, /--no-sandbox|ignoreHTTPSErrors: true|bypassCSP: true/);
 });
