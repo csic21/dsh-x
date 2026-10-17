@@ -37,7 +37,8 @@ test('desktop smoke workflow is bounded to work branch and actual packaged asser
   assert.match(harness, /navigatedTab\.epoch > navigationTab\.epoch/);
   assert.match(harness, /stale-after-navigation/);
   assert.match(harness, /stale-after-close/);
-  assert.match(harness, /assert\.match\(closeStale\.text, \/BROWSER_CLOSED\|BROWSER_GRANT\|closed\|no longer connected\/i\)/);
+  assert.match(harness, /assert\.equal\(closeStale\.isError, true\)/);
+  assert(harness.includes("assert.equal(closeStale.text, 'Error: Show the exact browser tab and enable AI access, then refresh tabs before requesting an action.');"));
   assert.match(harness, /closed\.tabs\.some\(t => t\.tabId === navigationTab\.tabId\), false/);
   assert.match(harness, /assert\.equal\(await guestDestroyed\(\), true\)/);
   assert.match(harness, /webContents\.fromId\(id\)\.isDestroyed\(\)/);

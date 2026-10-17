@@ -143,7 +143,8 @@ try {
   const closed = await tool('after-close', 'dsh_x_browser_tabs', {});
   assert.equal(closed.tabs.some(t => t.tabId === navigationTab.tabId), false);
   const closeStale = await tool('stale-after-close', 'dsh_x_browser_action', { tabId: navigationTab.tabId, epoch: navigatedTab.epoch, grantRevision: navigatedTab.grantRevision, action: 'observe' }, undefined, true);
-  assert.match(closeStale.text, /BROWSER_CLOSED|BROWSER_GRANT|closed|no longer connected/i);
+  assert.equal(closeStale.isError, true);
+  assert.equal(closeStale.text, 'Error: Show the exact browser tab and enable AI access, then refresh tabs before requesting an action.');
   const guestDestroyed = () => app.evaluate(({ webContents }, id) => !webContents.fromId(id) || webContents.fromId(id).isDestroyed(), guestId);
   for (let n = 0; n < 100 && !await guestDestroyed(); n++) await new Promise(r => setTimeout(r, 100));
   assert.equal(await guestDestroyed(), true);

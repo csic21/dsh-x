@@ -56,6 +56,19 @@ test('official tool cancellation revokes queue and late results cannot report su
   assert.equal((await h.rpc('poll', h.auth)).granted, false)
 })
 
+test('real ToolRuntime renders the exact closed-tab stale-action denial without embedding its structured code', async t => {
+  const h = await harness(t)
+  assert.deepEqual(await h.rpc('close', h.auth), { closed: true })
+  const listed = await h.invoke('dsh_x_browser_tabs')
+  assert.equal(listed.isError, false); assert.deepEqual(listed.value.tabs, [])
+  const denied = await h.invoke('dsh_x_browser_action', { ...h.identity, action: 'observe' })
+  assert.equal(denied.isError, true); assert.equal(denied.error.info.code, 'BROWSER_GRANT')
+  const rendered = denied.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+  assert.equal(rendered, 'Error: Show the exact browser tab and enable AI access, then refresh tabs before requesting an action.')
+  assert.doesNotMatch(rendered, /BROWSER_GRANT|BROWSER_CLOSED/)
+  await assert.rejects(h.rpc('poll', h.auth), { code: 'BROWSER_CLOSED' })
+})
+
 test('real nested ToolRuntime children retain one native parent and stable run lifetime after a child settles', async t => {
   const h = await harness(t), run = new AbortController()
   let list, childSettled = false
