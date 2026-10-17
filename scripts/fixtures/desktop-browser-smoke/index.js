@@ -1,3 +1,4 @@
+import { bindBrowserProofTrace } from '../../lib/browser-proof-trace.mjs';
 /** CI-only deterministic model. No network, account, or vendor inference. */
 import { writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,7 +37,7 @@ class Fixture extends LlmAdapter {
       if (results.some((m, i) => m.toolCallId !== `desktop-smoke-${request.id}-${i}`)) throw Error('Tool result identity mismatch');
       if (calls.length !== results.length) throw Error('Missing tool result; refusing replay');
       const tab = values[0]?.tabs?.find(t => t.visible && t.granted);
-      if (values.length && !tab) throw Error('No visible granted tab');
+      if (values.length && !tab) { recordResult(request.id, { id: request.id, isError: true, text: JSON.stringify({ error: 'No visible granted tab', result: values[0] }) }); throw Error('No visible granted tab'); }
       const identity = tab && { tabId: tab.tabId, epoch: tab.epoch, grantRevision: tab.grantRevision };
       if (values.length === 0) request = { ...request, tool: 'dsh_x_browser_tabs', arguments: {} };
       else if (values.length === 1 || values.length === 3) request = { ...request, tool: 'dsh_x_browser_action', arguments: { ...identity, action: 'observe' } };
@@ -79,4 +80,4 @@ class Fixture extends LlmAdapter {
     yield { type: 'finish', reason: { kind: 'tool-calls' } };
   }
 }
-export function apply(ctx) { ctx.effect(() => ctx.llm.registerAdapter(['desktop-smoke'], new Fixture())); }
+export function apply(ctx) { bindBrowserProofTrace(ctx, process.env.DSH_BROWSER_SMOKE_RESULTS); ctx.effect(() => ctx.llm.registerAdapter(['desktop-smoke'], new Fixture())); }

@@ -594,3 +594,14 @@ test('oversized discovery responses fail before a session or model request', asy
   assert.equal(f.calls.some(call => call.method === 'POST'), false)
   assert.equal(JSON.stringify(result).includes(password), false)
 })
+
+test('only a live same-process managed owner permits confined HTTP transport and inherited internal signals',async()=>{
+ const f=fixture(),owner=new AbortController()
+ const adapter=createOpenCodeAdapter({fetch:f.fetch,managedScope:{cwd,signal:owner.signal},config:{endpoint:'http://127.0.0.1:4096',password,requestTimeoutMs:5000,statusPollMs:1,cleanupTimeoutMs:1000}})
+ const result=await adapter.run({...defaults,sandboxPolicy:{mode:'workspace-write',workspaceRoot:cwd},trustedExternalRuntime:false,signal:owner.signal})
+ assert.equal(result.status,'completed');assert.equal(f.calls.filter(call=>call.path.endsWith('/message')&&call.method==='POST').length,1)
+ const count=f.calls.length
+ const foreign=await adapter.run({...defaults,cwd:'/other',sandboxPolicy:{mode:'workspace-write'},trustedExternalRuntime:false,signal:owner.signal});assert.equal(foreign.status,'blocked');assert.equal(f.calls.length,count)
+ owner.abort()
+ const late=await adapter.run({...defaults,sandboxPolicy:{mode:'workspace-write'},trustedExternalRuntime:false,signal:new AbortController().signal});assert.equal(late.status,'blocked');assert.equal(f.calls.length,count)
+})

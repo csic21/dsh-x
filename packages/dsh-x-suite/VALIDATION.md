@@ -19,4 +19,4 @@
 
 升级用的是明确标记的本地版本 fixture，没有发布这些版本。第 8 项不覆盖 tarball 安装后的回滚修复。仅有 pnpm 成功输出不算成功，每一步均要求官方 CLI 成功和实际 Host 状态匹配；版本拒绝则要求官方明确的兼容性拒绝诊断。
 
-最终仓库 `npm test`（自动先构建客户端）通过 689/689，0 失败、0 跳过。这里的 Linux Web Host 证据不代表 Electron、用户界面视觉交互、原生厂商登录、付费模型执行、真实用户数据迁移或新上游版本已验证。Desktop 专项流程另见 `../../docs/desktop-browser-proof.md`。
+最终仓库 `npm test`（自动先构建客户端）通过 730/730，0 失败、0 跳过（含隔离 OpenCode 适配器增量；真实提供方调用另行验证）。这里的 Linux Web Host 证据不代表 Electron、用户界面视觉交互、原生厂商登录、付费模型执行、真实用户数据迁移或新上游版本已验证。Desktop 专项流程另见 `../../docs/desktop-browser-proof.md`。

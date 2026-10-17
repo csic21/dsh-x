@@ -62,6 +62,7 @@ try {
   const setupEditor = page.locator('[data-composer-input][contenteditable="true"]').last();
   await setupEditor.fill('Synthetic offline setup'); await setupEditor.press('Enter');
   await page.getByText('Synthetic offline fixture: send a bounded browser test request.', { exact: true }).waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: /^(Stop generating|停止生成)$/ }).waitFor({ state: 'hidden' });
   await page.getByTestId('dxb-entry').click({ timeout: 30000 });
   await page.getByTestId('dxb-pane').waitFor();
   await page.getByTestId('dxb-address').fill(url); await page.getByTestId('dxb-go').click();
@@ -80,7 +81,9 @@ try {
     for (let n = 0; n < 300; n++) {
       const allow = page.getByRole('button', { name: /^(Allow once|允许一次)$/ });
       if (await allow.isVisible().catch(() => false)) await allow.click();
-      try { const value = JSON.parse(await readFile(join(results, `${id}.json`), 'utf8')); assert.equal(value.isError, expectedError, value.text); return expectedError ? value : JSON.parse(value.text); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      try { const value = JSON.parse(await readFile(join(results, `${id}.json`), 'utf8')); assert.equal(value.isError, expectedError, value.text);
+        if (scenario !== 'visible-flow') await page.getByRole('button', { name: /^(Stop generating|停止生成)$/ }).waitFor({ state: 'hidden' });
+        return expectedError ? value : JSON.parse(value.text); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       await new Promise(r => setTimeout(r, 200));
     }
     throw Error(`No completed ToolRuntime result for ${id}`);
@@ -149,9 +152,17 @@ try {
 } catch (error) {
   report.status = 'failed'; report.error = String(error.stack ?? error);
   if (!page && app) page = app.windows()[0];
-  if (page) await page.screenshot({ path: join(output, 'failure.png') }).catch(() => {});
+  if (page) {
+    report.browserDiagnostic = await page.getByTestId('dxb-pane').textContent().catch(() => null);
+    report.browserTrace = await readFile(join(results, 'browser-trace.json'), 'utf8').then(JSON.parse).catch(() => []);
+    report.lastTools = [];
+    for (const name of await readdir(results)) if (name.endsWith('.json') && name !== 'browser-trace.json') report.lastTools.push(JSON.parse(await readFile(join(results, name), 'utf8')));
+    await page.locator('.dxb-error details').evaluateAll(nodes => nodes.forEach(node => { node.open = true; })).catch(() => {});
+    await page.screenshot({ path: join(output, 'failure.png') }).catch(() => {});
+  }
   throw error;
 } finally {
+  report.browserTrace = await readFile(join(results, 'browser-trace.json'), 'utf8').then(JSON.parse).catch(() => []);
   await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2));
   if (app) await app.close().catch(() => {});
   await new Promise(ok => fixture.close(ok));

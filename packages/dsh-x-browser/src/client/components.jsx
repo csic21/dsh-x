@@ -19,7 +19,7 @@ export function BrowserBody({ sessionId, useTabInfo, createController, t }) {
   }, [sessionId, tab.id, tab.signal, createController])
   useLayoutEffect(() => { controller.current?.setVisible(tab.visible); if (!tab.visible) setConsent(false) }, [tab.visible])
   useEffect(() => { setAddress(state.url) }, [state.url])
-  const status = ['loading', 'unavailable', 'running', 'ready', 'disconnected', 'hidden', 'stopped'].includes(state.status) ? state.status : 'manual'
+  const status = ['loading', 'unavailable', 'running', 'ready', 'disconnected', 'hidden', 'stopped', 'closed', 'turn-ended', 'workspace-changed', 'native-run-ended', 'document-changed'].includes(state.status) ? state.status : 'manual'
   return <section className="dxb-pane" data-testid="dxb-pane" aria-label={t('title')}>
     <form className="dxb-toolbar" onSubmit={event => { event.preventDefault(); void controller.current?.navigate(address) }}>
       <button type="button" title={t('back')} aria-label={t('back')} disabled={!state.ready || !state.canGoBack} onClick={() => controller.current?.manual('back')}>‹</button>

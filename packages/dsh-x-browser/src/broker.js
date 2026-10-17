@@ -2,12 +2,18 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from './protocol.js'
 
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, onRevoke = () => {} }) {
+export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, onRevoke = () => {}, onTrace = () => {} }) {
   const tabs = new Map()
   let disposed = false
   const same = (left, right) => left?.sessionId === right?.sessionId && left?.workspace === right?.workspace && left?.profile === right?.profile
   const publicTab = tab => ({ tabId: tab.id, sessionId: tab.binding.sessionId, epoch: tab.epoch, grantRevision: tab.revision, visible: tab.visible, granted: tab.granted, title: tab.granted ? tab.title : '', url: tab.granted ? modelUrl(tab.url) : '', busy: Boolean(tab.pending), status: tab.status })
   const touch = tab => { tab.lastSeen = now() }
+  function trace(event, tab, reason = null, observedTurn) {
+    try {
+      const turn = observedTurn ?? turnOf?.(tab.binding.sessionId)
+      onTrace(Object.freeze({ event, reason, tabId: tab.id, sessionId: tab.binding.sessionId, expectedTurn: tab.expectedTurn ?? null, currentTurn: turn?.turn ?? null, runId: tab.runId, expectedRunId: tab.runId, currentRunId: turn?.runId ?? null, epoch: tab.epoch, grantRevision: tab.revision }))
+    } catch {}
+  }
   function get(id) {
     const tab = tabs.get(identifier(id, 'tab'))
     if (disposed || !tab) throw fail('BROWSER_CLOSED', 'The browser tab is closed or no longer connected.')
@@ -27,7 +33,9 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
     error ? pending.reject(error) : pending.resolve(value)
   }
   function revoke(tab, reason = 'taken-over') {
-    tab.granted = false; tab.runId = null; tab.revision++; tab.status = reason
+    tab.granted = false; tab.revision++; tab.status = reason
+    trace('revoke', tab, reason)
+    tab.runId = null; tab.ownerToken = null; tab.ownerClaimed = false
     // Revoke queue authority synchronously, before any runner interrupt callback.
     settle(tab, fail('BROWSER_REVOKED', `Browser control ended: ${reason}. A sent input cannot be undone; do not retry it automatically.`))
     try { onRevoke({ ...publicTab(tab), reason }) } catch {}
@@ -35,13 +43,15 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
   async function verify(tab, binding) {
     const current = await contextOf(tab.binding.sessionId)
     if (!same(tab.binding, { ...current, profile }) || binding && !same(tab.binding, binding)) {
+      trace('verify-failure', tab, 'workspace-changed')
       revoke(tab, 'workspace-changed'); throw fail('BROWSER_SCOPE', 'The browser session or workspace changed.')
     }
     if (tab.granted) {
       const turn = turnOf?.(tab.binding.sessionId)
-      if (!turn || turn.turn > tab.expectedTurn || turn.turn === tab.expectedTurn && (!turn.runId || tab.runId && turn.runId !== tab.runId)) { revoke(tab, 'turn-ended'); throw fail('BROWSER_RUN', 'The browser grant is no longer bound to the current or next authorized turn.') }
+      if (tab.observedTurn !== turn?.turn || tab.observedRunId !== turn?.runId) { trace('turnchange', tab, null, turn); tab.observedTurn = turn?.turn; tab.observedRunId = turn?.runId }
+      if (!turn || turn.turn > tab.expectedTurn || turn.turn === tab.expectedTurn && (!turn.runId || tab.runId && turn.runId !== tab.runId)) { trace('verify-failure', tab, 'turn-ended', turn); revoke(tab, 'turn-ended'); throw fail('BROWSER_RUN', 'The browser grant is no longer bound to the current or next authorized turn.') }
     }
-    if (tab.granted && now() - tab.lastSeen > heartbeatMs) { revoke(tab, 'disconnected'); throw fail('BROWSER_OFFLINE', 'The visible browser stopped responding.') }
+    if (tab.granted && now() - tab.lastSeen > heartbeatMs) { trace('verify-failure', tab, 'disconnected'); revoke(tab, 'disconnected'); throw fail('BROWSER_OFFLINE', 'The visible browser stopped responding.') }
   }
   const sweep = setInterval(() => { for (const tab of tabs.values()) if (tab.granted && now() - tab.lastSeen > heartbeatMs) revoke(tab, 'disconnected') }, Math.min(heartbeatMs, 1000))
   sweep.unref?.()
@@ -53,13 +63,20 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       if (!current || current.sessionId !== sessionId || typeof current.workspace !== 'string') throw fail('BROWSER_SCOPE', 'Open an existing conversation with a workspace.')
       for (const old of tabs.values()) if (old.binding.sessionId === sessionId && old.clientTabId === clientTabId) { revoke(old, 'replaced'); tabs.delete(old.id) }
       if (tabs.size >= 32) throw fail('BROWSER_LIMIT', 'Close a browser tab before opening another.')
-      const tab = { id: randomUUID(), capability: randomUUID() + randomUUID(), clientTabId, binding: { ...current, profile }, epoch: 0, revision: 0, visible: false, granted: false, title: '', url: '', runId: null, pending: null, lastSeen: now(), status: 'manual' }
+      const tab = { id: randomUUID(), capability: randomUUID() + randomUUID(), clientTabId, binding: { ...current, profile }, epoch: 0, revision: 0, visible: false, granted: false, title: '', url: '', runId: null, ownerToken: null, ownerClaimed: false, pending: null, lastSeen: now(), status: 'manual' }
       tabs.set(tab.id, tab)
       return { ...publicTab(tab), capability: tab.capability, workspace: tab.binding.workspace }
     },
-    async list(binding) {
+    async list(binding, { ownerToken = null, assertCurrent } = {}) {
       const result = []
-      for (const tab of tabs.values()) if (same(tab.binding, binding)) { try { await verify(tab, binding); result.push(publicTab(tab)) } catch {} }
+      for (const tab of tabs.values()) if (same(tab.binding, binding)) { try {
+        await verify(tab, binding)
+        assertCurrent?.()
+        if (ownerToken !== null && (!tab.granted || !tab.visible)) continue
+        if (tab.ownerClaimed && tab.ownerToken !== ownerToken) continue
+        if (ownerToken !== null) { tab.ownerClaimed = true; tab.ownerToken = ownerToken }
+        result.push(publicTab(tab))
+      } catch {} }
       return { tabs: result, runtime: 'dsh', nativeRuntimes: [], experimental: true }
     },
     async sync(args) {
@@ -82,10 +99,13 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       const turn = turnOf?.(tab.binding.sessionId)
       if (!turn || !Number.isSafeInteger(turn.turn) || turn.turn < 0) throw fail('BROWSER_RUN', 'The DSH turn boundary is unavailable.')
       tab.expectedTurn = turn.runId ? turn.turn : turn.turn + 1
-      tab.granted = true; tab.runId = turn.runId ?? null; tab.revision++; tab.status = 'ready'; touch(tab)
+      tab.granted = true; tab.runId = turn.runId ?? null; tab.ownerToken = null; tab.ownerClaimed = false; tab.revision++; tab.status = 'ready'; touch(tab)
+      tab.observedTurn = turn.turn; tab.observedRunId = turn.runId
+      trace('grant', tab, null, turn)
       return publicTab(tab)
     },
     revoke(args) { const tab = authenticate(args); revoke(tab, 'taken-over'); touch(tab); return publicTab(tab) },
+    revokeOwner(ownerToken) { for (const tab of tabs.values()) if (tab.granted && tab.ownerClaimed && tab.ownerToken === ownerToken) revoke(tab, 'native-run-ended') },
     close(args) { const tab = authenticate(args); revoke(tab, 'closed'); tabs.delete(tab.id); return { closed: true } },
     async poll(args) {
       const tab = authenticate(args)
@@ -119,17 +139,18 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       else settle(tab, null, { tabId: tab.id, epoch: tab.epoch, grantRevision: tab.revision, untrustedPageContent: true, result: boundedResult(args.result) })
       return { acknowledged: true }
     },
-    async execute(binding, args, { signal, runId, turnNumber, assertCurrent } = {}) {
+    async execute(binding, args, { signal, runId, turnNumber, assertCurrent, ownerToken = null } = {}) {
       const tab = get(args.tabId)
       await verify(tab, binding)
       signal?.throwIfAborted(); assertCurrent?.()
       if (!tab.visible || !tab.granted) throw fail('BROWSER_GRANT', 'Ask the user to show this tab and enable AI access. Manual browsing remains available.')
+      if (tab.ownerClaimed && tab.ownerToken !== ownerToken) throw fail('BROWSER_OWNER', 'This browser grant belongs to another tool or native run. Ask for a new explicit grant.')
       if (args.epoch !== tab.epoch || args.grantRevision !== tab.revision) throw fail('BROWSER_STALE', 'Refresh browser state; this command refers to an old document or grant.')
       if (typeof runId !== 'string' || !runId || !Number.isSafeInteger(turnNumber)) throw fail('BROWSER_RUN', 'A live owning DSH turn is required.')
       if (tab.expectedTurn !== turnNumber || tab.runId && tab.runId !== runId) { revoke(tab, 'run-changed'); throw fail('BROWSER_RUN', 'This browser grant belongs to a different turn. Ask for a new grant.') }
       if (tab.pending) throw fail('BROWSER_BUSY', 'Wait for the current browser command; do not dispatch concurrently.')
       const command = validateCommand(args.command)
-      tab.runId = runId
+      tab.runId = runId; tab.ownerToken = ownerToken; tab.ownerClaimed = true
       return new Promise((resolve, reject) => {
         const pending = { id: randomUUID(), epoch: tab.epoch, revision: tab.revision, command, delivered: false, resolve, reject, signal, assertCurrent }
         pending.abort = () => revoke(tab, 'cancelled')

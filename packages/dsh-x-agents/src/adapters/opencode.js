@@ -66,7 +66,11 @@ function nativeReason(error, fallback) { return typeof error?.data?.message === 
 function summarize(parts) { return (parts || []).filter(part => part.type === 'text' && !part.ignored).map(part => part.text || '').join('\n') }
 function usageOf(info) { return info?.tokens ? { tokens: info.tokens, ...(typeof info.cost === 'number' ? { cost: info.cost } : {}) } : undefined }
 
-export function createOpenCodeAdapter({ fetch = globalThis.fetch, config = {} } = {}) {
+export function createOpenCodeAdapter({ fetch = globalThis.fetch, config = {}, managedScope } = {}) {
+  // Trusted same-process injection only. A managed owner supplies its live
+  // lifetime and empty working directory; derived request signals are allowed.
+  // Tool arguments cannot create this scope.
+  const owns = (cwd, signal) => managedScope && managedScope.cwd === cwd && managedScope.signal && !managedScope.signal.aborted && signal && !signal.aborted
   const redactor = createRedactor(config)
   let identityEndpoint = 'unconfigured'
   try { identityEndpoint = loopbackEndpoint(config.endpoint || config.baseUrl) } catch {}
@@ -96,7 +100,7 @@ export function createOpenCodeAdapter({ fetch = globalThis.fetch, config = {} } 
     cachedProtocol = api
     // /provider is an instance-scoped route. Native instance initialization
     // can load project plugins; a GET is not proof of side-effect freedom.
-    if (sandboxPolicy?.mode !== 'danger-full-access' || trustedExternalRuntime !== true) {
+    if (!owns(cwd, signal) && (sandboxPolicy?.mode !== 'danger-full-access' || trustedExternalRuntime !== true)) {
       return { http, api, available: false, version: health.version, authenticated: true, providerAuthentication: 'unverified', models: [], capabilities: api.capabilities,
         reason: 'Project/provider discovery can initialize OpenCode’s native project instance. It requires an unrestricted host and explicit trust in this external runtime.' }
     }
@@ -126,7 +130,7 @@ export function createOpenCodeAdapter({ fetch = globalThis.fetch, config = {} } 
   }
 
   async function run({ prompt, model, cwd, nativeSessionId, signal, onEvent = async () => {}, requestPermission, requestInput, sandboxPolicy, trustedExternalRuntime } = {}) {
-    if (sandboxPolicy?.mode !== 'danger-full-access' || trustedExternalRuntime !== true) {
+    if (!owns(cwd, signal) && (sandboxPolicy?.mode !== 'danger-full-access' || trustedExternalRuntime !== true)) {
       return blocked('OpenCode runs in a separate server and cannot inherit the host sandbox. An unrestricted host and explicit trust in this external runtime are required.', nativeSessionId)
     }
     if (typeof prompt !== 'string' || !prompt.trim()) return blocked('A non-empty prompt is required.', nativeSessionId)

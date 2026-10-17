@@ -8,6 +8,8 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
   let state = { status: 'loading', granted: false, visible: false, epoch: 0, grantRevision: 0, ready: false, url: '', title: '', error: null, busy: false, tabId: null }
   const publish = patch => { if (disposed) return; state = { ...state, ...patch }; for (const callback of listeners) callback() }
   const auth = () => ({ tabId: registration.tabId, capability: registration.capability })
+  const stopReason = error => ({ BROWSER_RUN: 'turn-ended', BROWSER_SCOPE: 'workspace-changed', BROWSER_STALE: 'document-changed', BROWSER_CLOSED: 'closed', BROWSER_REVOKED: 'stopped' })[error?.code] ?? 'disconnected'
+  const errorDetail = error => `${/^BROWSER_[A-Z_]{1,50}$/.test(error?.code ?? '') ? `[${error.code}] ` : ''}${String(error?.message ?? 'Browser connection failed.')}`.slice(0, 300)
   async function call(method, payload) {
     const abort = new AbortController(); requests.add(abort)
     const timeout = setTimeout(() => abort.abort(), 12000)
@@ -66,7 +68,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
       if (state.granted && !result.granted) { await takeover(result.status); return }
       if (result.command) void execute(result.command)
     } catch (error) {
-      if (!disposed && ownGeneration === generation) { await takeover('disconnected'); publish({ error: String(error.message ?? 'Browser connection failed.').slice(0, 300) }) }
+      if (!disposed && ownGeneration === generation) { await takeover(stopReason(error)); publish({ error: errorDetail(error) }) }
     } finally { pumping = false; for (const done of pumpWaiters.splice(0)) done(); if (!disposed && !granting) timer = setTimeout(pump, pollMs) }
   }
   const visibility = () => { if (documentObject?.hidden) void takeover('hidden') }

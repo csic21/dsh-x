@@ -6,6 +6,7 @@ Native runtime delegation for DSH 0.2.1-alpha.5. DSH coordinates the current hos
 
 - Codex app-server stdio: persistent native thread identity, explicit continuation, assistant/tool/plan/usage events, one-time native permission decisions, supported structured questions, cancellation and process cleanup.
 - OpenCode HTTP/OpenAPI/SSE: existing authenticated loopback server, native sessions, model discovery, event stream, permission/question responses, explicit resume and abort. Requires explicit trusted-external configuration and a host policy that already permits that mode. Restricted hosts report unsupported; this plugin never weakens host settings.
+- Experimental owned OpenCode browser mode: fresh per-operation native service and home, public zero-price catalog only, managed host confinement, explicit per-run Browser opt-in, and existing DSH Browser approvals. No continuation, account credentials or global MCP registration. See [the pinned protocol and isolation notes](src/adapters/opencode-owned-protocol.md).
 - Agents input-dock entry and right sidebar, current task separate from historical tool cards, Chinese/English, runtime/model discovery, guarded composer insertion and exact-run cancellation.
 - Claude: pinned official Agent SDK 0.3.302 / native CLI 2.1.302 with managed process injection, native session continuation, streamed tools/results and one-time requests. This adapter supports explicitly configured API / official cloud-provider authentication, not a custom Claude subscription login flow.
 - Grok: official CLI 1.0.62 ACP over owned stdio (`agent --no-leader`), native sessions/models, tools, one-time permissions, user questions and cancellation. No background leader attachment or automatic login.
@@ -25,14 +26,16 @@ npm run build
 dsh plugin --profile web add link:$(pwd)/packages/dsh-x-agents
 ```
 
-The root `scripts/link-plugins.mjs` links all four plugins. No kernel modification is needed. Existing Plan, Stock and Chat remain available. An active Plan must be completed or explicitly abandoned before external execution; Agents does not bypass Plan approval/scope.
+The root `scripts/link-plugins.mjs` links the configured plugin suite. No kernel modification is needed. Existing Plan, Stock and Chat remain available. An active Plan must be completed or explicitly abandoned before external execution; Agents does not bypass Plan approval/scope.
 
 ## Runtime setup
 
-Install and sign into vendor tools yourself using their official instructions. The plugin does not run `npx`, install arbitrary adapters, create credentials or launch browser login flows.
+For account-backed modes, install and sign into vendor tools yourself using their official instructions. The plugin does not run `npx`, install arbitrary adapters, create credentials or launch browser login flows.
 
 - Codex: official https://developers.openai.com/codex/app-server/ and https://github.com/openai/codex . Set `DSH_X_AGENTS_CODEX_COMMAND` to the trusted installed executable if it is not `codex`. Optional plugin `codex.codexHome` binds a separate absolute native profile. Discovery initializes app-server, reads account/model availability and exits; it does not start a model turn.
-- OpenCode: official https://opencode.ai/docs/server/ . Connect an existing password-protected loopback service through `DSH_X_AGENTS_OPENCODE_URL`, `DSH_X_AGENTS_OPENCODE_USERNAME` and the locally supplied `DSH_X_AGENTS_OPENCODE_PASSWORD`. Do not put passwords in plugin source, URLs, prompts or committed configuration. There is no automatic server startup or credential generation. `trustedExternalRuntime: true` is an explicit administrator selection, not a recommended default. A supported isolated service deployment should be preferred once the host can establish it.
+- OpenCode existing-server mode: official https://opencode.ai/docs/server/ . Connect an existing password-protected loopback service through `DSH_X_AGENTS_OPENCODE_URL`, `DSH_X_AGENTS_OPENCODE_USERNAME` and the locally supplied `DSH_X_AGENTS_OPENCODE_PASSWORD`. Do not put passwords in plugin source, URLs, prompts or committed configuration. There is no automatic server startup or credential generation. `trustedExternalRuntime: true` is an explicit administrator selection, not a recommended default. The separate opt-in owned browser mode below does not use this server or its credentials.
+
+Owned browser-only setup: configure `opencode: { mode: 'owned-browser', executable: '/absolute/path/to/opencode' }` using the inspected official v1.19.3 binary. Use an isolated writable workspace outside a Git checkout. Prepare the model catalog with official approval, select an advertised `free:true` entry, then start a new task; add `browser:true` only when the user explicitly wants the granted embedded Browser. The native runtime can install its own official helper dependencies into temporary state. See [exact restrictions and lifecycle](src/adapters/opencode-owned-protocol.md).
 
 OpenCode's server authentication proves access to that server, not successful model-provider authentication. Models may still reject requests because of provider setup or billing. Provider-specific errors are reported without silently switching to another agent/model.
 
@@ -51,7 +54,7 @@ The first approved turn can use the native default model. Advertised models from
 
 Every turn starts inside an actual DSH tool invocation and open host turn, with official DSH approval. Native requests retain their own request/session identity and a unique offered one-time choice. Host `allowed-once` never maps to permanent/session-wide approval. Rejection maps to a documented native reject choice; cancelled/unavailable/ambiguous requests are not granted. Sensitive or incompletely displayed permission scopes fail closed. Unsupported secure input requires the vendor's own secure flow.
 
-Native subprocesses inherit the resolved DSH file-effect policy when the host supports full enforcement, plus each adapter's stated native permission controls (Codex has an on-request/workspace-write ceiling). DSH file-effect confinement is **not** a claim of network isolation, secret-read isolation or protection against all external processes. OpenCode explicitly provides no OS sandbox (https://github.com/anomalyco/opencode/blob/v1.19.3/SECURITY.md); its permission dialogs do not substitute for one. HTTP execution is blocked in restricted host modes.
+Native subprocesses inherit the resolved DSH file-effect policy when the host supports full enforcement, plus each adapter's stated native permission controls (Codex has an on-request/workspace-write ceiling). DSH file-effect confinement is **not** a claim of network isolation, secret-read isolation or protection against all external processes. OpenCode explicitly provides no OS sandbox (https://github.com/anomalyco/opencode/blob/v1.19.3/SECURITY.md); its permission dialogs do not substitute for one. Existing external-server HTTP execution is blocked in restricted host modes. Owned browser mode spawns its own managed process and requires full host confinement when the host is restricted.
 
 Native runtimes may need to write their own state directories during startup. Those writes must already be permitted by the host policy; the plugin does not add filesystem exceptions or loosen the policy. A constrained host may therefore report setup or startup failure even when the executable is installed.
 
@@ -69,7 +72,7 @@ Events and history have bounded storage budgets. Old stream events can be trimme
 
 Tests use explicit synthetic protocol fixtures and the real official DSH ToolRuntime/approval/subprocess services. No fixture result establishes real vendor model quality, billing or account access. See `VALIDATION.md` for exact observed results and limitations.
 
-Profile isolation here covers workbench records and task identity. It does not automatically create separate vendor accounts or billing: Codex may share its configured `CODEX_HOME`, Claude its `configDir`, Grok its `nativeHome`, and OpenCode uses the existing server's provider credentials. Configure distinct vendor profiles explicitly when that separation is required. OpenCode cancellation establishes the native service's reported idle/pending-request state, not independent proof that every OS descendant process has exited.
+Profile isolation here covers workbench records and task identity. It does not automatically create separate vendor accounts or billing: Codex may share its configured `CODEX_HOME`, Claude its `configDir`, Grok its `nativeHome`, and existing-server OpenCode uses that server's provider credentials. Owned browser-only OpenCode instead uses a new empty native home and public free route for each operation. Configure distinct vendor profiles explicitly when that separation is required. OpenCode cancellation establishes the native service's reported idle/pending-request state, not independent proof that every OS descendant process has exited.
 
 ### Prepare and refresh model catalogs
 

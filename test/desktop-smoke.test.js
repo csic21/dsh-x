@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apply } from '../scripts/fixtures/desktop-browser-smoke/index.js';
 const message = (role, text) => ({ role, content: [{ type: 'text', text }] });
-function fixture() { let adapter; apply({ effect: f => f(), llm: { registerAdapter: (_, value) => { adapter = value; } } }); return adapter; }
+function fixture() { let adapter; apply({ on: () => {}, effect: f => f(), llm: { registerAdapter: (_, value) => { adapter = value; } } }); return adapter; }
 async function collect(it) { const items = []; for await (const item of it) items.push(item); return items; }
 test('desktop fixture only dispatches explicit finite browser tools', async () => {
   const events = await collect(fixture().stream({ messages: [message('user', JSON.stringify({ id: 'tabs', tool: 'dsh_x_browser_tabs', arguments: {} }))] }));
@@ -51,4 +51,19 @@ test('desktop visible flow keeps all browser actions in one host turn', async ()
   }
   assert.deepEqual(actions, ['tabs', 'observe', 'type', 'observe', 'click']);
   assert.equal(messages.filter(m => m.role === 'user').length, 1);
+});
+test('desktop fixture reports missing grants immediately with actual tab evidence', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-browser-grant-'));
+  const old = process.env.DSH_BROWSER_SMOKE_RESULTS; process.env.DSH_BROWSER_SMOKE_RESULTS = root;
+  try {
+    const messages = [message('user', JSON.stringify({ id: 'expired', tool: 'dsh_x_browser_tabs', scenario: 'visible-flow' })),
+      { role: 'assistant', content: [{ type: 'tool-call', name: 'dsh_x_browser_tabs', id: 'desktop-smoke-expired-0', arguments: '{}' }] },
+      { ...message('tool', JSON.stringify({ tabs: [{ tabId: 'tab', granted: false, visible: true }] })), toolCallId: 'desktop-smoke-expired-0' }];
+    await assert.rejects(collect(fixture().stream({ messages })), /No visible granted/);
+    const value = JSON.parse(readFileSync(join(root, 'expired.json')));
+    assert.equal(value.isError, true); assert.equal(JSON.parse(value.text).result.tabs[0].granted, false);
+  } finally { if (old === undefined) delete process.env.DSH_BROWSER_SMOKE_RESULTS; else process.env.DSH_BROWSER_SMOKE_RESULTS = old; rmSync(root, { recursive: true, force: true }); }
+  const source = readFileSync(new URL('../scripts/desktop-browser-smoke.mjs', import.meta.url), 'utf8');
+  const idle = source.indexOf("await page.getByRole('button', { name: /^(Stop generating|停止生成)$/ }).waitFor({ state: 'hidden' });");
+  assert(idle > 0 && idle < source.indexOf("await page.getByTestId('dxb-enable-ai').click()"));
 });

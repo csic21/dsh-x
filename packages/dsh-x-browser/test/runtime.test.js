@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as plugin from '../index.js'
 async function harness(t, options = {}) {
@@ -54,4 +54,53 @@ test('official tool cancellation revokes queue and late results cannot report su
   assert.equal((await pending).isError, true)
   await assert.rejects(h.rpc('ack', { ...h.auth, commandId: command.id, epoch: 1, grantRevision: h.identity.grantRevision, result: { text: 'late' } }))
   assert.equal((await h.rpc('poll', h.auth)).granted, false)
+})
+
+test('real nested ToolRuntime children retain one native parent and stable run lifetime after a child settles', async t => {
+  const h = await harness(t), run = new AbortController()
+  let list, childSettled = false
+  const stopped = new Promise(resolve => run.signal.addEventListener('abort', resolve, { once: true }))
+  h.ctx.tools.register(defineTool({ name: 'native_browser_fixture', description: 'Synthetic parent execution fixture.', parameters: {},
+    output: { schema: { type: 'object', properties: {}, additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute(_args, exec) {
+      const close = h.ctx.get('dshXBrowserOwnership').bind(exec.token, { runtime: 'opencode', nativeRunId: 'native-fixture', signal: run.signal })
+      const invoke = (name, args) => h.ctx.tools.execute({ name, arguments: args, agent: exec.agent, signal: run.signal, callId: crypto.randomUUID(), rootCallId: exec.rootCallId, parent: exec.token })
+      try {
+        list = await invoke('dsh_x_browser_tabs', {})
+        assert.equal(list.isError, false); assert.equal(list.value.runtime, 'opencode'); assert.deepEqual(list.value.nativeRuntimes, ['opencode'])
+        const observed = await invoke('dsh_x_browser_action', { ...h.identity, action: 'observe' })
+        assert.equal(observed.isError, false); childSettled = true
+        await stopped
+        return {}
+      } finally { close() }
+    },
+  }))
+  const parent = h.invoke('native_browser_fixture'), command = await h.delivery()
+  await h.rpc('ack', { ...h.auth, commandId: command.id, epoch: 1, grantRevision: h.identity.grantRevision, result: { text: 'Native fixture' } })
+  for (let i = 0; !childSettled && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 1))
+  assert.equal(childSettled, true); assert.equal((await h.rpc('poll', h.auth)).granted, true)
+  run.abort()
+  assert.equal((await h.rpc('poll', h.auth)).granted, false)
+  assert.equal((await parent).isError, false)
+})
+
+test('closed native parent cannot fall back to direct DSH after the user grants the tab again', async t => {
+  const h = await harness(t), signal = new AbortController().signal
+  let parent
+  h.ctx.tools.register(defineTool({ name: 'native_owner_fixture', description: 'Synthetic owner fixture.', parameters: {},
+    output: { schema: { type: 'object', properties: {}, additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute(_args, exec) {
+      parent = { agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId }
+      const close = h.ctx.get('dshXBrowserOwnership').bind(exec.token, { runtime: 'opencode', nativeRunId: 'closed-native', signal })
+      try { return (await h.ctx.tools.execute({ ...parent, name: 'dsh_x_browser_tabs', arguments: {}, signal, callId: crypto.randomUUID() })).value } finally { close() }
+    },
+  }))
+  assert.equal((await h.invoke('native_owner_fixture')).isError, false)
+  const stopped = await h.rpc('poll', h.auth)
+  const granted = await h.rpc('grant', { ...h.auth, epoch: 1, grantRevision: stopped.grantRevision })
+  for (const [name, args] of [['dsh_x_browser_tabs', {}], ['dsh_x_browser_action', { ...h.identity, grantRevision: granted.grantRevision, action: 'observe' }]]) {
+    const stale = await h.ctx.tools.execute({ ...parent, name, arguments: args, signal, callId: crypto.randomUUID() })
+    assert.equal(stale.isError, true); assert.match(stale.content[0].text, /no live Browser owner/)
+  }
+  assert.equal((await h.rpc('poll', h.auth)).command, null)
 })

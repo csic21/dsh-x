@@ -1,6 +1,6 @@
 {
   "status": "passed",
-  "startedAt": "2026-10-17T12:17:59.422Z",
+  "startedAt": "2026-10-17T13:19:19.215Z",
   "runtime": "0.2.1-alpha.5",
   "checks": [
     {
@@ -60,7 +60,7 @@
     {
       "name": "dsh-x-agents",
       "version": "0.1.0",
-      "integrity": "sha512-1r01IknqIFzA4q49xgG9us7vLZwNLpAdoxbX1g2BFzXfx9+078jYEy+tsbWfwD5GTJnFpKEJ5RW7N7vFPrg+UQ==",
+      "integrity": "sha512-61/5STQbpKiKL/KCfmPH32r4vQxCg2D2FXQw5hgBwTYXLih5+GbLdUlRFT1TQsO+q0nDRfVFJ8URqu1Y7yG0/w==",
       "fixture": false
     },
     {
@@ -94,5 +94,5 @@
       "fixture": true
     }
   ],
-  "completedAt": "2026-10-17T12:18:44.986Z"
+  "completedAt": "2026-10-17T13:20:05.399Z"
 }

@@ -87,3 +87,12 @@ test('local takeover while host confirmation is pending prevents input and late 
   assert.equal(sent, false); assert.equal(f.active(), false)
   assert.equal(f.calls.filter(call => call.name === 'browser/ack').length, 0)
 })
+
+test('a turn-ended poll failure revokes control with its actual reason, not a connection-loss label', async t => {
+  const f = fixture({ sync: (_count, current) => current.granted ? { ok: false, error: { code: 'BROWSER_RUN', message: 'The authorized turn ended.' } } : null }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick(); await f.controller.grant()
+  for (let i = 0; f.controller.getSnapshot().granted && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 1))
+  const state = f.controller.getSnapshot()
+  assert.equal(state.granted, false); assert.equal(state.status, 'turn-ended'); assert.match(state.error, /\[BROWSER_RUN\]/)
+  assert.equal(f.active(), false); assert.equal(f.serverGranted(), false)
+})

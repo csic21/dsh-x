@@ -5,6 +5,8 @@ import { createAgentsController, RUNTIMES } from './src/controller.js'
 import { createAgentsRoute } from './src/routes.js'
 import { createCodexAdapter } from './src/adapters/codex.js'
 import { createOpenCodeAdapter } from './src/adapters/opencode.js'
+import { createOwnedOpenCodeAdapter } from './src/adapters/opencode-owned.js'
+import { bindNativeBrowser, isBrowserChild } from './src/browser-bridge.js'
 import { createClaudeAdapter } from './src/adapters/claude.js'
 import { createGrokAdapter } from './src/adapters/grok.js'
 
@@ -14,6 +16,8 @@ const reads = new Set(['read','read_image','glob','grep','web_search','web_fetch
 const codeWrappers = new Set(['dsh_x_code_review', 'dsh_x_code_repair'])
 export function apply(ctx, config = {}) {
   const store = createTaskStore(ctx.profileContext.dir)
+  const browserTickets = new Map()
+  const browserChild = exec => isBrowserChild(exec,browserTickets)
   const controller = createAgentsController({ store,
     cwdOf: exec => ctx.workingDirectory.ensure(exec.agent, exec.signal),
     policyOf: exec => ctx.get('sandboxPolicy')?.resolve({ session: exec.agent.session }),
@@ -41,10 +45,16 @@ export function apply(ctx, config = {}) {
       }
 
       if (runtime === 'codex') return createCodexAdapter({ spawn, config: { executable: process.env.DSH_X_AGENTS_CODEX_COMMAND ?? 'codex', ...config.codex } })
+      if (runtime === 'opencode' && config.opencode?.mode === 'owned-browser') return createOwnedOpenCodeAdapter({spawn,fetch:globalThis.fetch,config:config.opencode})
       if (runtime === 'opencode') return createOpenCodeAdapter({ fetch: globalThis.fetch, config: { endpoint: process.env.DSH_X_AGENTS_OPENCODE_URL, password: process.env.DSH_X_AGENTS_OPENCODE_PASSWORD, username: process.env.DSH_X_AGENTS_OPENCODE_USERNAME ?? 'opencode', ...config.opencode } })
       if (runtime === 'claude') return createClaudeAdapter({ spawn, config: { ...(process.env.DSH_X_AGENTS_CLAUDE_COMMAND ? { executable: process.env.DSH_X_AGENTS_CLAUDE_COMMAND } : {}), ...config.claude } })
       if (runtime === 'grok') return createGrokAdapter({ spawn, config: { executable: process.env.DSH_X_AGENTS_GROK_COMMAND ?? 'grok', ...config.grok } })
       throw fail('AGENTS_RUNTIME', 'Unknown native runtime.')
+    },
+    bindBrowser: async (exec, {runId, signal, assertCurrent}) => {
+      const ownership=ctx.get('dshXBrowserOwnership')
+      if (!ownership || !ctx.tools.get('dsh_x_browser_tabs') || !ctx.tools.get('dsh_x_browser_action')) throw fail('AGENTS_BROWSER','The Browser ownership service is unavailable.')
+      return bindNativeBrowser({exec,runId,signal,assertCurrent,ownership,tickets:browserTickets,execute:args=>ctx.tools.execute(args)})
     },
     approve: async (exec, request, signal) => {
       const service = ctx.get('approval')
@@ -76,6 +86,7 @@ export function apply(ctx, config = {}) {
     && (!lease.readOnly || exec.arguments?.readOnly === true)
   ctx.on('tools/execute', async (exec, next) => {
     const id = exec.agent?.session?.id
+    if (browserChild(exec)) {const ticket=browserTickets.get(exec.callId);if(ticket.consumed)throw fail('AGENTS_REPLAY','Native browser invocation was already consumed.');ticket.consumed=true;return next()}
     if (!id || reads.has(exec.name)) return next()
     if (['dsh_x_agents_run','dsh_x_agents_models'].includes(exec.name) || codeWrappers.has(exec.name)) {
       const existing = pending.get(id)
@@ -103,11 +114,13 @@ export function apply(ctx, config = {}) {
   ctx.tools.register(defineTool({ name: 'dsh_x_agents_models', description: 'Explicitly initialize one native runtime to read its model catalog without a task prompt. Requires official approval; initialization can load native configuration. A listed model is not verified account access.', parameters: {runtime:{type:'string',required:true,enum:[...RUNTIMES]},scope:{type:'string',required:true}}, output, execute:(args,exec)=>controller.models(args,exec) }))
   ctx.tools.register(defineTool({ name: 'dsh_x_agents_run', description: 'Delegate one turn to Codex, OpenCode, Claude or Grok native agent. Requests official approval, preserves native session identity, streams actual events. Setup or policy gaps block execution.', parameters: {
     runtime: { type: 'string', required: true, enum: [...RUNTIMES] }, prompt: { type: 'string', required: true }, model: { type: 'string' }, taskId: { type: 'string' }, expectedRevision: { type: 'integer' }, scope: { type: 'string' },
+    browser: { type: 'boolean', description: 'Explicitly enable the user-granted embedded Browser tools for this owned OpenCode run only. Other runtime modes are unsupported.' },
     readOnly: { type: 'boolean', description: 'Tighten this native turn to read-only confinement without changing host settings. Native permission escalations and external OpenCode are blocked.' },
   }, output, execute: (args, exec) => controller.run(args, exec) }))
   ctx.effect(() => ctx.tools.guard(exec => {
     const id = exec.agent?.session?.id
     const lease = pending.get(id)
+    if (browserChild(exec)) return
     if (id && (controller.isRunning(id) || store.hasLock(id)
       || lease && lease.owner !== exec.token && !ownsChild(exec, lease)) && !reads.has(exec.name)) return 'An external agent run owns this session. Wait for it to stop; concurrent writes are blocked.'
   }), 'agents: session ownership')

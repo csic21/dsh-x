@@ -19,6 +19,7 @@ No upstream source is modified, copied into this package or patched at runtime. 
 - Fixed DOM-helper unit tests: no input values or obvious password/OTP/card targets; bounded JSON arguments cannot become page code; URL query/hash omission.
 - Compiled UI registration with the real published locale runtime, English/Chinese copy, honest web-only limitation, desktop-only disabled control and responsive styles.
 - Real published official ToolRuntime integration through the plugin's route/broker path, official approval acceptance/rejection and cancellation. The renderer/agent state is synthetic, not a real Electron runtime or paid model.
+- Native owner registration with real nested ToolRuntime children: one genuine parent per grant, no cross-parent metadata access, stable native-run cancellation after a child settles, and no claim after an owner closes during metadata lookup. These are synthetic ownership tests, not real OpenCode/provider proof.
 
 ## Passed packaged Windows smoke (published baseline)
 
@@ -32,7 +33,13 @@ The smoke used a deterministic loopback page and a synthetic offline LLM through
 
 Evidence artifact: `desktop-browser-proof-39032141251-1`, including `report.json`, `visible-browser-proof.png` and `user-takeover.png`. Reported client SHA-256: `1108bcea3f4b15862ab705654e897a737b99e18da677d67dec4f52fcdc6b8164`.
 
-This result applies to that exact published baseline. The subsequent pre-input host-confirmation change has passed local tests but requires a new packaged run. The baseline smoke does not establish AI navigation lifecycle, multiple tabs, close races, downloads, popup or permission behavior, macOS compatibility, or native-agent browser bridges.
+This result applies to that exact published baseline. The subsequent pre-input host-confirmation change and isolated OpenCode ownership integration have passed local tests but require their own runtime qualification. The baseline smoke does not establish AI navigation lifecycle, multiple tabs, close races, downloads, popup or permission behavior, macOS compatibility, or native-agent browser bridges.
+
+## Later failed qualification attempt
+
+[Windows run 39034154065](https://github.com/csic21/dsh-x/actions/runs/39034154065), plugin commit `b127f6510ca38db5cfbbc76c52210444d9017f65`, launched the same packaged runtime and a real guest but failed before the first observation: the initial tabs tool found no visible granted tab. No text input, click or additional lifecycle assertion passed in that run. Its failure report did not capture the underlying broker error, so the cause is not established.
+
+The proof driver now waits for the official host turn to finish before granting access, rather than only waiting for setup text to appear. Browser grant semantics remain unchanged. Additional local regressions show that a grant made during a finishing setup turn cannot authorize the following turn. The next run records bounded, redacted turn/run/revision transitions and the actual Browser error code; turn-ended errors are no longer labeled as connection loss. These diagnostic and sequencing changes still require packaged rerun evidence.
 
 ## Remaining packaged-app qualification
 
@@ -46,4 +53,4 @@ The dedicated Windows Desktop smoke in the packaging workflow launches the actua
 4. Guest permissions/popups/download restrictions remain in force.
 5. Screenshot and runtime identity evidence from the packaged application, not a web preview.
 
-Current status: **experimental, bounded Windows native smoke passed on the recorded baseline; latest cancellation change and broader lifecycle/restriction matrix pending**. Windows results do not by themselves validate macOS. Native-agent browser bridges and a default-suite promotion remain deferred.
+Current status: **experimental, bounded Windows native smoke passed on the recorded baseline; latest cancellation change, OpenCode integration and broader lifecycle/restriction matrix pending**. Windows results do not by themselves validate macOS. Codex/Claude/Grok browser bridges and a default-suite promotion remain deferred.

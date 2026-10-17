@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createBrowserBroker } from '../src/broker.js'
+import { createBrowserOwnership } from '../src/ownership.js'
 const scope = { profile: 'profile-a', sessionId: 'session-a', workspace: '/work/a' }
 async function fixture(options = {}) {
   const broker = createBrowserBroker({ profile: scope.profile, turnOf: () => ({ runId: 'run-a', turn: 1 }), contextOf: async id => ({ ...scope, sessionId: id }), ...options })
@@ -103,4 +104,50 @@ test('pre-input confirmation rejects a delivered command revoked while its page 
   assert.equal((await f.broker.confirm(request)).allowed, true)
   f.broker.revoke(f.auth); await rejection
   await assert.rejects(f.broker.confirm(request), { code: 'BROWSER_STALE' })
+})
+
+test('native grant is claimed by exactly one genuine parent and terminal run abort revokes a settled grant', async t => {
+  const f = await fixture(); t.after(() => f.broker.dispose())
+  const parent = Symbol('native-a'), other = Symbol('native-b'), abort = new AbortController()
+  const ownership = createBrowserOwnership({ onClose: token => f.broker.revokeOwner(token) }); t.after(() => ownership.dispose())
+  ownership.bind(parent, { runtime: 'opencode', nativeRunId: 'native-a', signal: abort.signal })
+  assert.equal((await f.broker.list(scope, { ownerToken: parent })).tabs.length, 1)
+  assert.deepEqual((await f.broker.list(scope, { ownerToken: other })).tabs, [])
+  assert.deepEqual((await f.broker.list(scope)).tabs, [])
+  await assert.rejects(f.action({ action: 'observe' }, { ownerToken: other }), { code: 'BROWSER_OWNER' })
+  const pending = f.action({ action: 'observe' }, { ownerToken: parent }); await new Promise(resolve => setImmediate(resolve))
+  const delivery = await f.broker.poll(f.auth)
+  await f.broker.acknowledge({ ...f.auth, commandId: delivery.command.id, epoch: 1, grantRevision: f.grant.grantRevision, result: {} }); await pending
+  abort.abort()
+  const status = await f.broker.poll(f.auth)
+  assert.equal(status.granted, false); assert.equal(status.status, 'native-run-ended')
+  assert.deepEqual((await f.broker.list(scope, { ownerToken: parent })).tabs, [])
+})
+
+test('native owner ending during an awaited metadata lookup cannot claim or disclose a grant', async t => {
+  let release, waiting = false
+  const f = await fixture({ contextOf: async id => { if (waiting) await new Promise(resolve => { release = resolve }); return { ...scope, sessionId: id } } }); t.after(() => f.broker.dispose())
+  const ownerToken = Symbol('native'), abort = new AbortController()
+  waiting = true
+  const listing = f.broker.list(scope, { ownerToken, assertCurrent: () => abort.signal.throwIfAborted() })
+  abort.abort(); waiting = false; release()
+  assert.deepEqual((await listing).tabs, [])
+  assert.equal((await f.broker.list(scope)).tabs.length, 1)
+})
+
+test('grant made during a finishing setup turn cannot silently authorize the following turn', async t => {
+  let boundary = { runId: 'setup', turn: 1 }
+  const traces = []
+  const f = await fixture({ turnOf: () => boundary, onTrace: event => traces.push(event) }); t.after(() => f.broker.dispose())
+  boundary = { runId: 'next', turn: 2 }
+  assert.deepEqual((await f.broker.list(scope)).tabs, [])
+  const stopped = await f.broker.poll(f.auth)
+  assert.equal(stopped.granted, false); assert.equal(stopped.status, 'turn-ended')
+  assert.deepEqual(traces.find(event => event.event === 'grant'), { event: 'grant', reason: null, tabId: f.tab.tabId, sessionId: scope.sessionId, expectedTurn: 1, currentTurn: 1, runId: 'setup', expectedRunId: 'setup', currentRunId: 'setup', epoch: 1, grantRevision: 1 })
+  const failure = traces.find(event => event.event === 'verify-failure')
+  assert.equal(failure.expectedTurn, 1); assert.equal(failure.currentTurn, 2); assert.equal(failure.expectedRunId, 'setup'); assert.equal(failure.currentRunId, 'next')
+  assert.doesNotMatch(JSON.stringify(traces), /token=secret|private|example.test|Fixture|capability|profile-a|\/work\/a/)
+  assert.equal(JSON.stringify(traces).includes(f.auth.capability), false)
+  await f.broker.grant({ ...f.auth, epoch: 1, grantRevision: stopped.grantRevision })
+  assert.equal((await f.broker.list(scope)).tabs[0].granted, true)
 })
