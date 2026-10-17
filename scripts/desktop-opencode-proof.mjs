@@ -113,9 +113,17 @@ try {
       const allow = page.getByRole('button', { name: /^(Allow once|允许一次)$/ });
       if (await allow.isVisible().catch(() => false)) {
         await shot(`${id}-approval-${++approval}`);
-        const reason = await page.locator('[data-approval-key] [data-approval-scroll]').innerText();
+        const panel = page.locator('[data-approval-key]');
+        assert.equal(await panel.count(), 1, 'Expected one exact approval request');
+        const key = await panel.getAttribute('data-approval-key');
+        assert(key && !/[\x00-\x1f]/.test(key), 'Invalid approval identity');
+        const exact = page.locator(`[data-approval-key=${JSON.stringify(key)}]`);
+        const headline = exact.locator('[data-approval-scroll] > div').first();
+        const reason = await headline.textContent();
         assert(approval <= 4 && approvalInScope(id, reason, args), 'Unexpected approval outside public hello/Google scope; stopping without approval');
-        assertActive(); report.approvals.push({ operation: id, reason }); await lifecycle.dispatch(() => allow.click());
+        assert.equal(await headline.textContent(), reason, 'Approval changed before decision');
+        assertActive(); report.approvals.push({ operation: id, key, reason });
+        await lifecycle.dispatch(() => exact.getByRole('button', { name: /^(Allow once|允许一次)$/ }).click());
       }
       try {
         const result = JSON.parse(await readFile(join(results, `${id}.json`), 'utf8'));
@@ -164,7 +172,7 @@ try {
   const completedBrowser = google.task.events.filter(event => event.type === 'tool' && event.data?.name === 'dsh_browser_action' && event.data?.state?.status === 'completed');
   assert(completedBrowser.some(event => event.data.state.input?.action === 'navigate' && event.data.state.input.url === 'https://www.google.com/'), 'No completed native browser navigation event');
   assert(completedBrowser.some(event => event.data.state.input?.action === 'observe'), 'No completed native page observation event');
-  assert(report.approvals.some(item => item.operation === '08-google' && item.reason.startsWith('Browser · navigate\n')), 'No approved native browser navigation');
+  assert(report.approvals.some(item => item.operation === '08-google' && approvalInScope('08-google', item.reason, {})), 'No approved native browser navigation');
   report.google = { guest: guestInfo, nativeSessionId: google.task.nativeSessionId, events: google.task.events, state: google.task.state };
   await shot('09-real-google-visible');
   await page.locator('.dxa-entry').click(); await page.locator('.dxa-current').scrollIntoViewIfNeeded(); await shot('10-native-browser-tool-result');

@@ -93,6 +93,16 @@ test('production client uses owned slots, scoped workspace, truthful native stat
     assert.equal(document.querySelector('select').value, 'codex')
     assert.equal([...document.querySelectorAll('option')].find(option => option.value === 'claude').disabled, true)
     assert.equal(document.querySelector('.dxa-prepare .dxa-primary').disabled, true)
+    // Both fields share the same grid row; catalog actions must not stretch one field.
+    const fields = document.querySelector('.dxa-selectors')
+    assert.equal(fields.children.length, 2)
+    assert.ok([...fields.children].every(field => field.tagName === 'LABEL' && field.querySelector('select')))
+    assert.equal(fields.querySelector('button'), null)
+    assert.ok(document.querySelector('.dxa-catalog-heading .dxa-model-request'))
+    const runtimeDetails = document.querySelector('.dxa-runtime-details')
+    assert.equal(runtimeDetails.open, false)
+    assert.match(runtimeDetails.textContent, /Fixture protocol only/)
+    assert.ok(document.querySelector('.dxa-prepare .dxa-availability'))
 
     // New adapter integration is driven by the actual catalog, not a static
     // provider label. An unconfigured integration stays unavailable.

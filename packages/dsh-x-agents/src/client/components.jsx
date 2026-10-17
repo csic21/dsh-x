@@ -17,11 +17,11 @@ function Availability({ agent, t }) {
   return <span className="dxa-availability">{t(`availability.${availability}`)}{availability !== 'not-integrated' && <> · {t(agent.authenticated === true ? 'auth.yes' : agent.authenticated === false ? 'auth.no' : 'auth.unknown')}</>}</span>
 }
 
-function ModelCatalog({ agent, t, formatTime }) {
+function ModelCatalog({ agent, t, formatTime, action }) {
   const catalog = agent.modelCatalog
   const status = catalog ? `modelCatalog.${catalog.status}` : agent.models.length ? 'modelsUntimed' : 'modelCatalog.not-loaded'
   return <div className="dxa-model-catalog" data-catalog-state={catalog?.status ?? 'legacy'}>
-    <p className={['stale', 'failed'].includes(catalog?.status) ? 'dxa-warning' : 'dxa-muted'} role="status">{t(status)}{(catalog?.fetchedAt || agent.models.length > 0) && <> · {t('modelsCount', { count: agent.models.length })}</>}</p>
+    <div className="dxa-catalog-heading"><p className={['stale', 'failed'].includes(catalog?.status) ? 'dxa-warning' : 'dxa-muted'} role="status">{t(status)}{(catalog?.fetchedAt || agent.models.length > 0) && <> · {t('modelsCount', { count: agent.models.length })}</>}</p>{action}</div>
     {catalog?.truncated && <p className="dxa-warning">{t('modelsPartial')}</p>}
     {catalog?.status === 'fresh' && agent.models.length === 0 && <p className="dxa-muted">{t('modelsEmpty')}</p>}
     {catalog?.error && <p className="dxa-raw dxa-warning">{catalog.error}</p>}
@@ -142,15 +142,14 @@ function Workspace({ state, sessionId, inputActions, cancel, refresh, t, formatT
         {!runtime && <option value="">{t('chooseAgent')}</option>}
         {snapshot.catalog.map(item => <option key={item.id} value={item.id} disabled={!canPrepare(item)}>{item.label}{item.reason === 'not-integrated' ? ` · ${t('availability.not-integrated')}` : item.available === false ? ` · ${t('availability.unavailable')}` : ''}</option>)}
       </select></label>
-      <div><label>{t('model')}<select value={model} disabled={!live || continueTask || (models.length === 0 && !model)} onChange={event => setModel(event.target.value)}><option value="">{t('nativeDefault')}</option>{!modelValid && <option value={model} disabled>{model} · {t('availability.unavailable')}</option>}{models.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-        <button type="button" className="dxa-model-request" onClick={getModels} disabled={!canGetModels} title={t('modelsRequestHint')}>{t(agent?.modelCatalog?.fetchedAt || models.length ? 'modelsUpdate' : 'modelsGet')}</button>
-      </div></div>
-      {agent && <ModelCatalog agent={agent} t={t} formatTime={formatTime} />}
+      <label>{t('model')}<select value={model} disabled={!live || continueTask || (models.length === 0 && !model)} onChange={event => setModel(event.target.value)}><option value="">{t('nativeDefault')}</option>{!modelValid && <option value={model} disabled>{model} · {t('availability.unavailable')}</option>}{models.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+      </div>
+      {agent && <ModelCatalog agent={agent} t={t} formatTime={formatTime} action={<button type="button" className="dxa-model-request" onClick={getModels} disabled={!canGetModels} title={t('modelsRequestHint')}>{t(agent?.modelCatalog?.fetchedAt || models.length ? 'modelsUpdate' : 'modelsGet')}</button>} />}
       <p className="dxa-muted">{t('modelsRequestHint')}</p>
       {!modelValid && <p className="dxa-warning" role="alert">{t('error.model-unavailable')}</p>}
       {agent && <Availability agent={agent} t={t} />}
       {agent?.providerAuthentication && <p className="dxa-muted">{t('providerAuth')}: {agent.providerAuthentication === 'unverified' ? t('providerUnverified') : agent.providerAuthentication}</p>}
-      {Array.isArray(agent?.limitations) && agent.limitations.length > 0 && <ul className="dxa-limitations">{agent.limitations.filter(item => typeof item === 'string').slice(0, 2).map((item, index) => <li key={index}>{item}</li>)}</ul>}
+      {Array.isArray(agent?.limitations) && agent.limitations.length > 0 && <details className="dxa-runtime-details"><summary>{t('limitations')}</summary><ul className="dxa-limitations">{agent.limitations.filter(item => typeof item === 'string').map((item, index) => <li key={index}>{item}</li>)}</ul></details>}
       {agent && (agent.available !== true || agent.authenticated !== true) && canPrepare(agent) && <p className="dxa-notice">{t('unknownBeforeRun')}</p>}
       {!agent && <p className="dxa-muted">{t(needsSetup ? 'noRuntime' : 'chooseAgent')}</p>}
       {agent && models.length === 0 && <p className="dxa-muted">{t('noModel')}</p>}
