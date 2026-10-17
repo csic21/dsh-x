@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { StockWorkbench } from './workbench.jsx'
 import { normalizeAShare, MAX_PINS, quoteStatus } from '../watchlist.js'
 import { addressFor } from './resource.js'
 import { errorKey } from './locales.js'
@@ -48,21 +49,21 @@ function AddStock({ add, count, ready, t, format }) {
     <p className="dxs-muted">{t('add.notice')}</p>
   </form>
 }
-function Detail({ pin, useResource, t, format }) {
+function Detail({ pin, useResource, t, format, scope, locale }) {
   const snapshot = useResource(addressFor(pin.symbol)), quote = snapshot.value
   return <article aria-label={t('detail.aria', { symbol: pin.symbol })}>
-    <section className="dxs-section"><h2>{pin.alias || quote?.name || pin.symbol}</h2><p className="dxs-muted">{pin.symbol}{pin.alias ? t('detail.alias') : ''}</p>
+    <section className="dxs-section dxs-instrument-summary"><h2>{pin.alias || quote?.name || pin.symbol}</h2><p className="dxs-muted">{pin.symbol}{pin.alias ? t('detail.alias') : ''}</p>
       <div className="dxs-price">{format.price(quote?.price)} <span className={tone(quote?.changePercent)} style={{ fontSize: 18 }}>{format.change(quote?.changePercent)}</span></div>
       <p><Status snapshot={snapshot} t={t} format={format} /></p>
-      <dl><dt>{t('detail.source')}</dt><dd>{quote?.source || t('detail.no-source')}</dd><dt>{t('detail.quoted-at')}</dt><dd>{format.time(quote?.quotedAt, t)}</dd><dt>{t('detail.fetched-at')}</dt><dd>{format.time(quote?.fetchedAt, t)}</dd></dl>
-      <p className="dxs-muted">{t('detail.time-notice')}</p>
+      <details className="dxs-quote-metadata"><summary>{t('detail.source')}</summary><dl><dt>{t('detail.source')}</dt><dd>{quote?.source || t('detail.no-source')}</dd><dt>{t('detail.quoted-at')}</dt><dd>{format.time(quote?.quotedAt, t)}</dd><dt>{t('detail.fetched-at')}</dt><dd>{format.time(quote?.fetchedAt, t)}</dd></dl>
+      <p className="dxs-muted">{t('detail.time-notice')}</p></details>
     </section>
-    <section className="dxs-section"><h2>{t('detail.chart')}</h2><p>{t('detail.no-history')}</p><p className="dxs-muted">{t('detail.chart-notice')}</p></section>
-    <section className="dxs-section"><h2>{t('detail.fundamentals')}</h2><p>{t('detail.no-fundamentals')}</p><p className="dxs-muted">{t('detail.fundamentals-notice')}</p></section>
-    <section className="dxs-section"><h2>{t('detail.analysis')}</h2><p>{t('detail.no-analysis')}</p><p className="dxs-muted">{t('detail.analysis-notice')}</p></section>
+    <StockWorkbench key={`${scope}:${pin.symbol}`} symbol={pin.symbol} scope={scope} t={t} format={format} locale={locale} />
+    <details className="dxs-section"><summary>{t('detail.fundamentals')}</summary><p>{t('detail.no-fundamentals')}</p><p className="dxs-muted">{t('detail.fundamentals-notice')}</p></details>
+    <details className="dxs-section"><summary>{t('detail.analysis')}</summary><p>{t('detail.no-analysis')}</p><p className="dxs-muted">{t('detail.analysis-notice')}</p></details>
   </article>
 }
-export function StockPage({ useWatchlist, useResource, add, remove, move, select, back, retryScope, t, format }) {
+export function StockPage({ useWatchlist, useResource, add, remove, move, select, back, retryScope, t, format, getLocale = () => 'en' }) {
   const state = useWatchlist(value => value)
   const pin = state.pins.find(item => item.symbol === state.selectedSymbol) ?? state.pins[0]
   return <main className="dxs dxs-page">
@@ -78,7 +79,7 @@ export function StockPage({ useWatchlist, useResource, add, remove, move, select
         <button className="dxs-select" aria-pressed={pin?.symbol === item.symbol} onClick={() => select(item.symbol)}><strong>{item.alias || item.symbol}</strong>{item.alias && <span className="dxs-muted"> · {item.symbol}</span>}</button>
         <div className="dxs-controls"><button disabled={index === 0} aria-label={t('page.move-up', { symbol: item.symbol })} onClick={() => move(item.symbol, -1)}>↑</button><button disabled={index === state.pins.length - 1} aria-label={t('page.move-down', { symbol: item.symbol })} onClick={() => move(item.symbol, 1)}>↓</button><button aria-label={t('page.remove-aria', { symbol: item.symbol })} onClick={() => remove(item.symbol)}>{t('page.remove')}</button></div>
       </li>)}</ol><AddStock add={add} count={state.pins.length} ready={state.scopeStatus === 'ready'} t={t} format={format} /></aside>
-      {pin ? <Detail key={pin.symbol} pin={pin} useResource={useResource} t={t} format={format} /> : <section className="dxs-section"><h2>{t('page.select')}</h2><p className="dxs-muted">{t('page.select-hint')}</p></section>}
+      {state.scopeStatus === 'ready' && (pin ? <Detail key={`${state.scopeId}:${pin.symbol}`} pin={pin} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} /> : <StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} />)}
     </div>
   </main>
 }

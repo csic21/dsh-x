@@ -2,7 +2,7 @@ import { MAX_PINS, watchlistError, normalizePin, parseSaved, scopedStorageKey } 
 export function createWatchlistController(storage, eventTarget) {
   const listeners = new Set()
   let storageKey = null
-  let state = { pins: [], collapsed: false, storageError: '', scopeStatus: 'loading', placement: 'waiting', selectedSymbol: null }
+  let state = { pins: [], collapsed: false, storageError: '', scopeStatus: 'loading', scopeId: null, placement: 'waiting', selectedSymbol: null }
   const publish = patch => { state = { ...state, ...patch }; for (const listener of listeners) listener() }
   const persist = patch => {
     if (!storageKey || state.scopeStatus !== 'ready') throw watchlistError('scope-loading')
@@ -26,10 +26,10 @@ export function createWatchlistController(storage, eventTarget) {
       storageKey = key
       let saved = { pins: [], collapsed: false }, storageError = ''
       try { saved = parseSaved(storage?.getItem(storageKey)) } catch { storageError = 'storage-read' }
-      publish({ ...saved, selectedSymbol: saved.pins[0]?.symbol ?? null, storageError, scopeStatus: 'ready' })
+      publish({ ...saved, selectedSymbol: saved.pins[0]?.symbol ?? null, storageError, scopeStatus: 'ready', scopeId: scope })
     },
-    scopeLoading: () => { storageKey = null; publish({ scopeStatus: 'loading', pins: [], selectedSymbol: null, collapsed: false }) },
-    scopeFailed: () => { storageKey = null; publish({ pins: [], selectedSymbol: null, scopeStatus: 'failed', storageError: 'scope-unavailable' }) },
+    scopeLoading: () => { storageKey = null; publish({ scopeStatus: 'loading', scopeId: null, pins: [], selectedSymbol: null, collapsed: false }) },
+    scopeFailed: () => { storageKey = null; publish({ pins: [], selectedSymbol: null, scopeStatus: 'failed', scopeId: null, storageError: 'scope-unavailable' }) },
     select: symbol => publish({ selectedSymbol: symbol }),
     setPlacement: placement => { if (state.placement !== placement) publish({ placement }) },
     add(pin) {

@@ -44,7 +44,7 @@
 
 **当前 A 股界面默认「未配置行情」，不是实时行情成品。** 没有配置、抓取或转发未经确认授权的免密行情源。Finnhub 工具仍可用，但不会把美股订阅当作 A 股数据源，也不会自动索取或把 `FINNHUB_API_KEY` 发到浏览器。用户可以先维护清单，行情接入需另行确认数据供应商、许可范围、费用和凭据。
 
-Host 的 `createWatchlistHandler({ provider })` 为未来获授权适配器保留边界；默认不传 provider。适配器实现 `name` 与 `quote(symbol, { signal })`，输出 `symbol/name/price/changePercent/quotedAt/marketStatus`。Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。历史行情、成交量、基本面及基于来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
+Host 的 `createWatchlistHandler({ provider })` 为未来获授权适配器保留边界；默认不传 provider。适配器实现 `name` 与 `quote(symbol, { signal })`，输出 `symbol/name/price/changePercent/quotedAt/marketStatus`。Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。历史行情在线获取、基本面及基于真实来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
 
 客户端 `resources` provider 通过官方 `connection.rpc.call('/api', 'dsh-x-stock.quotes', { symbols }, signal)` 调用；Host 使用同一 Connection 的 `connection.fetch.register` 精确 POST `/api/dsh-x-stock.quotes`（不占用 Gateway 的 `/api` 拦截器），验证并回显标准 RPC envelope；官方 shared Connection 在调用精确 route 前强制验证所有者，仅接受 owner principal、确切参数、最多八个不重复的交易所限定代码。原有工具在没有 Connection 的 headless composition 下继续工作。没有自行开放监听端口，也不通过模型调用获取 UI 数据。
 
@@ -71,3 +71,15 @@ Host 的 `createWatchlistHandler({ provider })` 为未来获授权适配器保�
 Finnhub 工具通过官方 `HarnessError` 传播错误身份，通过 `output.presentationMeta` 保存结构化展示数据。工具卡本地化标签、错误和数据限制提示，模型收到的结果协议保持稳定。没有展示 metadata 的历史成功记录以原文回放，不猜测并改写旧文本。
 
 本地测试直接加载正式构建产物及已发布官方 `LocaleRuntime`，覆盖中文/英文即时切换、区域语言和英文 fallback、数字/日期/百分比、切换时仍在显示的错误、证券名不变、工具 metadata 和错误身份。真实浏览器集成记录见根目录 `TEST_REPORT.md`。
+
+## 日 K 图表工作台（第一版）
+
+图表采用官方 Lightweight Charts 5.2.1，单 chart 的日 K/成交量/MACD 三窗格共享时间轴；MA5/10/20 可单独开关，DIF/DEA 可显隐。拖动和平移、缩放、十字线、点击锁定读数、Esc 解锁、获焦后方向键/Home/End 逐根查看、回到最新、MACD 副图放大与参数显式应用均可用。提供分页数据表作为 Canvas 的文本替代。跟随 DSH 中英文和主题，颜色固定红涨绿跌，不随语言变化。
+
+真实历史源尚未接入，默认不画图。用户可以显式打开 **DEMO:SYNTH 合成数据**，或导入自己有权使用的日 K JSON。两种数据只进入此页面内存，切股、离开/刷新或切换 profile 后清除；不会上传服务器/模型、写入自选、缓存原始文件，或填充底栏的实时报价。图表中的末值标为历史收盘。图表偏好只按宿主 profile 的 scope 保存到本地。来源标签是文件声明，不能据此验证真实性；无基本面/财务数据则继续为空。
+
+导入格式下载按钮提供完整合成示例。上限 2 MiB/5,000 根；schemaVersion=1，必须明确 symbol、currency、exchangeTimezone、interval="1d"、adjustment、adjustmentRevision、datasetRevision、pricePrecision、volumeUnit="shares"、volumeAdjustment、amountAdjustment、source。bars 必须按 sessionDate 升序唯一，含 OHLC、volume（缺失用 null）、isFinal；本地导入支持价格绝对值不超过 1e12，量额不超过 Number.MAX_SAFE_INTEGER，以保证计算和绘图数值安全；这不是金融理论边界。具体字段及校验见 `src/chart-data.js`。日线使用交易所会话日期而非浏览器本地时间，价格未复权时必须正数；已复权价格可以为非正有限值，但必须声明方法且满足 OHLC 顺序，不擅自截零。成交量及成交额口径分别声明，缺失量不补零。文件 symbol 必须匹配当前股票；无已选股票时可独立浏览其他合格文件。
+
+指标算法版本 `dsh-independent-sma-ema-v1`（以源码导出为准）：每条 EMA 独立以其周期 SMA 播种；DIF=快 EMA−慢 EMA，DEA 为 DIF 的 EMA；默认 12/26/9，柱=2×(DIF−DEA)，可显式改 ×1。完整预热前为缺失值，缺口重置连续预热；不按可见窗口重算。这个种子规则与 TA-Lib MACD 内部对齐播种不同，不能宣称逐点一致。修订/末根替换与历史补齐采用最多 5,000 根的有界全量确定性重算，渲染适配器可对新增/末根使用 update，保留历史阅读锚点；目前无历史 provider 分页取数。
+
+Apache-2.0 的 Lightweight Charts 及 MIT 的 fancy-canvas 许可和 NOTICE 随 `licenses/` 打包；保留 TradingView logo 和可见归属链接。没有使用 Advanced Charts，也不包含任何行情授权。当前没有对数坐标、更多指标、交易功能或真实基本面分析。

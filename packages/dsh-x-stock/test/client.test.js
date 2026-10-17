@@ -22,7 +22,7 @@ test('built client registers safe slots and supports add/order/remove/navigation
   const scope='11111111-1111-4111-8111-111111111111'
   const locale = await createOfficialLocale()
   const ctx={locale,slots,on(){return()=>{}},effect(fn){const dispose=fn();effects.push(dispose);return dispose},resources:{register(provider){resources.push(provider);return()=>{}}},connection:{rpc:{call:async(channel,endpoint)=>{assert.equal(endpoint,'dsh-x-stock.scope');return {ok:true,value:{scope}}}}},layout:{selectPanel(value){selectedPanel=value;calls.push(value)}}}
-  vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value){assert.equal(value.id,'dsh-x-stock');exported=value.factory(name=>{assert.equal(name,'react');return React})}}},globalThis,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
+  vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value){assert.equal(value.id,'dsh-x-stock');exported=value.factory(name=>{assert.equal(name,'react');return React})}}},globalThis,navigator:dom.window.navigator,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
   const { createRoot } = await import('react-dom/client')
   const root=createRoot(dom.window.document.getElementById('app'))
   try {
