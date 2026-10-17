@@ -14,7 +14,7 @@
 ```text
 dsh-x/
   packages/<包名>/              插件源码。一个目录一个包，目录名等于包名
-                                 现有 dsh-x-plan、dsh-x-stock、dsh-x-chat
+                                 现有 dsh-x-agents、dsh-x-plan、dsh-x-stock、dsh-x-chat
   .github/workflows/            打包时检出内核、产出安装包
   packaging/                    平台、签名、插件为什么还不进安装包
   kernel.local.example.json     本机运行时的路径样例
@@ -74,3 +74,7 @@ home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH
 实现使用官方 `ctx.locale`、slot 的 `locale`/`t`、`tool.call.toolview`、`output.presentationMeta` 和审批 `displayReason`。新增语言包由官方 fallback 链选择文案，缺省回退英文。Host 的模型指令、工具协议文案、启动诊断和旧历史原始记录不按浏览器语言重写；它们与用户界面文案分开。
 
 根目录 `npm test` 会先构建三个客户端包，再跑全部单元、DOM 与官方运行时集成测试；无需真实模型或行情凭据。
+
+## Agents 原生工作台
+
+`packages/dsh-x-agents` 首版接入 Codex app-server 与 OpenCode HTTP/SSE 原生任务。输入区入口与右栏用于准备明确委派、查看活动、继续原生会话及请求停止；授权仍走官方 DSH 卡片。Claude/Grok 暂显示未接入。完整能力、隔离与账号限制见 [Agents README](packages/dsh-x-agents/README.md)，实测边界见 [验证记录](packages/dsh-x-agents/VALIDATION.md)。
