@@ -126,11 +126,11 @@ export function createTaskStore(profileDirectory) {
     if (owner.hostId !== hostId || owner.taskId !== taskId || owner.runId !== runId) throw fail('AGENTS_BUSY', 'Run lock belongs to another host.')
     unlinkSync(lock)
   }
-  function quarantine(sessionId, reason) {
+  function quarantine(sessionId, reason, runtime = 'unknown') {
     const lock = lockname(sessionId)
     try { writeFileSync(lock, JSON.stringify({ hostId, reason: 'discovery-cleanup-unconfirmed' }), { flag: 'wx', mode: 0o600 }) } catch (error) { if (error.code !== 'EEXIST') throw error }
     mutate(sessionId, value => {
-      if (!value.task) value.task = { id: randomUUID(), runId: randomUUID(), hostId, title: 'Runtime discovery interrupted', runtime: 'codex', model: null, cwd: null, nativeSessionId: null, events: [], summary: '', createdAt: new Date().toISOString() }
+      if (!value.task) value.task = { id: randomUUID(), runId: randomUUID(), hostId, title: 'Runtime discovery interrupted', runtime, model: null, cwd: null, nativeSessionId: null, events: [], summary: '', createdAt: new Date().toISOString() }
       value.task.state = 'interrupted'; value.task.reason = safeText(reason, 2000)
     })
   }

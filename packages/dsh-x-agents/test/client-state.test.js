@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createAgentsController } from '../src/client/controller.js'
-import { ACTIONS, CAPABILITIES, STATES, addressFor, canPrepare, insertRequest, parseAddress, prepareRun, presentationEvents, readSnapshot } from '../src/client/model.js'
+import { ACTIONS, CAPABILITIES, STATES, addressFor, canPrepare, eventDataPreview, insertRequest, parseAddress, prepareRun, presentationEvents, readSnapshot } from '../src/client/model.js'
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
 const caps = Object.fromEntries(CAPABILITIES.map(key => [key, true]))
@@ -35,6 +35,35 @@ test('prepared requests bind exact scope, task revision, runtime and a real mode
   assert.equal(insertRequest({ ...actions, insertText: () => false }, 'request'), false)
   assert.equal(persisted, 1)
   assert.equal(insertRequest({ ...actions, persistDraft() { throw new Error('save unavailable') } }, 'request'), true)
+})
+
+test('all four runtimes require catalog capability and availability, while unverified authentication never becomes a success claim', () => {
+  for (const runtime of ['codex', 'opencode', 'claude', 'grok']) {
+    const selected = agent(runtime, { available: true, authenticated: null, reason: 'authentication-not-verified', providerAuthentication: 'unverified' })
+    const value = snapshot({ catalog: [selected] })
+    assert.ok(readSnapshot(value, 'session-a'))
+    assert.equal(canPrepare(selected), true)
+    assert.deepEqual(prepareRun(value, { runtime, model: `${runtime}-model`, prompt: 'Review the code' }), { runtime, model: `${runtime}-model`, prompt: 'Review the code', scope: 'profile-a' })
+    assert.equal(selected.authenticated, null)
+    assert.equal(selected.providerAuthentication, 'unverified')
+    assert.equal(canPrepare({ ...selected, authenticated: false }), true, 'preparing a request is not a model call or authentication grant')
+    assert.equal(canPrepare({ ...selected, available: null }), true, 'declared capability can prepare an unverified request')
+    for (const unavailable of [
+      { ...selected, available: false, reason: 'not-configured' },
+      { ...selected, available: false, reason: 'not-installed' },
+      { ...selected, capabilities: { ...caps, nativeSessions: false } },
+      { ...selected, capabilities: {} },
+      { ...selected, reason: 'not-integrated' },
+    ]) {
+      assert.equal(canPrepare(unavailable), false)
+      assert.throws(() => prepareRun(snapshot({ catalog: [unavailable] }), { runtime, prompt: 'Review the code' }), /runtime-unavailable/)
+    }
+    const resumed = snapshot({ catalog: [selected], task: task({ runtime, model: `${runtime}-model` }) })
+    assert.deepEqual(prepareRun(resumed, { runtime, model: `${runtime}-model`, prompt: 'Continue', continueTask: true }), { runtime, model: `${runtime}-model`, prompt: 'Continue', scope: 'profile-a', taskId: 'task-a', expectedRevision: 2 })
+    assert.throws(() => prepareRun({ ...resumed, catalog: [{ ...selected, capabilities: { ...caps, resume: false } }] }, { runtime, model: `${runtime}-model`, prompt: 'Continue', continueTask: true }), /action-unavailable/)
+  }
+  assert.equal(canPrepare(agent('unknown-runtime')), false)
+  assert.equal(canPrepare(null), false)
 })
 
 test('session reads abort on unmount and reset discards late old-profile replies', async () => {
@@ -100,6 +129,23 @@ test('assistant chunks merge only with explicit message identity and delta seman
   const rows = presentationEvents(events)
   assert.deepEqual(rows.map(row => row.text), ['Hello world!', 'Read a file', 'Unknown semantics', 'Unknown identity', 'First OpenCode part updated', 'Second OpenCode part'])
   assert.equal(events[0].text, 'Hello ')
+})
+
+test('structured event previews are bounded and never duplicate permission scopes or question answer fields', () => {
+  for (const type of ['tool', 'plan', 'usage', 'session', 'status', 'diagnostic']) {
+    const data = eventDataPreview({ type, data: { name: 'native-event', input_tokens: 12 } })
+    assert.deepEqual(JSON.parse(data.body), { name: 'native-event', input_tokens: 12 })
+    assert.equal(data.truncated, false)
+  }
+  for (const type of ['permission', 'input', 'assistant']) assert.equal(eventDataPreview({ type, data: { details: 'private scope', answers: 'private answer' } }), null)
+  assert.equal(eventDataPreview({ type: 'tool', data: { name: 'AskUserQuestion', output: 'private answer' } }), null)
+  const filtered = eventDataPreview({ type: 'tool', data: { answers: ['private answer'], nested: { custom: 'free-form answer', apiKey: 'private key' }, output: 'Bearer abcdefghijklmnop' } })
+  assert.doesNotMatch(filtered.body, /private answer|free-form answer|private key|abcdefghijklmnop/)
+  const long = eventDataPreview({ type: 'tool', data: { output: 'x'.repeat(13000) } })
+  assert.equal(long.body.length, 12000)
+  assert.equal(long.truncated, true)
+  const cyclic = {}; cyclic.self = cyclic
+  assert.equal(eventDataPreview({ type: 'tool', data: cyclic }), null)
 })
 
 test('resource cannot reveal another profile and releases its owned polling', async () => {

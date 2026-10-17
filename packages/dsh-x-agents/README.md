@@ -1,13 +1,17 @@
 # Agents / 原生 Agent 工作台
 
-First-stage native runtime delegation for DSH 0.2.1-alpha.5. DSH coordinates the current host conversation; Codex or OpenCode owns its delegated native turn. Selecting an Agent in the sidebar **prepares a request in the existing composer**; the user sends it. It does not silently change DSH's primary model or send a second hidden conversation.
+Native runtime delegation for DSH 0.2.1-alpha.5. DSH coordinates the current host conversation; the selected native runtime owns its delegated native turn. Selecting an Agent in the sidebar **prepares a request in the existing composer**; the user sends it. It does not silently change DSH's primary model or send a second hidden conversation.
 
 ## Current capabilities
 
 - Codex app-server stdio: persistent native thread identity, explicit continuation, assistant/tool/plan/usage events, one-time native permission decisions, supported structured questions, cancellation and process cleanup.
 - OpenCode HTTP/OpenAPI/SSE: existing authenticated loopback server, native sessions, model discovery, event stream, permission/question responses, explicit resume and abort. Requires explicit trusted-external configuration and a host policy that already permits that mode. Restricted hosts report unsupported; this plugin never weakens host settings.
-- Agents header entry and right sidebar, current task separate from historical tool cards, Chinese/English, runtime/model discovery, guarded composer insertion and exact-run cancellation.
-- Claude/Grok catalog entries are explicitly not integrated in this stage. Native capabilities vary and unsupported requests block visibly.
+- Agents input-dock entry and right sidebar, current task separate from historical tool cards, Chinese/English, runtime/model discovery, guarded composer insertion and exact-run cancellation.
+- Claude: pinned official Agent SDK 0.3.302 / native CLI 2.1.302 with managed process injection, native session continuation, streamed tools/results and one-time requests. This adapter supports explicitly configured API / official cloud-provider authentication, not a custom Claude subscription login flow.
+- Grok: official CLI 1.0.62 ACP over owned stdio (`agent --no-leader`), native sessions/models, tools, one-time permissions, user questions and cancellation. No background leader attachment or automatic login.
+- Claude/Grok discovery only checks the executable version. Native initialization happens after official launch approval, because it can have startup effects. Authentication validity and billing remain unverified; missing native setup blocks before a user model turn. Models are selectable only after native advertisement, with a final adapter check before dispatch.
+
+Native capabilities vary; unsupported requests block visibly. These adapters preserve the native agent loops but do not promise every vendor plugin, UI command, or permission mode is available.
 
 A native turn ending is not proof of tests passing or task acceptance. Worktree creation, parallel delegation, autonomous routing, native UI embedding, vendor login screens, multimodal attachments and an independent primary-agent session lifecycle are not implemented in this release.
 
@@ -32,11 +36,24 @@ Install and sign into vendor tools yourself using their official instructions. T
 
 OpenCode's server authentication proves access to that server, not successful model-provider authentication. Models may still reject requests because of provider setup or billing. Provider-specific errors are reported without silently switching to another agent/model.
 
+Official protocol notes: [Claude](src/adapters/claude-protocol.md), [Grok](src/adapters/grok-protocol.md). References: https://platform.claude.com/docs/en/agent-sdk/overview and https://docs.x.ai/build/overview . The adapter notes pin the exact package/protocol evidence and distinguish tested fixtures from live authentication.
+
+### Claude and Grok configuration
+
+- Claude uses the exact official SDK dependency, including its matching platform binary. `DSH_X_AGENTS_CLAUDE_COMMAND` optionally selects an already trusted, matching native executable. `claude.configDir` selects an absolute native configuration directory. Provider environment configuration belongs in private local `claude.env`, not committed source, prompts, browser state or workbench event logs. The adapter does not copy arbitrary ambient provider secrets into the SDK. It does not create credentials, invoke login, or collect subscription tokens.
+- Grok uses an already installed official CLI. `DSH_X_AGENTS_GROK_COMMAND` selects that executable and `grok.nativeHome` selects its native profile. Install and authenticate through xAI's official instructions yourself. The adapter never calls ACP `authenticate`, since some methods can save API keys or start interactive login.
+
+Only version queries run during connection inspection. Approved initialization can read native configuration and run vendor startup behavior. Grok may refresh existing authentication, synchronize configured plugins or perform native state/worktree maintenance. Claude ordinary user/project settings, custom MCP, plugins and skills are excluded by this first adapter; enterprise-managed hooks can still apply. These are capability boundaries, not a claim that the complete vendor UI has been reproduced.
+
+The first approved turn can use the native default model. Advertised models from initialization become available to the workbench for subsequent new tasks; continuing an existing task keeps its original model selection. A missing/expired account or inaccessible model is shown as blocked or failed, without silently switching providers.
+
 ## Approval and isolation
 
 Every turn starts inside an actual DSH tool invocation and open host turn, with official DSH approval. Native requests retain their own request/session identity and a unique offered one-time choice. Host `allowed-once` never maps to permanent/session-wide approval. Rejection maps to a documented native reject choice; cancelled/unavailable/ambiguous requests are not granted. Sensitive or incompletely displayed permission scopes fail closed. Unsupported secure input requires the vendor's own secure flow.
 
-Codex subprocesses inherit the resolved DSH file-effect policy when the host supports full enforcement, plus Codex's native on-request/workspace-write ceiling. DSH file-effect confinement is **not** a claim of network isolation, secret-read isolation or protection against all external processes. OpenCode explicitly provides no OS sandbox (https://github.com/anomalyco/opencode/blob/v1.19.3/SECURITY.md); its permission dialogs do not substitute for one. HTTP execution is blocked in restricted host modes.
+Native subprocesses inherit the resolved DSH file-effect policy when the host supports full enforcement, plus each adapter's stated native permission controls (Codex has an on-request/workspace-write ceiling). DSH file-effect confinement is **not** a claim of network isolation, secret-read isolation or protection against all external processes. OpenCode explicitly provides no OS sandbox (https://github.com/anomalyco/opencode/blob/v1.19.3/SECURITY.md); its permission dialogs do not substitute for one. HTTP execution is blocked in restricted host modes.
+
+Native runtimes may need to write their own state directories during startup. Those writes must already be permitted by the host policy; the plugin does not add filesystem exceptions or loosen the policy. A constrained host may therefore report setup or startup failure even when the executable is installed.
 
 Tasks are bound to the launcher profile, host session, canonical directory, runtime/model, backend identity and run ID. Concurrent mutations in the same host session are fenced while runtime operations own it. Other DSH sessions, pre-existing background jobs and external editors are not an isolated worktree or security boundary. No blanket write authority is granted through the workbench.
 
@@ -52,4 +69,4 @@ Events and history have bounded storage budgets. Old stream events can be trimme
 
 Tests use explicit synthetic protocol fixtures and the real official DSH ToolRuntime/approval/subprocess services. No fixture result establishes real vendor model quality, billing or account access. See `VALIDATION.md` for exact observed results and limitations.
 
-Profile isolation here covers workbench records and task identity. It does not automatically create separate vendor accounts or billing: Codex may share its configured `CODEX_HOME`, and OpenCode uses the existing server's provider credentials. Configure distinct vendor profiles explicitly when that separation is required. OpenCode cancellation establishes the native service's reported idle/pending-request state, not independent proof that every OS descendant process has exited.
+Profile isolation here covers workbench records and task identity. It does not automatically create separate vendor accounts or billing: Codex may share its configured `CODEX_HOME`, Claude its `configDir`, Grok its `nativeHome`, and OpenCode uses the existing server's provider credentials. Configure distinct vendor profiles explicitly when that separation is required. OpenCode cancellation establishes the native service's reported idle/pending-request state, not independent proof that every OS descendant process has exited.

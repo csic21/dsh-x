@@ -42,3 +42,8 @@ test('large event streams remain readable and sensitive keys are withheld',()=>{
  assert.deepEqual(safeData({nested:{authorization:'Bearer fixture',env:{OTHER:'hidden'}}}),{nested:{authorization:'[redacted]',env:'[redacted]'}})
 })
 test('session paths reject traversal',()=>{const a=make();assert.throws(()=>a.read('../other'),/Invalid session/)})
+
+test('discovery quarantine records the runtime that failed rather than defaulting to Codex',()=>{
+ const a=make();a.quarantine('session-1','Fixture cleanup uncertainty','grok')
+ assert.equal(a.snapshot('session-1').task.runtime,'grok');assert.equal(a.hasLock('session-1'),true)
+})

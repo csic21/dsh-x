@@ -77,4 +77,4 @@ home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH
 
 ## Agents 原生工作台
 
-`packages/dsh-x-agents` 首版接入 Codex app-server 与 OpenCode HTTP/SSE 原生任务。输入区入口与右栏用于准备明确委派、查看活动、继续原生会话及请求停止；授权仍走官方 DSH 卡片。Claude/Grok 暂显示未接入。完整能力、隔离与账号限制见 [Agents README](packages/dsh-x-agents/README.md)，实测边界见 [验证记录](packages/dsh-x-agents/VALIDATION.md)。
+`packages/dsh-x-agents` 接入 Codex app-server、OpenCode HTTP/SSE、Claude 官方 Agent SDK 与 Grok 官方 ACP 原生任务。输入区入口与右栏用于准备明确委派、查看活动、继续原生会话及请求停止；授权仍走官方 DSH 卡片。Claude/Grok 首次初始化在用户批准后进行；连接检查只读取版本，账号有效性与付费模型调用尚未验证。完整能力、隔离与账号限制见 [Agents README](packages/dsh-x-agents/README.md)，实测边界见 [验证记录](packages/dsh-x-agents/VALIDATION.md)。

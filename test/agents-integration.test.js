@@ -21,7 +21,7 @@ async function harness(t, options={}) {
   if(options.run)return options.run(args)
   return {nativeSessionId:'fixture-native',status:'completed',summary:'Explicit fixture output; no vendor call'}
  }}
- await ctx.plugin(agents,{adapters:{codex:()=>driver,opencode:()=>driver}})
+ await ctx.plugin(agents,{adapters:{codex:()=>driver,opencode:()=>driver,claude:()=>driver,grok:()=>driver}})
  ctx.tools.register(defineTool({name:'write',description:'Fixture write',parameters:{},output:{schema:{type:'object',additionalProperties:false,properties:{text:{type:'string'}}},render:(_a,v)=>[{type:'text',text:v.text}]},execute:async()=>{writes++;return {text:'write'}}}))
  const invoke=(name,args={})=>ctx.tools.execute({name,arguments:args,agent,signal:new AbortController().signal,callId:crypto.randomUUID()})
  t.after(()=>ctx.fiber.dispose())
@@ -78,7 +78,7 @@ async function stdioCodexHarness(t, options = {}) {
   ctx.provide('userQuestions', { ask: async request => { questions.push(request); return { answers: request.questions.map(question => ({ id: question.id, selected: [question.options[0].label] })) } } })
   const executable = fileURLToPath(new URL('../packages/dsh-x-agents/test/fixtures/codex-app-server.mjs', import.meta.url))
   await ctx.plugin(agents, { codex: { executable, codexHome: dir, requestTimeoutMs: 3000, cleanupTimeoutMs: 5000 },
-    adapters: { opencode: () => ({ id: 'opencode', capabilities: {}, discover: async () => ({ available: false, authenticated: null, reason: 'Not part of this local fixture.' }) }) } })
+    adapters: Object.fromEntries(['opencode','claude','grok'].map(id => [id, () => ({ id, capabilities: {}, discover: async () => ({ available: false, authenticated: null, reason: 'Not part of this local fixture.' }) })])) })
   const invoke = (name, args = {}, signal = new AbortController().signal) => ctx.tools.execute({ name, arguments: args, agent, signal, callId: crypto.randomUUID() })
   t.after(async () => { await ctx.fiber.dispose(); rmSync(dir, { recursive: true, force: true }) })
   return { ctx, agent, dir, invoke, approvals, questions }

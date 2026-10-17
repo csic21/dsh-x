@@ -86,7 +86,7 @@ function parseAddress(address) {
   }
 }
 function canPrepare(agent) {
-  return Boolean(agent && ["codex", "opencode"].includes(agent.id) && agent.available !== false && agent.capabilities.nativeSessions === true);
+  return Boolean(agent && ["codex", "opencode", "claude", "grok"].includes(agent.id) && agent.reason !== "not-integrated" && agent.available !== false && agent.capabilities?.nativeSessions === true);
 }
 function presentationEvents(events) {
   const rows = [], messages = /* @__PURE__ */ new Map();
@@ -106,6 +106,20 @@ function presentationEvents(events) {
     if (typeof event.text === "string") row.text = event.data.delta ? row.text + event.text : event.text;
   }
   return rows;
+}
+function eventDataPreview(event) {
+  if (!["tool", "plan", "usage", "session", "status", "diagnostic"].includes(event.type) || event.data == null) return null;
+  if (event.data?.name === "AskUserQuestion" || event.data?.toolName === "AskUserQuestion") return null;
+  try {
+    const body = JSON.stringify(event.data, (key, value) => {
+      if (/password|secret|authorization|cookie|credential|api.?key|^(?:env|answers?|selected|custom|annotations|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token)$/i.test(key)) return "[redacted]";
+      if (typeof value === "string" && /(?:\b(?:sk-|xai-)[a-zA-Z0-9_-]{16,}|Bearer\s+[a-zA-Z0-9._-]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(value)) return "[Potential credential content withheld]";
+      return value;
+    }, 2);
+    return typeof body === "string" ? { body: body.slice(0, 12e3), truncated: body.length > 12e3 } : null;
+  } catch {
+    return null;
+  }
 }
 function prepareRun(snapshot, { runtime, model = "", prompt, continueTask = false }) {
   const agent = snapshot?.catalog.find((item) => item.id === runtime);
@@ -408,6 +422,9 @@ var en = {
   noEvents: "No Agent events have been recorded.",
   allEvents: "Show all recorded events",
   recentEvents: "Most recent activity",
+  eventData: "Show event data",
+  eventDataHint: "Structured runtime data, with host filtering. Filtering does not guarantee that all sensitive content was removed.",
+  eventDataTruncated: "This preview reached its display limit.",
   technical: "Session and connection details",
   taskId: "Task",
   revision: "Revision",
@@ -536,6 +553,9 @@ var zh = {
   noEvents: "\u5C1A\u672A\u8BB0\u5F55 Agent \u4E8B\u4EF6\u3002",
   allEvents: "\u5C55\u5F00\u5168\u90E8\u5DF2\u8BB0\u5F55\u4E8B\u4EF6",
   recentEvents: "\u6700\u8FD1\u6D3B\u52A8",
+  eventData: "\u67E5\u770B\u4E8B\u4EF6\u6570\u636E",
+  eventDataHint: "\u4EE5\u4E0B\u662F\u7ECF\u8FC7\u5BBF\u4E3B\u8FC7\u6EE4\u7684\u8FD0\u884C\u65F6\u7ED3\u6784\u5316\u6570\u636E\u3002\u8FC7\u6EE4\u4E0D\u80FD\u4FDD\u8BC1\u79FB\u9664\u6240\u6709\u654F\u611F\u5185\u5BB9\u3002",
+  eventDataTruncated: "\u9884\u89C8\u5DF2\u8FBE\u5230\u663E\u793A\u4E0A\u9650\u3002",
   technical: "\u4F1A\u8BDD\u4E0E\u8FDE\u63A5\u8BE6\u60C5",
   taskId: "\u4EFB\u52A1",
   revision: "\u4FEE\u8BA2",
@@ -629,7 +649,10 @@ function Connections({ catalog, t, prepareInspect, enabled }) {
 function Events({ events, t }) {
   const [all, setAll] = (0, import_react.useState)(false);
   const rows = presentationEvents(events), visible = all ? rows : rows.slice(-20);
-  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-events" }, /* @__PURE__ */ import_react.default.createElement("h3", null, t("events")), events.length === 0 ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("noEvents")) : /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, rows.length > 20 && !all && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setAll(true) }, t("allEvents"), " (", rows.length, ")"), /* @__PURE__ */ import_react.default.createElement("ol", null, visible.map((event) => /* @__PURE__ */ import_react.default.createElement("li", { key: event.key, "data-event": event.type }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-event-label" }, t(`event.${event.type}`)), event.text && /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw" }, event.text))))));
+  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-events" }, /* @__PURE__ */ import_react.default.createElement("h3", null, t("events")), events.length === 0 ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("noEvents")) : /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, rows.length > 20 && !all && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setAll(true) }, t("allEvents"), " (", rows.length, ")"), /* @__PURE__ */ import_react.default.createElement("ol", null, visible.map((event) => {
+    const data = eventDataPreview(event);
+    return /* @__PURE__ */ import_react.default.createElement("li", { key: event.key, "data-event": event.type }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-event-label" }, t(`event.${event.type}`)), event.text && /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw" }, event.text), data && /* @__PURE__ */ import_react.default.createElement("details", { className: "dxa-event-data" }, /* @__PURE__ */ import_react.default.createElement("summary", null, t("eventData")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("eventDataHint")), /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw" }, data.body), data.truncated && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("eventDataTruncated"))));
+  }))));
 }
 function Workspace({ state, sessionId, inputActions, cancel, refresh, t, formatTime }) {
   const snapshot = state.snapshot, task = snapshot.task;
@@ -639,6 +662,9 @@ function Workspace({ state, sessionId, inputActions, cancel, refresh, t, formatT
   const [chosenModel, setModel] = (0, import_react.useState)("");
   const [goal, setGoal] = (0, import_react.useState)("");
   const [notice, setNotice] = (0, import_react.useState)(null);
+  (0, import_react.useEffect)(() => {
+    setNotice((current) => current?.key === "inserted" ? null : current);
+  }, [task?.id, task?.runId, task?.state]);
   const alive = (0, import_react.useRef)(true);
   (0, import_react.useEffect)(() => () => {
     alive.current = false;

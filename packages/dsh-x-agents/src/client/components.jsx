@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { CAPABILITIES, canPrepare, insertRequest, parseAddress, prepareRun, presentationEvents, readSnapshot } from './model.js'
+import { CAPABILITIES, canPrepare, eventDataPreview, insertRequest, parseAddress, prepareRun, presentationEvents, readSnapshot } from './model.js'
 import { errorKey } from './locales.js'
 
 export function AgentsEntry({ useAgents, openAgents, t }) {
@@ -42,10 +42,17 @@ function Events({ events, t }) {
   return <section className="dxa-events"><h3>{t('events')}</h3>
     {events.length === 0 ? <p className="dxa-muted">{t('noEvents')}</p> : <>
       {rows.length > 20 && !all && <button type="button" onClick={() => setAll(true)}>{t('allEvents')} ({rows.length})</button>}
-      <ol>{visible.map(event => <li key={event.key} data-event={event.type}>
-        <span className="dxa-event-label">{t(`event.${event.type}`)}</span>
-        {event.text && <pre className="dxa-raw">{event.text}</pre>}
-      </li>)}</ol>
+      <ol>{visible.map(event => {
+        const data = eventDataPreview(event)
+        return <li key={event.key} data-event={event.type}>
+          <span className="dxa-event-label">{t(`event.${event.type}`)}</span>
+          {event.text && <pre className="dxa-raw">{event.text}</pre>}
+          {data && <details className="dxa-event-data"><summary>{t('eventData')}</summary>
+            <p className="dxa-muted">{t('eventDataHint')}</p><pre className="dxa-raw">{data.body}</pre>
+            {data.truncated && <p className="dxa-muted">{t('eventDataTruncated')}</p>}
+          </details>}
+        </li>
+      })}</ol>
     </>}
   </section>
 }
@@ -58,6 +65,9 @@ function Workspace({ state, sessionId, inputActions, cancel, refresh, t, formatT
   const [chosenModel, setModel] = useState('')
   const [goal, setGoal] = useState('')
   const [notice, setNotice] = useState(null)
+  // A preparation receipt is no longer current once the native task advances.
+  // This does not infer that Send was used, or change either editor's draft.
+  useEffect(() => { setNotice(current => current?.key === 'inserted' ? null : current) }, [task?.id, task?.runId, task?.state])
   const alive = useRef(true)
   useEffect(() => () => { alive.current = false }, [])
   const runtime = continueTask && task ? task.runtime : choice

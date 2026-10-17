@@ -56,3 +56,50 @@ test('credentials in prompts and unknown selected models fail closed',async()=>{
  const h=fixture();await assert.rejects(()=>h.controller.run({...args,prompt:'password=fixture-secret-123'},h.exec),/credentials/)
  assert.equal((await h.controller.run({...args,model:'not-listed'},h.exec)).task.state,'blocked');assert.equal(h.counts().calls,0)
 })
+
+test('run discovers only its selected runtime and preserves the other catalog entries',async()=>{
+ const h=fixture(), seen=[]
+ const c=createAgentsController({store:h.store,cwdOf:async()=>h.dir,policyOf:()=>({mode:'workspace-write',workspaceRoot:h.dir}),approve:async()=>true,adapter:async runtime=>{seen.push(runtime);return h.driver}})
+ const result=await c.run({...args,runtime:'grok'},h.exec)
+ assert.equal(result.task.state,'completed');assert.ok(seen.every(runtime=>runtime==='grok'))
+ assert.equal(result.catalog.find(item=>item.id==='claude').reason,'not-inspected')
+})
+test('a configuration marker alone does not authorize Claude startup',async()=>{
+ const h=fixture();let text
+ h.driver.discover=async()=>({available:true,authenticated:null,models:[{id:'test-model'}],authentication:{state:'configured-unverified',source:'native-account-info'},providerAuthentication:'configured-unverified'})
+ const c=createAgentsController({store:h.store,cwdOf:async()=>h.dir,policyOf:()=>({mode:'workspace-write',workspaceRoot:h.dir}),adapter:async()=>h.driver,approve:async(_exec,request)=>{text=request.details;return'rejected'}})
+ const result=await c.run({...args,runtime:'claude'},h.exec)
+ assert.equal(result.task.state,'blocked');assert.equal(h.counts().calls,0);assert.equal(text,undefined)
+ assert.equal(result.catalog.find(item=>item.id==='claude').authenticated,null)
+})
+test('credential configuration exceptions cannot authorize unknown sources or other runtimes',async()=>{
+ for(const [runtime,source] of [['claude','environment-exists'],['grok','native-account-info'],['codex','native-account-info']]) {
+  const h=fixture();h.driver.discover=async()=>({available:true,authenticated:null,models:[],authentication:{state:'configured-unverified',source}})
+  const result=await h.controller.run({runtime,prompt:'Fixture task'},h.exec)
+  assert.equal(result.task.state,'blocked');assert.equal(h.counts().calls,0)
+ }
+})
+
+test('Grok version-only discovery defers native setup until explicit launch approval',async()=>{
+ const h=fixture();let body
+ h.driver.discover=async()=>({available:true,authenticated:null,models:[],authentication:{state:'requires-native-initialization',source:'version-only'}})
+ const c=createAgentsController({store:h.store,cwdOf:async()=>h.dir,policyOf:()=>({mode:'workspace-write',workspaceRoot:h.dir}),adapter:async()=>h.driver,approve:async(_exec,request)=>{body=request.details;return'rejected'}})
+ const result=await c.run({runtime:'grok',prompt:'Fixture task'},h.exec)
+ assert.equal(result.task.state,'blocked');assert.equal(h.counts().calls,0);assert.match(body,/sync plugins/);assert.match(body,/Not checked/)
+})
+
+test('native advertised models survive version-only refresh only for the same backend',async()=>{
+ const h=fixture();h.driver.backendIdentity='fixture-backend-a'
+ h.driver.discover=async()=>({available:true,authenticated:null,models:[],capabilities:{models:false,resume:false},authentication:{state:'requires-native-initialization',source:'version-only'}})
+ h.driver.run=async run=>{await run.onEvent({type:'session',data:{nativeSessionId:'fixture-native',models:[{id:'native-model',label:'Native model'}],capabilities:{resume:true}}});return{status:'completed',nativeSessionId:'fixture-native'}}
+ const first=await h.controller.run({runtime:'grok',prompt:'Fixture'},h.exec)
+ assert.equal(first.task.state,'completed');assert.equal(first.catalog.find(x=>x.id==='grok').capabilities.resume,true)
+ const refreshed=await h.controller.inspect(h.exec)
+ assert.equal(refreshed.catalog.find(x=>x.id==='grok').models[0].id,'native-model')
+ assert.equal(refreshed.catalog.find(x=>x.id==='grok').capabilities.models,true)
+ const selected=await h.controller.run({runtime:'grok',model:'native-model',prompt:'New fixture task'},h.exec)
+ assert.equal(selected.task.state,'completed')
+ h.driver.backendIdentity='fixture-backend-b'
+ const changed=await h.controller.run({runtime:'grok',model:'native-model',prompt:'Other backend'},h.exec)
+ assert.equal(changed.task.state,'blocked');assert.match(changed.task.reason,/not advertised/)
+})

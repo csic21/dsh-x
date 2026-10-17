@@ -1,10 +1,12 @@
 import { realpathSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createTaskStore, fail } from './src/store.js'
-import { createAgentsController } from './src/controller.js'
+import { createAgentsController, RUNTIMES } from './src/controller.js'
 import { createAgentsRoute } from './src/routes.js'
 import { createCodexAdapter } from './src/adapters/codex.js'
 import { createOpenCodeAdapter } from './src/adapters/opencode.js'
+import { createClaudeAdapter } from './src/adapters/claude.js'
+import { createGrokAdapter } from './src/adapters/grok.js'
 
 export const name = 'dsh-x-agents'
 export const inject = ['tools', 'workingDirectory', 'subprocess', 'profileContext', 'systemPrompt']
@@ -36,9 +38,11 @@ export function apply(ctx, config = {}) {
         return ctx.subprocess.spawn({ ...spec, argv: confined.argv, signal })
       }
 
-      return runtime === 'codex'
-        ? createCodexAdapter({ spawn, config: { executable: process.env.DSH_X_AGENTS_CODEX_COMMAND ?? 'codex', ...config.codex } })
-        : createOpenCodeAdapter({ fetch: globalThis.fetch, config: { endpoint: process.env.DSH_X_AGENTS_OPENCODE_URL, password: process.env.DSH_X_AGENTS_OPENCODE_PASSWORD, username: process.env.DSH_X_AGENTS_OPENCODE_USERNAME ?? 'opencode', ...config.opencode } })
+      if (runtime === 'codex') return createCodexAdapter({ spawn, config: { executable: process.env.DSH_X_AGENTS_CODEX_COMMAND ?? 'codex', ...config.codex } })
+      if (runtime === 'opencode') return createOpenCodeAdapter({ fetch: globalThis.fetch, config: { endpoint: process.env.DSH_X_AGENTS_OPENCODE_URL, password: process.env.DSH_X_AGENTS_OPENCODE_PASSWORD, username: process.env.DSH_X_AGENTS_OPENCODE_USERNAME ?? 'opencode', ...config.opencode } })
+      if (runtime === 'claude') return createClaudeAdapter({ spawn, config: { ...(process.env.DSH_X_AGENTS_CLAUDE_COMMAND ? { executable: process.env.DSH_X_AGENTS_CLAUDE_COMMAND } : {}), ...config.claude } })
+      if (runtime === 'grok') return createGrokAdapter({ spawn, config: { executable: process.env.DSH_X_AGENTS_GROK_COMMAND ?? 'grok', ...config.grok } })
+      throw fail('AGENTS_RUNTIME', 'Unknown native runtime.')
     },
     approve: async (exec, request, signal) => {
       const service = ctx.get('approval')
@@ -70,8 +74,8 @@ export function apply(ctx, config = {}) {
   const present = value => ({ kind: 'dsh-x-agents.result', version: 1, ...value })
   const output = { schema: { type: 'object', additionalProperties: true, properties: {} }, presentationMeta: (_args, value) => present(value), render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
   ctx.tools.register(defineTool({ name: 'dsh_x_agents_inspect', description: 'Read native runtime setup and current task. Does not authenticate, install software, or call a model.', parameters: {}, output, execute: (_args, exec) => controller.inspect(exec) }))
-  ctx.tools.register(defineTool({ name: 'dsh_x_agents_run', description: 'Delegate one turn to Codex or OpenCode native agent. Requests official approval, preserves native session identity, streams actual events. Setup or policy gaps block execution.', parameters: {
-    runtime: { type: 'string', required: true, enum: ['codex','opencode'] }, prompt: { type: 'string', required: true }, model: { type: 'string' }, taskId: { type: 'string' }, expectedRevision: { type: 'integer' }, scope: { type: 'string' },
+  ctx.tools.register(defineTool({ name: 'dsh_x_agents_run', description: 'Delegate one turn to Codex, OpenCode, Claude or Grok native agent. Requests official approval, preserves native session identity, streams actual events. Setup or policy gaps block execution.', parameters: {
+    runtime: { type: 'string', required: true, enum: [...RUNTIMES] }, prompt: { type: 'string', required: true }, model: { type: 'string' }, taskId: { type: 'string' }, expectedRevision: { type: 'integer' }, scope: { type: 'string' },
   }, output, execute: (args, exec) => controller.run(args, exec) }))
   ctx.effect(() => ctx.tools.guard(exec => {
     const id = exec.agent?.session?.id

@@ -50,7 +50,8 @@ export function parseAddress(address) {
 }
 
 export function canPrepare(agent) {
-  return Boolean(agent && ['codex', 'opencode'].includes(agent.id) && agent.available !== false && agent.capabilities.nativeSessions === true)
+  return Boolean(agent && ['codex', 'opencode', 'claude', 'grok'].includes(agent.id)
+    && agent.reason !== 'not-integrated' && agent.available !== false && agent.capabilities?.nativeSessions === true)
 }
 
 export function presentationEvents(events) {
@@ -64,6 +65,21 @@ export function presentationEvents(events) {
     if (typeof event.text === 'string') row.text = event.data.delta ? row.text + event.text : event.text
   }
   return rows
+}
+
+// The host owns sanitization. This display guard avoids duplicating permission
+// scopes or question answers and limits the preview; it is not a secret scanner.
+export function eventDataPreview(event) {
+  if (!['tool', 'plan', 'usage', 'session', 'status', 'diagnostic'].includes(event.type) || event.data == null) return null
+  if (event.data?.name === 'AskUserQuestion' || event.data?.toolName === 'AskUserQuestion') return null
+  try {
+    const body = JSON.stringify(event.data, (key, value) => {
+      if (/password|secret|authorization|cookie|credential|api.?key|^(?:env|answers?|selected|custom|annotations|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token)$/i.test(key)) return '[redacted]'
+      if (typeof value === 'string' && /(?:\b(?:sk-|xai-)[a-zA-Z0-9_-]{16,}|Bearer\s+[a-zA-Z0-9._-]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(value)) return '[Potential credential content withheld]'
+      return value
+    }, 2)
+    return typeof body === 'string' ? { body: body.slice(0, 12000), truncated: body.length > 12000 } : null
+  } catch { return null }
 }
 
 export function prepareRun(snapshot, { runtime, model = '', prompt, continueTask = false }) {

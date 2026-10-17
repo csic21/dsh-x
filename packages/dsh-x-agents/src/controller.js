@@ -3,16 +3,26 @@ import path from 'node:path'
 import { ACTIVE, fail, safeText, safeData, validSession } from './store.js'
 
 const capabilities = Object.fromEntries(['nativeSessions','resume','streaming','tools','plans','permissions','input','usage','cancel','models','authDiscovery'].map(key => [key, false]))
-export const defaultCatalog = () => ['codex','opencode','claude','grok'].map(id => ({ id, label: { codex: 'Codex', opencode: 'OpenCode', claude: 'Claude', grok: 'Grok' }[id], transport: id === 'codex' ? 'app-server' : id === 'opencode' ? 'http-sse' : 'not-integrated', available: ['codex','opencode'].includes(id) ? null : false, authenticated: null, version: null, reason: ['codex','opencode'].includes(id) ? 'not-inspected' : 'not-integrated', models: [], capabilities: { ...capabilities } }))
+export const RUNTIMES = Object.freeze(['codex','opencode','claude','grok'])
+const transports = { codex: 'app-server', opencode: 'http-sse', claude: 'agent-sdk', grok: 'acp' }
+export const defaultCatalog = () => RUNTIMES.map(id => ({ id, label: { codex: 'Codex', opencode: 'OpenCode', claude: 'Claude', grok: 'Grok' }[id], transport: transports[id], available: null, authenticated: null, version: null, reason: 'not-inspected', models: [], capabilities: { ...capabilities } }))
 export function validateRun(args) {
-  if (!args || !['codex', 'opencode'].includes(args.runtime)) throw fail('AGENTS_RUNTIME', 'Choose Codex or OpenCode; other runtimes are not integrated yet.')
+  if (!args || !RUNTIMES.includes(args.runtime)) throw fail('AGENTS_RUNTIME', 'Choose a supported native runtime: Codex, OpenCode, Claude or Grok.')
   if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 12000) throw fail('AGENTS_PROMPT', 'A task prompt of 1–12000 characters is required.')
   if (safeText(args.prompt, 12000) !== args.prompt) throw fail('AGENTS_SECRET', 'Potential credentials must not be sent in task prompts. Use the vendor setup flow.')
   if (args.model !== undefined && (typeof args.model !== 'string' || !args.model.trim() || args.model.length > 160)) throw fail('AGENTS_MODEL', 'Invalid model identifier.')
   if (args.taskId !== undefined && (typeof args.taskId !== 'string' || !Number.isSafeInteger(args.expectedRevision) || typeof args.scope !== 'string')) throw fail('AGENTS_STALE', 'Continuing requires the exact task, revision and profile scope.')
 }
 export function createAgentsController({ store, adapter, cwdOf, policyOf, approve, askInput, trustedExternalRuntime = false }) {
-  const running = new Map(), catalogs = new Map(), inspecting = new Map(), starting = new Map()
+  const running = new Map(), catalogs = new Map(), inspecting = new Map(), starting = new Map(), nativeModels = new Map()
+  const modelsOf = models => {
+    const seen = new Set()
+    return (Array.isArray(models) ? models : []).slice(0,100).flatMap(model => {
+      const id = safeText(model?.id,160), label = safeText(model?.label ?? model?.id,160)
+      if (!id || id !== model?.id || seen.has(id)) return []
+      seen.add(id); return [{id,label}]
+    })
+  }
   const binding = async exec => {
     const cwd = realpathSync(await cwdOf(exec))
     const policy = policyOf(exec)
@@ -34,22 +44,28 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
     }
     return { scope: store.scope, sessionId, revision: value.revision, catalog: catalogs.get(sessionId) ?? defaultCatalog(), task, history: value.history }
   }
-  async function discover(exec) {
+  async function discover(exec, selectedRuntime = null) {
     const sessionId = validSession(exec.agent?.session?.id)
     const discoveredBinding = await binding(exec)
     const { cwd } = discoveredBinding
-    const catalog = defaultCatalog()
-    for (const item of catalog.filter(item => ['codex','opencode'].includes(item.id))) {
+    const previous = catalogs.get(sessionId) ?? []
+    const catalog = defaultCatalog().map(item => selectedRuntime && item.id !== selectedRuntime ? previous.find(old => old.id === item.id) ?? item : item)
+    for (const item of catalog.filter(item => !selectedRuntime || item.id === selectedRuntime)) {
       try {
         if (item.id === 'opencode' && (discoveredBinding.policy.mode !== 'danger-full-access' || !trustedExternalRuntime)) { item.available = false; item.reason = 'This host mode is unsupported: external OpenCode discovery requires an explicitly trusted runtime mode; no project bootstrap was requested.'; continue }
         const driver = await adapter(item.id, { discover: true, exec, binding: discoveredBinding })
         const found = await driver.discover({ cwd, signal: exec.signal, sandboxPolicy: discoveredBinding.policy, trustedExternalRuntime })
+        const savedModels = nativeModels.get(`${sessionId}:${item.id}`)
+        const models = modelsOf(found.models)
+        const cachedNative = ['claude','grok'].includes(item.id) && found.authentication?.source === 'version-only' && savedModels?.backendIdentity === (driver.backendIdentity ?? item.id) ? savedModels : null
+        if (!models.length && cachedNative) models.push(...cachedNative.models)
         Object.assign(item, { available: found.available === true, authenticated: found.authenticated === true ? true : found.authenticated === false ? false : null,
           version: safeText(found.version, 100), reason: safeText(found.reason, 500),
-          models: Array.isArray(found.models) ? found.models.slice(0, 100).map(model => ({ id: safeText(model.id, 160), label: safeText(model.label ?? model.id, 160) })) : [],
+          models,
           capabilities: { ...safeData(driver.capabilities ?? {}), ...safeData(found.capabilities ?? {}), ...Object.fromEntries(Object.keys(capabilities).map(key => [key, typeof found.capabilities?.[key] === 'boolean' ? found.capabilities[key] : driver.capabilities?.[key] === true])) },
-          providerAuthentication: safeText(found.providerAuthentication ?? 'unverified', 100), limitations: safeData(found.limitations ?? driver.capabilities?.limitations ?? []), sandbox: safeData(found.sandbox ?? driver.capabilities?.sandbox ?? null) })
-      } catch (error) { if (error.code === 'AGENTS_CLEANUP_UNCONFIRMED') { if (!running.has(sessionId)) store.quarantine(sessionId, error.message); throw error }; item.available = false; item.reason = safeText(error.message, 500) }
+          authentication: safeData(found.authentication ?? null), providerAuthentication: safeText(found.providerAuthentication ?? 'unverified', 100), limitations: safeData(found.limitations ?? driver.capabilities?.limitations ?? []), sandbox: safeData(found.sandbox ?? driver.capabilities?.sandbox ?? null) })
+        if (cachedNative) Object.assign(item.capabilities, cachedNative.capabilities, { models: models.length > 0 })
+      } catch (error) { if (error.code === 'AGENTS_CLEANUP_UNCONFIRMED') { if (!running.has(sessionId)) store.quarantine(sessionId, error.message, item.id); throw error }; item.available = false; item.reason = safeText(error.message, 500) }
     }
     catalogs.set(sessionId, catalog)
     return snapshot(sessionId)
@@ -107,14 +123,15 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
       return key
     }
     try {
-      const discovery = await discover({ ...exec, signal: controller.signal })
+      const discovery = await discover({ ...exec, signal: controller.signal }, args.runtime)
       const available = discovery.catalog.find(item => item.id === args.runtime)
-      if (!available?.available || !available.authenticated) throw fail('AGENTS_SETUP', available?.reason || 'Runtime authentication or setup has not been verified.')
+      const deferredNative = ['claude','grok'].includes(args.runtime) && available?.authenticated === null && available?.authentication?.state === 'requires-native-initialization' && available.authentication.source === 'version-only'
+      if (!available?.available || (!available.authenticated && !deferredNative)) throw fail('AGENTS_SETUP', available?.reason || 'Runtime authentication or setup has not been verified.')
       if (args.model && !available.models.some(model => model.id === args.model)) throw fail('AGENTS_MODEL', 'The selected model is not advertised by this runtime.')
       if (args.runtime === 'opencode' && (initial.policy.mode !== 'danger-full-access' || !trustedExternalRuntime)) throw fail('AGENTS_EXTERNAL_POLICY', 'This host mode cannot confine an external OpenCode HTTP service. This execution mode is unsupported here; no host settings were changed.')
       state('waiting_permission')
       record({ type: 'permission', text: `Start ${args.runtime} in ${initial.cwd}. DSH coordinates; the external native agent executes.`, data: { phase: 'launch', runtime: args.runtime, model: args.model ?? null, cwd: initial.cwd, nativeSessionId, policy: initial.policy.mode } })
-      const launchAllowed = await approve(exec, { title: `Run ${args.runtime}`, details: `Runtime: ${args.runtime}\nDirectory: ${initial.cwd}\nModel: ${args.model ?? 'native default'}\nTask: ${safeText(args.prompt, 1200)}\n${args.runtime === 'opencode' ? 'This explicitly configured external service applies its own permissions. DSH does not sandbox its process. This is not a blanket grant for future native permission requests.' : 'Native requests remain subject to individual approval. The host file-effect policy applies; it does not claim network or secret-read isolation.'}` }, controller.signal)
+      const launchAllowed = await approve(exec, { title: `Run ${args.runtime}`, details: `Runtime: ${args.runtime}\nDirectory: ${initial.cwd}\nModel: ${args.model ?? 'native default'}\nAuthentication: ${deferredNative ? `Not checked. Approved startup initializes ${args.runtime} native configuration. Native managed hooks or startup maintenance may run; Grok may refresh credentials, sync plugins or maintain native worktrees. No login or credential creation is performed by this plugin.` : available.providerAuthentication}\nTask: ${safeText(args.prompt, 1200)}\n${args.runtime === 'opencode' ? 'This explicitly configured external service applies its own permissions. DSH does not sandbox its process. This is not a blanket grant for future native permission requests.' : 'Native requests remain subject to individual approval. The host file-effect policy applies; it does not claim network or secret-read isolation.'}` }, controller.signal)
       await assertLive()
       if (launchAllowed !== true && launchAllowed !== 'allowed-once') { state('blocked', { reason: 'Launch approval was declined.' }); return snapshot(sessionId) }
       state('running')
@@ -123,7 +140,16 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
       await assertLive()
       const result = await driver.run({ prompt: args.prompt.trim(), model: args.model, cwd: initial.cwd, nativeSessionId, signal: controller.signal,
         sandboxPolicy: initial.policy, trustedExternalRuntime,
-        onEvent: async event => { await assertLive(); record(event) },
+        onEvent: async event => {
+          await assertLive(); record(event)
+          if (['claude','grok'].includes(args.runtime) && event.type === 'session' && event.data?.nativeSessionId && Array.isArray(event.data.models)) {
+            const models = modelsOf(event.data.models)
+            const observed = Object.fromEntries(Object.keys(capabilities).filter(key => typeof event.data.capabilities?.[key] === 'boolean').map(key => [key, event.data.capabilities[key]]))
+            nativeModels.set(`${sessionId}:${args.runtime}`, { backendIdentity, models, capabilities: observed })
+            const catalog = catalogs.get(sessionId)?.find(item => item.id === args.runtime)
+            if (catalog) { catalog.models = models; Object.assign(catalog.capabilities, observed, { models: models.length > 0 }) }
+          }
+        },
         requestPermission: async request => {
           await assertLive(); takeRequest(request, 'permission')
           const once = request.options?.filter(option => option.kind === 'allow_once')
