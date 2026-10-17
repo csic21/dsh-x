@@ -2,7 +2,7 @@
 
 **Windows native execution is currently unsupported under the pinned partial-enforcement sandbox. The full-enforcement guard is retained; the live provider proof below targets macOS Seatbelt.**
 
-This is separate from the deterministic Browser fixture smoke. It is pending until its own macOS run produces inspected native-provider evidence.
+This is separate from the deterministic Browser fixture smoke. The latest real macOS Hello attempt was rejected by the free-tier provider; no assistant reply or Google task completed. See the final checkpoint below.
 
 The Windows job continues to validate the embedded Browser locally. A separate macOS arm64 job, gated by a push commit explicitly marked `[opencode-public-proof]`, downloads official OpenCode v1.19.3, verifies its SHA-256, and checks the pinned official Seatbelt confinement, native version and explicitly requested public model catalog before building the official unsigned packaged DSH application and running `scripts/desktop-opencode-proof.mjs`. The marked proof explicitly opts into catalog-only initialization after the version check. It permits only bounded loopback health/config/provider reads, then a separate selected-free-model configuration/protocol inspection that also reads the native OpenAPI document. It sends no model prompt, session request or MCP call. Unmarked/default preflight remains version-only. macOS cache reuse is deferred because its application symlinks and executable modes require a separate integrity format. Routine Browser pushes do not make real model requests.
 
@@ -31,3 +31,13 @@ Run [39047347127](https://github.com/csic21/dsh-x/actions/runs/39047347127), com
 After the one-time catalog approval, native startup returned effective configuration that the isolated-policy validator rejected. No model prompt or Hello/Google task was sent. This is an integration checkpoint, not a successful native-provider demonstration. The report and screenshot retain the exact failure; the validation guard remains in force.
 
 Run [39048640595](https://github.com/csic21/dsh-x/actions/runs/39048640595), commit `209aa555a42ef2c5b32a38fc7bf2ec2b7c01de64`, passed the real public-catalog preflight and returned 12 explicitly zero-price models. The Desktop selected `opencode/big-pickle` and approved the requested Hello task. The task returned blocked with an `ENOTEMPTY` temporary-directory cleanup error. Google was not started. The saved artifact did not retain the native task events, so it does not establish whether a model prompt was dispatched before cleanup failed. No successful Hello response is claimed; repeating a model task requires review of this uncertainty. Subsequent proof diagnostics retain bounded sanitized task state before asserting completion.
+
+### Latest provider rejection and current acceptance status
+
+Run [39049881023](https://github.com/csic21/dsh-x/actions/runs/39049881023), commit `24b0a6e0813b6066008cfcc49f4c322663ef534c`, passed the actual Windows Browser lifecycle and the macOS full-Seatbelt, native-version, public-catalog and selected-model protocol checks. The official verified OpenCode binary selected `opencode/beam-free` from a fresh catalog reporting zero input/output prices. A real native session was created and the requested Hello prompt HTTP dispatch was attempted.
+
+The inspected native report records the provider rejection: **“OpenCode's free tier can only be used from within OpenCode.”** No assistant reply was returned. Reported usage and cost were zero; this does not establish a successful inference. The Google task never started, so the requested Hello → embedded Google demonstration remains unpassed.
+
+This owned integration identifies itself with `OPENCODE_CLIENT=dsh-owned-browser`. That may be relevant to provider eligibility, but the server's exact acceptance rule has not been established. No client impersonation, paid fallback, credentials or further provider retry was used to bypass the rejection. This free route is currently unavailable for the demonstrated integration pending an officially supported provider arrangement; this is not a claim that every OpenCode model is unusable.
+
+The latest local aggregate before this documentation-only checkpoint was **753 passed, 2 explicitly skipped for host Git-root isolation constraints, 0 failed**. Windows embedded Browser success and macOS confinement/protocol success are separate from the unresolved provider acceptance. Merging this source does not turn the failed provider demonstration into a passed test.
