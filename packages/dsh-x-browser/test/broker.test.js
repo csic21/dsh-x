@@ -94,3 +94,13 @@ test('idle grant authorizes exactly the next turn; an unused active grant cannot
   active = { runId: 'run-b', turn: 2 }
   await assert.rejects(g.action({ action: 'observe' }, { runId: 'run-b', turnNumber: 2 }), { code: 'BROWSER_RUN' })
 })
+
+test('pre-input confirmation rejects a delivered command revoked while its page helper was pending', async t => {
+  const f = await fixture(); t.after(() => f.broker.dispose())
+  const pending = f.action({ action: 'click', target: 'e1:s1:n1' }); const rejection = assert.rejects(pending, { code: 'BROWSER_REVOKED' }); await new Promise(resolve => setImmediate(resolve))
+  const delivery = await f.broker.poll(f.auth)
+  const request = { ...f.auth, commandId: delivery.command.id, epoch: 1, grantRevision: f.grant.grantRevision }
+  assert.equal((await f.broker.confirm(request)).allowed, true)
+  f.broker.revoke(f.auth); await rejection
+  await assert.rejects(f.broker.confirm(request), { code: 'BROWSER_STALE' })
+})

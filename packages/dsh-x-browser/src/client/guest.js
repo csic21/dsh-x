@@ -58,11 +58,12 @@ export function createGuest({ desktop, workspace, host, applicationOrigin, onCha
     host.append(element)
     await readyPromise
   }
-  async function perform(raw) {
+  async function perform(raw, { beforeInput = async () => {} } = {}) {
     check(raw)
     const { id, epoch: commandEpoch, grantRevision: revision, ...payload } = raw
     const command = validateCommand(payload, applicationOrigin)
     const assertCurrent = () => { if (disposed || !active || revision !== grantRevision || !NAVIGATION.has(command.action) && epoch !== commandEpoch) throw fail('BROWSER_STALE', 'Control was revoked or the page changed. Do not replay the action.') }
+    const admitInput = async () => { assertCurrent(); await beforeInput(); assertCurrent() }
     assertCurrent()
     if (command.action === 'observe') {
       const value = await element.executeJavaScript(helperScript({ action: 'observe' }))
@@ -83,17 +84,21 @@ export function createGuest({ desktop, workspace, host, applicationOrigin, onCha
       assertCurrent()
       if (point?.error) throw fail('BROWSER_TARGET', String(point.error).slice(0, 300))
       if (!Number.isInteger(point?.x) || !Number.isInteger(point?.y) || point.x < 0 || point.y < 0 || point.x > 20000 || point.y > 20000) throw fail('BROWSER_TARGET', 'The page returned invalid target coordinates.')
+      await admitInput(); assertCurrent()
       if (command.action === 'click') {
         await element.sendInputEvent({ type: 'mouseDown', x: point.x, y: point.y, button: 'left', clickCount: 1 })
-        assertCurrent()
+        await admitInput(); assertCurrent()
         await element.sendInputEvent({ type: 'mouseUp', x: point.x, y: point.y, button: 'left', clickCount: 1 })
       } else await element.insertText(command.text)
-    } else if (command.action === 'scroll') await element.sendInputEvent({ type: 'mouseWheel', x: 10, y: 10, deltaX: command.x, deltaY: command.y, canScroll: true })
-    else if (command.action === 'press') { await element.sendInputEvent({ type: 'keyDown', keyCode: command.key }); assertCurrent(); await element.sendInputEvent({ type: 'keyUp', keyCode: command.key }) }
-    else if (command.action === 'navigate') { await element.loadURL(command.url) }
-    else if (command.action === 'back') element.goBack()
-    else if (command.action === 'forward') element.goForward()
-    else if (command.action === 'reload') element.reload()
+    } else {
+      await admitInput(); assertCurrent()
+      if (command.action === 'scroll') await element.sendInputEvent({ type: 'mouseWheel', x: 10, y: 10, deltaX: command.x, deltaY: command.y, canScroll: true })
+      else if (command.action === 'press') { await element.sendInputEvent({ type: 'keyDown', keyCode: command.key }); await admitInput(); assertCurrent(); await element.sendInputEvent({ type: 'keyUp', keyCode: command.key }) }
+      else if (command.action === 'navigate') { await element.loadURL(command.url) }
+      else if (command.action === 'back') element.goBack()
+      else if (command.action === 'forward') element.goForward()
+      else if (command.action === 'reload') element.reload()
+    }
     assertCurrent()
     refs.clear()
     return { epoch, result: { action: command.action, status: NAVIGATION.has(command.action) ? 'navigation-requested' : 'input-sent', notice: 'Input was sent to the visible guest. Observe again to verify its effect; never automatically retry a lost acknowledgement.' } }

@@ -31,6 +31,10 @@ test('desktop smoke workflow is bounded to work branch and actual packaged asser
   const harness = readFileSync(new URL('../scripts/desktop-browser-smoke.mjs', import.meta.url), 'utf8');
   assert.match(harness, /assert.equal\(report.runtime.packaged, true\)/);
   assert.match(harness, /chromiumSandbox: true/);
+  assert.match(harness, /navigatedTab\.epoch > navigationTab\.epoch/);
+  assert.match(harness, /stale-after-navigation/);
+  assert.match(harness, /stale-after-close/);
+  assert.match(harness, /webContents\.fromId\(id\)\.isDestroyed\(\)/);
   assert.doesNotMatch(harness, /--no-sandbox|ignoreHTTPSErrors: true|bypassCSP: true/);
 });
 test('desktop visible flow keeps all browser actions in one host turn', async () => {

@@ -99,6 +99,14 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       }
       return { ...publicTab(tab), command: null }
     },
+    async confirm(args) {
+      const tab = authenticate(args)
+      await verify(tab)
+      const pending = tab.pending
+      if (!pending || !pending.delivered || pending.id !== args.commandId || !tab.granted || tab.revision !== args.grantRevision || pending.revision !== args.grantRevision || pending.epoch !== args.epoch || tab.epoch !== args.epoch) throw fail('BROWSER_STALE', 'Browser input authority expired before dispatch.')
+      try { pending.assertCurrent?.(); pending.signal?.throwIfAborted() } catch { revoke(tab, 'run-ended'); throw fail('BROWSER_REVOKED', 'The owning run ended before input dispatch.') }
+      return { allowed: true }
+    },
     async acknowledge(args) {
       const tab = authenticate(args), pending = tab.pending
       await verify(tab)

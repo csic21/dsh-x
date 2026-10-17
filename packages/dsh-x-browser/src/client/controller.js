@@ -34,7 +34,11 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
     const ownGeneration = generation
     running = command; publish({ busy: true, status: 'running' })
     try {
-      const outcome = await guest.perform(command)
+      const outcome = await guest.perform(command, { beforeInput: async () => {
+        if (disposed || ownGeneration !== generation) throw fail('BROWSER_REVOKED', 'Browser control ended before input dispatch.')
+        const confirmation = await call('confirm', { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: guest.state().epoch })
+        if (!confirmation.allowed || disposed || ownGeneration !== generation) throw fail('BROWSER_REVOKED', 'Browser input authority expired.')
+      } })
       if (disposed || ownGeneration !== generation) return
       await call('ack', { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: outcome.epoch, result: outcome.result })
       if (!disposed && ownGeneration === generation) publish({ status: 'ready' })

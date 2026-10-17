@@ -65,6 +65,7 @@ export function apply(ctx) {
       ['revoke', args => broker.revoke(args), ['tabId', 'capability']],
       ['close', args => broker.close(args), ['tabId', 'capability']],
       ['poll', args => broker.poll(args), ['tabId', 'capability']],
+      ['confirm', args => broker.confirm(args), ['tabId', 'capability', 'commandId', 'grantRevision', 'epoch']],
       ['ack', args => broker.acknowledge(args), ['tabId', 'capability', 'commandId', 'grantRevision', 'epoch', 'result', 'error']],
     ]
     for (const [method, handler, fields] of routes) host.connection.fetch.register(createBrowserRoute(method, handler, fields))

@@ -72,3 +72,27 @@ test('actual observation result strips URL query and fragment before model outpu
  const observed = await f.guest.perform({ id: 'o', epoch: 1, grantRevision: 1, action: 'observe' })
  assert.equal(observed.result.url, 'https://example.test/page'); assert.doesNotMatch(JSON.stringify(observed), /token=secret|#private/)
 })
+
+test('host revocation during awaited DOM helper is rechecked before any native input', async t => {
+  const f = fixture(); t.after(() => f.guest.dispose()); await f.guest.start(); f.guest.grant(1)
+  const observed = await f.guest.perform({ id: 'observe', epoch: 0, grantRevision: 1, action: 'observe' })
+  let resolve, allowed = true
+  f.element.executeJavaScript = () => new Promise(done => { resolve = done })
+  const pending = f.guest.perform({ id: 'click', epoch: 0, grantRevision: 1, action: 'click', target: observed.result.targets[0].ref }, { beforeInput: async () => { if (!allowed) throw Object.assign(new Error('Host revoked'), { code: 'BROWSER_REVOKED' }) } })
+  allowed = false; resolve({ x: 1, y: 2 })
+  await assert.rejects(pending, { code: 'BROWSER_REVOKED' })
+  assert.equal(f.calls.some(call => call[0] === 'input'), false)
+})
+
+test('revocation between input events leaves a partial pair without automatic completion or replay', async t => {
+  for (const action of ['click', 'press']) {
+    const f = fixture(); t.after(() => f.guest.dispose()); await f.guest.start(); f.guest.grant(1)
+    const observed = await f.guest.perform({ id: 'observe', epoch: 0, grantRevision: 1, action: 'observe' })
+    let confirmations = 0
+    const command = action === 'click' ? { action, target: observed.result.targets[0].ref } : { action, key: 'Tab' }
+    await assert.rejects(f.guest.perform({ id: action, epoch: 0, grantRevision: 1, ...command }, { beforeInput: async () => {
+      if (++confirmations === 2) throw Object.assign(new Error('Host revoked'), { code: 'BROWSER_REVOKED' })
+    } }), { code: 'BROWSER_REVOKED' })
+    assert.deepEqual(f.calls.filter(call => call[0] === 'input').map(call => call[1].type), [action === 'click' ? 'mouseDown' : 'keyDown'])
+  }
+})

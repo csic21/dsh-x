@@ -109,7 +109,43 @@ try {
   await page.mouse.click(box.x + buttonCenter.x, box.y + buttonCenter.y);
   assert.equal(await guest.evaluate(e => e.executeJavaScript('document.querySelector("#result").textContent')), 'human-takeover');
   report.assertions.push('takeover revokes grant, rejects stale action, retains exact guest and supports manual input');
-  await page.screenshot({ path: join(output, 'user-takeover.png') }); report.status = 'passed';
+  await page.screenshot({ path: join(output, 'user-takeover.png') });
+  // Re-establish a real live-turn grant, then exercise manual navigation revocation.
+  await page.getByTestId('dxb-enable-ai').click(); await page.getByTestId('dxb-confirm-ai').click();
+  await page.getByTestId('dxb-takeover').waitFor();
+  const navigationFlow = await tool('navigation-flow', 'dsh_x_browser_tabs', {}, 'visible-flow');
+  assert.equal(navigationFlow.completed, 5);
+  const navigationTab = navigationFlow.tab;
+  const nextUrl = `${url}next`;
+  await page.getByTestId('dxb-address').fill(nextUrl); await page.getByTestId('dxb-go').click();
+  await page.getByTestId('dxb-enable-ai').waitFor();
+  for (let n = 0; n < 100 && (await guestInfo()).url !== nextUrl; n++) await new Promise(r => setTimeout(r, 100));
+  assert.equal((await guestInfo()).id, guestId); assert.equal((await guestInfo()).url, nextUrl);
+  const stop = page.getByRole('button', { name: /^(Stop generating|停止生成)$/ });
+  if (await stop.isVisible()) await stop.click();
+  await stop.waitFor({ state: 'hidden' });
+  const navigated = await tool('after-navigation', 'dsh_x_browser_tabs', {});
+  const navigatedTab = navigated.tabs.find(t => t.tabId === navigationTab.tabId);
+  assert(navigatedTab); assert.equal(navigatedTab.granted, false); assert(navigatedTab.epoch > navigationTab.epoch);
+  const navigationStale = await tool('stale-after-navigation', 'dsh_x_browser_action', { tabId: navigationTab.tabId, epoch: navigationTab.epoch, grantRevision: navigationTab.grantRevision, action: 'type', target: 'e0:s0:n0', text: 'must-not-appear' }, undefined, true);
+  assert.match(navigationStale.text, /BROWSER_GRANT|BROWSER_STALE|enable AI access/i);
+  assert.equal(await guest.evaluate(e => e.executeJavaScript('document.querySelector("#result").textContent')), 'unchanged');
+  report.assertions.push('manual navigation preserves native guest, advances epoch, revokes live-turn grant and rejects stale input');
+  // Close through the official dock tab affordance after explicitly granting again.
+  await page.getByTestId('dxb-enable-ai').click(); await page.getByTestId('dxb-confirm-ai').click();
+  await page.getByTestId('dxb-takeover').waitFor();
+  const closeTab = page.locator('[role="tablist"][data-dockkit-strip]').getByRole('button', { name: /^(Close|关闭)$/ });
+  assert.equal(await closeTab.count(), 1); await closeTab.click();
+  await guest.waitFor({ state: 'detached' });
+  const closed = await tool('after-close', 'dsh_x_browser_tabs', {});
+  assert.equal(closed.tabs.some(t => t.tabId === navigationTab.tabId), false);
+  const closeStale = await tool('stale-after-close', 'dsh_x_browser_action', { tabId: navigationTab.tabId, epoch: navigatedTab.epoch, grantRevision: navigatedTab.grantRevision, action: 'observe' }, undefined, true);
+  assert.match(closeStale.text, /BROWSER_CLOSED|closed|no longer connected/i);
+  const guestDestroyed = () => app.evaluate(({ webContents }, id) => !webContents.fromId(id) || webContents.fromId(id).isDestroyed(), guestId);
+  for (let n = 0; n < 100 && !await guestDestroyed(); n++) await new Promise(r => setTimeout(r, 100));
+  assert.equal(await guestDestroyed(), true);
+  report.assertions.push('closing the granted official dock tab removes broker identity and destroys native guest; stale actions fail');
+  report.status = 'passed';
 } catch (error) {
   report.status = 'failed'; report.error = String(error.stack ?? error);
   if (!page && app) page = app.windows()[0];

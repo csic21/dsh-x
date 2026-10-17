@@ -2,7 +2,7 @@
 
 Experimental, opt-in Desktop browser plugin for DSH `0.2.1-alpha.5`.
 
-This package is **not included in the default development suite**. Source/API compatibility and automated unit tests do not establish packaged Desktop compatibility. See [VALIDATION.md](VALIDATION.md) for the current evidence and the required Windows packaged-app gate.
+This package is **not included in the default development suite**. A bounded real Windows packaged-app smoke passed on the published baseline; the subsequent cancellation change and broader lifecycle matrix still require qualification. See [VALIDATION.md](VALIDATION.md) for exact versions, commit and evidence. Source/API compatibility and automated unit tests alone do not establish packaged Desktop compatibility.
 
 ## What it does
 
@@ -24,6 +24,10 @@ The grant is bound to the currently open DSH turn, or exactly the next turn when
 Actions: `observe`, `navigate`, `click`, `type`, `scroll`, `press`, `back`, `forward`, `reload`. No model-supplied JavaScript, CSS selector, CDP command, raw IPC, debug endpoint or process command is accepted. A reviewed fixed helper reads top-frame visible text and bounded target descriptions; native input is sent to the same owned guest.
 
 The broker binds profile, authoritative workspace, session, current/next turn, tab, document epoch, grant revision and command ID. Client ownership uses an unguessable capability retained in the trusted renderer closure, never in model output or the page. Delivery is once-only: a lost acknowledgement revokes the grant and is not replayed. Hidden/closed tabs, renderer disconnection, workspace changes, ended turns, cancellation and stale documents fail closed. Navigation during a pending grant cannot enable the replacement page.
+
+Before each native input, the renderer rechecks the exact delivered command, document epoch and grant revision with the host, then rechecks its local takeover generation immediately before dispatch. This prevents a command cancelled while awaiting its DOM helper from later sending input. The host confirmation is a dispatch admission point, not a distributed transaction: cancellation arriving after that admission can race an already-admitted input. Such input may complete and is never automatically replayed. The explicit local Take over button revokes the renderer first.
+
+Revocation between a mouse/key down and up can leave a partial input pair. The plugin does not automatically finish the pair, because a release event can itself activate the page. Already-sent events cannot be undone; the user should inspect the page after taking over.
 
 ## Privacy and limitations
 
