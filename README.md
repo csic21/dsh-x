@@ -1,5 +1,14 @@
 # dsh-x
 
+DSH-X 是运行在官方 DeepSeek Harness 上的开发者插件套件。对用户提供组合体验，对开发者保留独立包；它不维护自己的内核 fork，也不另做一套 Electron 壳。
+
+- 默认开发组合：`dsh-x-suite`，精确依赖 Code + Agents。启用入口不自动初始化原生账号、准备模型目录或执行任务。
+- 可选独立功能：Chat、Plan、Stocks、Browser。Code 浏览和默认 DSH 模型审查不依赖 Agents；原生修复才需要它。Browser 的真实 Electron 验证单独记录，Web 测试不替代 Desktop 验证。
+- 第一条交付路径：预构建插件包 + 官方 Plugins 管理器。当前仓库有源代码和验证脚本，不表示插件已发布到 npm。
+- 桌面发行版是后续分发目标。现有打包矩阵仍只生成官方 Desktop，不能把其中的 `dshXSha` 当作插件已经进入安装包的证据。
+
+套件安装、冲突检查及可独立使用边界见 [Developer Suite](packages/dsh-x-suite/README.md)。上游版本检查与尚未激活的调度条件见 [兼容策略](compatibility/README.md)。真实桌面验证流程见 [Desktop Browser proof](docs/desktop-browser-proof.md)。
+
 这个 git 只放我们自己的代码。官方内核不在这里，也不做成子模块。
 
 内核只在两个时刻出现：
@@ -14,7 +23,7 @@
 ```text
 dsh-x/
   packages/<包名>/              插件源码。一个目录一个包，目录名等于包名
-                                 现有 dsh-x-code、dsh-x-agents、dsh-x-plan、dsh-x-stock、dsh-x-chat
+                                 suite、code、agents、plan、stock、chat、browser
   .github/workflows/            打包时检出内核、产出安装包
   packaging/                    平台、签名、插件为什么还不进安装包
   kernel.local.example.json     本机运行时的路径样例
@@ -51,11 +60,19 @@ home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH
   logs/
 ```
 
-## 安装包
+## 更新与安装包
+
+官方 Desktop 的壳和内核是同一精确版本、同一签名更新单元；插件随官方提供的运行时启动，不能在 Desktop 内用 npm 单独替换内核。独立 npm CLI 使用官方 npm 发布的 CLI 包更新，与 Desktop 包依赖图分离。`dsh plugin update` 更新的是 profile 插件，并非 Desktop 内核。
+
+Desktop 当前支持安装包固定的 `nightly` / `latest` 更新通道；`latest` 拒绝预发布版本，切换通道需要手动安装另一通道的包，没有已验证的应用内切换按钮。自动检查不会自动下载或安装。普通最新正式版与主动选择的预发布版都要先经过兼容验证；未验证版本不会自动放宽 `engines.dsh`、替换本地内核或发布 DSH-X。
+
+检查工作流只产出精确版本和测试证据；Web Host / 协议 fixture 通过不代表 Electron、真实原生账号或真实模型调用已验证。当前精确准入仍为 `0.2.1-alpha.5`，后续版本需要明确验证后更新声明。
+
+官方依据：[Desktop 更新边界](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/README.md)、[安装包通道规则](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/packaging/README.md)、[插件兼容检查](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/packages/boot/plugin-manager/README.md)。
 
 打包规则在 `packaging/README.md`。官方 Desktop 能出的是 macOS arm64、macOS x64、Windows x64。Linux 没有这条打包路径。
 
-`.github/workflows/desktop-package.yml` 手动运行，打未签名的 macOS arm64 和 Windows x64。`link:` 的本机路径不会打进安装包。
+`.github/workflows/desktop-package.yml` 的打包矩阵手动运行，打未签名的 macOS arm64 和 Windows x64；当前工作分支的 Browser 相关推送另触发限定范围的 Windows 证明任务。`link:` 的本机路径不会打进安装包。
 
 ## 新增插件与可复现测试
 
@@ -71,11 +88,11 @@ home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH
 
 ## 语言与界面
 
-三个插件跟随 DSH 官方「设置 → 语言」，内置中文与英文，不增加插件自己的语言设置。切换后股票页/自选条、三个插件的工具卡、提示与错误，以及 plan 的原生审批理由立即更新。数字、百分比与日期使用当前语言的 `Intl` 格式；证券代码、证券名称、自定义别名、路径与模型原文保持不变。
+Stock、Chat、Plan 跟随 DSH 官方「设置 → 语言」，内置中文与英文，不增加插件自己的语言设置。切换后股票页/自选条、三个插件的工具卡、提示与错误，以及 plan 的原生审批理由立即更新。数字、百分比与日期使用当前语言的 `Intl` 格式；证券代码、证券名称、自定义别名、路径与模型原文保持不变。
 
 实现使用官方 `ctx.locale`、slot 的 `locale`/`t`、`tool.call.toolview`、`output.presentationMeta` 和审批 `displayReason`。新增语言包由官方 fallback 链选择文案，缺省回退英文。Host 的模型指令、工具协议文案、启动诊断和旧历史原始记录不按浏览器语言重写；它们与用户界面文案分开。
 
-根目录 `npm test` 会先构建三个客户端包，再跑全部单元、DOM 与官方运行时集成测试；无需真实模型或行情凭据。
+根目录 `npm test` 会先构建各客户端包，再跑全部单元、DOM 与官方运行时集成测试；无需真实模型或行情凭据。
 
 ## Agents 原生工作台
 

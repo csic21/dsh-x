@@ -1,5 +1,7 @@
 # 桌面打包
 
+DSH-X 的第一条交付路径是独立插件与 `dsh-x-suite` 组合包，通过官方 Plugins 管理器安装。本页的原有 Desktop 打包矩阵不是已集成 DSH-X 的桌面发行版。新增的 Windows Browser proof job 是隔离验证，不是发布安装包，见 [验证说明](../docs/desktop-browser-proof.md)。
+
 安装包由官方内核的 Desktop 打包命令产生。本仓库不另写一套 Electron 壳，也不包含内核源码。GitHub Actions 在运行时检出 `kernel_ref`，在那份临时目录里打包，产物留成 artifact。要跟最新内核，改这次运行的 ref。
 
 ## 平台
@@ -29,7 +31,13 @@ macOS arm64 必须在 Apple Silicon 上打包。Windows x64 必须在 Windows x6
 
 官方安装包把内置 bundle 放在应用自己的 `app.asar/dsh` 里。外部插件装在用户 home 的 `profiles/desktop`。上游没有一个可以让我们把 `packages/` 塞进安装包的固定入口。
 
-所以现在的 Action 只打包指定提交上的官方 Desktop，并在 artifact 里放一份 `build-manifest.json`，记下内核提交和本仓库提交。等插件要随安装包分发时，再加一步把插件文件放进安装包，并在第一次启动时用 Desktop 自己的命令装进 profile。那一步不能用 `link:`。
+所以原有打包矩阵只打包指定提交上的官方 Desktop，并在 artifact 里放一份 `build-manifest.json`，记下内核提交和本仓库提交。插件随安装包分发尚无已经验证的实现；必须验证受支持的插件交付、首次初始化、签名、升级、卸载和失败恢复后，才能称为 DSH-X 桌面发行版。不能通过硬写 `app.asar`、写入本机 `link:` 路径或修改内核绕过此边界。
+
+## 更新身份
+
+官方 Desktop 的 Electron 壳、匹配内核与 pnpm 是同一个签名更新单元。npm CLI 的包更新不更新 Desktop。插件包在 profile 中独立管理，但仍须通过运行时 `engines.dsh` 兼容准入。
+
+安装包将 `nightly` 或 `latest` 通道写入 manifest（打包参数 `DSH_DESKTOP_UPDATE_CHANNEL`）；自动更新保持该通道，`latest` 不接受预发布版本。切换通道要手动安装另一通道包，不能描述为已有应用内开关。自动检查不会自动下载或在退出时静默安装。详见官方 [packaging](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/packaging/README.md) 与 [更新协调器](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/src/update-coordinator.ts)。
 
 ## 怎么跑
 

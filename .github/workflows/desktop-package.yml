@@ -1,6 +1,13 @@
 name: Package desktop
 
 on:
+  push:
+    branches: [work/stock-chat-plugins]
+    paths:
+      - packages/dsh-x-browser/**
+      - scripts/desktop-browser-smoke.mjs
+      - scripts/fixtures/desktop-browser-smoke/**
+      - .github/workflows/desktop-package.yml
   workflow_dispatch:
     inputs:
       kernel_repository:
@@ -22,6 +29,7 @@ concurrency:
 
 jobs:
   package:
+    if: github.event_name == 'workflow_dispatch'
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -114,3 +122,77 @@ jobs:
           path: |
             deepseek-harness/apps/desktop/.desktop-build/manifest/build-manifest.json
             deepseek-harness/${{ matrix.artifact_glob }}
+
+  browser-smoke:
+    name: Actual Windows Desktop browser smoke
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+      # Exact upstream source reviewed for the plugin guest-lease contract.
+      DSH_SMOKE_KERNEL_SHA: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dsh-x
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+          path: deepseek-harness
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: deepseek-harness/package.json
+      - name: Build plugin clients
+        working-directory: dsh-x
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix packages/dsh-x-browser run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install official kernel dependencies
+        working-directory: deepseek-harness
+        run: pnpm install --frozen-lockfile
+      - name: Configure isolated unsigned smoke package
+        working-directory: deepseek-harness
+        run: |
+          # Reserved .invalid endpoint: no SSO, real update service, or credentials.
+          # "production" selects anonymous policy semantics, NOT publication.
+          @(
+            'DSH_DESKTOP_APP_ID=com.deepseek.harness.smoke'
+            'DSH_DESKTOP_AUTO_UPDATE_ENV=production'
+            'DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://dsh-smoke.invalid'
+          ) | Set-Content -Encoding utf8 apps/desktop/.env.windows
+      - name: Build official unsigned unpacked Windows application
+        working-directory: deepseek-harness
+        run: pnpm --filter @deepseek-ai/dsh-desktop run package win-x64 --unsigned --dir
+      - name: Install pinned official Electron test driver
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/desktop-driver" | Out-Null
+          npm install --prefix "$env:RUNNER_TEMP/desktop-driver" --no-audit --no-fund playwright@1.61.1
+      - name: Exercise actual visible native guest
+        working-directory: dsh-x
+        env:
+          DSH_SMOKE_KERNEL: ${{ github.workspace }}/deepseek-harness
+          DSH_SMOKE_HOME: ${{ runner.temp }}/dsh-browser-smoke-home
+          DSH_SMOKE_OUTPUT: ${{ github.workspace }}/desktop-smoke-evidence
+          DSH_SMOKE_DRIVER: ${{ runner.temp }}/desktop-driver
+        run: node scripts/desktop-browser-smoke.mjs
+      - name: Retain proof or failure evidence (never a distributable installer)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-browser-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: desktop-smoke-evidence/**

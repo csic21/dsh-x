@@ -1,0 +1,9 @@
+- insert:
+    - id: dsh-x-desktop-browser-smoke
+      name: dsh-x-desktop-browser-smoke
+- id: agent-default-model
+  config:
+    provider: desktop-smoke
+    model: deterministic-local
+- id: session-title-llm
+  disabled: true
