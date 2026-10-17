@@ -1,8 +1,47 @@
 import assert from 'node:assert/strict'
-import { PassThrough } from 'node:stream'
+import { PassThrough, Writable } from 'node:stream'
 import test from 'node:test'
 
 import { runAcpPrompt } from '../src/acp.js'
+
+test('stdin write errors reject the pending request without crashing the host', async () => {
+  await assert.rejects(runAcpPrompt({
+    argv: ['fixture'], cwd: process.cwd(), prompt: 'plan', timeoutMs: 5_000,
+    spawn: () => {
+      const stdout = new PassThrough()
+      const stdin = new Writable({
+        write(_chunk, _encoding, callback) {
+          callback(Object.assign(new Error('ACP fixture input closed'), { code: 'EPIPE' }))
+        },
+      })
+      return { stdin, stdout, terminate: () => stdout.end() }
+    },
+  }), { code: 'EPIPE' })
+})
+
+test('official subprocess input closure fails promptly while stdout stays open', { skip: process.platform === 'win32' }, async () => {
+  const { Context } = await import('@deepseek-ai/cordis')
+  const { default: SubprocessLocal } = await import('@deepseek-ai/dsh-subprocess-local')
+  const ctx = new Context()
+  try {
+    await ctx.plugin(SubprocessLocal)
+    const script = `
+      const fs = require('node:fs');
+      process.stdin.once('data', data => {
+        const message = JSON.parse(data.toString().trim());
+        fs.closeSync(0);
+        process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:message.id,result:{protocolVersion:1}})+'\\n');
+      });
+      setInterval(() => {}, 1000);
+    `
+    await assert.rejects(runAcpPrompt({
+      spawn: spec => ctx.subprocess.spawn(spec),
+      argv: [process.execPath, '-e', script], cwd: process.cwd(), prompt: 'plan', timeoutMs: 5_000,
+    }), { code: 'EPIPE' })
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
 
 test('a prompt collects chunk text and cancels permission requests', async () => {
   const methods = []
@@ -132,3 +171,57 @@ function scripted(respond) {
     }
   }
 }
+
+
+for (const payload of [null, [], 'text', 7, {}, { jsonrpc: '2.0', id: {}, result: {} }, { jsonrpc: '2.0', method: 1 }]) {
+  test(`invalid JSON-RPC structure fails safely: ${JSON.stringify(payload)}`, async () => {
+    await assert.rejects(runAcpPrompt({
+      argv: ['agent'], cwd: '/work', prompt: 'plan', timeoutMs: 1_000,
+      spawn: () => {
+        const stdin = new PassThrough()
+        const stdout = new PassThrough()
+        stdin.once('data', () => setImmediate(() => stdout.write(`${JSON.stringify(payload)}\n`)))
+        return { stdin, stdout, terminate: () => stdout.end() }
+      },
+    }), /JSON-RPC/)
+  })
+}
+
+test('oversized unterminated ACP lines fail without waiting for deadline', async () => {
+  await assert.rejects(runAcpPrompt({
+    argv: ['agent'], cwd: '/work', prompt: 'plan', timeoutMs: 1_000,
+    spawn: () => {
+      const stdin = new PassThrough()
+      const stdout = new PassThrough()
+      stdin.once('data', () => setImmediate(() => stdout.write('x'.repeat(256_001))))
+      return { stdin, stdout, terminate: () => stdout.end() }
+    },
+  }), /单行响应超过/)
+})
+
+test('oversized terminated ACP lines fail before JSON parsing', async () => {
+  await assert.rejects(runAcpPrompt({
+    argv: ['agent'], cwd: '/work', prompt: 'plan', timeoutMs: 1_000,
+    spawn: () => {
+      const stdin = new PassThrough()
+      const stdout = new PassThrough()
+      stdin.once('data', () => setImmediate(() => stdout.write(`${'x'.repeat(256_001)}\n`)))
+      return { stdin, stdout, terminate: () => stdout.end() }
+    },
+  }), /单行响应超过/)
+})
+
+test('many individually small text chunks cannot exceed total text cap', async () => {
+  await assert.rejects(runAcpPrompt({
+    argv: ['agent'], cwd: '/work', prompt: 'plan', timeoutMs: 1_000,
+    spawn: scripted(message => {
+      if (message.method === 'initialize') return ok(message.id, { protocolVersion: 1 })
+      if (message.method === 'session/new') return ok(message.id, { sessionId: 'bounded' })
+      if (message.method === 'session/prompt') return [
+        note('agent_message_chunk', 'x'.repeat(100_001)),
+        note('agent_message_chunk', 'x'.repeat(100_001)),
+        ok(message.id, { stopReason: 'end_turn' }),
+      ]
+    }),
+  }), /正文超过/)
+})

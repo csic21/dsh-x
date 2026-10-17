@@ -14,11 +14,11 @@
 ```text
 dsh-x/
   packages/<包名>/              插件源码。一个目录一个包，目录名等于包名
-                                 现在有 packages/dsh-x-plan/
+                                 现有 dsh-x-plan、dsh-x-stock、dsh-x-chat
   .github/workflows/            打包时检出内核、产出安装包
   packaging/                    平台、签名、插件为什么还不进安装包
   kernel.local.example.json     本机运行时的路径样例
-  scripts/                      本机启动和 link 用的脚本，现在还没有文件
+  scripts/                      本机 link 与 Web 冒烟验证脚本
   package.json                  私有根，不声明 packageManager
   pnpm-workspace.yaml           只收录 packages/*
 ```
@@ -27,7 +27,7 @@ dsh-x/
 |---|---|
 | `packages/` | 不用。这里只是我们的源码 |
 | `.github/workflows/` | 打包。检出 `kernel_ref`，不把内核提交进这个 git |
-| `scripts/` | 本机运行。读取 `kernel.local.json` 里的路径 |
+| `scripts/` | 本机运行。官方 npm CLI 链接/验证脚本；源码内核路径可保留在 kernel.local.json |
 
 `kernel.local.json` 从样例复制，已在 `.gitignore` 里。它只描述本机路径，不负责更新内核。
 
@@ -56,3 +56,13 @@ home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH
 打包规则在 `packaging/README.md`。官方 Desktop 能出的是 macOS arm64、macOS x64、Windows x64。Linux 没有这条打包路径。
 
 `.github/workflows/desktop-package.yml` 手动运行，打未签名的 macOS arm64 和 Windows x64。`link:` 的本机路径不会打进安装包。
+
+## 新增插件与可复现测试
+
+- `packages/dsh-x-stock/`：独立股票详情页 + 底部自选条；手动固定 A 股代码、排序、移除、收起，点底条打开同一股票。行情 provider 可替换；当前未接 A 股源时明确显示未配置，不生成价格、走势或分析。另保留 Finnhub 单股票报价工具，需凭据、覆盖取决于其套餐。
+- `packages/dsh-x-chat/`：通过已配置的官方 LLM 提供方进行一次独立问答；显式传 provider/model，不执行工具或自动读取文件。
+- `dsh-x-plan`：补上计划状态读取失败时阻断工具、异常 ACP 消息防御、响应大小限制和子进程 stdin EPIPE 防护。
+
+股票 UI 使用自有 main/sidebar 插槽；仅在 shell.bottom 无其他注册者时显示底条，冲突时退让。聊天目前是模型可调用工具，没有独立聊天窗口。真实行情、历史走势与分析结果仍需获授权数据源，未配置不代表实时服务可用。
+
+安装与链接：见 `scripts/README.md`。核验版本、通过项目与未覆盖项目：见 `TEST_REPORT.md`。

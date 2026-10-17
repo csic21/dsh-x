@@ -1,6 +1,7 @@
-import { SUBPROCESS_GRACE_MS } from './limits.js'
+import { MAX_PLAN_CHARS, SUBPROCESS_GRACE_MS } from './limits.js'
 
 const PROTOCOL_VERSION = 1
+export const MAX_ACP_LINE_CHARS = 256_000
 
 /**
  * One-shot ACP client. Matches the official subagent client: a fresh process,
@@ -55,7 +56,11 @@ export async function runAcpPrompt(options) {
     const update = params && params.update
     if (update === undefined || update === null) return
     if (update.sessionUpdate !== 'agent_message_chunk') return
-    text.value += contentText(update.content)
+    const chunk = contentText(update.content)
+    if (text.value.length + chunk.length > MAX_PLAN_CHARS) {
+      throw new Error(`ACP 正文超过 ${MAX_PLAN_CHARS} 个字符。`)
+    }
+    text.value += chunk
   })
 
   const cancel = () => {
@@ -171,6 +176,9 @@ class NdjsonRpc {
     this.notifications = new Map()
     this.buffer = ''
     this.closed = false
+    // Pipe writes fail asynchronously when an adapter closes its input. Catch
+    // that event rather than letting EPIPE terminate the host or wait for timeout.
+    stdin.on('error', error => this.failAll(error instanceof Error ? error : new Error(String(error))))
     stdout.setEncoding('utf8')
     stdout.on('data', chunk => this.onData(chunk))
     stdout.on('end', () => this.failAll(new Error('ACP stdout 已关闭。')))
@@ -205,13 +213,21 @@ class NdjsonRpc {
   }
 
   onData(chunk) {
-    this.buffer += chunk
-    let newline = this.buffer.indexOf('\n')
-    while (newline >= 0) {
-      const line = this.buffer.slice(0, newline).trim()
-      this.buffer = this.buffer.slice(newline + 1)
-      if (line !== '') this.onLine(line)
-      newline = this.buffer.indexOf('\n')
+    if (this.closed) return
+    try {
+      this.buffer += chunk
+      let newline = this.buffer.indexOf('\n')
+      while (newline >= 0) {
+        if (newline > MAX_ACP_LINE_CHARS) throw new Error('ACP 单行响应超过大小限制。')
+        const line = this.buffer.slice(0, newline).trim()
+        this.buffer = this.buffer.slice(newline + 1)
+        if (line !== '') this.onLine(line)
+        if (this.closed) return
+        newline = this.buffer.indexOf('\n')
+      }
+      if (this.buffer.length > MAX_ACP_LINE_CHARS) throw new Error('ACP 单行响应超过大小限制。')
+    } catch (error) {
+      this.failAll(error instanceof Error ? error : new Error('ACP 响应无效。'))
     }
   }
 
@@ -221,6 +237,14 @@ class NdjsonRpc {
       message = JSON.parse(line)
     } catch (error) {
       this.failAll(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
+    if (message === null || typeof message !== 'object' || Array.isArray(message)
+      || message.jsonrpc !== '2.0'
+      || (message.id !== undefined && message.id !== null && typeof message.id !== 'string' && !Number.isSafeInteger(message.id))
+      || (Object.hasOwn(message, 'method') && typeof message.method !== 'string')
+      || (!Object.hasOwn(message, 'method') && !(Object.hasOwn(message, 'id') && (Object.hasOwn(message, 'result') !== Object.hasOwn(message, 'error'))))) {
+      this.failAll(new Error('ACP 响应不是有效的 JSON-RPC 消息。'))
       return
     }
     if (message.id !== undefined && message.id !== null && typeof message.method === 'string') {
@@ -264,6 +288,7 @@ class NdjsonRpc {
   failAll(error) {
     if (this.closed) return
     this.closed = true
+    this.buffer = ''
     for (const pending of this.pending.values()) pending.reject(error)
     this.pending.clear()
   }

@@ -1,0 +1,15 @@
+{
+  "name": "dsh-x-chat",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js", "src", "cordis.patch.yml", "README.md"],
+  "engines": { "node": "^22.19.0 || >=24.0.0" },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "0.2.1-alpha.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-alpha.5"
+  },
+  "scripts": { "test": "node --test test/*.test.js" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

@@ -301,13 +301,15 @@ function plansDir(exec) {
 }
 
 function lookupState(exec) {
+  const sessionId = exec.agent?.id
+  if (typeof sessionId !== 'string' || sessionId === '') return { draft: null, discard: null }
   try {
-    const sessionId = exec.agent?.id
-    if (typeof sessionId !== 'string' || sessionId === '') return { draft: null, discard: null }
     const dir = sessionPlansDir(resolveHome(), sessionId)
     return { draft: unapprovedDraft(dir), discard: discardTarget(dir) }
   } catch {
-    return { draft: null, discard: null }
+    // A missing plan directory is handled by the store. Other read failures
+    // must stop execution instead of silently lifting the draft gate.
+    throw new Error('无法读取当前会话的计划状态，已停止工具执行。请检查计划目录后重试。')
   }
 }
 
