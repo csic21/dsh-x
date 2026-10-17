@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -19,45 +19,36 @@ const placeholders = value => [...value.matchAll(/\{([^}]+)\}/g)].map(match => m
 test('plan dictionaries cover the same keys, placeholders and every owned error code', async () => {
   assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort())
   for (const key of Object.keys(zh)) { assert.ok(en[key]); assert.deepEqual(placeholders(en[key]), placeholders(zh[key]), key) }
-  for (const file of ['../index.js', '../src/agents.js', '../src/acp.js', '../src/store.js', '../src/plan-text.js']) {
+  const backendFiles = (await readdir(new URL('../src/', import.meta.url))).filter(file => file.endsWith('.js')).map(file => `../src/${file}`)
+  for (const file of ['../index.js', ...backendFiles]) {
     const source = await readFile(new URL(file, import.meta.url), 'utf8')
-    for (const match of source.matchAll(/(?:planError\(|code:\s*)'([A-Z_]+)'/g)) assert.ok(en[`error.${match[1].replace(/^DSH_X_PLAN_/, '')}`], `${file}: ${match[1]}`)
+    // Include conditional code arguments such as TASK_BUSY / STORE_BUSY.
+    const argumentsToCheck = [...source.matchAll(/planError\(([^,\n]*)|code:\s*('(?:DSH_X_PLAN_)?[A-Z_]+')/g)]
+    for (const argument of argumentsToCheck) for (const match of (argument[1] ?? argument[2]).matchAll(/'([A-Z_]+)'/g)) {
+      assert.ok(en[`error.${match[1].replace(/^DSH_X_PLAN_/, '')}`], `${file}: ${match[1]}`)
+    }
+    for (const match of source.matchAll(/readJson\([^\n]*?,\s*'([A-Z_]+)'/g)) assert.ok(en[`error.${match[1]}`], `${file}: ${match[1]}`)
   }
   assert.equal(planErrorKey({ name: 'DshXPlanError', code: 'DSH_X_PLAN_NO_DRAFT' }), 'error.NO_DRAFT')
   assert.equal(planErrorKey({ name: 'Other', code: 'DSH_X_PLAN_NO_DRAFT' }), 'error.UNKNOWN')
   assert.equal(planErrorKey({ name: 'AbortError', code: 'DSH_X_PLAN_CANCELLED' }), 'error.CANCELLED')
   assert.equal(readPresentation(meta), meta)
-  for (const invalid of [{}, { ...meta, version: 2 }, { ...meta, round: -1 }, { ...meta, operation: 'unknown' }, { ...meta, body: null }, { ...meta, operation: 'review', verdict: 'unknown' }]) assert.equal(readPresentation(invalid), null)
+  for (const invalid of [{}, { ...meta, version: 99 }, { ...meta, round: -1 }, { ...meta, operation: 'unknown' }, { ...meta, body: null }, { ...meta, operation: 'review', verdict: 'unknown' }]) assert.equal(readPresentation(invalid), null)
 })
 
-test('native approval maps follow the official locale and keep model reasons, round and paths intact', async () => {
-  const home = mkdtempSync(path.join(tmpdir(), 'plan-locale-'))
-  const previous = process.env.DSH_HOME
-  process.env.DSH_HOME = home
-  try {
-    const dir = sessionPlansDir(home, 'locale-session')
-    const plan = writeNewPlan(dir, { planner: 'codex', reviewer: 'claude', cwd: home, text: 'User/model 原文' })
-    let gate
-    apply({ effect() {}, on(name, callback) { if (name === 'tools/pre-execute') gate = callback }, tools: { register() {} } })
-    const decision = await gate({ name: 'dsh_x_approve_plan', agent: { id: 'locale-session' }, arguments: { round: 2 } }, () => assert.fail('must ask'))
-    assert.equal(decision.kind, 'ask')
-    assert.deepEqual(Object.keys(decision.displayReason).sort(), ['en', 'zh'])
-    assert.match(decision.reason, /批准第 1 轮/)
-    assert.match(decision.displayReason.en, /Approve plan round 1/)
-    assert.match(decision.displayReason.en, /specifies round 2/)
-    assert.ok(decision.displayReason.en.includes(plan.path))
-    const locale = await createOfficialLocale('en')
-    assert.equal(locale.resolveText(decision.displayReason), decision.displayReason.en)
-    locale.setLocale('zh')
-    assert.equal(locale.resolveText(decision.displayReason), decision.displayReason.zh)
-    locale.addLanguage({ id: 'fr', label: 'Français', fallback: 'en' }); locale.setLocale('fr')
-    assert.equal(locale.resolveText(decision.displayReason), decision.displayReason.en)
-    const discarded = approvalText({ toolName: 'dsh_x_discard_plan', draft: null, discard: { round: 1234, path: '/计划.md' } })
-    assert.match(discarded.en, /Discard plan round 1,234: \/计划.md/)
-  } finally {
-    if (previous === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous
-    rmSync(home, { recursive: true, force: true })
-  }
+test('native immutable approval maps follow official live locale', async () => {
+  const snapshot = { round: 2, revision: 3, hash: 'a'.repeat(64), body: 'User/model 原文', binding: { cwd: '/workspace/demo' }, manifest: { goal: 'Goal', files: ['src/file.js'], checks: [{command:'npm test'}] } }
+  const display = approvalText({ toolName:'dsh_x_approve_plan', snapshot })
+  assert.deepEqual(Object.keys(display).sort(), ['en','zh'])
+  assert.match(display.en, /current session/)
+  assert.ok(display.en.includes(snapshot.hash)); assert.ok(display.zh.includes(snapshot.body))
+  const locale = await createOfficialLocale('en')
+  assert.equal(locale.resolveText(display), display.en)
+  locale.setLocale('zh'); assert.equal(locale.resolveText(display), display.zh)
+  locale.addLanguage({id:'fr',label:'Français',fallback:'en'}); locale.setLocale('fr')
+  assert.equal(locale.resolveText(display), display.en)
+  const discarded = approvalText({toolName:'dsh_x_discard_plan',discard:{round:2}})
+  assert.match(discarded.en,/does not undo/)
 })
 
 test('published plan toolviews switch live, preserve model text and actions, and localize errors', async () => {
@@ -71,7 +62,7 @@ test('published plan toolviews switch live, preserve model text and actions, and
     let client
     vm.runInNewContext(await readFile(new URL('../lib/client.js', import.meta.url), 'utf8'), { document: dom.window.document, window: { __ModuleLoader__: { load(row) { assert.equal(row.id, 'dsh-x-plan'); client = row.factory(name => { assert.equal(name, 'react'); return React }) } } } })
     client.apply({ locale, effect(fn) { const dispose = fn(); effects.push(dispose); return dispose }, slots: { inject(name, fn) { assert.equal(name, 'tool.call.toolview'); const dispose = fn(); disposers.push(dispose); return dispose }, register(options, component) { const entry = { options, component }; entries.push(entry); return () => entries.splice(entries.indexOf(entry), 1) } } })
-    assert.deepEqual(entries.map(entry => entry.options.key), ['dsh_x_plan', 'dsh_x_approve_plan', 'dsh_x_discard_plan', 'dsh_x_review'])
+    assert.deepEqual(entries.map(entry => entry.options.key), ['dsh_x_plan', 'dsh_x_approve_plan', 'dsh_x_discard_plan', 'dsh_x_review', 'dsh_x_plan_status', 'dsh_x_revise_plan', 'dsh_x_recover_plan'])
     const { createRoot } = await import('react-dom/client')
     root = createRoot(document.getElementById('app'))
     let current = { phase: 'result', block: { kind: 'tool-result', isError: false, meta, content: [] } }

@@ -1,33 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-
 import { gateDecision } from '../src/gate.js'
 
-const draft = { round: 2, path: '/tmp/plan-2.md' }
-
-test('an open draft blocks bash and allows read', () => {
-  assert.equal(gateDecision({ toolName: 'bash', draft, discard: draft }).kind, 'deny')
-  assert.equal(gateDecision({ toolName: 'write', draft, discard: draft }).kind, 'deny')
-  assert.equal(gateDecision({ toolName: 'run_code', draft, discard: draft }).kind, 'deny')
-  assert.equal(gateDecision({ toolName: 'read', draft, discard: draft }).kind, 'next')
-  assert.equal(gateDecision({ toolName: 'dsh_x_review', draft, discard: draft }).kind, 'deny')
+test('draft, busy, failed and interrupted states refuse mutations but preserve management and reads', () => {
+  for (const state of ['draft', 'reviewing', 'needs_user', 'cancelled', 'completed']) {
+    for (const toolName of ['bash', 'write', 'run_code']) assert.equal(gateDecision({ toolName, workflow: { state } }).kind, 'deny')
+    for (const toolName of ['read', 'dsh_x_approve_plan', 'dsh_x_review', 'dsh_x_plan_status']) assert.equal(gateDecision({ toolName, workflow: { state } }).kind, 'next')
+  }
+  assert.equal(gateDecision({ toolName: 'write', locked: true }).kind, 'deny')
 })
-
-test('approve and discard ask the user while a draft is open', () => {
-  assert.equal(gateDecision({ toolName: 'dsh_x_approve_plan', draft, discard: draft }).kind, 'ask')
-  assert.equal(gateDecision({ toolName: 'dsh_x_discard_plan', draft, discard: draft }).kind, 'ask')
+test('approved states only admit separately validated official mutation capabilities', () => {
+  for (const state of ['approved', 'executing']) {
+    for (const toolName of ['write', 'edit', 'bash']) assert.equal(gateDecision({ toolName, workflow: { state } }).kind, 'next')
+    assert.equal(gateDecision({ toolName: 'run_code', workflow: { state } }).kind, 'deny')
+  }
 })
-
-test('no draft leaves ordinary tools alone', () => {
-  assert.equal(gateDecision({ toolName: 'bash', draft: null, discard: null }).kind, 'next')
-  assert.equal(gateDecision({ toolName: 'dsh_x_approve_plan', draft: null, discard: null }).kind, 'next')
-})
-
-test('discard still asks when the latest plan is already approved', () => {
-  const decision = gateDecision({
-    toolName: 'dsh_x_discard_plan',
-    draft: null,
-    discard: { round: 1, path: '/tmp/plan-1.approved.md' },
-  })
-  assert.equal(decision.kind, 'ask')
+test('no active workflow leaves host policy in charge; approvals happen inside management tools', () => {
+  for (const toolName of ['bash', 'dsh_x_approve_plan', 'dsh_x_discard_plan']) assert.equal(gateDecision({ toolName }).kind, 'next')
 })

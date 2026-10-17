@@ -35,8 +35,8 @@ test('verdict fail returns the gap list without the fence', () => {
   assert.equal(parsed.gaps, '1. 测试没过')
 })
 
-test('a missing verdict counts as a failure', () => {
+test('a missing verdict is inconclusive', () => {
   const parsed = parseVerdict('看不出结论')
-  assert.equal(parsed.verdict, 'fail')
+  assert.equal(parsed.verdict, 'inconclusive')
   assert.match(parsed.gaps, /dsh-x-verdict/)
 })

@@ -1,65 +1,152 @@
 # dsh-x-plan
 
-规划、执行、验收分成三步。
+由外部模型规划、当前 DSH 会话执行、另一个模型家族验收。v2 工作流把批准绑定到不可变计划、明确文件范围和规划时的仓库基线；执行者不固定为 DeepSeek 或其他品牌。
 
-1. `dsh_x_plan` 启动 Codex、Claude 或 Grok 的 ACP 命令，只读地写计划，保存到 `$DSH_HOME/plans/<会话>/plan-<轮次>.md`。`DSH_HOME` 没设置时用 `~/.dsh-x`。
-2. 用户看过计划后，DeepSeek 调用 `dsh_x_approve_plan`。审批卡要用户点允许，插件才把当时的文件复制成 `plan-<轮次>.approved.md`。批准前，写文件、跑命令、`run_code` 这类工具会被拒绝。
-3. DeepSeek 只按 approved 文件执行。然后 `dsh_x_review` 用另一个模型家族对照批准的计划、`git diff HEAD` 和计划里的验收命令。失败只返回缺口。同一份计划失败两次后停止，交给用户。
+旧版用户先看 [UPGRADE.md](./UPGRADE.md)。适配器安装、模式要求与验证边界见 [ADAPTERS.md](./ADAPTERS.md)。这里的 v2 指工作流与存储格式；计划 JSON 契约仍使用 `version: 1`。
 
-规划者和验收者默认错开：codex → claude，claude → grok，grok → codex。验收者不能和规划者是同一家族。
+## 开始之前
 
-## 和官方接口的关系
+- 使用有有效 `HEAD` 的 Git 工作区。插件记录规范化工作目录、仓库根目录、Git 目录、起始 `HEAD`、已有脏文件和未跟踪文件。已有改动可以保留，但基线必须完整且稳定。
+- 由操作者先从官方来源安装、审计并固定两种不同家族的本地 ACP 适配器及依赖，再在各自 CLI 完成登录。插件不会运行 `npx`、包管理器或自动下载，也不代替 CLI 登录。
+- 发送规划正文前，规划者和验收者都必须通过 ACP v1、身份/版本、会话建立及指定模式预检。实际调用再次核对可执行路径、名称、版本和模式；更换适配器后需要重新规划。
+- 验收需要宿主提供结构化前台 `bash` 工具。插件通过官方 `ctx.tools.execute` 权限链调用，不回退到直接启动 shell 或持久终端。兼容的结果结构不等于对工具来源的认证。
 
-插件按[打包与安装插件](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.zh.md)做成组合包：`dsh.bundle.patch` 指向 `cordis.patch.yml`，入口导出 `name`、`inject` 和 `apply`。工具用 `@deepseek-ai/dsh-tools` 的 `defineTool` 注册。写限制走 `tools/pre-execute`。会话 id 用工具执行上下文里的 `exec.agent.id`。工作目录用 `ctx.workingDirectory.ensure`。子进程用 `ctx.subprocess`，沿用官方的环境清理，不把 API key 传给外部 CLI。
+| 家族 | 本机命令 | 必须声明且成功切换的模式 | 默认验收者 |
+|---|---|---|---|
+| codex | `codex-acp` | `read-only` | claude |
+| claude | `claude-agent-acp` | `plan` | codex |
+| grok | `grok --no-auto-update agent stdio` | `read-only` | codex |
 
-没有写 `engines.dsh`。装进哪个 DSH 版本，由你当时启动的内核决定。
+可用 `DSH_X_ACP_CODEX`、`DSH_X_ACP_CLAUDE`、`DSH_X_ACP_GROK` 指定已审计的本地可执行程序；参数和模式要求不变。Grok 只提供 `plan` 模式时不会通过预检。
 
-ACP 调用和官方 `@deepseek-ai/dsh-subagent-acp` 一样：新进程、`initialize`、`session/new`、`session/prompt`，正文只取 `agent_message_chunk`。客户端不声明文件系统和终端能力。`session/request_permission` 一律取消。Codex 额外设置 `INITIAL_AGENT_MODE=read-only`。Claude 会尝试会话模式 `plan`。
+ACP 客户端不开放文件系统或终端能力，权限请求一律取消，模式降级会停止调用。Codex 还设置 `INITIAL_AGENT_MODE=read-only`。这些是适配器协议和配置约束，**不是操作系统沙箱**；本地适配器、SDK、hooks 和子代理的行为仍需审计。需要强隔离时应另行提供经过验证的只读运行环境。
 
-## 命令
+## 七个工具
 
-| 家族 | 本机命令 | 没有该命令时 |
-|---|---|---|
-| codex | `codex-acp` | `npx -y @agentclientprotocol/codex-acp` |
-| claude | `claude-agent-acp` | `npx -y @agentclientprotocol/claude-agent-acp` |
-| grok | `grok --no-auto-update agent stdio` | `npx -y @xai-official/grok --no-auto-update agent stdio` |
+| 工具 | 用途 |
+|---|---|
+| `dsh_x_plan` | 没有未完成任务时建立基线、预检两个适配器并生成草稿 |
+| `dsh_x_revise_plan` | 替换当前未批准草稿，保留旧轮次并建立新轮次；已批准任务须先明确放弃 |
+| `dsh_x_approve_plan` | 用官方原生审批确认正文、轮次/修订号、SHA-256、基线、文件范围和检查命令 |
+| `dsh_x_review` | 单独申请执行必需检查，再以完整证据请求另一家族只读审查 |
+| `dsh_x_plan_status` | 查看状态、批准快照与最近证据；不恢复执行 |
+| `dsh_x_discard_plan` | 经官方审批关闭当前任务；不撤销任何文件改动 |
+| `dsh_x_recover_plan` | 经官方审批释放可证明已退出的同机普通任务锁；保留锁等异常情况需人工检查 |
 
-`DSH_X_ACP_CODEX`、`DSH_X_ACP_CLAUDE`、`DSH_X_ACP_GROK` 可以换成别的可执行文件，参数仍用上表那一组。登录留在各自 CLI 里。插件看到只有 API key 的登录方式时会停下来，要求先在 CLI 登录。
+`dsh_x_plan` 和 `dsh_x_revise_plan` 接受 `goal`、`planner`、可选 `reviewer`、相关片段 `context`、计划正文语言 `language: "zh" | "en"`。省略语言时用中文。其他操作可用 `round` 指向当前轮次；过期轮次不会用于执行或批准，状态工具可以查看历史轮次。恢复工具没有 `round` 参数。
 
-## 计划文件
+## 一次任务怎么走
 
-```text
-~/.dsh-x/plans/<session-id>/
-  plan-1.md
-  plan-1.json
-  plan-1.approved.md
-  plan-1.discarded
-  review-1-1.md
-  review-1-1.json
+1. 让当前会话调用 `dsh_x_plan`。给出具体目标和已核实的相关代码/检查片段，不要附整个仓库或凭据。草稿存在期间，修改与未知能力被阻止；已知只读工具仍可用。
+2. 看清目标、文件、步骤、风险和待确认问题。解决所有 `blocking: true` 问题后，用 `dsh_x_revise_plan` 生成新草稿。每次修订保留旧轮次，不覆盖历史。
+3. 调用 `dsh_x_approve_plan`，在原生审批卡核对内容与哈希并允许。批准前可以编辑草稿正文；批准等待期间若正文、元数据或工作区改变，审批失效。首次批准要求工作区与规划基线一致，改变后应重新修订。
+4. 当前 DSH 会话只按批准范围执行。`write` / `edit` 检查精确文件路径和所有祖先目录，拒绝越界与符号链接。`run_code`、子代理和其他无法约束的修改能力在活动任务内不开放。
+5. 调用 `dsh_x_review`。用户单独批准列出的验收命令，宿主各项权限仍然有效。检查命令可能写工作区、构建产物或测试文件，批准计划本身不等于允许这些执行。
+6. 只有完整检查证据和独立模型审查都支持通过时才进入 `completed`。否则查看缺口和状态，按下文处理。
+
+例如，在已确认存在 `src/math.js` 和 `test/math.test.js`、且当前目录是仓库根目录的项目中，可请求：
+
+> 用 codex 规划修复加法函数的边界行为，claude 验收。只允许改这两个文件，验收用 node --test test/math.test.js。先展示计划供我审批。
+
+这只是调用示例；实际路径、命令和预期行为必须从当前项目确认。批准时不要仅凭“测试通过”替代具体验收条件。
+
+### 结构化计划
+
+计划包含可读说明，以及**唯一一个** `dsh-x-plan` JSON 代码块。例如：
+
+```dsh-x-plan
+{
+  "version": 1,
+  "goal": "修复已确认的加法边界错误，并用回归测试覆盖",
+  "files": ["src/math.js", "test/math.test.js"],
+  "steps": [
+    { "id": "fix", "title": "按已确认需求修复加法边界行为" },
+    { "id": "regression", "title": "补充边界输入的回归测试" }
+  ],
+  "questions": [],
+  "checks": [
+    { "id": "math-tests", "command": "node --test test/math.test.js", "required": true }
+  ]
+}
 ```
 
-用户可以在批准前改 `plan-<轮次>.md`。批准复制的是当时的文件。验收命令写在计划最后的 `dsh-x-acceptance` 代码块里，一行一条。验收结论写在 `dsh-x-verdict` 代码块里，只能是 `pass` 或 `fail`。
+- `files` 最多 50 个唯一、仓库根目录相对的精确文件路径。不会展开目录或通配符；不要使用绝对路径、`..`、`.git`、反斜杠或符号链接。会话在子目录中也按仓库根目录列文件。
+- `steps` 为 1–30 项，`id` 唯一；`questions` 最多 20 项，每项含 `text` 和布尔值 `blocking`。
+- `checks` 最多 8 项，`id` 唯一，`command` 为不超过 400 字符的单行命令，每项必须 `required: true`。批准前至少有一项检查，且不能有阻塞问题。没有可信的自动检查时应保持草稿，不编造命令。
+- v1 的 `dsh-x-acceptance` 文本块不再作为新工作流的检查契约。验收者输出 `dsh-x-verdict`，其结论为 `pass`、`fail` 或 `inconclusive`；模型文字无法覆盖确定性失败或缺失证据。
 
-DeepSeek 自己的聊天记录仍在 `$DSH_HOME/sessions`。这里只多放计划、批准副本和验收结论。
+### 批准的边界
 
-## 安装
+审批 SHA-256 绑定正文、轮次与修订号、仓库基线、文件范围/检查、规划者/验收者及预检身份。批准副本独占创建并设为只读，读取时再次校验正文和元数据完整性。后续改草稿不会改变已批准副本；篡改批准副本或绑定元数据会阻止继续。
 
-profile 起来之后：
+文件范围不是通用 shell 沙箱。活动任务中的额外 `bash` 每次都需要针对该条命令的新审批，只接受结构化前台后端和批准工作目录，禁止主动请求后台执行。**shell 仍可能写到计划文件范围之外**，验收命令也一样；应审查命令的真实副作用。仓库内可识别的范围外改动会使验收失败，但插件不能保证约束仓库外副作用。
+
+## 结果、停止与恢复
+
+- `pass`：状态为 `completed`，可以开始下一任务。
+- `fail`：检查非零退出、超时、已识别的范围外改动或模型发现缺陷都不能判通过。第一次失败后可在原批准范围内修复；**同一批准修订失败两次**进入 `needs_user`，不再自动继续。
+- `inconclusive`：证据不完整、检查未完成/被拒绝/输出截断、审查无有效结论、审查期间工作区改变等不能算通过，进入 `needs_user`。已确定的检查失败优先于一般证据不足；无法确认进程停止时先按停止不确定处理并保留锁。
+- 取消或中断执行/验收：停止后续工作；查看 `dsh_x_plan_status`。运行时重启后的执行中/验收中任务不能自动续跑，须检查现状并重新批准。
+- 重新批准：对仍适用的任务调用 `dsh_x_approve_plan`，产生新的不可变修订，保留原始基线和已有改动。需要改变任务目标、范围或适配器时，明确放弃当前任务再规划；不能用新轮次绕过等待用户的状态。
+- 放弃：调用 `dsh_x_discard_plan` 并确认后进入 `cancelled`。关闭计划不会还原工作区、撤销提交或终止仍在运行的外部进程。
+
+如果显示任务锁，先确认操作是否仍在运行。普通 `.task.lock` 只有在**同一主机且原持有进程可证明已退出**时，才可用 `dsh_x_recover_plan` 请求恢复。恢复不杀进程、不撤销文件、不自动执行，之后仍需检查与重新批准。
+
+ACP 清理失败、shell 停止状态不明或验收后台作业未确认终止时，会保留 `retained` 锁；即使锁拥有者已退出，也不能用恢复工具释放。请先在宿主作业管理器和操作系统中核实所有相关作业/子进程均已停止，并由操作者检查工作区及锁记录。陈旧 `.store.lock`、异机/无法确认的拥有者、损坏锁也需人工检查。**不要盲删锁、修改状态文件或复制批准记录来解除阻断。**
+
+## 证据与隐私边界
+
+验收比较的是规划时的不可变基线，而不是单独的 `git diff HEAD`：保留原有脏文件/未跟踪文件，并识别任务期间新增、修改、删除及已提交的变化。当前 `HEAD` 必须可证明是基线 `HEAD` 的后代，工作目录与仓库身份必须仍匹配。收集后与模型审查后都会检查漂移。
+
+证据是有上限的文本快照：最多 128 个相关路径，单文件 64 KiB，快照合计 256 KiB，变化正文 60,000 字符；每条检查最多 120 秒、输出最多 20,000 字符。规划上下文最多 80,000 字符，计划正文最多 200,000 字符，验收记录正文最多 40,000 字符；每次 ACP 调用最多 8 分钟。超限或截断不能被当作完整通过证据。
+
+只读取允许列表内的普通 UTF-8 源文件，不跟随符号链接；私密路径、依赖目录、二进制、过大文件及疑似凭据内容排除在正文证据之外。**基线中已存在且未变化的排除文件可以只存不透明文件元数据**，不存其正文；必要的 Git 索引条目元数据仍可保留，用于检查暂存区漂移，外发证据不包含被排除文件正文；这些文件新增、变化或删除会令证据不完整，通常得到 `inconclusive`，不能静默跳过后通过。文件元数据一致不等于对其秘密内容的审计。
+
+计划目标必须是 Git 可见的允许列表文本文件；被 Git 忽略的目标会被拒绝。此处的“证据完整”只指支持范围内的任务工作树，并不证明整个文件系统或被忽略的测试产物。暂存区仅保存有界的条目元数据；当前暂存内容须匹配规划时暂存条目、基线 HEAD 或已审查的工作树内容，否则 `INDEX_DIVERGENCE` 使结果不确定，防止工作树正确但将来提交另一个内容。
+
+同一会话的工具执行有并发保护；别的会话、外部编辑器/进程和插件加载前已存在的后台任务不受该锁隔离。已观测到的未结束后台命令会保留锁；这不等于操作系统沙箱，也不能消除外部进程改文件的所有竞态。
+
+子模块不受支持，不进入子模块递归收集；`assume-unchanged` / `skip-worktree` 隐藏路径也会阻止建立完整证据。疑似密钥检测只是启发式筛查，可能漏检或误报，不是通用脱敏器。不要向目标、上下文、计划、测试输出或外部适配器提供真实凭据；外部模型会收到规划输入或批准计划与验收证据，请先确认这些内容可分享。适配器本地读取能力也不由证据过滤器隔离。
+
+## 文件与官方接口
+
+默认存放于 `$DSH_HOME/plans/<session-id>/`；未设置 `DSH_HOME` 时用 `~/.dsh-x/plans/<session-id>/`：
+
+```text
+plan-1.md                       草稿正文
+plan-1.json                     基线、适配器等元数据
+plan-1.state.json               工作流状态
+plan-1.approval-request.json    等待审批的绑定请求（批准后移除）
+plan-1.approved-1.md            不可变批准正文
+plan-1.approved-1.json          不可变批准绑定
+plan-1.discarded                放弃或被修订替换的标记
+review-1-1.md                   验收缺口说明
+review-1-1.json                 结论与证据摘要
+.task.lock / .store.lock        操作锁与短时存储锁
+```
+
+轮次、批准修订和验收次数独立编号。保留这些文件用于检查历史，不手工改写批准或状态。DSH 自身会话记录仍在 `$DSH_HOME/sessions`。
+
+组合包使用 `dsh.bundle.patch` / `cordis.patch.yml`，入口导出 `name`、`inject`、`apply`，用官方 `defineTool` 注册。审批使用原生权限流程；门禁通过 `tools/pre-execute` 和最终拒绝型 guard 保留其他策略的拒绝；实际检查仍走 ToolRuntime。工作目录由 `workingDirectory` 获取，ACP 和只读 Git 进程由官方 `subprocess` 服务管理。插件没有声明 `engines.dsh`，不代表兼容任意内核版本。
+
+现有 profile 的本机开发链接方式：
 
 ```sh
 dsh plugin --profile <name> add link:/绝对路径/packages/dsh-x-plan
 ```
 
-Desktop 的 `desktop` profile 不接受这条公开命令。那条路径要用 Desktop 自带的 CLI，本仓库的启动脚本还没写。
+`link:` 依赖本机源码路径，不是发布安装包。Desktop 的 `desktop` profile 不接受这条公开命令；不要把开发链接命令当作 Desktop 安装步骤。
 
-组合包还不会打进安装包。`link:` 只在本机开发时用。
+## 国际化与验证
 
-## 国际化与展示
+七个工具卡、工作流状态、检查结果、下一步提示和插件元信息提供中文与英文，通过官方 `tool.call.toolview`、`locale` / `t` 跟随宿主语言即时切换。轮次和次数使用 `Intl.NumberFormat`。原生审批用双语 `displayReason`，待审批时也可随语言切换。
 
-plan、approve、discard、review 的工具卡和插件元信息提供中文与英文，跟随 DSH 官方语言设置即时切换。客户端通过官方 `tool.call.toolview` 与 `locale`/`t` 注册，不添加语言配置。轮次和次数用当前语言的 `Intl.NumberFormat` 格式；计划/验收正文、文件路径和模型原文不翻译。
+计划/验收正文、路径、命令和模型原文不翻译。`language` 只控制生成计划正文的语言。工具卡是调用当时的快照，查看最新状态需调用 `dsh_x_plan_status`；未执行检查不会显示为通过。版本化 `presentationMeta` 分离界面说明与原始证据；旧版已知格式仍可展示，未知格式或缺少 metadata 的成功记录保留原文。稳定错误码用于插件卡错误翻译；宿主诊断、证据原文及其他工具 generic 卡上的原始门禁诊断不保证本地化。
 
-批准与放弃仍走官方原生审批卡。插件传入 `displayReason: { en, zh }`，由官方 `locale.resolveText` 在显示时选择文案，所以正在等待的审批也随语言切换。固定的模型门禁 `reason`、批准前阻断、拒绝/允许和执行顺序保持原有语义。
+已安装仓库依赖时，在根目录运行：
 
-工具的 `output.presentationMeta` 保存版本化展示数据，把插件自己的状态说明与原始计划/验收正文分开；`HarnessError` 的稳定代码用于客户端错误翻译。未知 metadata 版本或没有 metadata 的旧历史成功记录保持原文。Host 配置/协议诊断、模型指令、参考证据，以及其他工具被 plan 门禁拒绝时官方 generic 卡上的原始模型诊断不会按浏览器语言重写；官方当前没有给跨工具错误增加本地化映射的通用扩展位。
+```sh
+npm test
+```
 
-根目录 `npm test` 构建客户端并验证官方 LocaleRuntime 即时切换/区域 fallback、原生审批双语映射、原文保留、结果打开、错误翻译、实际 ToolRuntime 的审批拒绝/允许/执行/停止验收/放弃流程以及 metadata。所有测试使用本地 fixture，不调用外部模型。实际浏览器验证记录见根目录 `TEST_REPORT.md`。
+根脚本会先构建客户端，再运行单元与集成测试；也可用 `npm run test:unit`、`npm run test:integration` 单独运行。测试覆盖使用本地 ACP fixtures 和仓库固定版本的官方运行时。**没有真实调用 Codex、Claude 或 Grok，也没有实测认证任何厂商适配器发布版本。** fixture 版本号不是生产兼容承诺；当前厂商能力与依赖限制以 [ADAPTERS.md](./ADAPTERS.md) 为准。

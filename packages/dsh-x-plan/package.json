@@ -9,7 +9,10 @@
     "cordis.patch.yml",
     "README.md",
     "lib/client.js",
-    "locale/*.json"
+    "locale/*.json",
+    "ADAPTERS.md",
+    "UPGRADE.md",
+    "VALIDATION.md"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
