@@ -1,3 +1,4 @@
+import { planError } from './errors.js'
 import { mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -10,7 +11,7 @@ const REVIEW_FILE = /^review-(\d+)-(\d+)\.json$/
 /** Reject session ids that could escape the plans directory. */
 export function assertSessionKey(sessionId) {
   if (typeof sessionId !== 'string' || !SESSION_KEY.test(sessionId)) {
-    throw new Error('会话 id 不能作为计划目录名。')
+    throw planError('SESSION_KEY', '会话 id 不能作为计划目录名。')
   }
   return sessionId
 }
@@ -22,7 +23,7 @@ export function sessionPlansDir(home, sessionId) {
   const dir = path.resolve(root, key)
   const relative = path.relative(root, dir)
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('会话 id 逃出了计划目录。')
+    throw planError('SESSION_KEY', '会话 id 逃出了计划目录。')
   }
   return dir
 }
@@ -68,7 +69,7 @@ export function discardTarget(dir) {
  */
 export function writeNewPlan(dir, record) {
   if (unapprovedDraft(dir) !== null) {
-    throw new Error('已有未批准的计划。先调用 dsh_x_approve_plan，或调用 dsh_x_discard_plan 放弃。')
+    throw planError('DRAFT_EXISTS', '已有未批准的计划。先调用 dsh_x_approve_plan，或调用 dsh_x_discard_plan 放弃。')
   }
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const round = allocateRound(dir)
@@ -99,7 +100,7 @@ export function writeNewPlan(dir, record) {
 export function approvePlan(dir, round) {
   const file = planPath(dir, round)
   assertPlanExists(file, round)
-  if (exists(discardedPath(dir, round))) throw new Error(`第 ${round} 轮计划已经放弃。`)
+  if (exists(discardedPath(dir, round))) throw planError('DISCARDED', `第 ${round} 轮计划已经放弃。`)
   const approved = approvedPath(dir, round)
   if (exists(approved)) return { round, path: approved, text: readFileSync(approved, 'utf8') }
   const text = readFileSync(file, 'utf8')
@@ -150,9 +151,9 @@ export function reviewLimitReached(dir, round) {
  * @param {number} round
  */
 export function readApproved(dir, round) {
-  if (exists(discardedPath(dir, round))) throw new Error(`第 ${round} 轮计划已经放弃。`)
+  if (exists(discardedPath(dir, round))) throw planError('DISCARDED', `第 ${round} 轮计划已经放弃。`)
   const file = approvedPath(dir, round)
-  if (!exists(file)) throw new Error(`第 ${round} 轮计划还没批准。`)
+  if (!exists(file)) throw planError('NOT_APPROVED', `第 ${round} 轮计划还没批准。`)
   return { round, path: file, text: readFileSync(file, 'utf8'), meta: readMeta(dir, round) }
 }
 
@@ -166,10 +167,10 @@ export function failedReviewPaths(dir, round) {
 /** @param {string} dir @param {number} round */
 export function readMeta(dir, round) {
   const file = metaPath(dir, round)
-  if (!exists(file)) throw new Error(`第 ${round} 轮计划没有元数据。`)
+  if (!exists(file)) throw planError('META_MISSING', `第 ${round} 轮计划没有元数据。`)
   const parsed = JSON.parse(readFileSync(file, 'utf8'))
   if (typeof parsed.planner !== 'string' || typeof parsed.reviewer !== 'string') {
-    throw new Error(`第 ${round} 轮计划元数据不完整。`)
+    throw planError('META_INVALID', `第 ${round} 轮计划元数据不完整。`)
   }
   return parsed
 }
@@ -230,7 +231,7 @@ function allocateRound(dir) {
 }
 
 function assertPlanExists(file, round) {
-  if (!exists(file)) throw new Error(`没有第 ${round} 轮计划。`)
+  if (!exists(file)) throw planError('PLAN_MISSING', `没有第 ${round} 轮计划。`)
 }
 
 function planPath(dir, round) {

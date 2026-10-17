@@ -1,15 +1,28 @@
 {
   "name": "dsh-x-chat",
   "version": "0.1.0",
+  "description": "Read-only Q&A through configured DSH model providers.",
   "type": "module",
   "main": "index.js",
-  "files": ["index.js", "src", "cordis.patch.yml", "README.md"],
+  "files": ["index.js", "src", "lib/client.js", "locale/*.json", "cordis.patch.yml", "README.md"],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
   "engines": { "node": "^22.19.0 || >=24.0.0" },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-tools": "0.2.1-alpha.5",
     "@deepseek-ai/dsh-llm": "0.2.1-alpha.5"
   },
-  "scripts": { "test": "node --test test/*.test.js" },
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+  "scripts": { "build": "node scripts/build-client.mjs", "pretest": "npm run build", "test": "node --test test/*.test.js" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-ui-tool", "@deepseek-ai/dsh-client-locale"]
+    }
+  }
 }

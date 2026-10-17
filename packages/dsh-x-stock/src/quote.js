@@ -1,23 +1,23 @@
+import { DshXStockError, quoteError } from './quote-errors.js'
 export const TIMEOUT_MS = 10_000
 export const MAX_RESPONSE_BYTES = 16_384
 const ENDPOINT = 'https://finnhub.io/api/v1/quote'
 
 export function normalizeSymbol(input) {
-  if (typeof input !== 'string' || input.length > 32) throw new Error('股票代码必须是 1–32 个字符。')
+  if (typeof input !== 'string' || input.length > 32) throw quoteError('SYMBOL_LENGTH', '股票代码必须是 1–32 个字符。')
   const symbol = input.trim().toUpperCase()
   if (!/^[A-Z0-9][A-Z0-9.-]{0,31}$/.test(symbol)) {
-    throw new Error('股票代码只允许英文字母、数字、点和连字符，例如 AAPL 或 BRK.B。')
+    throw quoteError('SYMBOL_FORMAT', '股票代码只允许英文字母、数字、点和连字符，例如 AAPL 或 BRK.B。')
   }
   return symbol
 }
 
-class QuoteError extends Error {}
-function fail(message) { throw new QuoteError(message) }
+function fail(code, message) { throw quoteError(code, message) }
 
 export function parseQuote(data, symbol, fetchedAt) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('行情响应格式无效。')
-  if (Object.hasOwn(data, 'error')) fail('Finnhub 拒绝了行情请求，请检查 API 密钥、订阅权限和代码。')
-  if (!Number.isFinite(data.c) || data.c <= 0) fail('没有有效报价，请检查代码、市场覆盖范围和订阅权限。')
+  if (!data || typeof data !== 'object' || Array.isArray(data)) fail('INVALID_RESPONSE', '行情响应格式无效。')
+  if (Object.hasOwn(data, 'error')) fail('PROVIDER_REJECTED', 'Finnhub 拒绝了行情请求，请检查 API 密钥、订阅权限和代码。')
+  if (!Number.isFinite(data.c) || data.c <= 0) fail('NO_QUOTE', '没有有效报价，请检查代码、市场覆盖范围和订阅权限。')
   const value = {
     symbol, provider: 'Finnhub', price: data.c,
     fetchedAt: new Date(fetchedAt).toISOString(),
@@ -26,23 +26,23 @@ export function parseQuote(data, symbol, fetchedAt) {
   }
   for (const [source, target] of Object.entries({ o: 'open', h: 'high', l: 'low', pc: 'previousClose', d: 'change', dp: 'changePercent' })) {
     if (data[source] == null) { value[target] = null; continue }
-    if (!Number.isFinite(data[source]) || (!['d', 'dp'].includes(source) && data[source] < 0)) fail('行情响应包含无效数值。')
+    if (!Number.isFinite(data[source]) || (!['d', 'dp'].includes(source) && data[source] < 0)) fail('INVALID_NUMBER', '行情响应包含无效数值。')
     value[target] = data[source]
   }
   if (data.t != null) {
-    if (!Number.isSafeInteger(data.t) || data.t <= 0 || data.t * 1000 > fetchedAt + 300_000) fail('行情响应包含无效报价时间。')
+    if (!Number.isSafeInteger(data.t) || data.t <= 0 || data.t * 1000 > fetchedAt + 300_000) fail('INVALID_TIME', '行情响应包含无效报价时间。')
     value.quotedAt = new Date(data.t * 1000).toISOString()
   }
-  if (value.high != null && value.low != null && value.high < value.low) fail('行情最高价低于最低价。')
+  if (value.high != null && value.low != null && value.high < value.low) fail('INVALID_RANGE', '行情最高价低于最低价。')
   return value
 }
 
 async function readJson(response, signal) {
   const length = Number(response.headers.get('content-length'))
-  if (length > MAX_RESPONSE_BYTES) fail('行情响应超过大小限制。')
+  if (length > MAX_RESPONSE_BYTES) fail('TOO_LARGE', '行情响应超过大小限制。')
   const type = response.headers.get('content-type') ?? ''
-  if (!/^application\/(?:[\w.-]+\+)?json\b/i.test(type)) fail('行情服务没有返回 JSON。')
-  if (!response.body) fail('行情响应为空。')
+  if (!/^application\/(?:[\w.-]+\+)?json\b/i.test(type)) fail('NOT_JSON', '行情服务没有返回 JSON。')
+  if (!response.body) fail('EMPTY', '行情响应为空。')
   const reader = response.body.getReader()
   const abortRead = () => { void reader.cancel().catch(() => {}) }
   signal.addEventListener('abort', abortRead, { once: true })
@@ -54,7 +54,7 @@ async function readJson(response, signal) {
       const { done, value } = await reader.read()
       if (done) break
       size += value.byteLength
-      if (size > MAX_RESPONSE_BYTES) fail('行情响应超过大小限制。')
+      if (size > MAX_RESPONSE_BYTES) fail('TOO_LARGE', '行情响应超过大小限制。')
       chunks.push(value)
     }
   } finally {
@@ -64,7 +64,7 @@ async function readJson(response, signal) {
     reader.releaseLock()
   }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) }
-  catch { fail('行情服务返回了无效 JSON。') }
+  catch { fail('INVALID_JSON', '行情服务返回了无效 JSON。') }
 }
 
 export async function fetchQuote(input, {
@@ -75,9 +75,9 @@ export async function fetchQuote(input, {
   now = Date.now,
 } = {}) {
   const symbol = normalizeSymbol(input)
-  if (signal?.aborted) throw new Error('行情查询已取消。')
-  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('请在运行环境设置 FINNHUB_API_KEY；不要把密钥发给模型或写进仓库。')
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) throw new Error('行情超时必须为 1–30000 毫秒。')
+  if (signal?.aborted) throw quoteError('CANCELLED', '行情查询已取消。')
+  if (typeof apiKey !== 'string' || !apiKey.trim()) throw quoteError('MISSING_KEY', '请在运行环境设置 FINNHUB_API_KEY；不要把密钥发给模型或写进仓库。')
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) throw quoteError('TIMEOUT_CONFIG', '行情超时必须为 1–30000 毫秒。')
   const controller = new AbortController()
   let timedOut = false
   const cancel = () => controller.abort()
@@ -85,7 +85,7 @@ export async function fetchQuote(input, {
   const timer = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
   let onAbort
   const interrupted = new Promise((_, reject) => {
-    onAbort = () => reject(new QuoteError(timedOut ? '行情查询超时。' : '行情查询已取消。'))
+    onAbort = () => reject(quoteError(timedOut ? 'TIMEOUT' : 'CANCELLED', timedOut ? '行情查询超时。' : '行情查询已取消。'))
     controller.signal.addEventListener('abort', onAbort, { once: true })
   })
   try {
@@ -98,19 +98,19 @@ export async function fetchQuote(input, {
       })
       if (!response.ok) {
         void response.body?.cancel().catch(() => {})
-        if (response.status === 429) fail('Finnhub 请求限流，请稍后重试。')
-        if ([401, 403].includes(response.status)) fail('Finnhub 认证失败或订阅无权访问该行情。')
-        fail(`行情请求失败（HTTP ${response.status}）。`)
+        if (response.status === 429) fail('RATE_LIMIT', 'Finnhub 请求限流，请稍后重试。')
+        if ([401, 403].includes(response.status)) fail('AUTH', 'Finnhub 认证失败或订阅无权访问该行情。')
+        fail('HTTP', `行情请求失败（HTTP ${response.status}）。`)
       }
       const data = await readJson(response, controller.signal)
       controller.signal.throwIfAborted()
       return parseQuote(data, symbol, now())
     })()])
   } catch (error) {
-    if (error instanceof QuoteError) throw error
+    if (error instanceof DshXStockError) throw error
     // Never expose upstream error bodies, headers, keys or raw fetch errors.
-    if (controller.signal.aborted) throw new Error(timedOut ? '行情查询超时。' : '行情查询已取消。')
-    throw new Error('行情查询失败，请检查网络或稍后重试。')
+    if (controller.signal.aborted) throw quoteError(timedOut ? 'TIMEOUT' : 'CANCELLED', timedOut ? '行情查询超时。' : '行情查询已取消。')
+    throw quoteError('CONNECTION', '行情查询失败，请检查网络或稍后重试。')
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', cancel)

@@ -7,11 +7,12 @@
     "test:unit": "node --test packages/*/test/*.test.js",
     "test:integration": "node --test test/*.test.js",
     "link:plugins": "node scripts/link-plugins.mjs",
-    "build": "npm --prefix packages/dsh-x-stock run build",
+    "build": "npm --prefix packages/dsh-x-stock run build && npm --prefix packages/dsh-x-chat run build && npm --prefix packages/dsh-x-plan run build",
     "pretest": "npm run build"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-client-locale": "0.2.1-alpha.5",
     "@deepseek-ai/dsh-llm": "0.2.1-alpha.5",
     "@deepseek-ai/dsh-subprocess-local": "0.2.1-alpha.5",
     "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.5",

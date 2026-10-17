@@ -62,3 +62,25 @@
 参见 `scripts/README.md`。完整测试：`npm ci --ignore-scripts && npm test`。实际加载：用 link-plugins.mjs 链接，再运行 smoke-web.mjs。测试脚本仅使用临时文件与本地 fixture，不调用外部模型/行情服务。
 
 官方安装与插件文档：[README](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/README.md)、[组合包安装](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/docs/user/develop/basic/publish.zh.md)。
+
+## 2026-10-17 补充：Plan 原生 Web 交互实测
+
+在官方 DSH 0.2.1-alpha.5 的云端 Chromium 中，以独立 DSH_HOME、独立 git 测试仓库及明确标注的本地 LLM/ACP fixture，实际完成：
+
+1. 原生会话显示 `dsh_x_plan` 生成的计划；批准前尝试 `write` 被插件阻断，测试文件保持原样。
+2. `dsh_x_approve_plan` 显示官方 Waiting for approval 卡。点击 Reject 后没有批准副本，文件未修改。
+3. 再次请求并点击 Allow once 后才出现 `.approved.md`；随后真实 `read`/`write` 仅修改隔离仓库中的一个测试文件。
+4. `dsh_x_review` 真实采集 git diff 并运行计划中的验收命令，本地 ACP fixture 基于证据返回 pass，审查记录持久化成功。
+
+原版 plan 是工具插件，没有独立计划页面；本次验证的是原生会话与官方审批卡。规划与验收文本来自本地确定性模拟模型，不代表真实 Codex/Claude/Grok 账号与模型质量已验证。测试没有使用外部模型、私密凭据或付费服务。演示 home、会话、测试仓库与 fixture 均在产品仓库外，不纳入源码提交。
+
+同日已将原80测试通过版本推送至 `work/stock-chat-plugins`，提交 `1d438fa793a1e1e711b89515bcb7cca6d7f0929e`，源码树与本地交付相同。未合并或发布；现有 Desktop workflow 仅支持手动触发，该提交没有自动 Actions/check runs，不应称 CI 已通过。
+
+## 2026-10-17 补充：三个插件国际化
+
+- 股票、聊天、计划全部接入官方 Client locale 与自有 toolview，提供中文/英文、区域 fallback、数字与时间格式；三个包的 locale 元信息随包发布。
+- 最新完整测试 **94/94**，无失败、跳过或取消；`git diff --check` 和三包 `npm pack --dry-run` 清单通过。
+- 官方 DSH/Chromium 实测：股票页、侧栏、底条从 English 切中文即时更新，固定 SH.600519 不变；聊天工具卡从中文切 English，标签改变、原模型回答不变；行情工具缺密钥显示英文错误，未发送真实报价请求。
+- Plan 第二轮真实计划仍阻断未批准 write；待审批期间从 English 切中文，工具标题与原生审批理由即时更新，未因此生成批准副本；测试结束拒绝该轮审批。
+- 模型输出、证券名/别名、文件路径和已有原始历史不翻译。Host 面向模型的诊断仍保持原文；例如官方 write 工具因计划门禁被拒的原始诊断不由本插件接管。自有工具错误卡和审批显示文本双语。
+- 本轮聊天、计划浏览器验证仍使用明确标注的本地模拟模型；未验证真实服务账号或外部模型质量。行情数据、走势与基本面接入仍待提供方。

@@ -20,6 +20,7 @@ export function stockTool(query = fetchQuote) {
           change: nullableNumber(), changePercent: nullableNumber(), notice: text(),
         },
       },
+      presentationMeta: (_args, value) => ({ kind: 'dsh-x-stock.quote', version: 1, quote: value }),
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
     execute: (args, exec) => query(args.symbol, { signal: exec.signal }),

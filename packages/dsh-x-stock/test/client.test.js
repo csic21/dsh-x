@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import { JSDOM } from 'jsdom'
 import React, { act, useSyncExternalStore } from 'react'
+import { createOfficialLocale } from '../../../test/fixtures/locale.mjs'
 
 // DOM integration of the real published factory, using an explicit host fixture.
 // This does not claim a real browser layout or an assembled-kernel UI test.
@@ -19,23 +20,25 @@ test('built client registers safe slots and supports add/order/remove/navigation
     register(options,component){const entry={options,component};entries.set(options.name,[...(entries.get(options.name)??[]),entry]);return()=>entries.set(options.name,(entries.get(options.name)??[]).filter(x=>x!==entry))},
   }
   const scope='11111111-1111-4111-8111-111111111111'
-  const ctx={slots,on(){return()=>{}},effect(fn){const dispose=fn();effects.push(dispose);return dispose},resources:{register(provider){resources.push(provider);return()=>{}}},connection:{rpc:{call:async(channel,endpoint)=>{assert.equal(endpoint,'dsh-x-stock.scope');return {ok:true,value:{scope}}}}},layout:{selectPanel(value){selectedPanel=value;calls.push(value)}}}
+  const locale = await createOfficialLocale()
+  const ctx={locale,slots,on(){return()=>{}},effect(fn){const dispose=fn();effects.push(dispose);return dispose},resources:{register(provider){resources.push(provider);return()=>{}}},connection:{rpc:{call:async(channel,endpoint)=>{assert.equal(endpoint,'dsh-x-stock.scope');return {ok:true,value:{scope}}}}},layout:{selectPanel(value){selectedPanel=value;calls.push(value)}}}
   vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value){assert.equal(value.id,'dsh-x-stock');exported=value.factory(name=>{assert.equal(name,'react');return React})}}},globalThis,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
   const { createRoot } = await import('react-dom/client')
   const root=createRoot(dom.window.document.getElementById('app'))
   try {
     await act(async()=>exported.apply(ctx))
-    assert.deepEqual(Array.from(entries.keys()).sort(),['main','shell.bottom','sidebar.panellist'])
+    assert.deepEqual(Array.from(entries.keys()).sort(),['main','shell.bottom','sidebar.panellist','tool.call.toolview'])
     assert.equal(entries.get('main')[0].options.key,'dsh-x-stock')
     assert.equal(entries.get('sidebar.panellist')[0].options.id,'dsh-x-stock')
     assert.equal(resources[0].protocol,'dsh-x-stock')
     const page=entries.get('main')[0], bar=entries.get('shell.bottom')[0]
     function Render({entry}) {
+      useSyncExternalStore(locale.subscribe.bind(locale), locale.getSnapshot.bind(locale), locale.getSnapshot.bind(locale))
       const face=entry.options.inject()
       const source=face.hooks.watchlist
       const useWatchlist=selector=>selector(useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot))
       const useResource=address=>({status:'live',value:{symbol:address.split('/').at(-1),status:'unconfigured',price:null,source:null,quotedAt:null,fetchedAt:'2026-10-16T07:00:00Z'}})
-      return React.createElement(entry.component,{...face,useWatchlist,useResource})
+      return React.createElement(entry.component,{...face,useWatchlist,useResource,t:locale.bind(entry.options.locale)})
     }
     const render=async entry=>act(async()=>root.render(React.createElement(Render,{entry})))
     const click=async button=>act(async()=>button.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})))
@@ -73,9 +76,45 @@ test('built client registers safe slots and supports add/order/remove/navigation
     const form=document.querySelector('form')
     await act(async()=>form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})))
     assert.match(document.querySelector('[role="alert"]').textContent,/六位/)
+    await act(async () => locale.setLocale('en'))
+    assert.equal(document.querySelector('h1').textContent, 'Stocks')
+    assert.match(document.querySelector('[role="alert"]').textContent, /six-digit/)
+    assert.match(document.querySelector('article').textContent, /平安银行/)
+    assert.match(document.querySelector('article').textContent, /10\/16\/2026, 15:00:00 \(Shanghai\)/)
+    assert.equal(entries.get('sidebar.panellist')[0].options.label(), 'Stocks')
+    assert.ok(document.querySelector('[aria-label="Move SZ.000001 up"]'))
+    assert.match(document.body.textContent, /No historical market data/)
+    await act(async () => locale.addLanguage({ id: 'fr', label: 'Français', fallback: 'en' }))
+    await act(async () => locale.setLocale('fr'))
+    assert.equal(document.querySelector('h1').textContent, 'Stocks')
+    assert.match(document.querySelector('[role="alert"]').textContent, /six-digit/)
+    assert.match(document.querySelector('article').textContent, /16\/10\/2026 15:00:00 \(Shanghai\)/)
+    await act(async () => locale.setLocale('zh'))
+    assert.match(document.querySelector('[role="alert"]').textContent, /六位/)
     assert.match(document.body.textContent,/暂无历史行情/)
     assert.match(document.body.textContent,/数据不足/)
     assert.equal(document.querySelectorAll('canvas').length,0)
+    const tool=entries.get('tool.call.toolview')[0]
+    let toolBlock={kind:'tool-result',isError:false,meta:{kind:'dsh-x-stock.quote',version:1,quote:{symbol:'BRK.B',provider:'Finnhub',price:1234.5,open:null,high:1300,low:1200,previousClose:1230,change:4.5,changePercent:0.37,quotedAt:'2026-10-16T07:00:00Z',fetchedAt:'2026-10-16T07:00:02Z'}},content:[]}
+    function RenderTool() {
+      useSyncExternalStore(locale.subscribe.bind(locale),locale.getSnapshot.bind(locale),locale.getSnapshot.bind(locale))
+      return React.createElement(tool.component,{...tool.options.inject(),phase:'result',block:toolBlock,t:locale.bind(tool.options.locale)})
+    }
+    await act(async()=>root.render(React.createElement(RenderTool)))
+    assert.match(document.body.textContent,/查询股票报价 · BRK.B/)
+    await act(async()=>locale.setLocale('en'))
+    assert.match(document.body.textContent,/Look up a stock quote · BRK.B/)
+    assert.match(document.body.textContent,/1,234.50/)
+    assert.match(document.body.textContent,/\+0.37%/)
+    assert.match(document.body.textContent,/Finnhub/)
+    assert.match(document.body.textContent,/not investment advice/)
+    toolBlock={kind:'tool-result',isError:true,error:{name:'DshXStockError',code:'DSH_X_STOCK_MISSING_KEY'},content:[{type:'text',text:'Do not use model-facing diagnostic as UI text'}]}
+    await act(async()=>root.render(React.createElement(RenderTool)))
+    assert.match(document.querySelector('[role="alert"]').textContent,/Set FINNHUB_API_KEY/)
+    assert.doesNotMatch(document.body.textContent,/model-facing diagnostic/)
+    await act(async()=>locale.setLocale('zh'))
+    assert.match(document.querySelector('[role="alert"]').textContent,/请在运行环境设置/)
+
   } finally {
     await act(async()=>root.unmount())
     disposers.reverse().forEach(dispose=>dispose?.());effects.reverse().forEach(dispose=>dispose?.())

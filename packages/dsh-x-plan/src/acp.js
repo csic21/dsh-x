@@ -1,3 +1,4 @@
+import { planError } from './errors.js'
 import { MAX_PLAN_CHARS, SUBPROCESS_GRACE_MS } from './limits.js'
 
 const PROTOCOL_VERSION = 1
@@ -40,7 +41,7 @@ export async function runAcpPrompt(options) {
   })
   if (child.stdin === undefined || child.stdout === undefined) {
     teardown(child)
-    throw new Error('ACP 子进程没有提供 stdin/stdout。')
+    throw planError('ACP_STREAM', 'ACP 子进程没有提供 stdin/stdout。')
   }
 
   const rpc = new NdjsonRpc(child.stdin, child.stdout)
@@ -58,7 +59,7 @@ export async function runAcpPrompt(options) {
     if (update.sessionUpdate !== 'agent_message_chunk') return
     const chunk = contentText(update.content)
     if (text.value.length + chunk.length > MAX_PLAN_CHARS) {
-      throw new Error(`ACP 正文超过 ${MAX_PLAN_CHARS} 个字符。`)
+      throw planError('ACP_SIZE', `ACP 正文超过 ${MAX_PLAN_CHARS} 个字符。`)
     }
     text.value += chunk
   })
@@ -82,7 +83,7 @@ export async function runAcpPrompt(options) {
     await authenticateIfNeeded(rpc, initialized, signal)
     const session = await request(rpc, signal, 'session/new', { cwd: options.cwd, mcpServers: [] })
     if (typeof session?.sessionId !== 'string' || session.sessionId === '') {
-      throw new Error('ACP 子进程没有返回 sessionId。')
+      throw planError('ACP_SESSION', 'ACP 子进程没有返回 sessionId。')
     }
     sessionId = session.sessionId
     if (typeof options.modeId === 'string' && options.modeId !== '') {
@@ -115,7 +116,7 @@ async function authenticateIfNeeded(rpc, initialized, signal) {
   })
   if (cached === undefined || typeof cached.id !== 'string') {
     const ids = methods.map(method => method?.id).filter(id => typeof id === 'string')
-    throw new Error(`ACP 代理要求登录（${ids.join(', ') || '未知方法'}）。先在对应 CLI 里登录。这个插件不保存 API key。`)
+    throw planError('ACP_AUTH', `ACP 代理要求登录（${ids.join(', ') || '未知方法'}）。先在对应 CLI 里登录。这个插件不保存 API key。`)
   }
   await request(rpc, signal, 'authenticate', { methodId: cached.id })
 }
@@ -135,7 +136,7 @@ function withSignal(promise, signal) {
 }
 
 function abortError() {
-  const error = new Error('ACP 调用已取消。')
+  const error = planError('CANCELLED', 'ACP 调用已取消。')
   error.name = 'AbortError'
   return error
 }
@@ -161,7 +162,7 @@ function teardown(child) {
 
 function throwIfAborted(signal) {
   if (signal?.aborted) {
-    const error = new Error('ACP 调用已取消。')
+    const error = planError('CANCELLED', 'ACP 调用已取消。')
     error.name = 'AbortError'
     throw error
   }
@@ -181,7 +182,7 @@ class NdjsonRpc {
     stdin.on('error', error => this.failAll(error instanceof Error ? error : new Error(String(error))))
     stdout.setEncoding('utf8')
     stdout.on('data', chunk => this.onData(chunk))
-    stdout.on('end', () => this.failAll(new Error('ACP stdout 已关闭。')))
+    stdout.on('end', () => this.failAll(planError('ACP_CLOSED', 'ACP stdout 已关闭。')))
     stdout.on('error', error => this.failAll(error instanceof Error ? error : new Error(String(error))))
   }
 
@@ -194,7 +195,7 @@ class NdjsonRpc {
   }
 
   request(method, params) {
-    if (this.closed) return Promise.reject(new Error(`ACP 连接已关闭，无法调用 ${method}。`))
+    if (this.closed) return Promise.reject(planError('ACP_CLOSED', `ACP 连接已关闭，无法调用 ${method}。`))
     const id = this.nextId
     this.nextId += 1
     return new Promise((resolve, reject) => {
@@ -218,16 +219,16 @@ class NdjsonRpc {
       this.buffer += chunk
       let newline = this.buffer.indexOf('\n')
       while (newline >= 0) {
-        if (newline > MAX_ACP_LINE_CHARS) throw new Error('ACP 单行响应超过大小限制。')
+        if (newline > MAX_ACP_LINE_CHARS) throw planError('ACP_SIZE', 'ACP 单行响应超过大小限制。')
         const line = this.buffer.slice(0, newline).trim()
         this.buffer = this.buffer.slice(newline + 1)
         if (line !== '') this.onLine(line)
         if (this.closed) return
         newline = this.buffer.indexOf('\n')
       }
-      if (this.buffer.length > MAX_ACP_LINE_CHARS) throw new Error('ACP 单行响应超过大小限制。')
+      if (this.buffer.length > MAX_ACP_LINE_CHARS) throw planError('ACP_SIZE', 'ACP 单行响应超过大小限制。')
     } catch (error) {
-      this.failAll(error instanceof Error ? error : new Error('ACP 响应无效。'))
+      this.failAll(error instanceof Error ? error : planError('ACP_INVALID', 'ACP 响应无效。'))
     }
   }
 
@@ -244,7 +245,7 @@ class NdjsonRpc {
       || (message.id !== undefined && message.id !== null && typeof message.id !== 'string' && !Number.isSafeInteger(message.id))
       || (Object.hasOwn(message, 'method') && typeof message.method !== 'string')
       || (!Object.hasOwn(message, 'method') && !(Object.hasOwn(message, 'id') && (Object.hasOwn(message, 'result') !== Object.hasOwn(message, 'error'))))) {
-      this.failAll(new Error('ACP 响应不是有效的 JSON-RPC 消息。'))
+      this.failAll(planError('ACP_INVALID', 'ACP 响应不是有效的 JSON-RPC 消息。'))
       return
     }
     if (message.id !== undefined && message.id !== null && typeof message.method === 'string') {
@@ -296,5 +297,5 @@ class NdjsonRpc {
 
 function rpcError(error) {
   const message = error && typeof error.message === 'string' ? error.message : 'ACP 请求失败。'
-  return new Error(message)
+  return planError('ACP_REQUEST', message)
 }

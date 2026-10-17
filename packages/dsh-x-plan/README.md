@@ -53,3 +53,13 @@ dsh plugin --profile <name> add link:/绝对路径/packages/dsh-x-plan
 Desktop 的 `desktop` profile 不接受这条公开命令。那条路径要用 Desktop 自带的 CLI，本仓库的启动脚本还没写。
 
 组合包还不会打进安装包。`link:` 只在本机开发时用。
+
+## 国际化与展示
+
+plan、approve、discard、review 的工具卡和插件元信息提供中文与英文，跟随 DSH 官方语言设置即时切换。客户端通过官方 `tool.call.toolview` 与 `locale`/`t` 注册，不添加语言配置。轮次和次数用当前语言的 `Intl.NumberFormat` 格式；计划/验收正文、文件路径和模型原文不翻译。
+
+批准与放弃仍走官方原生审批卡。插件传入 `displayReason: { en, zh }`，由官方 `locale.resolveText` 在显示时选择文案，所以正在等待的审批也随语言切换。固定的模型门禁 `reason`、批准前阻断、拒绝/允许和执行顺序保持原有语义。
+
+工具的 `output.presentationMeta` 保存版本化展示数据，把插件自己的状态说明与原始计划/验收正文分开；`HarnessError` 的稳定代码用于客户端错误翻译。未知 metadata 版本或没有 metadata 的旧历史成功记录保持原文。Host 配置/协议诊断、模型指令、参考证据，以及其他工具被 plan 门禁拒绝时官方 generic 卡上的原始模型诊断不会按浏览器语言重写；官方当前没有给跨工具错误增加本地化映射的通用扩展位。
+
+根目录 `npm test` 构建客户端并验证官方 LocaleRuntime 即时切换/区域 fallback、原生审批双语映射、原文保留、结果打开、错误翻译、实际 ToolRuntime 的审批拒绝/允许/执行/停止验收/放弃流程以及 metadata。所有测试使用本地 fixture，不调用外部模型。实际浏览器验证记录见根目录 `TEST_REPORT.md`。

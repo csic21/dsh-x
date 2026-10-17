@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { apply, inject, name } from '../index.js'
 import { LIMITS, resolveConfig, runChat } from '../src/chat.js'
+import { DshXChatError, ERROR_MESSAGES } from '../src/errors.js'
+import { HarnessError } from '@deepseek-ai/dsh-llm'
 
 const route = { provider: 'fixture', model: 'fixture-model' }
 const text = value => ({ type: 'text-delta', index: 0, text: value })
@@ -46,7 +48,7 @@ test('config route and paired override; no silent provider fallback', async () =
 })
 
 test('validates config and UTF-8 input before dispatch', async () => {
-  for (const config of [{ timeoutMs: 0 }, { timeoutMs: 120001 }, { maxOutputTokens: 8193 }, { maxOutputTokens: 1.5 }, { apiKey: 'not-supported' }, { provider: 'x' }, null]) {
+  for (const config of [{ timeoutMs: 0 }, { timeoutMs: 120001 }, { maxOutputTokens: 8193 }, { maxOutputTokens: 1.5 }, { apiKey: 'not-supported' }, { locale: 'en' }, { language: 'zh' }, { provider: 'x' }, null]) {
     assert.throws(() => resolveConfig(config))
   }
   const { llm, calls } = fixture()
@@ -56,12 +58,46 @@ test('validates config and UTF-8 input before dispatch', async () => {
   assert.equal(calls.length, 0)
 })
 
-test('reasoning omitted and token-limit truncation disclosed', async () => {
+test('reasoning omitted and token-limit metadata does not rewrite the model answer', async () => {
   const { llm } = fixture([{ type: 'reasoning-delta', index: 1, text: 'private reasoning' }, text('回答'), finish('max-tokens')])
   const result = await runChat(llm, { ...route, prompt: 'hi' })
   assert.equal(result.truncated, true)
-  assert.match(result.text, /可能不完整/)
+  assert.equal(result.text, '回答')
   assert.doesNotMatch(result.text, /private/)
+})
+
+test('model whitespace, prompt and context remain verbatim', async () => {
+  const answer = '  Original answer 原文\n\n[回答达到输出 token 上限，内容可能不完整。]\n'
+  const prompt = '  问题 Question\n'
+  const context = '\nReference 原材料  '
+  const { llm, calls } = fixture([text(answer), finish('max-tokens')])
+  const result = await runChat(llm, { ...route, prompt, context })
+  assert.equal(result.text, answer)
+  assert.equal(result.truncated, true)
+  assert.equal(calls[0].options.messages[0].content[0].text, JSON.stringify({ prompt, context }))
+})
+
+test('every owned error carries the official stable HarnessError identity', () => {
+  for (const [code, message] of Object.entries(ERROR_MESSAGES)) {
+    const error = new DshXChatError(code)
+    assert.ok(error instanceof HarnessError)
+    assert.equal(error.name, 'DshXChatError')
+    assert.equal(error.code, code)
+    assert.equal(error.message, message)
+  }
+  assert.throws(() => new DshXChatError('unknown'), /Unknown chat error code/)
+})
+
+test('validation errors use codes without interpolating input data', async () => {
+  for (const [args, code] of [
+    [{ prompt: 'ok' }, 'DSH_X_CHAT_ROUTE'],
+    [{ ...route, prompt: '' }, 'DSH_X_CHAT_PROMPT_TYPE'],
+    [{ ...route, prompt: 'ok', context: 123 }, 'DSH_X_CHAT_CONTEXT_TYPE'],
+    [{ ...route, prompt: 'x'.repeat(LIMITS.promptBytes + 1) }, 'DSH_X_CHAT_PROMPT_LIMIT'],
+    [{ ...route, prompt: 'ok', context: 'x'.repeat(LIMITS.contextBytes + 1) }, 'DSH_X_CHAT_CONTEXT_LIMIT'],
+  ]) {
+    await assert.rejects(runChat(fixture().llm, args), error => error.code === code)
+  }
 })
 
 test('rejects incomplete, empty, tool-call, error and malformed streams', async () => {

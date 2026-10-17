@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeAShare, parseSaved, quoteLabel, STORAGE_KEY, scopedStorageKey } from '../src/watchlist.js'
+import { normalizeAShare, parseSaved, quoteStatus, STORAGE_KEY, scopedStorageKey } from '../src/watchlist.js'
 import { createWatchlistController } from '../src/client/controller.js'
 import { createWatchlistHandler, createWatchlistRoute } from '../src/watchlist-rpc.js'
 import { mountWhenVacant } from '../src/client/placement.js'
@@ -24,9 +24,9 @@ test('pins add/remove/order/collapse persist only preferences; invalid and full 
   c.setScope(scope)
   c.add({symbol:'SZ.000001',alias:'平安'}); c.add({symbol:'SH.600519'}); c.move('SH.600519',-1); c.collapse(true)
   assert.deepEqual(c.source.getSnapshot().pins.map(p=>p.symbol),['SH.600519','SZ.000001'])
-  assert.throws(()=>c.add({symbol:'SH.600519'}),/已经/)
+  assert.throws(()=>c.add({symbol:'SH.600519'}),/duplicate/)
   for(let i=2;i<8;i++)c.add({symbol:`SZ.00000${i}`})
-  assert.throws(()=>c.add({symbol:'SZ.000009'}),/八/)
+  assert.throws(()=>c.add({symbol:'SZ.000009'}),/limit/)
   c.remove('SH.600519'); c.move('missing',1)
   const second=createWatchlistController(storage);second.setScope(scope)
   const restored=second.source.getSnapshot()
@@ -37,9 +37,9 @@ test('storage denial is visible and keeps edits in memory; another window syncs'
   const events = new EventTarget()
   const c=createWatchlistController({getItem(){throw Error()},setItem(){throw Error()}},events)
   c.setScope(scope)
-  assert.match(c.source.getSnapshot().storageError,/读取/)
+  assert.match(c.source.getSnapshot().storageError,/storage-read/)
   c.add({symbol:'SH.600519'})
-  assert.equal(c.source.getSnapshot().pins.length,1);assert.match(c.source.getSnapshot().storageError,/无法保存/)
+  assert.equal(c.source.getSnapshot().pins.length,1);assert.match(c.source.getSnapshot().storageError,/storage-save/)
   const event = new Event('storage');Object.assign(event,{key,newValue:JSON.stringify({version:1,pins:[{symbol:'BJ.430047'}]})});events.dispatchEvent(event)
   assert.equal(c.source.getSnapshot().pins[0].symbol,'BJ.430047');c.dispose()
 })
@@ -91,11 +91,11 @@ test('hidden/offline resources do not call host; old quote labels never imply re
   const target=new EventTarget();target.hidden=true
   let calls=0;const abort=new AbortController()
   const stream=quoteResource({call:()=>calls++},target,{onLine:false}).open(addressFor('SZ.000001'),{signal:abort.signal})
-  assert.match((await stream.next()).value.error.message,/离线/);assert.equal(calls,0)
+  assert.equal((await stream.next()).value.error.code,'stock/offline');assert.equal(calls,0)
   abort.abort();await stream.return()
-  assert.equal(quoteLabel(), '未配置行情')
-  assert.match(quoteLabel({quotedAt:'2020-01-01T00:00:00Z'}),/旧报价/)
-  assert.match(quoteLabel({quotedAt:null}),/未知/)
+  assert.equal(quoteStatus(), 'unconfigured')
+  assert.match(quoteStatus({quotedAt:'2020-01-01T00:00:00Z'}),/stale/)
+  assert.match(quoteStatus({quotedAt:null}),/unknown-time/)
 })
 
 test('resource rejection preserves protocol failure rather than throwing the stream',async()=>{

@@ -61,3 +61,13 @@ Host 的 `createWatchlistHandler({ provider })` 为未来获授权适配器保�
 在仓库根 `npm ci` 后执行 `npm --prefix packages/dsh-x-stock run build`。`lib/client.js` 是正式 `window.__ModuleLoader__.load({ id, factory(require) })` 客户端产物；React 由宿主共享模块表提供，`package.json` 声明 `./client` 导出及 `dsh.client.inject` 依赖。它不是动态 Cordis 代码片段。已生成的 `lib/client.js` 随包交付，宿主无需在运行时编译 JSX。
 
 `npm --prefix packages/dsh-x-stock test` 验证原有行情工具、A 股身份/清单/存储拒绝、RPC 所有者与输入边界、slot 冲突/恢复/卸载、资源暂停取消，profile 标识原子发布/跨 home 与 profile 隔离/重启稳定/初始化竞态，以及实际构建产物在 jsdom 中的独立页导航、管理和折叠交互。测试行情均为明确的离线 fixture，不是在线证券数据。jsdom 不验证像素布局，也不证明真实桌面浏览器完整流程；生产数据源及真实浏览器视觉验收仍需单独完成。
+
+### 国际化
+
+股票页面、底条、侧栏名称、表单校验、存储/网络错误、报价状态、Finnhub 工具卡以及插件元信息均提供中文与英文。只读取官方 `ctx.locale`；slot 注册 `locale: 'dsh-x-stock'` 后由官方 renderer 提供 `t` 并处理即时切换，侧栏 label 用函数随官方 locale 更新。
+
+错误与报价状态使用稳定代码，不能通过“旧”等翻译后的文字判断状态。表单使用本地化校验，避免浏览器默认校验消息与 DSH 语言不一致。格式化在每次渲染读取官方当前 locale；价格不推断币种，涨跌幅按百分数格式化，时间明确显示上海时区。证券名称、别名、代码和供应商名称按原样保留。新增语言包依照官方 fallback 链读取英文或中文文案；格式化保留该语言的数字/日期习惯，不支持的 Intl locale 回退英文。
+
+Finnhub 工具通过官方 `HarnessError` 传播错误身份，通过 `output.presentationMeta` 保存结构化展示数据。工具卡本地化标签、错误和数据限制提示，模型收到的结果协议保持稳定。没有展示 metadata 的历史成功记录以原文回放，不猜测并改写旧文本。
+
+本地测试直接加载正式构建产物及已发布官方 `LocaleRuntime`，覆盖中文/英文即时切换、区域语言和英文 fallback、数字/日期/百分比、切换时仍在显示的错误、证券名不变、工具 metadata 和错误身份。真实浏览器集成记录见根目录 `TEST_REPORT.md`。

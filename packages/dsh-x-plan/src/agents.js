@@ -1,3 +1,4 @@
+import { planError } from './errors.js'
 /** Planner and reviewer families. The executor is always the current DeepSeek session. */
 export const FAMILIES = ['codex', 'claude', 'grok']
 
@@ -36,12 +37,12 @@ const NEXT_FAMILY = { codex: 'claude', claude: 'grok', grok: 'codex' }
 /** Reviewer default so the planner does not grade its own plan. */
 export function defaultReviewer(planner) {
   const next = NEXT_FAMILY[planner]
-  if (next === undefined) throw new Error(`未知的规划者：${planner}`)
+  if (next === undefined) throw planError('FAMILY', `未知的规划者：${planner}`)
   return next
 }
 
 export function assertFamily(value, label) {
-  if (!FAMILIES.includes(value)) throw new Error(`${label}必须是 codex、claude 或 grok。`)
+  if (!FAMILIES.includes(value)) throw planError('FAMILY', `${label}必须是 codex、claude 或 grok。`)
   return value
 }
 
@@ -54,7 +55,7 @@ export function assertFamily(value, label) {
  */
 export async function resolveLaunch(family, { resolveExecutable, env = process.env, signal }) {
   const spec = AGENT_LAUNCH[family]
-  if (spec === undefined) throw new Error(`未知的模型家族：${family}`)
+  if (spec === undefined) throw planError('FAMILY', `未知的模型家族：${family}`)
   const overrideName = `DSH_X_ACP_${family.toUpperCase()}`
   const override = env[overrideName]
   if (typeof override === 'string' && override.trim() !== '') {
@@ -71,7 +72,7 @@ export async function resolveLaunch(family, { resolveExecutable, env = process.e
     } catch (npxError) {
       const binMessage = binError instanceof Error ? binError.message : String(binError)
       const npxMessage = npxError instanceof Error ? npxError.message : String(npxError)
-      throw new Error(
+      throw planError('LAUNCH',
         `找不到 ${family} 的 ACP 命令（${spec.bin}），也找不到 npx。${binMessage} ${npxMessage}`,
       )
     }

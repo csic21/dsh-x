@@ -41,7 +41,7 @@
 ## 资源与故障边界
 
 - 默认超时 60 秒，可配置整数 1–120000 毫秒，覆盖路由准备和流消费。父调用取消会传给提供方；不遵守取消信号的提供方也不会阻塞工具返回，但远端计费/计算是否终止取决于提供方。
-- 默认输出上限 2048 token，可配置整数 1–8192。达到 token 上限时 `truncated: true`，文字末尾明确提示内容可能不完整。
+- 默认输出上限 2048 token，可配置整数 1–8192。达到 token 上限时 `truncated: true`，界面单独提示内容可能不完整。`text` 保留模型原文（包括首尾空白），不追加或翻译界面提示。
 - 原始流累计最多 1 MiB / 20000 个块（包括推理和协议元数据），超过限制直接失败，避免输出/内存失控。输入超限直接报错，不静默截断。
 - 缺少结束标记、错误/取消结束、工具调用、异常内容或空回答均失败，不把半截失败结果当成成功。
 - 提供方异常使用通用提示，避免把错误中可能包含的凭据返回给模型；排查时查看宿主提供方状态。
@@ -55,3 +55,13 @@ npm test --prefix packages/dsh-x-chat
 ```
 
 测试使用真实官方 `defineTool` / `BlockAssembler` 与本地假提供方，覆盖注册、路由、输入边界、截断、错误、工具调用拒绝、取消、超时及流大小上限。测试不会发起真实模型请求，不需要密钥，也不会产生模型费用。真实提供方端到端行为仍需在用户已配置的环境中验证。
+
+## 界面语言 / UI language
+
+浏览器端使用官方 `ctx.locale` 注册 `dsh-x-chat` 中英文词典，通过 `tool.call.toolview` 为 `dsh_x_chat` 注册独立工具卡片。问答标题、准备/执行/完成状态、详情按钮、字段标签、错误和截断提示随 DSH 的语言设置即时切换。插件没有额外语言选项，也不会把语言选择传给模型。插件管理中的标题和简介通过官方 `locale/en.json`、`locale/zh.json` 发布。
+
+Host 使用官方 `HarnessError` 保留 `DshXChatError` 和稳定的 `DSH_X_CHAT_*` 错误码。客户端只根据结构化错误码选择提示，不根据中文或英文错误文字猜测。成功结果通过 `output.presentationMeta` 保存版本化的路由、原回答区段与截断信息。工具给主模型的截断提醒是单独的固定文本块，不受界面语言影响；卡片通过结构化区段显示原回答，再单独显示本地化提醒。旧记录缺少元数据时保留记录原文，不猜测或删除看起来像警告的模型文字。未知错误显示本地化的通用提示，可用“检查调用”查看宿主记录。
+
+The web client follows the official DSH language preference immediately. It owns bilingual tool titles, progress/result states, details controls, field labels, errors, and truncation warnings. There is no separate language preference. Original model answers, questions, reference material, route IDs, tool descriptions, and the system prompt are never translated by the UI. Missing plugin translations in another installed language use the official locale fallback chain.
+
+The client uses the official dynamic module factory and keyed tool-view slot. Build it with `npm --prefix packages/dsh-x-chat run build`; the repository build includes that step. Tests exercise the published client bundle in a DOM fixture with the installed official `LocaleRuntime`, including switching while an answer is expanded, English fallback, unchanged model text, structured failure identities, metadata, cleanup, and package exports. These checks do not replace an assembled-kernel browser smoke test.

@@ -23,7 +23,16 @@ export function apply(ctx, config = {}) {
           text: { type: 'string' }, truncated: { type: 'boolean' },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: value.text }],
+      // Keep a stable model-facing warning in its own block. Browser copy is
+      // separately localized; neither branch rewrites the provider's answer.
+      render: (_args, value) => [
+        { type: 'text', text: value.text },
+        ...(value.truncated ? [{ type: 'text', text: '[回答达到输出 token 上限，内容可能不完整。]' }] : []),
+      ],
+      presentationMeta: (_args, value) => ({
+        kind: 'dsh-x-chat', version: 1, answerBlocks: 1,
+        provider: value.provider, model: value.model, truncated: value.truncated,
+      }),
     },
     execute: (args, exec) => runChat(ctx.llm, args, settings, exec.signal),
   }))

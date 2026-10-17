@@ -23,6 +23,12 @@ test('stock entry executes through official tool schema/output validation with m
   assert.equal(result.isError,false,JSON.stringify(result))
   assert.equal(result.value.price,101)
   assert.equal(result.value.symbol,'AAPL')
+  assert.equal(result.meta.kind,'dsh-x-stock.quote')
+  assert.equal(result.meta.quote.symbol,'AAPL')
+  delete process.env.FINNHUB_API_KEY
+  const failed=await invoke(ctx,'dsh_x_stock_quote',{symbol:'AAPL'})
+  assert.equal(failed.error.info.name,'DshXStockError')
+  assert.equal(failed.error.info.code,'DSH_X_STOCK_MISSING_KEY')
  } finally {globalThis.fetch=originalFetch; if(key===undefined) delete process.env.FINNHUB_API_KEY; else process.env.FINNHUB_API_KEY=key; await ctx.fiber.dispose()}
 })
 

@@ -1,3 +1,5 @@
+import { planError } from './src/errors.js'
+import { approvalText } from './src/approval-text.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 import { assertFamily, defaultReviewer, resolveLaunch } from './src/agents.js'
@@ -48,10 +50,10 @@ export function apply(ctx) {
       draft: state.draft,
       discard: state.discard,
     })
-    if (decision.kind === 'deny') return { kind: 'deny', reason: decision.reason }
+    if (decision.kind === 'deny') return { kind: 'deny', reason: decision.reason, info: { name: 'DshXPlanError', code: 'DSH_X_PLAN_DRAFT_UNAPPROVED' } }
     if (decision.kind === 'ask') {
       const reason = withRequestedRound(exec, decision.reason)
-      return { kind: 'ask', reason, displayReason: reason }
+      return { kind: 'ask', reason, displayReason: approvalText({ toolName: exec.name, ...state }, exec.arguments?.round) }
     }
     return next()
   })
@@ -70,26 +72,27 @@ export function apply(ctx) {
       context: { type: 'string', description: '相关文件摘录。信息不够时规划者会写进待确认，而不是编造。' },
     },
     output: {
-      schema: objectSchema({
+      schema: outputSchema({
         round: { type: 'integer' },
         planner: { type: 'string' },
         path: { type: 'string' },
         text: { type: 'string' },
         acceptance: { type: 'array', items: { type: 'string' } },
       }),
+      presentationMeta: (_args, value) => presentation('plan', value),
       render: (_args, value) => textBlock(value.text),
     },
     async execute(args, exec) {
       const dir = plansDir(exec)
       if (unapprovedDraft(dir) !== null) {
-        throw new Error('已有未批准的计划。先调用 dsh_x_approve_plan，或调用 dsh_x_discard_plan 放弃。')
+        throw planError('DRAFT_EXISTS', '已有未批准的计划。先调用 dsh_x_approve_plan，或调用 dsh_x_discard_plan 放弃。')
       }
       const planner = assertFamily(args.planner, '规划者')
       const goal = args.goal.trim()
-      if (goal === '') throw new Error('目标不能为空。')
+      if (goal === '') throw planError('GOAL_EMPTY', '目标不能为空。')
       const context = args.context ?? ''
       if (context.length > MAX_CONTEXT_CHARS) {
-        throw new Error(`context 超过 ${MAX_CONTEXT_CHARS} 个字符。只保留相关摘录。`)
+        throw planError('CONTEXT_SIZE', `context 超过 ${MAX_CONTEXT_CHARS} 个字符。只保留相关摘录。`)
       }
       const cwd = await ctx.workingDirectory.ensure(exec.agent, exec.signal)
       const launch = await resolveLaunch(planner, {
@@ -106,9 +109,9 @@ export function apply(ctx) {
         modeId: launch.modeId,
         timeoutMs: PLAN_TIMEOUT_MS,
       })
-      if (!result.ok) throw new Error(failureText('规划', result))
+      if (!result.ok) throw planError('PLAN_FAILED', failureText('规划', result))
       const acceptance = parseAcceptance(result.text)
-      if (Object.hasOwn(acceptance, 'error')) throw new Error(acceptance.error)
+      if (Object.hasOwn(acceptance, 'error')) throw planError(acceptance.code, acceptance.error)
       const written = writeNewPlan(dir, {
         planner,
         reviewer: defaultReviewer(planner),
@@ -119,6 +122,7 @@ export function apply(ctx) {
         round: written.round,
         planner,
         path: written.path,
+        body: written.text,
         text: [
           `第 ${written.round} 轮计划已写入 ${written.path}。`,
           '把计划交给用户确认。用户同意之前不要改文件。用户同意后调用 dsh_x_approve_plan。',
@@ -138,25 +142,27 @@ export function apply(ctx) {
       round: { type: 'integer', description: '轮次。省略时使用当前未批准的计划。' },
     },
     output: {
-      schema: objectSchema({
+      schema: outputSchema({
         round: { type: 'integer' },
         path: { type: 'string' },
         text: { type: 'string' },
       }),
+      presentationMeta: (_args, value) => presentation('approve', value),
       render: (_args, value) => textBlock(value.text),
     },
     async execute(args, exec) {
       const dir = plansDir(exec)
       const draft = unapprovedDraft(dir)
       const round = args.round ?? draft?.round
-      if (round === undefined) throw new Error('没有未批准的计划。')
+      if (round === undefined) throw planError('NO_DRAFT', '没有未批准的计划。')
       if (draft !== null && args.round !== undefined && args.round !== draft.round) {
-        throw new Error(`当前未批准的是第 ${draft.round} 轮。`)
+        throw planError('WRONG_ROUND', `当前未批准的是第 ${draft.round} 轮。`)
       }
       const approved = approvePlan(dir, round)
       return {
         round: approved.round,
         path: approved.path,
+        body: approved.text,
         text: `已批准第 ${approved.round} 轮计划。只执行这个文件里的步骤：\n${approved.path}\n\n${approved.text}`,
       }
     },
@@ -169,18 +175,19 @@ export function apply(ctx) {
       round: { type: 'integer', description: '轮次。省略时放弃当前草稿，没有草稿则放弃最近一份已批准的计划。' },
     },
     output: {
-      schema: objectSchema({
+      schema: outputSchema({
         round: { type: 'integer' },
         path: { type: 'string' },
         text: { type: 'string' },
       }),
+      presentationMeta: (_args, value) => presentation('discard', value),
       render: (_args, value) => textBlock(value.text),
     },
     async execute(args, exec) {
       const dir = plansDir(exec)
       const target = discardTarget(dir)
       const round = args.round ?? target?.round
-      if (round === undefined) throw new Error('没有可以放弃的计划。')
+      if (round === undefined) throw planError('NO_DISCARD', '没有可以放弃的计划。')
       const discarded = discardPlan(dir, round)
       return {
         round: discarded.round,
@@ -202,7 +209,7 @@ export function apply(ctx) {
       round: { type: 'integer', description: '已批准计划的轮次。省略时使用最近一份未放弃的已批准计划。' },
     },
     output: {
-      schema: objectSchema({
+      schema: outputSchema({
         round: { type: 'integer' },
         attempt: { type: 'integer' },
         reviewer: { type: 'string' },
@@ -210,12 +217,13 @@ export function apply(ctx) {
         path: { type: 'string' },
         text: { type: 'string' },
       }),
+      presentationMeta: (_args, value) => presentation('review', value),
       render: (_args, value) => textBlock(value.text),
     },
     async execute(args, exec) {
       const dir = plansDir(exec)
       const round = args.round ?? latestApproved(dir)?.round
-      if (round === undefined) throw new Error('没有已批准的计划。')
+      if (round === undefined) throw planError('NO_APPROVED', '没有已批准的计划。')
       const approved = readApproved(dir, round)
       if (reviewLimitReached(dir, round)) {
         const paths = failedReviewPaths(dir, round)
@@ -233,10 +241,10 @@ export function apply(ctx) {
         : assertFamily(args.reviewer, '验收者')
       assertFamily(reviewer, '验收者')
       if (reviewer === approved.meta.planner) {
-        throw new Error(`验收者不能和规划者同为 ${reviewer}。`)
+        throw planError('SAME_FAMILY', `验收者不能和规划者同为 ${reviewer}。`)
       }
       const acceptance = parseAcceptance(approved.text)
-      if (Object.hasOwn(acceptance, 'error')) throw new Error(acceptance.error)
+      if (Object.hasOwn(acceptance, 'error')) throw planError(acceptance.code, acceptance.error)
       const cwd = await ctx.workingDirectory.ensure(exec.agent, exec.signal)
       const launch = await resolveLaunch(reviewer, {
         resolveExecutable: (command, env, signal) => ctx.subprocess.resolveExecutable(command, env, signal),
@@ -261,7 +269,7 @@ export function apply(ctx) {
         modeId: launch.modeId,
         timeoutMs: PLAN_TIMEOUT_MS,
       })
-      if (!result.ok) throw new Error(failureText('验收', result))
+      if (!result.ok) throw planError('REVIEW_FAILED', failureText('验收', result))
       const parsed = parseVerdict(result.text)
       const written = writeReview(dir, {
         round,
@@ -278,14 +286,16 @@ export function apply(ctx) {
         reviewer,
         verdict: parsed.verdict,
         path: written.path,
+        body: parsed.body,
+        missingVerdict: parsed.missingVerdict,
         text,
       }
     },
   }))
 }
 
-function objectSchema(properties) {
-  return { type: 'object', additionalProperties: false, properties }
+function outputSchema(properties) {
+  return { type: 'object', additionalProperties: false, properties: { ...properties, body: { type: 'string' }, missingVerdict: { type: 'boolean' } } }
 }
 
 function textBlock(text) {
@@ -295,7 +305,7 @@ function textBlock(text) {
 function plansDir(exec) {
   const sessionId = exec.agent?.id
   if (typeof sessionId !== 'string' || sessionId === '') {
-    throw new Error('dsh-x-plan 需要当前会话。这次工具调用没有 agent.id。')
+    throw planError('NO_SESSION', 'dsh-x-plan 需要当前会话。这次工具调用没有 agent.id。')
   }
   return sessionPlansDir(resolveHome(), sessionId)
 }
@@ -309,7 +319,7 @@ function lookupState(exec) {
   } catch {
     // A missing plan directory is handled by the store. Other read failures
     // must stop execution instead of silently lifting the draft gate.
-    throw new Error('无法读取当前会话的计划状态，已停止工具执行。请检查计划目录后重试。')
+    throw planError('STATE_READ', '无法读取当前会话的计划状态，已停止工具执行。请检查计划目录后重试。')
   }
 }
 
@@ -326,4 +336,8 @@ function failureText(label, result) {
   const body = result.text.trim()
   const excerpt = body === '' ? '' : `\n${body.slice(0, 4_000)}`
   return `${label}没有完成（${result.stopReason}）。${denied}${excerpt}`
+}
+
+function presentation(operation, value) {
+  return { kind: 'dsh-x-plan.result', version: 1, operation, round: value.round, path: value.path, body: value.body ?? '', verdict: value.verdict ?? null, attempt: value.attempt ?? 0, missingVerdict: value.missingVerdict === true }
 }

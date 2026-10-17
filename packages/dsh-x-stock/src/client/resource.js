@@ -20,17 +20,17 @@ export function quoteResource(rpc, documentObject = globalThis.document, navigat
       const symbol = validateSymbol(new URL(address).pathname.slice(1))
       while (!signal.aborted) {
         if (documentObject?.hidden || navigatorObject?.onLine === false) {
-          yield { ok: false, error: { code: 'stock/paused', message: navigatorObject?.onLine === false ? '离线 · 已暂停更新' : '窗口隐藏 · 已暂停更新', details: {} } }
+          yield { ok: false, error: { code: navigatorObject?.onLine === false ? 'stock/offline' : 'stock/hidden', message: 'Updates paused', details: {} } }
           await wait(Infinity, signal, documentObject)
           continue
         }
         let result
         try { result = await rpc.call(QUOTE_CHANNEL, QUOTE_ENDPOINT, { symbols: [symbol] }, signal) }
-        catch { result = { ok: false, error: { code: 'stock/connection', message: '连接中断 · 保留最近报价', details: {} } } }
+        catch { result = { ok: false, error: { code: 'stock/connection', message: 'Connection lost', details: {} } } }
         if (signal.aborted) return
         if (result.ok) {
           const quote = result.value?.quotes?.find(item => item.symbol === symbol)
-          if (!quote) result = { ok: false, error: { code: 'stock/invalid', message: '行情响应无效', details: {} } }
+          if (!quote) result = { ok: false, error: { code: 'stock/invalid', message: 'Invalid quote response', details: {} } }
           else result = { ok: true, value: { ...quote, source: result.value.source } }
         }
         yield result
