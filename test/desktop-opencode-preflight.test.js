@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { checkOwnedVersion, checkReadOnlyDenial, confinedSpawn, KERNEL_COMMIT } from '../scripts/desktop-opencode-preflight.mjs';
+import { catalogMetadataFetch, checkOwnedVersion, checkReadOnlyDenial, confinedSpawn, KERNEL_COMMIT } from '../scripts/desktop-opencode-preflight.mjs';
 
 // Some restricted cloud workspaces deliberately put a .git sentinel above all
 // writable roots. Keep the production repository-context guard intact there.
@@ -74,7 +74,7 @@ test('read-only probe requires both an actual denial response and an absent sent
   } finally { rmSync(workspace, { recursive: true, force: true }); }
 });
 
-test('preflight pins source imports before build and never requests model discovery or execution', () => {
+test('preflight pins source imports, explicitly gates catalog reads and never executes a model task', () => {
   const source = readFileSync(new URL('../scripts/desktop-opencode-preflight.mjs', import.meta.url), 'utf8');
   assert.equal(KERNEL_COMMIT, '1517a4dbca0a2789ff1d41ba439600f8547d23fa');
   assert.match(source, /requireKernel\.resolve\('tsx\/esm\/api'\)/);
@@ -82,8 +82,30 @@ test('preflight pins source imports before build and never requests model discov
   assert.match(source, /vendor\/cordis\/src\/index.ts/);
   assert.match(source, /packages\/sandbox\/sandbox-local\/src\/index.ts/);
   assert.match(source, /packages\/subprocess\/subprocess-local\/src\/index.ts/);
-  assert.doesNotMatch(source, /\.discoverModels\(|adapter\.run\(|runnerCommand|danger-full-access|internals\s*=/);
+  assert.doesNotMatch(source, /adapter\.run\(|runnerCommand|danger-full-access|internals\s*=/);
+  assert.match(source, /process.env.DSH_OPENCODE_PREFLIGHT_CATALOG === '1'/);
+  assert.match(source, /if \(catalogAuthorized\) report.catalog = await checkOwnedCatalog/);
+  assert.match(source, /\['\/global\/health', '\/config', '\/provider'\]\.includes\(url.pathname\)/);
+  assert.match(source, /forbids prompt\/session APIs and retries/);
   assert.match(source, /cleanup is unconfirmed/);
+});
+
+test('catalog diagnostic admits only three read endpoints on one owned loopback origin, once each', async () => {
+  const calls = [], metadata = catalogMetadataFetch(async url => { calls.push(url); return { ok: true }; });
+  const get = { method: 'GET', redirect: 'error' };
+  for (const [url, init] of [
+    ['https://example.com/config', get], ['http://localhost:4000/config', get],
+    ['http://127.0.0.1:4000/session', get], ['http://127.0.0.1:4000/config', { ...get, method: 'POST' }],
+    ['http://127.0.0.1:4000/config', { ...get, body: '{}' }], ['http://127.0.0.1:4000/config', { ...get, redirect: 'follow' }],
+  ]) assert.throws(() => metadata.fetch(url, init));
+  assert.deepEqual(calls, []);
+  await metadata.fetch('http://127.0.0.1:4000/global/health', get);
+  assert.throws(() => metadata.fetch('http://127.0.0.1:5000/config', get), /owned loopback/);
+  await metadata.fetch('http://127.0.0.1:4000/config', get);
+  await metadata.fetch('http://127.0.0.1:4000/provider', get);
+  assert.throws(() => metadata.fetch('http://127.0.0.1:4000/provider', get), /retries/);
+  assert.deepEqual([...metadata.paths], ['/global/health', '/config', '/provider']);
+  assert.equal(calls.length, 3);
 });
 
 test('CLI fails closed off macOS before importing services or starting native code', { skip: process.platform === 'darwin' }, () => {

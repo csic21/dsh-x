@@ -36,6 +36,37 @@ test('normal native config defaults and reordered MCP fields are accepted; permi
  actual.permission=Object.fromEntries(Object.entries(actual.permission).reverse());assert.throws(()=>validateEffectiveConfig(actual,expected),/policy/)
 })
 
+test('effective-config diagnostics identify only known fields, never rejected values or unknown keys',()=>{
+ const expected=runtimeConfig('opencode/free',{type:'remote',url:'http://127.0.0.1:9000/mcp',oauth:false,headers:{Authorization:'Bearer never-print-this'}}),actual=structuredClone(expected)
+ actual.permission=Object.fromEntries(Object.entries(actual.permission).reverse())
+ actual.model='private-value';actual['unknown-secret-key']='private-value';actual.agent.dsh_browser.prompt='private-prompt'
+ assert.throws(()=>validateEffectiveConfig(actual,expected),error=>{
+  assert.equal(error.code,'OPENCODE_OWNED_CONFIG');assert.match(error.message,/root.extra-fields/);assert.match(error.message,/model.value/);assert.match(error.message,/permission.order/);assert.match(error.message,/agent.dsh_browser.extra-fields/)
+  assert.doesNotMatch(error.message,/private-value|unknown-secret-key|private-prompt|never-print-this|127\.0\.0\.1/);assert.ok(error.message.length<1200);return true
+ })
+})
+
+test('pinned HTTP permission encoding moves only schema-known task first, preserving browser precedence',()=>{
+ for(const mcp of [undefined,{type:'remote',url:'http://127.0.0.1:9000/mcp',oauth:false,headers:{Authorization:'Bearer fixture'}}]){
+  const expected=runtimeConfig(mcp?'opencode/free':undefined,mcp),actual=structuredClone(expected)
+  const wire=value=>Object.hasOwn(value,'task')?{task:value.task,...Object.fromEntries(Object.entries(value).filter(([key])=>key!=='task'))}:value
+  actual.permission=wire(actual.permission)
+  for(const agent of Object.values(actual.agent)){agent.options={};agent.permission=wire(agent.permission??{})}
+  actual.mode={};actual.command={}
+  validateEffectiveConfig(actual,expected)
+  const changed=structuredClone(actual);changed.permission.task='allow'
+  assert.throws(()=>validateEffectiveConfig(changed,expected),/permission.value/)
+  const extra=structuredClone(actual);extra.permission.bash='allow'
+  assert.throws(()=>validateEffectiveConfig(extra,expected),/permission.value/)
+  if(mcp){
+   const reversed=structuredClone(actual);reversed.permission=Object.fromEntries(Object.entries(reversed.permission).reverse())
+   assert.throws(()=>validateEffectiveConfig(reversed,expected),/permission.order/)
+   const primary=structuredClone(actual);primary.agent.dsh_browser.permission={'*':'deny',dsh_browser_action:'allow',dsh_browser_tabs:'allow',task:'deny'}
+   assert.throws(()=>validateEffectiveConfig(primary,expected),/agent.dsh_browser.permission.order/)
+  }
+ }
+})
+
 test('owned cleanup revokes and terminates before awaiting MCP callbacks, bounded on a hung callback',async()=>{
  const events=[]
  await assert.rejects(closeOwnedProcess({timeoutMs:10,browser:{close(){events.push('revoke')}},child:{terminate(){events.push('terminate')},waitForExit:async()=>true,done:Promise.resolve({exitCode:0})},mcp:{close(){events.push('mcp');return new Promise(()=>{})}}}),{code:'AGENTS_CLEANUP_UNCONFIRMED'})

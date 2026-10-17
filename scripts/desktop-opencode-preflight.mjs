@@ -1,4 +1,4 @@
-/** macOS-only, zero-prompt preflight. This is not a Desktop or model proof. */
+/** macOS-only, zero-prompt preflight. Catalog reads require an explicit CI gate. */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -62,6 +62,43 @@ export async function checkOwnedVersion({ sandbox, subprocess, executable, works
   return { available: true, version: result.version, authenticationSource: result.authentication.source, modelRequests: 0 };
 }
 
+/** Public metadata only; no session, prompt, browser bridge or native run API. */
+export function catalogMetadataFetch(fetch, onRequest = () => {}) {
+  const paths = new Set();
+  let origin;
+  return { paths, fetch: (input, init = {}) => {
+    const url = new URL(input);
+    assert(url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port && !url.username && !url.password && (!origin || origin === url.origin), 'Catalog preflight only permits its owned loopback endpoint.');
+    assert((init.method || 'GET') === 'GET' && !init.body && init.redirect === 'error', 'Catalog preflight forbids mutation and redirects.');
+    assert(['/global/health', '/config', '/provider'].includes(url.pathname) && !paths.has(url.pathname), 'Catalog preflight forbids prompt/session APIs and retries.');
+    origin = url.origin; paths.add(url.pathname); onRequest(url.pathname);
+    return fetch(input, init);
+  } };
+}
+
+export async function checkOwnedCatalog({ sandbox, subprocess, executable, workspace, signal, onWrap, onRequest = () => {}, fetch = globalThis.fetch }) {
+  const policy = { mode: 'workspace-write', workspaceRoot: workspace };
+  const metadata = catalogMetadataFetch(fetch, onRequest);
+  let spawned = false;
+  const adapter = createOwnedOpenCodeAdapter({
+    config: { mode: 'owned-browser', executable, startupTimeoutMs: 120000, requestTimeoutMs: 120000, cleanupTimeoutMs: CLEANUP_MS },
+    fetch: metadata.fetch,
+    spawn: spec => {
+      assert.equal(spawned, false, 'Catalog preflight may start only one owned service.');
+      assert.deepEqual(spec.argv, [executable, 'serve', '--hostname', '127.0.0.1', '--port', '0', '--mdns=false']);
+      spawned = true;
+      return confinedSpawn({ sandbox, subprocess, spec, policy, onWrap });
+    },
+  });
+  const result = await adapter.discoverModels({ cwd: workspace, sandboxPolicy: policy, signal });
+  assert.equal(result.available, true);
+  assert.equal(result.version, '1.19.3');
+  assert.equal(result.modelCatalog.source, 'owned-free-catalog');
+  assert(result.models.length > 0 && result.models.every(model => model.free === true && model.id.startsWith('opencode/')));
+  assert.deepEqual([...metadata.paths], ['/global/health', '/config', '/provider']);
+  return { available: true, version: result.version, source: result.modelCatalog.source, freeModelCount: result.models.length, freeModelIds: result.models.slice(0, 50).map(model => model.id), modelRequests: 0 };
+}
+
 /** Exercise the real denial, rather than trusting the provider's advertised label alone. */
 export async function checkReadOnlyDenial({ sandbox, subprocess, workspace, signal, onWrap }) {
   const target = join(workspace, 'must-not-be-created');
@@ -87,14 +124,15 @@ export async function checkReadOnlyDenial({ sandbox, subprocess, workspace, sign
 }
 
 export async function main() {
+  const catalogAuthorized = process.env.DSH_OPENCODE_PREFLIGHT_CATALOG === '1';
   const output = resolve(process.env.DSH_SMOKE_OUTPUT || 'desktop-opencode-preflight');
   mkdirSync(output, { recursive: true });
-  const report = { kind: 'macos-owned-opencode-version-only', platform: process.platform, arch: process.arch, startedAt: new Date().toISOString(), status: 'running', wraps: [], modelRequests: 0, catalogRequests: 0, cleanupConfirmed: false,
+  const report = { kind: catalogAuthorized ? 'macos-owned-opencode-public-catalog' : 'macos-owned-opencode-version-only', platform: process.platform, arch: process.arch, startedAt: new Date().toISOString(), status: 'running', wraps: [], modelRequests: 0, catalogRequests: 0, cleanupConfirmed: false,
     lifecycleBoundary: 'Official macOS SubprocessLocal uses managed process-tree containment; escaped descendants are not guaranteed to be observed. This is not persistent process-range ownership.' };
   const save = () => writeFileSync(join(output, 'opencode-preflight.json'), `${JSON.stringify(report, null, 2)}\n`);
   const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(new Error('Preflight exceeded its operation deadline.')), 120000);
-  const hardTimer = setTimeout(() => { report.status = 'failed'; report.error = 'Preflight exceeded its final cleanup deadline; cleanup is unconfirmed.'; save(); process.exit(1); }, 155000);
+  const abortTimer = setTimeout(() => controller.abort(new Error('Preflight exceeded its operation deadline.')), catalogAuthorized ? 180000 : 120000);
+  const hardTimer = setTimeout(() => { report.status = 'failed'; report.error = 'Preflight exceeded its final cleanup deadline; cleanup is unconfirmed.'; save(); process.exit(1); }, catalogAuthorized ? 215000 : 155000);
   let workspace, services, ctx;
   save();
   try {
@@ -119,6 +157,8 @@ export async function main() {
     report.readOnly = await checkReadOnlyDenial(options);
     save();
     report.native = await checkOwnedVersion({ ...options, executable });
+    save();
+    if (catalogAuthorized) report.catalog = await checkOwnedCatalog({ ...options, executable, onRequest: path => { if (path === '/provider') report.catalogRequests++; save(); } });
     report.status = 'passed';
   } catch (error) { report.status = 'failed'; report.error = String(error?.message || error); }
   finally {
@@ -134,7 +174,7 @@ export async function main() {
     save();
     clearTimeout(abortTimer); clearTimeout(hardTimer);
   }
-  console.log(`OpenCode version-only preflight: ${report.status}. Report: ${join(output, 'opencode-preflight.json')}`);
+  console.log(`OpenCode ${catalogAuthorized ? 'public-catalog' : 'version-only'} preflight: ${report.status}. Report: ${join(output, 'opencode-preflight.json')}`);
   if (report.status !== 'passed') process.exitCode = 1;
   return report;
 }

@@ -310,12 +310,13 @@ jobs:
           npm --prefix packages/dsh-x-browser run build
           cd ../deepseek-harness
           pnpm install --frozen-lockfile
-      - name: Preflight full official Seatbelt and native version only
+      - name: Preflight full official Seatbelt and requested public catalog
         timeout-minutes: 8
         working-directory: dsh-x
         env:
           DSH_SMOKE_KERNEL: ${{ github.workspace }}/deepseek-harness
           DSH_SMOKE_OUTPUT: ${{ github.workspace }}/desktop-opencode-preflight
+          DSH_OPENCODE_PREFLIGHT_CATALOG: '1'
         run: node scripts/desktop-opencode-preflight.mjs
       - name: Build official unsigned macOS application
         working-directory: deepseek-harness

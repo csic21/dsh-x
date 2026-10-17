@@ -34,22 +34,38 @@ export function validateEffectiveConfig(actual,expected){
   const ordered=(a,b)=>JSON.stringify(a)===JSON.stringify(b)
   const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value
   const same=(a,b)=>ordered(canonical(a),canonical(b))
-  const changed=()=>{throw failure('OPENCODE_OWNED_CONFIG','Native effective configuration differs from the isolated policy. No prompt was sent.')}
+  // Pinned v1.19.3 GET /config uses Effect 4.0.0-beta.83's schema encoder:
+  // known `task` is emitted before wildcard/custom keys. Runtime parsing keeps
+  // original precedence. Admit only the original or that exact wire layout,
+  // never sort permission keys or move `*` past either allowed browser tool.
+  const permissionWire=value=>Object.hasOwn(value,'task')?{task:value.task,...Object.fromEntries(Object.entries(value).filter(([key])=>key!=='task'))}:value
+  const samePermission=(actual,wanted)=>ordered(actual,wanted)||ordered(actual,permissionWire(wanted))
+  // Only fixed, known policy paths are reported. Never include config values,
+  // unknown property names, environment entries or MCP authorization headers.
+  const differences=[]
+  const changed=path=>{differences.push(path)}
+  const reject=()=>{throw failure('OPENCODE_OWNED_CONFIG',`Native effective configuration differs from the isolated policy. No prompt was sent. Fields: ${[...new Set(differences)].slice(0,24).join(', ')}.`)}
   const allowed=new Set([...Object.keys(expected),'$schema','username','mode','command'])
-  if(!actual||Object.keys(actual).some(key=>!allowed.has(key)))changed()
-  for(const key of ['username','enabled_providers','default_agent','model','small_model','snapshot','share','lsp','formatter','autoupdate','skills','compaction'])if(!same(actual[key],expected[key]))changed()
+  if(!actual||typeof actual!=='object'||Array.isArray(actual)){changed('root.shape');reject()}
+  if(Object.keys(actual).some(key=>!allowed.has(key)))changed('root.extra-fields')
+  for(const key of ['username','enabled_providers','default_agent','model','small_model','snapshot','share','lsp','formatter','autoupdate','skills','compaction'])if(!same(actual[key],expected[key]))changed(`${key}.value`)
   // Permission insertion order is semantic in OpenCode: the last match wins.
-  if(!ordered(actual.permission,expected.permission))changed()
-  for(const key of ['plugin','instructions'])if((actual[key]??[]).length)changed()
-  for(const key of ['mode','command'])if(Object.keys(actual[key]??{}).length)changed()
-  if(!same(actual.mcp??{},expected.mcp)||!same(actual.provider??{},expected.provider??{}))changed()
-  if(!same(Object.keys(actual.agent??{}).sort(),Object.keys(expected.agent).sort()))changed()
+  if(!samePermission(actual.permission,expected.permission))changed(`permission.${same(actual.permission,expected.permission)?'order':'value'}`)
+  for(const key of ['plugin','instructions'])if(!Array.isArray(actual[key]??[])||(actual[key]??[]).length)changed(`${key}.nonempty-or-shape`)
+  for(const key of ['mode','command'])if(Object.keys(actual[key]??{}).length)changed(`${key}.nonempty`)
+  if(!same(actual.mcp??{},expected.mcp))changed('mcp.value')
+  if(!same(actual.provider??{},expected.provider??{}))changed('provider.value')
+  if(!same(Object.keys(actual.agent??{}).sort(),Object.keys(expected.agent).sort()))changed('agent.names')
   for(const [name,wanted] of Object.entries(expected.agent)){
-    const found=actual.agent[name]
-    if(!found||Object.keys(found).some(key=>!['disable','model','mode','permission','options'].includes(key))||Object.keys(found.options??{}).length)changed()
-    for(const key of ['disable','model','mode'])if(found[key]!==wanted[key])changed()
-    if(!ordered(found.permission??{},wanted.permission??{}))changed()
+    const path=`agent.${['build','plan','general','explore','dsh_browser','title','summary','compaction'].includes(name)?name:'known-agent'}`
+    const found=actual.agent?.[name]
+    if(!found){changed(`${path}.missing`);continue}
+    if(Object.keys(found).some(key=>!['disable','model','mode','permission','options'].includes(key)))changed(`${path}.extra-fields`)
+    if(Object.keys(found.options??{}).length)changed(`${path}.options`)
+    for(const key of ['disable','model','mode'])if(found[key]!==wanted[key])changed(`${path}.${key}`)
+    if(!samePermission(found.permission??{},wanted.permission??{}))changed(`${path}.permission.${same(found.permission??{},wanted.permission??{})?'order':'value'}`)
   }
+  if(differences.length)reject()
 }
 
 export async function closeOwnedProcess({child,mcp,browser,timeoutMs}){
