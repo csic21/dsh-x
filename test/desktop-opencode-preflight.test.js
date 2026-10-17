@@ -84,9 +84,10 @@ test('preflight pins source imports, explicitly gates catalog reads and never ex
   assert.match(source, /packages\/subprocess\/subprocess-local\/src\/index.ts/);
   assert.doesNotMatch(source, /adapter\.run\(|runnerCommand|danger-full-access|internals\s*=/);
   assert.match(source, /process.env.DSH_OPENCODE_PREFLIGHT_CATALOG === '1'/);
-  assert.match(source, /if \(catalogAuthorized\) report.catalog = await checkOwnedCatalog/);
-  assert.match(source, /\['\/global\/health', '\/config', '\/provider'\]\.includes\(url.pathname\)/);
-  assert.match(source, /forbids prompt\/session APIs and retries/);
+  assert.match(source, /if \(catalogAuthorized\) \{/);
+  assert.match(source, /report.catalog = await checkOwnedCatalog/);
+  assert.match(source, /report.protocol = await checkOwnedProtocol/);
+  assert.match(source, /forbids prompt\/session APIs and unplanned repeated reads/);
   assert.match(source, /cleanup is unconfirmed/);
 });
 
@@ -103,9 +104,17 @@ test('catalog diagnostic admits only three read endpoints on one owned loopback 
   assert.throws(() => metadata.fetch('http://127.0.0.1:5000/config', get), /owned loopback/);
   await metadata.fetch('http://127.0.0.1:4000/config', get);
   await metadata.fetch('http://127.0.0.1:4000/provider', get);
-  assert.throws(() => metadata.fetch('http://127.0.0.1:4000/provider', get), /retries/);
+  assert.throws(() => metadata.fetch('http://127.0.0.1:4000/provider', get), /repeated reads/);
   assert.deepEqual([...metadata.paths], ['/global/health', '/config', '/provider']);
   assert.equal(calls.length, 3);
+});
+
+test('selected-model protocol inspection admits only the exact metadata repetition budget, never sessions', async () => {
+  const metadata = catalogMetadataFetch(async () => ({ ok: true }), () => {}, true), get = { method: 'GET', redirect: 'error' };
+  const paths = ['/global/health', '/config', '/provider', '/global/health', '/global/health', '/doc', '/provider'];
+  for (const path of paths) await metadata.fetch(`http://127.0.0.1:4000${path}`, get);
+  assert.deepEqual(metadata.sequence, paths);
+  for (const path of ['/session', '/session/ses_fixture/message', '/mcp', '/doc', '/global/health', '/provider']) assert.throws(() => metadata.fetch(`http://127.0.0.1:4000${path}`, get), /forbids prompt\/session/);
 });
 
 test('CLI fails closed off macOS before importing services or starting native code', { skip: process.platform === 'darwin' }, () => {

@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import { deadline, proofLifecycle } from './lib/proof-lifecycle.mjs';
 import { approvalInScope } from './lib/opencode-proof-policy.mjs';
+import { safeText } from '../packages/dsh-x-agents/src/store.js';
+import { publicTaskEvidence } from './lib/public-proof-evidence.mjs';
 import { presentationEvents } from '../packages/dsh-x-agents/src/client/model.js';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, writeFile, readdir, stat, copyFile, realpath } from 'node:fs/promises';
@@ -132,9 +134,13 @@ try {
       }
       try {
         const result = JSON.parse(await readFile(join(results, `${id}.json`), 'utf8'));
-        if (result.isError) throw Error(`Native operation blocked: ${result.text}`);
+        if (result.isError) { report.lastOperation = { id, isError: true, text: safeText(result.text, 8000) }; await phase(`${id}-failed`); throw Error(`Native operation blocked: ${report.lastOperation.text}`); }
+        assertActive();
+        const snapshot = JSON.parse(result.text);
+        report.lastOperation = { id, isError: false, task: publicTaskEvidence(snapshot) };
+        await phase(`${id}-returned`);
         await page.getByRole('button', { name: /^(Stop generating|停止生成)$/ }).waitFor({ state: 'hidden' });
-        assertActive(); return JSON.parse(result.text);
+        assertActive(); return snapshot;
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
       await new Promise(r => setTimeout(r, 200));
     }

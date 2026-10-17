@@ -111,3 +111,19 @@ test('deadline latches prevent late prepared dispatch and successful overwrite',
   assert.throws(() => cleanup.dispatch(() => { dispatched++; }), /stopped dispatch/);
   assert.equal(dispatched, 0);
 });
+
+test('public task evidence retains bounded native stage without profile or credential payloads', async () => {
+  const { publicTaskEvidence } = await import('../scripts/lib/public-proof-evidence.mjs');
+  const source = readFileSync(new URL('../scripts/desktop-opencode-proof.mjs', import.meta.url), 'utf8');
+  const capture = source.indexOf('task: publicTaskEvidence(snapshot)');
+  assert(capture > 0 && source.indexOf("waitFor({ state: 'hidden' })", capture) > capture);
+  assert(source.indexOf('await phase(`${id}-returned`)', capture) < source.indexOf("waitFor({ state: 'hidden' })", capture));
+  const value = publicTaskEvidence({ profile: 'private', task: { id: 't', state: 'blocked', nativeSessionId: 'native', reason: 'cleanup', cwd: '/private', events: [{type:'status',data:{stage:'prompt-dispatch',password:'secret',nested:{profile:'private',cwd:'/private',backendIdentity:'private',keep:'stage'}}},{type:'input',text:'private answer',data:{answer:'private'}},...Array.from({length:200},()=>({type:'assistant',text:'x'.repeat(8000)}))] } });
+  assert.equal(value.state, 'blocked'); assert.equal(value.nativeSessionId, 'native');
+  assert(Buffer.byteLength(JSON.stringify(value)) <= 100000); assert(value.events.length <= 100);
+  assert.equal('cwd' in value, false);
+  const redacted=publicTaskEvidence({task:{events:[{type:'status',data:{stage:'prompt-dispatch',password:'secret',nested:{profile:'private',cwd:'/private',backendIdentity:'private',keep:'stage'}}},{type:'input',text:'private answer',data:{answer:'private'}}]}});
+  assert.equal(redacted.events[0].data.password,'[redacted]');
+  assert.deepEqual(redacted.events[0].data.nested,{keep:'stage'});
+  assert.equal(redacted.events[1].text,'[Interactive payload omitted]');
+});

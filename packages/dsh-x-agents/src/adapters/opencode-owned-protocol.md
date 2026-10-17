@@ -31,6 +31,10 @@ Each callback executes the existing DSH Browser tool through the genuine live pa
 
 Closing or cancelling revokes Browser ownership synchronously, aborts pending child work, stops the owned process range, closes MCP and verifies managed exit under a bounded cleanup deadline. Unconfirmed cleanup preserves the durable Agents fence and temporary state. Completed runs cannot resume: use a new task and a new explicit page grant. Other native browser adapters are not enabled by this increment.
 
+Temporary directory removal begins only after that managed exit confirmation. Transient filesystem removal errors get three bounded retries; persistent failure is also `AGENTS_CLEANUP_UNCONFIRMED`, so it cannot silently release the operation fence. A pre-cleanup diagnostic preserves the native terminal outcome and whether a message HTTP dispatch was attempted. The latter is not proof of provider inference or a successful answer. A cleanup failure retains the original exception/result separately and never triggers prompt replay.
+
+The opt-in CI startup diagnostic also checks a freshly selected free model's exact configuration and the existing transport's authentication/OpenAPI/provider metadata inspection. Its one-origin HTTP allowlist permits only the known health/config/provider/doc read sequence; session creation, message dispatch and MCP APIs are unavailable there. Those remain in the separately approved real Desktop flow.
+
 ## Evidence boundary
 
 Unit/protocol tests are synthetic. Real official ToolRuntime integration establishes exact nested ownership and approval behavior, not real model access. Windows' current official ACL provider reports partial file-effect enforcement and is blocked by this adapter; it is not silently relaxed. macOS uses the official full Seatbelt provider, with the upstream managed-process-tree cleanup limitation. The platform-labelled packaged Desktop proof must independently establish the actual free-model reply, native MCP tool events and same visible guest navigation. A version/public-catalog startup preflight sends no model task and cannot establish those outcomes. See the proof report before claiming them.

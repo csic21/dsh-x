@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -63,17 +64,37 @@ export async function checkOwnedVersion({ sandbox, subprocess, executable, works
 }
 
 /** Public metadata only; no session, prompt, browser bridge or native run API. */
-export function catalogMetadataFetch(fetch, onRequest = () => {}) {
-  const paths = new Set();
+export function catalogMetadataFetch(fetch, onRequest = () => {}, protocol = false) {
+  const paths = new Set(), sequence = [], counts = new Map();
+  const limits = protocol ? { '/global/health': 3, '/config': 1, '/provider': 2, '/doc': 1 } : { '/global/health': 1, '/config': 1, '/provider': 1 };
   let origin;
-  return { paths, fetch: (input, init = {}) => {
+  return { paths, sequence, fetch: (input, init = {}) => {
     const url = new URL(input);
     assert(url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port && !url.username && !url.password && (!origin || origin === url.origin), 'Catalog preflight only permits its owned loopback endpoint.');
     assert((init.method || 'GET') === 'GET' && !init.body && init.redirect === 'error', 'Catalog preflight forbids mutation and redirects.');
-    assert(['/global/health', '/config', '/provider'].includes(url.pathname) && !paths.has(url.pathname), 'Catalog preflight forbids prompt/session APIs and retries.');
-    origin = url.origin; paths.add(url.pathname); onRequest(url.pathname);
+    assert(Object.hasOwn(limits, url.pathname) && (counts.get(url.pathname) || 0) < limits[url.pathname], 'Catalog preflight forbids prompt/session APIs and unplanned repeated reads.');
+    origin = url.origin; paths.add(url.pathname); sequence.push(url.pathname); counts.set(url.pathname, (counts.get(url.pathname) || 0) + 1); onRequest(url.pathname);
     return fetch(input, init);
   } };
+}
+
+export async function checkOwnedProtocol({ sandbox, subprocess, executable, workspace, model, signal, onWrap, onRequest, fetch = globalThis.fetch }) {
+  const policy = { mode: 'workspace-write', workspaceRoot: workspace };
+  const metadata = catalogMetadataFetch(fetch, onRequest, true);
+  let spawned = false;
+  const adapter = createOwnedOpenCodeAdapter({
+    config: { mode: 'owned-browser', executable, startupTimeoutMs: 120000, requestTimeoutMs: 120000, cleanupTimeoutMs: CLEANUP_MS }, fetch: metadata.fetch,
+    spawn: spec => {
+      assert.equal(spawned, false, 'Protocol preflight may start only one owned service.');
+      assert.deepEqual(spec.argv, [executable, 'serve', '--hostname', '127.0.0.1', '--port', '0', '--mdns=false']);
+      spawned = true;
+      return confinedSpawn({ sandbox, subprocess, spec, policy, onWrap });
+    },
+  });
+  const result = await adapter.discoverProtocol({ cwd: workspace, sandboxPolicy: policy, model, signal });
+  assert.equal(result.available, true);
+  assert.deepEqual(metadata.sequence, ['/global/health', '/config', '/provider', '/global/health', '/global/health', '/doc', '/provider']);
+  return result;
 }
 
 export async function checkOwnedCatalog({ sandbox, subprocess, executable, workspace, signal, onWrap, onRequest = () => {}, fetch = globalThis.fetch }) {
@@ -133,7 +154,7 @@ export async function main() {
   const controller = new AbortController();
   const abortTimer = setTimeout(() => controller.abort(new Error('Preflight exceeded its operation deadline.')), catalogAuthorized ? 180000 : 120000);
   const hardTimer = setTimeout(() => { report.status = 'failed'; report.error = 'Preflight exceeded its final cleanup deadline; cleanup is unconfirmed.'; save(); process.exit(1); }, catalogAuthorized ? 215000 : 155000);
-  let workspace, services, ctx;
+  let workspace, services, ctx, unresolvedCleanup = false;
   save();
   try {
     assert.equal(process.platform, 'darwin', 'This proof requires actual macOS Seatbelt. Other platforms are not substituted.');
@@ -158,18 +179,23 @@ export async function main() {
     save();
     report.native = await checkOwnedVersion({ ...options, executable });
     save();
-    if (catalogAuthorized) report.catalog = await checkOwnedCatalog({ ...options, executable, onRequest: path => { if (path === '/provider') report.catalogRequests++; save(); } });
+    if (catalogAuthorized) {
+      const onRequest = path => { if (path === '/provider') report.catalogRequests++; save(); };
+      report.catalog = await checkOwnedCatalog({ ...options, executable, onRequest });
+      save();
+      report.protocol = await checkOwnedProtocol({ ...options, executable, model: report.catalog.freeModelIds[0], onRequest });
+    }
     report.status = 'passed';
-  } catch (error) { report.status = 'failed'; report.error = String(error?.message || error); }
+  } catch (error) { report.status = 'failed'; report.error = String(error?.message || error); unresolvedCleanup = error?.code === 'AGENTS_CLEANUP_UNCONFIRMED'; }
   finally {
     controller.abort();
     try {
       if (ctx) await bounded(ctx.fiber.dispose(), CLEANUP_MS, 'Official service cleanup');
       if (services) await bounded(services.unregister(), 2000, 'Official source loader cleanup');
-      report.cleanupConfirmed = true;
+      if (workspace && !unresolvedCleanup) await bounded(rm(workspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }), CLEANUP_MS, 'Preflight temporary-state cleanup');
+      report.cleanupConfirmed = !unresolvedCleanup;
     }
     catch (error) { report.status = 'failed'; report.error = `${report.error ? `${report.error}; ` : ''}${error.message}`; }
-    if (report.cleanupConfirmed && workspace) rmSync(workspace, { recursive: true, force: true });
     report.finishedAt = new Date().toISOString();
     save();
     clearTimeout(abortTimer); clearTimeout(hardTimer);

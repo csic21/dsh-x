@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {join} from 'node:path'
-import {ownedEnvironment,freeModels,runtimeConfig,validateEffectiveConfig,createOwnedOpenCodeAdapter,closeOwnedProcess} from '../src/adapters/opencode-owned.js'
+import {ownedEnvironment,freeModels,runtimeConfig,validateEffectiveConfig,createOwnedOpenCodeAdapter,closeOwnedProcess,closeOwnedState,createOwnedClose,retainCleanupContext,closeAfterOwnedOutcome} from '../src/adapters/opencode-owned.js'
 const model=(cost={input:0,output:0,cache:{read:0,write:0}})=>({name:'Fixture',cost,capabilities:{toolcall:true}})
 test('only exact public provider zero-price tool-capable models survive; order deterministic',()=>{
  const models=freeModels({connected:['opencode','other'],all:[{id:'other',models:{free:model()}},{id:'opencode',models:{z:model(),a:model(),paid:model({input:0,output:1}),cache:model({input:0,output:0,cache:{write:1}}),tier:model({input:0,output:0,tiers:{large:{input:1}}}),unknown:model({input:0}),text:{...model(),capabilities:{toolcall:false}},'bad/model':model()}}]})
@@ -76,4 +76,36 @@ test('cleanup failure does not skip owned process termination',async()=>{
  let terminated=false,closed=false
  await assert.rejects(closeOwnedProcess({timeoutMs:100,browser:{close(){throw Error('lost owner')}},child:{terminate(){terminated=true},waitForExit:async()=>true,done:Promise.resolve({exitCode:0})},mcp:{close(){closed=true}}}),{code:'AGENTS_CLEANUP_UNCONFIRMED'})
  assert.equal(terminated,true);assert.equal(closed,true)
+})
+
+test('owned directory removal starts only after confirmed managed exit, with bounded transient retries',async()=>{
+ const events=[]
+ await closeOwnedState({root:'/owned/root',timeoutMs:100,child:{terminate(){events.push('terminate')},async waitForExit(){events.push('exit-confirmed');return true},done:Promise.resolve({exitCode:0})},remove:async(root,options)=>{events.push('remove');assert.equal(root,'/owned/root');assert.deepEqual(options,{recursive:true,force:true,maxRetries:3,retryDelay:100})}})
+ assert.deepEqual(events,['terminate','exit-confirmed','remove'])
+ await assert.rejects(closeOwnedState({root:'/owned/root',timeoutMs:20,child:{terminate(){},waitForExit:async()=>false,done:Promise.resolve({exitCode:0})},remove:()=>assert.fail('unknown exit must not delete state')}),{code:'AGENTS_CLEANUP_UNCONFIRMED'})
+})
+
+test('persistent ENOTEMPTY and removal timeout retain cleanup classification and original safe stage',async()=>{
+ for(const remove of [async()=>{throw Object.assign(new Error('private filesystem path'),{code:'ENOTEMPTY'})},()=>new Promise(()=>{})]){
+  const original=Object.assign(new Error('Native effective configuration differs. Fields: provider.value.'),{code:'OPENCODE_OWNED_CONFIG'})
+  try{await closeOwnedState({root:'/owned/root',timeoutMs:10,remove});assert.fail('must reject')}
+  catch(cleanup){
+   const error=retainCleanupContext(cleanup,original,'config',false)
+   assert.equal(error.code,'AGENTS_CLEANUP_UNCONFIRMED');assert.equal(error.cause,original)
+   assert.match(error.message,/process exit was confirmed/);assert.match(error.message,/Stage: config; prompt dispatch attempted: no/);assert.match(error.message,/provider.value/);assert.doesNotMatch(error.message,/private filesystem path/)
+  }
+ }
+})
+
+test('owned close is exactly once even after rejection and preserves a returned result separately',async()=>{
+ let calls=0
+ const cleanup=Object.assign(new Error('temporary removal unconfirmed'),{code:'AGENTS_CLEANUP_UNCONFIRMED'})
+ const close=createOwnedClose(()=>{calls++;return Promise.reject(cleanup)})
+ const one=close(),two=close();assert.equal(one,two)
+ await assert.rejects(one);await assert.rejects(two);assert.equal(calls,1)
+ const result={status:'completed',nativeSessionId:'ses_fixture',summary:'Actual fixture answer'}
+ await assert.rejects(closeAfterOwnedOutcome({close,checkpoint:()=>({stage:'prompt-dispatched',promptDispatchAttempted:true})},{result}),error=>{
+  assert.equal(error.code,'AGENTS_CLEANUP_UNCONFIRMED');assert.equal(error.nativeOutcome,result);assert.match(error.message,/prompt dispatch attempted: yes/);assert.doesNotMatch(error.message,/Actual fixture answer/);return true
+ })
+ assert.equal(calls,1)
 })

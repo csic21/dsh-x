@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { mkdtempSync, mkdirSync, rmSync, existsSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, existsSync, realpathSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { dirname, join, isAbsolute } from 'node:path'
 import { createOpenCodeAdapter } from './opencode.js'
 import { createHttp, abortable, failure } from './opencode-http.js'
@@ -79,6 +80,37 @@ export async function closeOwnedProcess({child,mcp,browser,timeoutMs}){
   }catch{throw failure('AGENTS_CLEANUP_UNCONFIRMED','Owned OpenCode process cleanup could not be confirmed; its temporary state was retained.')}finally{clearTimeout(timer)}
 }
 
+export async function closeOwnedState({root,remove=rm,...options}){
+  // Never race recursive deletion against a process whose managed exit has
+  // not been confirmed. Retry only transient directory removal afterwards.
+  await closeOwnedProcess(options)
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),options.timeoutMs)
+  try{await abortable(remove(root,{recursive:true,force:true,maxRetries:3,retryDelay:100}),controller.signal)}
+  catch{throw failure('AGENTS_CLEANUP_UNCONFIRMED','Owned OpenCode process exit was confirmed, but temporary-state removal could not be confirmed. Its operation fence was retained.')}
+  finally{clearTimeout(timer)}
+}
+
+export function createOwnedClose(operation){
+  let pending
+  return ()=>{if(!pending){try{pending=Promise.resolve(operation())}catch(error){pending=Promise.reject(error)}}return pending}
+}
+
+export function retainCleanupContext(cleanup,original,stage,promptAttempted){
+  const code=/^(?:OPENCODE|AGENTS)_[A-Z_]+$/.test(original?.code??'')?original.code:'unclassified'
+  cleanup.cause=original
+  cleanup.message+=` Stage: ${stage}; prompt dispatch attempted: ${promptAttempted?'yes':'no'}; prior failure: ${code}.`
+  if(['OPENCODE_OWNED_CONFIG','OPENCODE_OWNED_PROTOCOL'].includes(original?.code))cleanup.message+=` ${original.message}`
+  return cleanup
+}
+
+export async function closeAfterOwnedOutcome(native,{result,original}={}){
+  try{await native?.close()}catch(cleanup){
+    const checkpoint=native.checkpoint()
+    if(result)cleanup.nativeOutcome=result
+    throw retainCleanupContext(cleanup,original??{code:'OPENCODE_RESULT_RETURNED'},checkpoint.stage,checkpoint.promptDispatchAttempted)
+  }
+}
+
 export function createOwnedOpenCodeAdapter({spawn,fetch=globalThis.fetch,config={}}={}){
   if(typeof spawn!=='function')throw new TypeError('Owned OpenCode requires managed subprocess spawn.')
   if(Object.keys(config).some(k=>!['mode','executable','startupTimeoutMs','cleanupTimeoutMs','requestTimeoutMs','turnTimeoutMs'].includes(k)))throw new TypeError('Owned OpenCode accepts only executable and bounded timeout settings, not credentials or arbitrary config.')
@@ -92,16 +124,17 @@ export function createOwnedOpenCodeAdapter({spawn,fetch=globalThis.fetch,config=
     const root=mkdtempSync(join(cwd,'.dsh-owned-opencode-'))
     for(const dir of ['home','config','config/owned','data','state','cache','tmp','work'])mkdirSync(join(root,dir),{recursive:true,mode:0o700})
     const work=join(root,'work'),password=randomBytes(32).toString('base64url')
-    let child,mcp,active=false,closed=false
-    async function close(){
-      if(closed)return;closed=true;active=false
-      await closeOwnedProcess({child,mcp,browser,timeoutMs:timeouts.cleanupTimeoutMs})
-      rmSync(root,{recursive:true,force:true})
+    let child,mcp,active=false,closed=false,stage='prepare',promptAttempted=false
+    const trackedFetch=(input,init)=>{
+      if(init?.method==='POST'&&/^\/session\/[^/]+\/message$/.test(new URL(input).pathname)){stage='prompt-dispatched';promptAttempted=true}
+      return fetch(input,init)
     }
+    const close=createOwnedClose(()=>{closed=true;active=false;return closeOwnedState({root,child,mcp,browser,timeoutMs:timeouts.cleanupTimeoutMs})})
     try{
       if(browser)mcp=await createBrowserMcp({invoke:browser.invoke,signal,isActive:()=>active&&!closed})
       const expectedConfig=runtimeConfig(model,mcp?.config)
       const env=ownedEnvironment(root,expectedConfig,password)
+      stage='spawn'
       child=await spawn({argv:[executable,...(versionOnly?['--version']:['serve','--hostname','127.0.0.1','--port','0','--mdns=false'])],cwd:work,env,stdio:{stdin:'pipe',stdout:'pipe',stderr:'pipe'},signal,graceMs:3000})
       if(!child?.done||typeof child.waitForExit!=='function'||typeof child.terminate!=='function')throw failure('OPENCODE_OWNED_PROCESS','A managed process range is required.')
       let output='',settle,reject
@@ -113,27 +146,48 @@ export function createOwnedOpenCodeAdapter({spawn,fetch=globalThis.fetch,config=
       let endpoint
       try{endpoint=await abortable(ready,signal)}finally{clearTimeout(timer);child.stdout?.off('data',onData);child.stdout?.on('data',()=>{})}
       if(versionOnly)return {version:VERSION,close}
-      const http=createHttp({fetch,config:{password,username:'dsh-owned',requestTimeoutMs:timeouts.requestTimeoutMs},endpoint})
+      stage='health'
+      const http=createHttp({fetch:trackedFetch,config:{password,username:'dsh-owned',requestTimeoutMs:timeouts.requestTimeoutMs},endpoint})
       const health=await http('/global/health',{signal})
       if(health?.healthy!==true||health.version!==VERSION)throw failure('OPENCODE_OWNED_VERSION','Owned OpenCode reported an unexpected server version.')
+      stage='config'
       validateEffectiveConfig(await http('/config',{cwd:work,signal}),expectedConfig)
+      stage='catalog'
       const models=freeModels(await http('/provider',{cwd:work,signal}))
       if(!models.length)throw failure('OPENCODE_NO_FREE_MODEL','The fresh native catalog has no zero-price public OpenCode model. No login or paid request was attempted.')
-      const adapter=createOpenCodeAdapter({fetch,managedScope:{cwd:work,signal},config:{endpoint,password,username:'dsh-owned',agent:'dsh_browser',requestTimeoutMs:timeouts.requestTimeoutMs,cleanupTimeoutMs:timeouts.cleanupTimeoutMs,turnTimeoutMs:timeouts.turnTimeoutMs}})
-      return {close,models,adapter,work,setActive(value){active=value}}
-    }catch(error){await close();throw error}
+      const adapter=createOpenCodeAdapter({fetch:trackedFetch,managedScope:{cwd:work,signal},config:{endpoint,password,username:'dsh-owned',agent:'dsh_browser',requestTimeoutMs:timeouts.requestTimeoutMs,cleanupTimeoutMs:timeouts.cleanupTimeoutMs,turnTimeoutMs:timeouts.turnTimeoutMs}})
+      stage='transport-preflight'
+      return {close,models,adapter,work,checkpoint:()=>({stage,promptDispatchAttempted:promptAttempted}),setActive(value){active=value}}
+    }catch(error){try{await close()}catch(cleanup){throw retainCleanupContext(cleanup,error,stage,promptAttempted)};throw error}
   }
   async function discover(options={}){let native;try{native=await open({...options,versionOnly:true});return {available:true,version:VERSION,authenticated:null,models:[],capabilities:CAPABILITIES,authentication:{state:'requires-native-initialization',source:'version-only'},reason:'Owned browser-only OpenCode is installed. Prepare its public free-model catalog explicitly; no user account is used.'}}catch(error){if(error.code==='AGENTS_CLEANUP_UNCONFIRMED')throw error;return {available:false,version:null,authenticated:null,models:[],capabilities:CAPABILITIES,reason:error.message}}finally{await native?.close()}}
   async function discoverModels(options={}){let native;try{native=await open(options);return {available:true,version:VERSION,authenticated:null,models:native.models,capabilities:CAPABILITIES,authentication:{state:'public-unverified',source:'owned-public-catalog'},providerAuthentication:'Public free route; provider access unverified until the requested run',modelCatalog:{source:'owned-free-catalog'}}}finally{await native?.close()}}
+  // Zero-prompt integration diagnostic; never exposed as a model tool. The
+  // existing transport only reads authentication/OpenAPI/provider metadata.
+  async function discoverProtocol(options={}){
+    let native,original
+    try{
+      if(typeof options.model!=='string'||!options.model.startsWith('opencode/'))throw failure('OPENCODE_OWNED_MODEL','Select an exact freshly advertised free model for the protocol check.')
+      native=await open(options)
+      if(!native.models.some(model=>model.id===options.model))throw failure('OPENCODE_FREE_MODEL_CHANGED','The selected model is no longer advertised at zero price. No prompt was sent.')
+      const result=await native.adapter.discover({cwd:native.work,signal:options.signal,sandboxPolicy:options.sandboxPolicy})
+      if(!result.available)throw failure('OPENCODE_OWNED_PROTOCOL',result.reason||'Owned protocol metadata inspection failed. No session or prompt was requested.')
+      return {available:true,version:result.version,model:options.model,source:'owned-protocol-metadata',modelRequests:0}
+    }catch(error){original=error;throw error}
+    finally{await closeAfterOwnedOutcome(native,{original})}
+  }
   async function run(options={}){
-    let native
+    let native,result,original
     if(options.nativeSessionId)return {nativeSessionId:options.nativeSessionId,status:'blocked',summary:'',reason:'Owned browser-only runs use fresh native state. Start a new task; continuation is unavailable.'}
     if(typeof options.model!=='string'||!options.model.startsWith('opencode/'))return {nativeSessionId:null,status:'blocked',summary:'',reason:'Prepare and explicitly select a public zero-price OpenCode model first.'}
     try{
       native=await open(options)
       if(!native.models.some(m=>m.id===options.model))throw failure('OPENCODE_FREE_MODEL_CHANGED','The selected model is no longer advertised at zero input/output price. No prompt was sent.')
-      return await native.adapter.run({...options,cwd:native.work,sandboxPolicy:options.sandboxPolicy,trustedExternalRuntime:false,requestPermission:async()=>({optionId:null}),requestInput:undefined,onEvent:async event=>{if(event.type==='status'&&event.data?.status==='running'){native.setActive(true);event={...event,text:'Owned isolated OpenCode: public free model, native file/command tools disabled.',data:{...event.data,sandbox:options.sandboxPolicy.mode!=='danger-full-access',owned:true}}}await options.onEvent?.(event)}})
-    }finally{await native?.close()}
+      result=await native.adapter.run({...options,cwd:native.work,sandboxPolicy:options.sandboxPolicy,trustedExternalRuntime:false,requestPermission:async()=>({optionId:null}),requestInput:undefined,onEvent:async event=>{if(event.type==='status'&&event.data?.status==='running'){native.setActive(true);event={...event,text:'Owned isolated OpenCode: public free model, native file/command tools disabled.',data:{...event.data,sandbox:options.sandboxPolicy.mode!=='danger-full-access',owned:true}}}await options.onEvent?.(event)}})
+      await options.onEvent?.({type:'diagnostic',text:'Owned OpenCode returned an operation result; cleanup is still pending.',data:{vendorType:'dsh.owned.result',...native.checkpoint(),status:result.status,nativeSessionId:result.nativeSessionId??null,reason:result.reason??null,assistantReplyPresent:!!result.summary}})
+      return result
+    }catch(error){original=error;throw error}
+    finally{await closeAfterOwnedOutcome(native,{result,original})}
   }
-  return {id:'opencode',transport:'owned-http-sse',backendIdentity,capabilities:CAPABILITIES,discover,discoverModels,run}
+  return {id:'opencode',transport:'owned-http-sse',backendIdentity,capabilities:CAPABILITIES,discover,discoverModels,discoverProtocol,run}
 }
