@@ -33,13 +33,25 @@ The smoke used a deterministic loopback page and a synthetic offline LLM through
 
 Evidence artifact: `desktop-browser-proof-39032141251-1`, including `report.json`, `visible-browser-proof.png` and `user-takeover.png`. Reported client SHA-256: `1108bcea3f4b15862ab705654e897a737b99e18da677d67dec4f52fcdc6b8164`.
 
-This result applies to that exact published baseline. The subsequent pre-input host-confirmation change and isolated OpenCode ownership integration have passed local tests but require their own runtime qualification. The baseline smoke does not establish AI navigation lifecycle, multiple tabs, close races, downloads, popup or permission behavior, macOS compatibility, or native-agent browser bridges.
+This result applies to that exact published baseline. The baseline smoke does not establish AI navigation lifecycle, multiple tabs, close races, downloads, popup or permission behavior, macOS compatibility, or native-agent browser bridges. Later bounded evidence is recorded below.
 
 ## Later failed qualification attempt
 
 [Windows run 39034154065](https://github.com/csic21/dsh-x/actions/runs/39034154065), plugin commit `b127f6510ca38db5cfbbc76c52210444d9017f65`, launched the same packaged runtime and a real guest but failed before the first observation: the initial tabs tool found no visible granted tab. No text input, click or additional lifecycle assertion passed in that run. Its failure report did not capture the underlying broker error, so the cause is not established.
 
-The proof driver now waits for the official host turn to finish before granting access, rather than only waiting for setup text to appear. Browser grant semantics remain unchanged. Additional local regressions show that a grant made during a finishing setup turn cannot authorize the following turn. The next run records bounded, redacted turn/run/revision transitions and the actual Browser error code; turn-ended errors are no longer labeled as connection loss. These diagnostic and sequencing changes still require packaged rerun evidence.
+The proof driver now waits for the official host turn to finish before granting access, rather than only waiting for setup text to appear. Browser grant semantics remain unchanged. Additional local regressions show that a grant made during a finishing setup turn cannot authorize the following turn. Later runs record bounded, redacted turn/run/revision transitions and the actual Browser error code; turn-ended errors are no longer labeled as connection loss. Another attempt reached the closing-tab assertion but expected a structured error code in rendered ToolRuntime text. An actual ToolRuntime regression now checks that serialization contract.
+
+## Latest passed packaged Windows lifecycle smoke
+
+[Run 39038004598](https://github.com/csic21/dsh-x/actions/runs/39038004598) passed the deterministic Browser smoke on 2026-10-17 for commit `ee4b963db3449b07b8b7d95c6aa0e23b6562b13f`, with the same official DSH `0.2.1-alpha.5` / Electron `44.7.0` runtime. Its downloaded report confirms all five assertions:
+
+1. Actual packaged application, primary document and owned native `webview`.
+2. Real ToolRuntime observation, typing and clicking on the same visible guest, including the pre-input host-confirmation path.
+3. Takeover, stale-action denial and subsequent manual input on that guest.
+4. Manual navigation preserves the guest, advances the document epoch, revokes the live-turn grant and rejects stale input.
+5. Closing the granted official dock tab removes the broker identity and destroys the native guest; stale actions are denied.
+
+Client SHA-256: `b87e8d562a2e961b2c0aed0c03db3c8f0e181e0dc77e18b526c29a3951b94136`. Packaged executable SHA-256: `4068dfc4346b5fe0908034ef590a452fc7cd00e9d56b3a53fcacd5e9199d2754`. This deterministic local-fixture smoke is separate from the real OpenCode/provider proof, which remains pending.
 
 ## Remaining packaged-app qualification
 
@@ -53,4 +65,4 @@ The dedicated Windows Desktop smoke in the packaging workflow launches the actua
 4. Guest permissions/popups/download restrictions remain in force.
 5. Screenshot and runtime identity evidence from the packaged application, not a web preview.
 
-Current status: **experimental, bounded Windows native smoke passed on the recorded baseline; latest cancellation change, OpenCode integration and broader lifecycle/restriction matrix pending**. Windows results do not by themselves validate macOS. Codex/Claude/Grok browser bridges and a default-suite promotion remain deferred.
+Current status: **experimental, current bounded Windows native lifecycle smoke passed; real OpenCode/provider interaction and broader restriction/platform matrix pending**. AI-requested navigation, multiple tabs, download/popup/permission behavior and macOS are not established by this smoke. Codex/Claude/Grok browser bridges and a default-suite promotion remain deferred.

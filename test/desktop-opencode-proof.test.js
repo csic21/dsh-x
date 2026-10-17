@@ -61,3 +61,38 @@ test('Browser proof trace persists only bounded explicit identity fields', async
     assert.deepEqual(Object.keys(rows[0]).sort(), ['currentTurn','event','runId']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('public proof bounds lifecycle waits and persists phase evidence before cleanup', () => {
+  const harness = readFileSync(new URL('../scripts/desktop-opencode-proof.mjs', import.meta.url), 'utf8');
+  assert.match(harness, /timeout: 120000/);
+  assert.match(harness, /130000, 'Desktop CLI installation'/);
+  assert.match(harness, /30000, 'Initial Desktop close'/);
+  assert.match(harness, /30000, 'Final Desktop close'/);
+  assert.match(harness, /page\.setDefaultTimeout\(30000\)/);
+  assert.match(harness, /15 \* 60 \* 1000/);
+  assert.match(harness, /progress\.json/);
+  assert.match(harness, /hosted runner cleanup required/);
+  const final = harness.slice(harness.lastIndexOf('} finally {'));
+  assert(final.indexOf("join(output, 'report.json')") < final.indexOf("deadline(app.close()"));
+  const workflow = readFileSync(new URL('../.github/workflows/desktop-package.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /Requested real OpenCode free hello and visible Google proof\n        timeout-minutes: 20/);
+});
+
+
+test('deadline latches prevent late prepared dispatch and successful overwrite', async () => {
+  const { proofLifecycle, deadline } = await import('../scripts/lib/proof-lifecycle.mjs');
+  const report = { status: 'running' }, lifecycle = proofLifecycle(report);
+  let resolve, dispatched = 0;
+  const ready = new Promise(r => { resolve = r; });
+  const pending = ready.then(() => lifecycle.dispatch(() => { dispatched++; }));
+  lifecycle.stop('expired'); resolve();
+  await assert.rejects(pending, /stopped dispatch/);
+  assert.equal(dispatched, 0); assert.throws(() => lifecycle.complete(), /stopped dispatch/);
+  assert.equal(report.status, 'blocked-or-failed');
+  await assert.rejects(deadline(new Promise(() => {}), 5, 'fixture close'), /exceeded/);
+  const completed = { status: 'running' }, cleanup = proofLifecycle(completed);
+  cleanup.complete(); cleanup.cleanupUnconfirmed('shell descendants unknown');
+  assert.equal(completed.status, 'blocked-or-failed'); assert.match(completed.cleanup, /unconfirmed/);
+  assert.throws(() => cleanup.dispatch(() => { dispatched++; }), /stopped dispatch/);
+  assert.equal(dispatched, 0);
+});

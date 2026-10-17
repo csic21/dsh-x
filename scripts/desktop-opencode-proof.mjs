@@ -1,5 +1,6 @@
 /** Real Windows packaged-Electron smoke; no kernel patch and no vendor account. */
 import assert from 'node:assert/strict';
+import { deadline, proofLifecycle } from './lib/proof-lifecycle.mjs';
 import { approvalInScope } from './lib/opencode-proof-policy.mjs';
 import { presentationEvents } from '../packages/dsh-x-agents/src/client/model.js';
 import { createHash } from 'node:crypto';
@@ -29,7 +30,10 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/K
 Object.assign(env, { DSH_HOME: home, DSH_DESKTOP_USER_DATA_DIR: join(home, 'electron'), DSH_TELEMETRY_DISABLED: '1', DSH_OPENCODE_PROOF_RESULTS: results,
   // Public noncredential sentinel for offline fixture onboarding. Never sent to a provider.
   DEEPSEEK_API_KEY: 'synthetic-offline-fixture-not-a-credential' });
-function run(command, args) { return new Promise((ok, fail) => { const child = spawn(command, args, { env, cwd: repo, shell: command.endsWith('.cmd'), stdio: 'inherit' }); child.on('error', fail); child.on('exit', code => code === 0 ? ok() : fail(Error(`Command exited ${code}`))); }); }
+function run(command, args) { return new Promise((ok, fail) => {
+  const child = spawn(command, args, { env, cwd: repo, shell: command.endsWith('.cmd'), stdio: 'inherit', timeout: 120000 });
+  child.on('error', fail); child.on('exit', (code, signal) => code === 0 ? ok() : fail(Error(`Desktop CLI exited ${code}/${signal ?? 'none'}`)));
+}); }
 const nativeExe = resolve(process.env.DSH_OPENCODE_EXE ?? '');
 assert(process.env.DSH_OPENCODE_EXE, 'Pinned official OpenCode executable required'); await stat(nativeExe);
 const nativeHash = await hash(nativeExe);
@@ -52,13 +56,36 @@ await writeFile(join(driver, 'cordis.patch.yml'), JSON.stringify([
   { id: 'dsh-x-agents', config: { opencode: { mode: 'owned-browser', executable: nativeExe, startupTimeoutMs: 120000, requestTimeoutMs: 120000, turnTimeoutMs: 180000 } } },
 ], null, 2));
 let app, page;
-const launch = () => _electron.launch({ executablePath: executable, cwd: home, args: [`--user-data-dir=${join(home, 'electron')}`], env, chromiumSandbox: true, timeout: 120000 });
-async function shot(name) { await page.screenshot({ path: join(output, `${name}.png`) }); report.screenshots.push(name); }
+const lifecycle = proofLifecycle(report);
+const assertActive = lifecycle.assertActive;
+async function phase(name) {
+  assertActive();
+  report.phase = name; report.phaseAt = new Date().toISOString();
+  console.log(`[public-proof] ${report.phaseAt} ${name}`);
+  await writeFile(join(output, 'progress.json'), JSON.stringify(report, null, 2));
+}
+// This diagnostic watchdog never retries a task. GitHub's step deadline remains
+// the final hosted-process cleanup boundary if Electron itself cannot close.
+const watchdog = setTimeout(async () => {
+  lifecycle.stop(`Whole proof deadline exceeded in ${report.phase}; no retry`);
+  report.cleanup = 'unconfirmed; hosted runner cleanup required';
+  await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2)).catch(() => {});
+  if (page) await deadline(page.screenshot({ path: join(output, 'deadline.png'), timeout: 5000 }), 6000, 'Deadline screenshot').catch(() => {});
+  if (app) await deadline(app.close(), 30000, 'Deadline Desktop close').catch(() => {});
+  process.exit(1);
+}, 15 * 60 * 1000);
+const launch = () => lifecycle.dispatch(() => _electron.launch({ executablePath: executable, cwd: home, args: [`--user-data-dir=${join(home, 'electron')}`], env, chromiumSandbox: true, timeout: 120000 }));
+async function shot(name) { assertActive(); await page.screenshot({ path: join(output, `${name}.png`), timeout: 15000 }); assertActive(); report.screenshots.push(name); await phase(name); }
 try {
+  await phase('initial-desktop-launch');
   app = await launch(); await app.firstWindow({ timeout: 120000 });
   for (let n = 0; n < 120; n++) { try { await stat(join(home, 'profiles/desktop/package.json')); break; } catch { await new Promise(r => setTimeout(r, 500)); } }
-  await app.close(); app = undefined;
-  await run(cli, ['plugin', '--profile', 'desktop', 'add', `link:${join(repo, 'packages/dsh-x-agents')}`, `link:${join(repo, 'packages/dsh-x-browser')}`, `link:${driver}`]);
+  await phase('initial-desktop-close');
+  await deadline(app.close(), 30000, 'Initial Desktop close'); app = undefined;
+  await phase('install-test-plugins');
+  try { await deadline(lifecycle.dispatch(() => run(cli, ['plugin', '--profile', 'desktop', 'add', `link:${join(repo, 'packages/dsh-x-agents')}`, `link:${join(repo, 'packages/dsh-x-browser')}`, `link:${driver}`])), 130000, 'Desktop CLI installation'); }
+  catch (error) { lifecycle.cleanupUnconfirmed(error); throw error; }
+  await phase('proof-desktop-launch');
   app = await launch();
   report.runtime = await app.evaluate(({ app }) => ({ packaged: app.isPackaged, version: app.getVersion(), electron: process.versions.electron, userData: app.getPath('userData') }));
   assert.equal(report.runtime.packaged, true); assert.equal(report.runtime.electron, '44.7.0');
@@ -69,28 +96,32 @@ try {
     await new Promise(r => setTimeout(r, 1000));
   }
   assert(page, 'Official primary document missing');
+  page.setDefaultTimeout(30000);
+  await phase('transport-setup');
   await app.evaluate(({ BrowserWindow }) => { const window = BrowserWindow.getAllWindows().find(item => item.webContents.getURL().startsWith('dsh-app://app/')); window?.setSize(1440, 1000); });
   const editor = () => page.locator('[data-composer-input][contenteditable="true"]').last();
-  await editor().fill('Initialize tool transport. Native OpenCode performs all requested model work.'); await editor().press('Enter');
+  await editor().fill('Initialize tool transport. Native OpenCode performs all requested model work.'); await lifecycle.dispatch(() => editor().press('Enter'));
   await page.getByText('DSH transport ready. Native OpenCode replies will appear in Agents. No answer is generated by this router.', { exact: true }).waitFor({ timeout: 30000 });
   await page.getByRole('button', { name: /^(Stop generating|停止生成)$/ }).waitFor({ state: 'hidden' });
   async function tool(id, tool, args) {
+    await phase(`${id}:dispatch`);
     await editor().fill(JSON.stringify({ id, tool, arguments: args }));
-    await shot(`${id}-request`); await editor().press('Enter');
+    await shot(`${id}-request`); await lifecycle.dispatch(() => editor().press('Enter'));
     let approval = 0;
     for (let n = 0; n < 3000; n++) {
+      assertActive();
       const allow = page.getByRole('button', { name: /^(Allow once|允许一次)$/ });
       if (await allow.isVisible().catch(() => false)) {
         await shot(`${id}-approval-${++approval}`);
         const reason = await page.locator('[data-approval-key] [data-approval-scroll]').innerText();
         assert(approval <= 4 && approvalInScope(id, reason, args), 'Unexpected approval outside public hello/Google scope; stopping without approval');
-        report.approvals.push({ operation: id, reason }); await allow.click();
+        assertActive(); report.approvals.push({ operation: id, reason }); await lifecycle.dispatch(() => allow.click());
       }
       try {
         const result = JSON.parse(await readFile(join(results, `${id}.json`), 'utf8'));
         if (result.isError) throw Error(`Native operation blocked: ${result.text}`);
         await page.getByRole('button', { name: /^(Stop generating|停止生成)$/ }).waitFor({ state: 'hidden' });
-        return JSON.parse(result.text);
+        assertActive(); return JSON.parse(result.text);
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
       await new Promise(r => setTimeout(r, 200));
     }
@@ -119,7 +150,7 @@ try {
   await page.locator('.dxa-current').scrollIntoViewIfNeeded(); await shot('06-real-opencode-reply');
   await page.getByTestId('dxb-entry').click(); await page.getByTestId('dxb-pane').waitFor();
   // The user-visible empty native guest is granted only for this next host turn.
-  await page.getByTestId('dxb-enable-ai').click(); await page.getByTestId('dxb-confirm-ai').click();
+  await page.getByTestId('dxb-enable-ai').click(); await lifecycle.dispatch(() => page.getByTestId('dxb-confirm-ai').click());
   await page.getByTestId('dxb-takeover').waitFor(); await shot('07-browser-granted');
   const guest = page.getByTestId('dxb-guest'); const guestId = await guest.evaluate(e => e.getWebContentsId());
   const google = await tool('08-google', 'dsh_x_agents_run', { runtime: 'opencode', model: model.id, browser: true,
@@ -138,18 +169,30 @@ try {
   await shot('09-real-google-visible');
   await page.locator('.dxa-entry').click(); await page.locator('.dxa-current').scrollIntoViewIfNeeded(); await shot('10-native-browser-tool-result');
   report.assertions.push('real OpenCode zero-price model supplied hello answer', 'real OpenCode used approved bridge to navigate same visible native webview to Google');
-  report.status = 'passed';
+  lifecycle.complete();
 } catch (error) {
   report.status = 'blocked-or-failed'; report.error = String(error.stack ?? error);
   if (!page && app) page = app.windows()[0]; if (page) {
     report.browserTrace = await readFile(join(results, 'browser-trace.json'), 'utf8').then(JSON.parse).catch(() => []);
-    report.browserDiagnostic = await page.getByTestId('dxb-pane').textContent().catch(() => null);
+    report.browserDiagnostic = await page.getByTestId('dxb-pane').textContent({ timeout: 3000 }).catch(() => null);
     await page.locator('.dxb-error details').evaluateAll(nodes => nodes.forEach(node => { node.open = true; })).catch(() => {});
     await shot('failure').catch(() => {});
   }
   throw error;
 } finally {
+  lifecycle.finish(); clearTimeout(watchdog);
+  if (report.status === 'passed') report.status = 'cleanup-pending';
   report.browserTrace = await readFile(join(results, 'browser-trace.json'), 'utf8').then(JSON.parse).catch(() => []);
   await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2));
-  if (app) await app.close().catch(() => {});
+  if (app) {
+    try { await deadline(app.close(), 30000, 'Final Desktop close'); }
+    catch (error) {
+      lifecycle.cleanupUnconfirmed(error);
+      await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2));
+      clearTimeout(watchdog); process.exit(1);
+    }
+  }
+  if (report.status === 'cleanup-pending') { report.status = 'passed'; report.cleanup = 'desktop-close-confirmed'; }
+  await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2));
+  clearTimeout(watchdog);
 }

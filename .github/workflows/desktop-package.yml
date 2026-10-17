@@ -7,6 +7,8 @@ on:
       - packages/dsh-x-browser/**
       - scripts/desktop-browser-smoke.mjs
       - scripts/desktop-opencode-proof.mjs
+      - scripts/desktop-build-cache.mjs
+      - test/desktop-build-cache.test.js
       - scripts/fixtures/desktop-opencode-driver/**
       - scripts/fixtures/desktop-browser-smoke/**
       - .github/workflows/desktop-package.yml
@@ -162,9 +164,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix packages/dsh-x-browser run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Install official kernel dependencies
-        working-directory: deepseek-harness
-        run: pnpm install --frozen-lockfile
       - name: Configure isolated unsigned smoke package
         working-directory: deepseek-harness
         run: |
@@ -175,9 +174,69 @@ jobs:
             'DSH_DESKTOP_AUTO_UPDATE_ENV=production'
             'DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://dsh-smoke.invalid'
           ) | Set-Content -Encoding utf8 apps/desktop/.env.windows
+      # Cache only the pristine official package, before any profile/plugin launch.
+      # Exact keys and hashes detect input drift/corruption; producer workflow trust
+      # is still required. Never cache user data, profiles, or provider state.
+      - name: Fingerprint official package inputs
+        id: desktop-inputs
+        run: |
+          $pnpmVersion = (pnpm --version).Trim()
+          $json = node dsh-x/scripts/desktop-build-cache.mjs fingerprint --kernel deepseek-harness --pnpm-version $pnpmVersion
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $inputs = $json | ConvertFrom-Json
+          "key=$($inputs.key)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "DSH_BUILD_PNPM_VERSION=$pnpmVersion" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Restore exact trusted official package cache
+        id: desktop-cache
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.desktop-inputs.outputs.key }}
+          path: |
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/dsh-build-cache-manifest.json
+      - name: Reject nonexact cache restoration
+        if: (steps.desktop-cache.outputs.cache-hit == 'true' || steps.desktop-cache.outputs.cache-matched-key != '') && (steps.desktop-cache.outputs.cache-hit != 'true' || steps.desktop-cache.outputs.cache-matched-key != steps.desktop-inputs.outputs.key)
+        run: throw 'Nonexact official package cache restore refused; no cached executable was launched'
+      - name: Verify every restored official package file
+        if: steps.desktop-cache.outputs.cache-hit == 'true' && steps.desktop-cache.outputs.cache-matched-key == steps.desktop-inputs.outputs.key
+        run: node dsh-x/scripts/desktop-build-cache.mjs verify --kernel deepseek-harness --pnpm-version "$env:DSH_BUILD_PNPM_VERSION"
+      - name: Install official kernel dependencies
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
+        working-directory: deepseek-harness
+        run: pnpm install --frozen-lockfile
       - name: Build official unsigned unpacked Windows application
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
         working-directory: deepseek-harness
         run: pnpm --filter @deepseek-ai/dsh-desktop run package win-x64 --unsigned --dir
+      - name: Hash pristine official package before any execution
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
+        run: node dsh-x/scripts/desktop-build-cache.mjs write --kernel deepseek-harness --pnpm-version "$env:DSH_BUILD_PNPM_VERSION"
+      - name: Save pristine package for exact-input proof iterations
+        if: steps.desktop-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.desktop-inputs.outputs.key }}
+          path: |
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked
+            deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/dsh-build-cache-manifest.json
+      - name: Record verified package cache provenance
+        env:
+          EXPECTED_CACHE_KEY: ${{ steps.desktop-inputs.outputs.key }}
+          EXACT_CACHE_HIT: ${{ steps.desktop-cache.outputs.cache-hit }}
+        run: |
+          $manifestPath = 'deepseek-harness/apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/dsh-build-cache-manifest.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          New-Item -ItemType Directory -Force desktop-smoke-evidence | Out-Null
+          @{
+            key = $env:EXPECTED_CACHE_KEY
+            exactHit = ($env:EXACT_CACHE_HIT -eq 'true')
+            manifestSha256 = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            producer = $manifest.producer
+            inputs = $manifest.inputs
+            fileCount = $manifest.files.Count
+            trust = 'Reviewed producer workflow; manifest verifies integrity, not independent authenticity'
+          } | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 desktop-smoke-evidence/cache-provenance.json
+          "Official package cache exact hit: $($env:EXACT_CACHE_HIT -eq 'true'); verified files: $($manifest.files.Count)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - name: Install pinned official Electron test driver
         run: |
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/desktop-driver" | Out-Null
@@ -211,6 +270,7 @@ jobs:
           if ($exe.Count -ne 1) { throw 'Expected exactly one official OpenCode executable' }
           "DSH_OPENCODE_EXE=$($exe[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Requested real OpenCode free hello and visible Google proof
+        timeout-minutes: 20
         if: github.event_name == 'push' && contains(github.event.head_commit.message, '[opencode-public-proof]')
         working-directory: dsh-x
         env:
