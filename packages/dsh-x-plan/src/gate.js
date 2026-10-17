@@ -1,6 +1,6 @@
 /** Known official read-only tools. Unknown capabilities fail closed during a task. */
 export const READ_ONLY_DURING_DRAFT = new Set([
-  'read', 'read_image', 'grep', 'glob', 'web_search', 'web_fetch',
+  'dsh_x_code_inspect', 'dsh_x_code_file', 'read', 'read_image', 'grep', 'glob', 'web_search', 'web_fetch',
   'ask_user_question', 'present', 'skill', 'session_event_read',
   'session_event_search', 'session_event_trace', 'session_search', 'session_trace',
   'terminal_list', 'terminal_read', 'job_list', 'job_output', 'list_agents', 'list_subagent_models',

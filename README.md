@@ -14,7 +14,7 @@
 ```text
 dsh-x/
   packages/<包名>/              插件源码。一个目录一个包，目录名等于包名
-                                 现有 dsh-x-agents、dsh-x-plan、dsh-x-stock、dsh-x-chat
+                                 现有 dsh-x-code、dsh-x-agents、dsh-x-plan、dsh-x-stock、dsh-x-chat
   .github/workflows/            打包时检出内核、产出安装包
   packaging/                    平台、签名、插件为什么还不进安装包
   kernel.local.example.json     本机运行时的路径样例
@@ -58,6 +58,8 @@ home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH
 `.github/workflows/desktop-package.yml` 手动运行，打未签名的 macOS arm64 和 Windows x64。`link:` 的本机路径不会打进安装包。
 
 ## 新增插件与可复现测试
+
+- `packages/dsh-x-code/`：独立 Code 工作区，文件树/源码/差异浏览、显式所选快照审查、结构化问题、经 Agents 修复与重新审查。默认使用 DSH 当前模型且不开放工具；审批前明确文件范围与可能费用。浏览与默认审查无需启用 Agents，修复需要 Agents。详见该包 README 与 VALIDATION。
 
 - `packages/dsh-x-stock/`：独立股票详情页 + 底部自选条；手动固定 A 股代码、排序、移除、收起，点底条打开同一股票。行情 provider 可替换；当前未接 A 股源时明确显示未配置，不生成价格、走势或分析。另保留 Finnhub 单股票报价工具，需凭据、覆盖取决于其套餐。
 - `packages/dsh-x-chat/`：通过已配置的官方 LLM 提供方进行一次独立问答；显式传 provider/model，不执行工具或自动读取文件。

@@ -8,12 +8,14 @@ const transports = { codex: 'app-server', opencode: 'http-sse', claude: 'agent-s
 export const defaultCatalog = () => RUNTIMES.map(id => ({ id, label: { codex: 'Codex', opencode: 'OpenCode', claude: 'Claude', grok: 'Grok' }[id], transport: transports[id], available: null, authenticated: null, version: null, reason: 'not-inspected', models: [], capabilities: { ...capabilities } }))
 export function validateRun(args) {
   if (!args || !RUNTIMES.includes(args.runtime)) throw fail('AGENTS_RUNTIME', 'Choose a supported native runtime: Codex, OpenCode, Claude or Grok.')
-  if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > 12000) throw fail('AGENTS_PROMPT', 'A task prompt of 1–12000 characters is required.')
-  if (safeText(args.prompt, 12000) !== args.prompt) throw fail('AGENTS_SECRET', 'Potential credentials must not be sent in task prompts. Use the vendor setup flow.')
+  if (args.readOnly !== undefined && typeof args.readOnly !== 'boolean') throw fail('AGENTS_POLICY', 'readOnly must be a boolean; a review can only tighten host policy.')
+  const maxPromptChars = args.readOnly === true ? 64_000 : 12_000
+  if (typeof args.prompt !== 'string' || !args.prompt.trim() || args.prompt.length > maxPromptChars) throw fail('AGENTS_PROMPT', `A task prompt of 1–${maxPromptChars} characters is required.`)
+  if (safeText(args.prompt, maxPromptChars) !== args.prompt) throw fail('AGENTS_SECRET', 'Potential credentials must not be sent in task prompts. Use the vendor setup flow.')
   if (args.model !== undefined && (typeof args.model !== 'string' || !args.model.trim() || args.model.length > 160)) throw fail('AGENTS_MODEL', 'Invalid model identifier.')
   if (args.taskId !== undefined && (typeof args.taskId !== 'string' || !Number.isSafeInteger(args.expectedRevision) || typeof args.scope !== 'string')) throw fail('AGENTS_STALE', 'Continuing requires the exact task, revision and profile scope.')
 }
-export function createAgentsController({ store, adapter, cwdOf, policyOf, approve, askInput, trustedExternalRuntime = false, now = () => Date.now(), modelTtlMs = 5 * 60_000 }) {
+export function createAgentsController({ store, adapter, cwdOf, policyOf, approve, askInput, beforeDispatch, trustedExternalRuntime = false, now = () => Date.now(), modelTtlMs = 5 * 60_000 }) {
   const running = new Map(), catalogs = new Map(), inspecting = new Map(), starting = new Map(), preparing = new Map(), nativeModels = new Map()
   const modelsOf = models => {
     const seen = new Set()
@@ -28,9 +30,11 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
     const policy = policyOf(exec)
     if (!policy || !['read-only','workspace-write','danger-full-access'].includes(policy.mode) || !path.isAbsolute(policy.workspaceRoot ?? '')) throw fail('AGENTS_POLICY', 'The host file-effect policy is unavailable.')
     const root = realpathSync(policy.workspaceRoot)
+    const hostPolicy = { ...policy, workspaceRoot: root }
+    const effectivePolicy = { ...hostPolicy, ...(exec.readOnly === true ? { mode: 'read-only' } : {}) }
     const relative = path.relative(root, cwd)
-    if (policy.mode !== 'danger-full-access' && (relative.startsWith('..' + path.sep) || relative === '..' || path.isAbsolute(relative))) throw fail('AGENTS_POLICY', 'Task directory is outside the host workspace boundary.')
-    return { cwd, policy: { ...policy, workspaceRoot: root } }
+    if (effectivePolicy.mode !== 'danger-full-access' && (relative.startsWith('..' + path.sep) || relative === '..' || path.isAbsolute(relative))) throw fail('AGENTS_POLICY', 'Task directory is outside the host workspace boundary.')
+    return { cwd, hostPolicy, policy: effectivePolicy }
   }
   function snapshot(sessionId) {
     validSession(sessionId)
@@ -148,7 +152,10 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
   }
   async function runOwned(args, exec) {
     validateRun(args)
-    args = Object.freeze(Object.fromEntries(['runtime','prompt','model','taskId','expectedRevision','scope'].filter(key => args[key] !== undefined).map(key => [key, args[key]])))
+    args = Object.freeze(Object.fromEntries(['runtime','prompt','model','taskId','expectedRevision','scope','readOnly'].filter(key => args[key] !== undefined).map(key => [key, args[key]])))
+    // This is a per-run restriction, not a mutation of the host's standing
+    // policy. Every adapter creation and discovery inherits the bound value.
+    exec = { ...exec, readOnly: args.readOnly === true }
     const sessionId = validSession(exec.agent?.session?.id)
     if (running.has(sessionId) || inspecting.has(sessionId)) throw fail('AGENTS_BUSY', 'This session already has an external run.')
     const initial = await binding(exec)
@@ -167,7 +174,7 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
     async function assertLive() {
       controller.signal.throwIfAborted()
       const current = await binding(exec)
-      if (running.get(sessionId) !== handle || current.cwd !== initial.cwd || JSON.stringify(current.policy) !== JSON.stringify(initial.policy)) throw fail('AGENTS_BINDING', 'Working directory or host policy changed; no further action is permitted.')
+      if (running.get(sessionId) !== handle || current.cwd !== initial.cwd || JSON.stringify(current.hostPolicy) !== JSON.stringify(initial.hostPolicy) || JSON.stringify(current.policy) !== JSON.stringify(initial.policy)) throw fail('AGENTS_BINDING', 'Working directory or host policy changed; no further action is permitted.')
       const stored = store.read(sessionId).task
       if (stored?.id !== taskId || stored.runId !== runId || !ACTIVE.has(stored.state)) throw fail('AGENTS_STALE', 'This native request no longer owns the current task.')
     }
@@ -181,20 +188,23 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
       return key
     }
     try {
+      if (args.readOnly && args.runtime === 'opencode') throw fail('AGENTS_EXTERNAL_POLICY', 'Read-only review cannot confine an external OpenCode service. Choose a supported local runtime; no host settings were changed.')
       const discovery = await discover({ ...exec, signal: controller.signal }, args.runtime)
       const available = discovery.catalog.find(item => item.id === args.runtime)
       const deferredNative = ['claude','grok'].includes(args.runtime) && available?.authenticated === null && available?.authentication?.state === 'requires-native-initialization' && available.authentication.source === 'version-only'
       if (!available?.available || (!available.authenticated && !deferredNative)) throw fail('AGENTS_SETUP', available?.reason || 'Runtime authentication or setup has not been verified.')
       if (args.model && !available.models.some(model => model.id === args.model)) throw fail('AGENTS_MODEL', 'The selected model is not advertised by this runtime.')
       if (args.runtime === 'opencode' && (initial.policy.mode !== 'danger-full-access' || !trustedExternalRuntime)) throw fail('AGENTS_EXTERNAL_POLICY', 'This host mode cannot confine an external OpenCode HTTP service. This execution mode is unsupported here; no host settings were changed.')
-      state('waiting_permission')
+      state('waiting_permission', { readOnly: args.readOnly === true })
       record({ type: 'permission', text: `Start ${args.runtime} in ${initial.cwd}. DSH coordinates; the external native agent executes.`, data: { phase: 'launch', runtime: args.runtime, model: args.model ?? null, cwd: initial.cwd, nativeSessionId, policy: initial.policy.mode } })
-      const launchAllowed = await approve(exec, { title: `Run ${args.runtime}`, details: `Runtime: ${args.runtime}\nDirectory: ${initial.cwd}\nModel: ${args.model ?? 'native default'}\nAuthentication: ${deferredNative ? `Not checked. Approved startup initializes ${args.runtime} native configuration. Native managed hooks or startup maintenance may run; Grok may refresh credentials, sync plugins or maintain native worktrees. No login or credential creation is performed by this plugin.` : available.providerAuthentication}\nTask: ${safeText(args.prompt, 1200)}\n${args.runtime === 'opencode' ? 'This explicitly configured external service applies its own permissions. DSH does not sandbox its process. This is not a blanket grant for future native permission requests.' : 'Native requests remain subject to individual approval. The host file-effect policy applies; it does not claim network or secret-read isolation.'}` }, controller.signal)
+      const launchAllowed = await approve(exec, { title: `Run ${args.runtime}`, details: `Runtime: ${args.runtime}\nDirectory: ${initial.cwd}\nModel: ${args.model ?? 'native default'}\nAuthentication: ${deferredNative ? `Not checked. Approved startup initializes ${args.runtime} native configuration. Native managed hooks or startup maintenance may run; Grok may refresh credentials, sync plugins or maintain native worktrees. No login or credential creation is performed by this plugin.` : available.providerAuthentication}\nTask: ${safeText(args.prompt, 1200)}\n${args.readOnly ? 'This turn requires read-only file confinement. All native permission escalation requests are denied. Host settings remain unchanged. This does not claim network or secret-read isolation.' : args.runtime === 'opencode' ? 'This explicitly configured external service applies its own permissions. DSH does not sandbox its process. This is not a blanket grant for future native permission requests.' : 'Native requests remain subject to individual approval. The host file-effect policy applies; it does not claim network or secret-read isolation.'}` }, controller.signal)
       await assertLive()
       if (launchAllowed !== true && launchAllowed !== 'allowed-once') { state('blocked', { reason: 'Launch approval was declined.' }); return snapshot(sessionId) }
       state('running')
       const driver = await adapter(args.runtime, { discover: false, exec, binding: initial })
       if ((driver.backendIdentity ?? args.runtime) !== backendIdentity) throw fail('AGENTS_BINDING', 'Runtime backend configuration changed during approval.')
+      await assertLive()
+      await beforeDispatch?.(exec)
       await assertLive()
       const result = await driver.run({ prompt: args.prompt.trim(), model: args.model, cwd: initial.cwd, nativeSessionId, signal: controller.signal,
         sandboxPolicy: initial.policy, trustedExternalRuntime,
@@ -211,6 +221,7 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
         },
         requestPermission: async request => {
           await assertLive(); takeRequest(request, 'permission')
+          if (args.readOnly) { record({ type: 'permission', text: 'Read-only review cannot grant native permission escalation; denied.', data: { id: request.id, phase: 'denied' } }); return { optionId: null } }
           const once = request.options?.filter(option => option.kind === 'allow_once')
           record({ type: 'permission', text: safeText(request.title), data: { ...request, phase: 'requested' } })
           if (!Array.isArray(once) || once.length !== 1) { record({ type: 'permission', text: 'No unambiguous one-time grant is available; denied.', data: { id: request.id, phase: 'denied' } }); return { optionId: null } }
@@ -246,6 +257,7 @@ export function createAgentsController({ store, adapter, cwdOf, policyOf, approv
         },
       })
       if (!['completed','cancelled','blocked','failed'].includes(result?.status)) throw fail('AGENTS_RESULT', 'Runtime returned an unsupported terminal state.')
+      if (args.readOnly && result.status === 'completed' && (typeof result.summary !== 'string' || result.summary.length > 12_000 || safeText(result.summary, 12_000) !== result.summary)) throw fail('AGENTS_RESULT', 'Read-only review output was incomplete, oversized, or sensitive; no successful review was recorded.')
       if (result.nativeSessionId && store.read(sessionId).task.nativeSessionId !== result.nativeSessionId) record({ type: 'session', data: { nativeSessionId: result.nativeSessionId } })
       state(result.status, { summary: safeText(result.summary, 12000), reason: safeText(result.reason, 2000) || null })
     } catch (error) {

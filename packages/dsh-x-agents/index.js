@@ -10,7 +10,8 @@ import { createGrokAdapter } from './src/adapters/grok.js'
 
 export const name = 'dsh-x-agents'
 export const inject = ['tools', 'workingDirectory', 'subprocess', 'profileContext', 'systemPrompt']
-const reads = new Set(['read','read_image','glob','grep','web_search','web_fetch','session_event_read','session_event_search','session_search','list_mcp_resources','read_mcp_resource','dsh_x_agents_inspect'])
+const reads = new Set(['read','read_image','glob','grep','web_search','web_fetch','session_event_read','session_event_search','session_search','list_mcp_resources','read_mcp_resource','dsh_x_agents_inspect','dsh_x_code_inspect','dsh_x_code_file'])
+const codeWrappers = new Set(['dsh_x_code_review', 'dsh_x_code_repair'])
 export function apply(ctx, config = {}) {
   const store = createTaskStore(ctx.profileContext.dir)
   const controller = createAgentsController({ store,
@@ -25,7 +26,8 @@ export function apply(ctx, config = {}) {
         const assertBinding = () => {
           const policy = ctx.get('sandboxPolicy')?.resolve({ session: options.exec.agent.session })
           const liveCwd = ctx.workingDirectory.get?.(options.exec.agent.session) ?? options.binding.cwd
-          if (!policy || realpathSync(liveCwd) !== options.binding.cwd || policy.mode !== options.binding.policy.mode || realpathSync(policy.workspaceRoot) !== options.binding.policy.workspaceRoot) throw fail('AGENTS_BINDING', 'Host policy or working directory changed before process start.')
+          const hostPolicy = options.binding.hostPolicy ?? options.binding.policy
+          if (!policy || realpathSync(liveCwd) !== options.binding.cwd || JSON.stringify({ ...policy, workspaceRoot: realpathSync(policy.workspaceRoot) }) !== JSON.stringify(hostPolicy)) throw fail('AGENTS_BINDING', 'Host policy or working directory changed before process start.')
           signal?.throwIfAborted()
         }
         assertBinding()
@@ -55,15 +57,39 @@ export function apply(ctx, config = {}) {
       if (!service) return null
       return service.ask({ agent: exec.agent, signal, wait: { callId: exec.callId }, questions })
     },
+    beforeDispatch: async exec => {
+      try { await ctx.parallel('dsh-x-agents/before-dispatch', exec) }
+      catch (error) {
+        // Cordis drains every observer and aggregates failures. Preserve a
+        // single structured stale-snapshot rejection instead of an empty text.
+        if (error instanceof AggregateError && error.errors.length === 1) throw error.errors[0]
+        throw fail('AGENTS_PREFLIGHT', 'Native dispatch revalidation failed; no task prompt was sent.')
+      }
+    },
   })
   const mutations = new Map(), pending = new Map()
+  // Only the exact live wrapper execution may delegate one native run. Tokens
+  // are same-process Symbols minted by ToolRuntime, never tool arguments.
+  const ownsChild = (exec, lease) => lease?.wrapper === true && lease.child === null
+    && exec.name === 'dsh_x_agents_run' && exec.parent === lease.owner
+    && exec.rootCallId === lease.rootCallId
+    && (!lease.readOnly || exec.arguments?.readOnly === true)
   ctx.on('tools/execute', async (exec, next) => {
     const id = exec.agent?.session?.id
     if (!id || reads.has(exec.name)) return next()
-    if (['dsh_x_agents_run','dsh_x_agents_models'].includes(exec.name)) {
-      if (mutations.get(id)?.size || pending.has(id)) throw fail('AGENTS_BUSY', 'Another operation is still writing in this session.')
-      pending.set(id, exec.token)
-      try { return await next() } finally { if (pending.get(id) === exec.token) pending.delete(id) }
+    if (['dsh_x_agents_run','dsh_x_agents_models'].includes(exec.name) || codeWrappers.has(exec.name)) {
+      const existing = pending.get(id)
+      if (mutations.get(id)?.size || controller.isRunning(id) || store.hasLock(id)
+        || existing && !ownsChild(exec, existing)) throw fail('AGENTS_BUSY', 'Another operation is still writing in this session.')
+      if (existing) {
+        // Consume synchronously before the next await, closing the gap between
+        // concurrent guards. The parent retains the lease through finalization.
+        existing.child = exec.token
+        return await next()
+      }
+      const lease = { owner: exec.token, rootCallId: exec.rootCallId, wrapper: codeWrappers.has(exec.name), readOnly: exec.name === 'dsh_x_code_review', child: null }
+      pending.set(id, lease)
+      try { return await next() } finally { if (pending.get(id) === lease) pending.delete(id) }
     }
     if (pending.has(id) || controller.isRunning(id) || store.hasLock(id)) throw fail('AGENTS_BUSY', 'An external run owns this session.')
     const active = mutations.get(id) ?? new Set(); mutations.set(id, active); active.add(exec.token)
@@ -73,14 +99,17 @@ export function apply(ctx, config = {}) {
   ctx.effect(() => ctx.systemPrompt.section({ name, order: 8100, interpolate: false, text: 'Agents is an explicit native-runtime delegation workflow. When the user selects it, use dsh_x_agents_inspect to check setup, dsh_x_agents_models with runtime and current scope to explicitly prepare or refresh model catalogs without a task prompt, and dsh_x_agents_run to send their task to the selected runtime. DSH coordinates while the external native agent executes. Continue an existing task only with its exact scope/taskId/revision and unchanged runtime/model. A completed native turn does not prove tests or task acceptance. Never bypass an active Plan workflow, native permission request, unavailable authentication, or uncertain cleanup. Do not send credentials as prompt text. Do not automatically start another runtime or change host permissions when one is blocked.' }), 'agents: instructions')
   const present = value => ({ kind: 'dsh-x-agents.result', version: 1, ...value })
   const output = { schema: { type: 'object', additionalProperties: true, properties: {} }, presentationMeta: (_args, value) => present(value), render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] }
-  ctx.tools.register(defineTool({ name: 'dsh_x_agents_inspect', description: 'Read native runtime setup and current task. Does not authenticate, install software, or call a model.', parameters: {}, output, execute: (_args, exec) => controller.inspect(exec) }))
+  ctx.tools.register(defineTool({ name: 'dsh_x_agents_inspect', description: 'Read native runtime setup and current task. Does not authenticate, install software, or call a model.', parameters: {}, output, execute: (_args, exec) => pending.has(exec.agent?.session?.id) ? controller.snapshot(exec.agent.session.id) : controller.inspect(exec) }))
   ctx.tools.register(defineTool({ name: 'dsh_x_agents_models', description: 'Explicitly initialize one native runtime to read its model catalog without a task prompt. Requires official approval; initialization can load native configuration. A listed model is not verified account access.', parameters: {runtime:{type:'string',required:true,enum:[...RUNTIMES]},scope:{type:'string',required:true}}, output, execute:(args,exec)=>controller.models(args,exec) }))
   ctx.tools.register(defineTool({ name: 'dsh_x_agents_run', description: 'Delegate one turn to Codex, OpenCode, Claude or Grok native agent. Requests official approval, preserves native session identity, streams actual events. Setup or policy gaps block execution.', parameters: {
     runtime: { type: 'string', required: true, enum: [...RUNTIMES] }, prompt: { type: 'string', required: true }, model: { type: 'string' }, taskId: { type: 'string' }, expectedRevision: { type: 'integer' }, scope: { type: 'string' },
+    readOnly: { type: 'boolean', description: 'Tighten this native turn to read-only confinement without changing host settings. Native permission escalations and external OpenCode are blocked.' },
   }, output, execute: (args, exec) => controller.run(args, exec) }))
   ctx.effect(() => ctx.tools.guard(exec => {
     const id = exec.agent?.session?.id
-    if (id && (controller.isRunning(id) || store.hasLock(id) || pending.has(id) && pending.get(id) !== exec.token) && !reads.has(exec.name)) return 'An external agent run owns this session. Wait for it to stop; concurrent writes are blocked.'
+    const lease = pending.get(id)
+    if (id && (controller.isRunning(id) || store.hasLock(id)
+      || lease && lease.owner !== exec.token && !ownsChild(exec, lease)) && !reads.has(exec.name)) return 'An external agent run owns this session. Wait for it to stop; concurrent writes are blocked.'
   }), 'agents: session ownership')
   ctx.inject(['connection'], host => {
     host.connection.fetch.register(createAgentsRoute('agents/snapshot', payload => {

@@ -367,3 +367,16 @@ test('question answers echoed in native tool results are not persisted as tool o
   assert.equal(result.status, 'completed'); assert.ok(!JSON.stringify(events).includes(privateAnswer));
   assert.ok(events.some(event => event.type === 'input' && event.data.phase === 'answered'));
 });
+
+test('read-only review accepts an intact 64k prompt while ordinary turns retain the 12k limit', async () => {
+  const f = fixture(), prompt = 'x'.repeat(64_000)
+  const result = await f.adapter.run({ ...input, prompt, sandboxPolicy: { ...sandboxPolicy, mode: 'read-only' } })
+  assert.equal(result.status, 'completed')
+  const message = f.messages.find(message => message.type === 'user')
+  assert.equal(message.message.content, prompt)
+  for (const request of [{ ...input, prompt: 'x'.repeat(12_001) }, { ...input, prompt: prompt + 'x', sandboxPolicy: { ...sandboxPolicy, mode: 'read-only' } }]) {
+    const rejected = fixture()
+    assert.equal((await rejected.adapter.run(request)).status, 'blocked')
+    assert.equal(rejected.spawns.length, 0)
+  }
+})

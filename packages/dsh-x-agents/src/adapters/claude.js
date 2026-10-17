@@ -197,7 +197,8 @@ export function createClaudeAdapter({ spawn, config = {} } = {}) {
     let sessionId = nativeSessionId ?? null, summary = '', usage, blockedReason;
     const result = (status, reason) => ({ nativeSessionId: sessionId, status, summary: redactText(summary), ...(reason ? { reason } : {}), ...(usage ? { usage } : {}) });
     if (signal?.aborted) return result('cancelled');
-    if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 12000 || !isComplete(prompt)) return result('blocked', 'A nonempty task prompt without credentials is required.');
+    const maxPromptChars = sandboxPolicy?.mode === 'read-only' ? 64_000 : 12_000;
+    if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > maxPromptChars || !isComplete(prompt)) return result('blocked', `A nonempty task prompt of at most ${maxPromptChars} characters without credentials is required.`);
     if (!validPolicy(cwd, sandboxPolicy)) return result('blocked', 'Claude requires a host sandbox policy and a folder inside its workspace.');
     if (nativeSessionId != null && !UUID.test(nativeSessionId)) return result('blocked', 'Claude resume requires an exact native session UUID.');
     if (model != null && (typeof model !== 'string' || !model.trim() || model.length > 160 || !isComplete(model))) return result('blocked', 'Choose a valid Claude model.');

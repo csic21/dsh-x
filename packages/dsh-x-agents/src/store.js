@@ -11,7 +11,7 @@ export function validSession(value) {
 }
 export function safeText(value, max = 4000) {
   const text = String(value ?? '')
-  if (/(?:sk-[a-zA-Z0-9_-]{16,}|Bearer\s+[a-zA-Z0-9._-]{12,}|(?:api[_-]?key|password|access[_-]?token)["']?\s*[:=]\s*["']?[^\s"']{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(text)) return '[Potential credential content withheld]'
+  if (/(?:sk-[a-zA-Z0-9_-]{16,}|xai-[a-zA-Z0-9_-]{20,}|AIza[a-zA-Z0-9_-]{30,}|Bearer\s+[a-zA-Z0-9._-]{12,}|(?:api[_-]?key|password|access[_-]?token)["']?\s*[:=]\s*["']?[^\s"']{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i.test(text)) return '[Potential credential content withheld]'
   return text.length > max ? text.slice(0, max) + '\n[truncated]' : text
 }
 export function safeData(value, depth = 0) {

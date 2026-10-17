@@ -144,3 +144,12 @@ test('catalog expiry is honest and status refresh does not extend native freshne
  await assert.rejects(()=>c.models({runtime:'grok',scope:store.scope},exec),/offline/)
  const failed=await c.inspect(exec);assert.equal(failed.catalog[3].modelCatalog.status,'failed');assert.equal(failed.catalog[3].models[0].id,'listed')
 })
+
+
+test('Grok and Google shaped tokens never persist in native events or terminal review summaries',async()=>{
+ for(const token of ['xai-'+'a'.repeat(30),'AIza'+'b'.repeat(35)])for(const readOnly of [false,true]) {
+  const h=fixture({run:async run=>{await run.onEvent({type:'assistant',text:'const value = "'+token+'"',data:{title:token,nested:{result:token}}});return {status:'completed',summary:token}}});
+  const result=await h.controller.run({...args,readOnly},h.exec);assert.ok(!JSON.stringify(h.store.read('session-one')).includes(token));
+  if(readOnly)assert.notEqual(result.task.state,'completed');else assert.equal(result.task.summary,'[Potential credential content withheld]');
+ }
+})
