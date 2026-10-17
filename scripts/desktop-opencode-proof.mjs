@@ -1,10 +1,10 @@
-/** Real Windows packaged-Electron smoke; no kernel patch and no vendor account. */
+/** Real supported-platform packaged-Electron smoke; no kernel patch and no vendor account. */
 import assert from 'node:assert/strict';
 import { deadline, proofLifecycle } from './lib/proof-lifecycle.mjs';
 import { approvalInScope } from './lib/opencode-proof-policy.mjs';
 import { presentationEvents } from '../packages/dsh-x-agents/src/client/model.js';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile, readdir, stat, copyFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, readdir, stat, copyFile, realpath } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -17,14 +17,19 @@ await mkdir(homeBase, { recursive: true });
 const home = await mkdtemp(join(homeBase, 'run-'));
 const require = createRequire(join(resolve(process.env.DSH_SMOKE_DRIVER ?? repo), 'package.json'));
 const { _electron } = require('playwright');
-if (process.platform !== 'win32') throw Error('This proof requires Windows; Linux is not an equivalent Desktop run.');
+if (!['win32', 'darwin'].includes(process.platform)) throw Error('This proof requires an officially supported Windows or macOS Desktop.');
+if (process.platform === 'darwin') assert.equal(process.arch, 'arm64', 'macOS proof requires the pinned arm64 target');
 await mkdir(output, { recursive: true }); await mkdir(home, { recursive: true });
 const results = join(home, 'fixture-results'); await mkdir(results, { recursive: true });
 const hash = async p => createHash('sha256').update(await readFile(p)).digest('hex');
 async function find(root, name) { for (const e of await readdir(root, { withFileTypes: true })) { const p = join(root, e.name); if (e.isDirectory()) { const hit = await find(p, name); if (hit) return hit; } else if (e.name === name) return p; } }
-const executable = await find(join(kernel, 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts'), 'DeepSeek Harness.exe');
+const executable = process.platform === 'win32'
+  ? await find(join(kernel, 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts'), 'DeepSeek Harness.exe')
+  : join(kernel, 'apps/desktop/.desktop-build/targets/mac-arm64/unsigned-artifacts/mac-arm64/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness');
 assert(executable, 'Official unsigned unpacked executable missing');
-const cli = join(dirname(executable), 'resources/runtime/cli/bin/dsh.cmd');
+const cli = process.platform === 'win32'
+  ? join(dirname(executable), 'resources/runtime/cli/bin/dsh.cmd')
+  : join(dirname(executable), '../Resources/runtime/cli/bin/dsh');
 await stat(cli);
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/KEY|SECRET|TOKEN|PASSWORD|^NODE_OPTIONS$|^ELECTRON_RUN_AS_NODE$|^DSH_HOME$/i.test(key)));
 Object.assign(env, { DSH_HOME: home, DSH_DESKTOP_USER_DATA_DIR: join(home, 'electron'), DSH_TELEMETRY_DISABLED: '1', DSH_OPENCODE_PROOF_RESULTS: results,
@@ -41,7 +46,7 @@ const actualKernelSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: kernel
 assert.equal(actualKernelSha, process.env.DSH_SMOKE_KERNEL_SHA);
 const pluginSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 if (process.env.GITHUB_SHA) assert.equal(pluginSha, process.env.GITHUB_SHA);
-const report = { kind: 'actual-packaged-desktop-real-opencode', pluginSha, kernelSha: actualKernelSha,
+const report = { kind: 'actual-packaged-desktop-real-opencode', platform: process.platform, architecture: process.arch, pluginSha, kernelSha: actualKernelSha,
   executableSha256: await hash(executable), opencodeExecutableSha256: nativeHash,
   orchestration: 'deterministic tool transport only; native model replies are not synthesized', fixtureOnly: false,
   assertions: [], screenshots: [], approvals: [], status: 'running' };
@@ -89,7 +94,7 @@ try {
   app = await launch();
   report.runtime = await app.evaluate(({ app }) => ({ packaged: app.isPackaged, version: app.getVersion(), electron: process.versions.electron, userData: app.getPath('userData') }));
   assert.equal(report.runtime.packaged, true); assert.equal(report.runtime.electron, '44.7.0');
-  assert.equal(resolve(report.runtime.userData).toLowerCase(), resolve(home, 'electron').toLowerCase());
+  assert.equal(await realpath(report.runtime.userData), await realpath(join(home, 'electron')));
   for (let n = 0; n < 180; n++) {
     page = app.windows().find(p => p.url().startsWith('dsh-app://app/'));
     if (page && await page.locator('.dxa-entry').isVisible().catch(() => false)) break;
@@ -138,7 +143,8 @@ try {
   const setup = await tool('01-setup', 'dsh_x_agents_inspect', {});
   await page.locator('.dxa-entry').click(); await page.locator('.dxa-workspace').waitFor();
   await page.locator('.dxa-selectors select').first().selectOption('opencode');
-  await shot('02-opencode-ready');
+  await shot('02-opencode-setup-status');
+  assert.equal(setup.catalog.find(item => item.id === 'opencode')?.available, true, 'Native OpenCode status is unavailable; no model preparation requested');
   const prepared = await tool('03-models', 'dsh_x_agents_models', { runtime: 'opencode', scope: setup.scope });
   const catalog = prepared.catalog.find(item => item.id === 'opencode');
   assert(catalog?.modelCatalog?.status === 'fresh', 'Fresh native model catalog required');

@@ -32,9 +32,15 @@ test('native result is persisted unchanged with exact identity and no replay', a
 test('real inference is explicitly gated, pinned and never a paid fallback', () => {
   const workflow = readFileSync(new URL('../.github/workflows/desktop-package.yml', import.meta.url), 'utf8');
   assert.match(workflow, /contains\(github.event.head_commit.message, '\[opencode-public-proof\]'\)/);
-  assert.match(workflow, /Get-FileHash \$archive -Algorithm SHA256/);
-  assert.match(workflow, /releases\/download\/v1\.19\.3\/opencode-windows-x64.zip/);
+  assert.match(workflow, /shasum -a 256 -c -/);
+  assert.match(workflow, /releases\/download\/v1\.19\.3\/opencode-darwin-arm64.zip/);
   const script = readFileSync(new URL('../scripts/desktop-opencode-proof.mjs', import.meta.url), 'utf8');
+  assert.match(script, /Native OpenCode status is unavailable/);
+  assert.match(script, /02-opencode-setup-status/);
+  assert.match(workflow, /opencode-macos-proof:\n    needs: browser-smoke\n    if: github.event_name/);
+  assert.match(workflow, /runs-on: macos-15/);
+  assert.match(workflow, /package mac-arm64 --unsigned --dir/);
+  assert.match(workflow, /Windows native Agents boundary/);
   assert.match(script, /model\.free === true/); assert.match(script, /No explicitly verified free/);
   assert.match(script, /assert.equal\(guestInfo.type, 'webview'\)/);
   assert.match(script, /Do not search, log in, solve a CAPTCHA/);
@@ -46,6 +52,8 @@ test('public proof approves only exact requested initialization, prompt and Goog
   const args = { model: 'opencode/free', prompt: 'Hello.' };
   const reason = 'Agents · Run opencode\nRuntime: opencode\nDirectory: C:\\fixture\nModel: opencode/free\nAuthentication: Public catalog; no account credentials\nTask: Hello.\nOwned browser-only OpenCode: fresh empty native home and workspace; no account credentials or project context. Only a freshly checked zero-price public model is eligible. Native startup may install its official runtime helper dependencies in temporary state. No persistent MCP registration. Browser tools: disabled.\nNative requests remain subject to individual approval. The host file-effect policy applies; it does not claim network or secret-read isolation.\n仅允许此项一次 / Allow this request once only.';
   assert(approvalInScope('05-hello', reason, args));
+  assert(approvalInScope('05-hello', reason.replace('C:\\fixture', '/Users/runner/empty-workspace'), args));
+  assert(!approvalInScope('05-hello', reason.replace('C:\\fixture', 'relative/path'), args));
   assert(approvalInScope('05-hello', reason.replace(/\s+/g, ' '), args));
   for (const [from,to] of [['Model: opencode/free','Model: opencode/paid'],['Runtime: opencode','Runtime: codex'],['Task: Hello.','Task: Other.'],['Browser tools: disabled.','Browser tools: enabled.']]) assert(!approvalInScope('05-hello', reason.replace(from,to), args));
   assert(!approvalInScope('05-hello', reason+' Runtime: opencode', args));

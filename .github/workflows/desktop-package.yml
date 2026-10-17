@@ -7,6 +7,9 @@ on:
       - packages/dsh-x-browser/**
       - scripts/desktop-browser-smoke.mjs
       - scripts/desktop-opencode-proof.mjs
+      - scripts/desktop-opencode-preflight.mjs
+      - test/desktop-opencode-preflight.test.js
+      - scripts/lib/opencode-proof-policy.mjs
       - scripts/desktop-build-cache.mjs
       - test/desktop-build-cache.test.js
       - scripts/fixtures/desktop-opencode-driver/**
@@ -258,20 +261,69 @@ jobs:
           if-no-files-found: warn
           path: desktop-smoke-evidence/**
 
-      - name: Download and verify official OpenCode for requested public proof
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[opencode-public-proof]')
+      - name: Windows native Agents boundary
+        run: Write-Output 'Native OpenCode is unsupported under the pinned Windows partial file-effect enforcement; no policy was relaxed. Real provider proof runs on macOS Seatbelt.'
+
+  opencode-macos-proof:
+    needs: browser-smoke
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[opencode-public-proof]')
+    name: Actual macOS Desktop OpenCode public proof
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+      DSH_SMOKE_KERNEL_SHA: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dsh-x
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 1517a4dbca0a2789ff1d41ba439600f8547d23fa
+          path: deepseek-harness
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: deepseek-harness/package.json
+      - name: Verify native Apple Silicon host
         run: |
-          $archive = "$env:RUNNER_TEMP/opencode-windows-x64.zip"
-          Invoke-WebRequest 'https://github.com/anomalyco/opencode/releases/download/v1.19.3/opencode-windows-x64.zip' -OutFile $archive
-          $expected = 'e4ce9117f55fc068414513789f8c7d1049f855d7518bb4e350b9170a3a20d8c3'
-          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Official OpenCode archive checksum mismatch' }
-          Expand-Archive $archive -DestinationPath "$env:RUNNER_TEMP/opencode-public-proof"
-          $exe = @(Get-ChildItem "$env:RUNNER_TEMP/opencode-public-proof" -Filter opencode.exe -Recurse)
-          if ($exe.Count -ne 1) { throw 'Expected exactly one official OpenCode executable' }
-          "DSH_OPENCODE_EXE=$($exe[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          test "$(uname -m)" = arm64
+          node -e "if(process.platform!=='darwin'||process.arch!=='arm64')process.exit(1)"
+      - name: Download and verify official OpenCode arm64
+        run: |
+          curl --fail --location 'https://github.com/anomalyco/opencode/releases/download/v1.19.3/opencode-darwin-arm64.zip' -o "$RUNNER_TEMP/opencode.zip"
+          echo "c2d0fecd27acf6e08be02c1f5d384614d07495587766bcc4a6bff3971749bb64  $RUNNER_TEMP/opencode.zip" | shasum -a 256 -c -
+          mkdir "$RUNNER_TEMP/opencode-public-proof"
+          unzip -q "$RUNNER_TEMP/opencode.zip" -d "$RUNNER_TEMP/opencode-public-proof"
+          test -x "$RUNNER_TEMP/opencode-public-proof/opencode"
+          echo "DSH_OPENCODE_EXE=$RUNNER_TEMP/opencode-public-proof/opencode" >> "$GITHUB_ENV"
+      - name: Install plugin and official kernel dependencies
+        run: |
+          cd dsh-x
+          npm ci
+          npm run build
+          npm --prefix packages/dsh-x-browser run build
+          cd ../deepseek-harness
+          pnpm install --frozen-lockfile
+      - name: Preflight full official Seatbelt and native version only
+        timeout-minutes: 8
+        working-directory: dsh-x
+        env:
+          DSH_SMOKE_KERNEL: ${{ github.workspace }}/deepseek-harness
+          DSH_SMOKE_OUTPUT: ${{ github.workspace }}/desktop-opencode-preflight
+        run: node scripts/desktop-opencode-preflight.mjs
+      - name: Build official unsigned macOS application
+        working-directory: deepseek-harness
+        run: pnpm --filter @deepseek-ai/dsh-desktop run package mac-arm64 --unsigned --dir
+      - name: Install pinned official Electron test driver
+        run: npm install --prefix "$RUNNER_TEMP/desktop-driver" --no-audit --no-fund playwright@1.61.1
       - name: Requested real OpenCode free hello and visible Google proof
         timeout-minutes: 20
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[opencode-public-proof]')
         working-directory: dsh-x
         env:
           DSH_SMOKE_KERNEL: ${{ github.workspace }}/deepseek-harness
@@ -279,11 +331,13 @@ jobs:
           DSH_SMOKE_OUTPUT: ${{ github.workspace }}/desktop-opencode-evidence
           DSH_SMOKE_DRIVER: ${{ runner.temp }}/desktop-driver
         run: node scripts/desktop-opencode-proof.mjs
-      - name: Retain requested real OpenCode screenshots and report
-        if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[opencode-public-proof]')
+      - name: Retain macOS public proof and preflight evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-opencode-public-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          name: desktop-opencode-macos-proof-${{ github.run_id }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: warn
-          path: desktop-opencode-evidence/**
+          path: |
+            desktop-opencode-evidence/**
+            desktop-opencode-preflight/**

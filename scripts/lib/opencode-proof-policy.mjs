@@ -5,7 +5,7 @@ const catalogNotice = 'Start the native runtime only to read its advertised mode
 const ownedNotice = 'fresh empty native home and workspace; no account credentials or project context. Only a freshly checked zero-price public model is eligible. Native startup may install its official runtime helper dependencies in temporary state. No persistent MCP registration.';
 const nativeNotice = 'Native requests remain subject to individual approval. The host file-effect policy applies; it does not claim network or secret-read isolation.';
 const browserNotice = 'Apply this action to the visible embedded tab once. It may submit data or change the website. Passwords, payment details and sign-in codes require manual entry. / 仅对可见内嵌页面执行一次；此操作可能提交数据或改变网站。密码、支付资料和登录验证码请手动输入。';
-const directory = value => /^[A-Za-z]:\\[^\x00-\x1f]+$/.test(value);
+const directory = value => /^(?:[A-Za-z]:\\|\/)[^\x00-\x1f]+$/.test(value);
 const count = (text, token) => text.split(token).length - 1;
 export function approvalInScope(id, reason, args = {}) {
   const value = normalized(reason);
