@@ -60,6 +60,11 @@ try {
   report.assertions.push('suite, bundled Code and Agents, and four optional plugins resolve to the packaged exact versions')
   await bootstrap.desktopCli(root, manifest, home, ['plugin', '--profile', 'desktop', 'add', `link:${path.join(repository, 'scripts/fixtures/desktop-distribution-probe')}`, '--ignore-scripts', '--config.auto-install-peers=false', '--config.minimum-release-age=0'])
   application = await launch()
+  report.runtime = await application.evaluate(({ app }) => ({ packaged: app.isPackaged, version: app.getVersion(), userData: app.getPath('userData'), home: process.env.DSH_HOME }))
+  assert.equal(report.runtime.packaged, true)
+  assert.equal(report.runtime.version, manifest.kernelVersion)
+  assert.equal(path.resolve(report.runtime.home), path.resolve(home))
+  assert.equal(path.resolve(report.runtime.userData), path.join(home, 'electron'))
   let snapshot
   for (let attempt = 0; attempt < 120; attempt++) {
     const pages = application.windows().filter(page => page.url().startsWith('dsh-app://app/'))
