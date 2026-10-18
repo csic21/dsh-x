@@ -2,7 +2,7 @@
 // disposable home and a test-only Host probe. No provider account or model call.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, writeFile, rm, access } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm, access, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -64,7 +64,7 @@ try {
   assert.equal(report.runtime.packaged, true)
   assert.equal(report.runtime.version, manifest.kernelVersion)
   assert.equal(path.resolve(report.runtime.home), path.resolve(home))
-  assert.equal(path.resolve(report.runtime.userData), path.join(home, 'electron'))
+  assert.equal(await realpath(report.runtime.userData), await realpath(path.join(home, 'electron')))
   let snapshot
   for (let attempt = 0; attempt < 120; attempt++) {
     const pages = application.windows().filter(page => page.url().startsWith('dsh-app://app/'))
