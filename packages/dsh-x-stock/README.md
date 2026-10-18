@@ -18,7 +18,7 @@
 - 返回价格、开盘/最高/最低/前收盘、涨跌额和涨跌百分比，以及供应商、抓取时间和可用的报价时间。缺失的可选数据为 `null`，不会自动补成零。
 - `quotedAt` 来自响应中的 Unix 秒时间 `t`；缺失则为 `null`。`fetchedAt` 只是抓取时间，不能当作行情时间。百分比保留供应商的百分数，不额外乘以 100。
 - 接口不提供币种，因此插件不推断或输出币种。报价可能延迟、停留在前一个交易时段，市场覆盖和许可取决于供应商及账户订阅；不能保证实时、A 股/港股覆盖或所有代码可用。
-- 不使用未验证的免密接口或网页抓取作为兜底。没有做带真实密钥的在线验证；离线测试全部使用模拟响应，示例数字不是实时行情。
+- `dsh_x_stock_quote` 自身不使用未验证的免密接口或网页抓取作为兜底。它没有做带真实密钥的在线验证；离线测试全部使用模拟响应，示例数字不是实时行情。A 股界面另有显式开启的本机免密钥适配器，见下文。
 
 ## 安全与可靠性
 
@@ -42,9 +42,20 @@
 
 ### 行情现状与可替换接口
 
-**当前 A 股界面默认「未配置行情」，不是实时行情成品。** 没有配置、抓取或转发未经确认授权的免密行情源。Finnhub 工具仍可用，但不会把美股订阅当作 A 股数据源，也不会自动索取或把 `FINNHUB_API_KEY` 发到浏览器。用户可以先维护清单，行情接入需另行确认数据供应商、许可范围、费用和凭据。
+**A 股界面默认仍是「未配置行情」。** 插件新增一个**显式选择性开启**的本机适配器 `qt.gtimg.cn`（免密钥、非官方），默认关闭；只有配置 `freeSource: true` 或设置 `DSH_X_STOCK_FREE_SOURCE=1` 时才会请求它。它只适合个人本机查看：无 SLA、可能被限流或中断、没有交易所授权，不得对外分发或用于商业展示。Finnhub 工具仍可用，但不会把美股订阅当作 A 股数据源，也不会自动索取或把 `FINNHUB_API_KEY` 发到浏览器。
 
-Host 的 `createWatchlistHandler({ provider })` 为未来获授权适配器保留边界；默认不传 provider。适配器实现 `name` 与 `quote(symbol, { signal })`，输出 `symbol/name/price/changePercent/quotedAt/marketStatus`。Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。历史行情在线获取、基本面及基于真实来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
+Host 的 `createWatchlistHandler({ provider })` 为可替换适配器保留边界；默认不传 provider。适配器实现 `name` 与 `quote(symbol, { signal })`，输出 `symbol/name/price/changePercent/quotedAt/marketStatus`。Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。本机免密钥源与未来获授权适配器实现同一接口，切换不需要改客户端。历史行情在线获取、基本面及基于真实来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
+
+#### 本机免密钥源（可选，非官方）
+
+- 端点固定为 HTTPS `https://qt.gtimg.cn/q=sh600519` 形式，代码由 `SH.600519` 映射为 `sh600519`，`SZ`/`BJ` 同理。拒绝重定向，整个请求含响应体默认 10 秒，响应体上限 32 KiB。
+- 响应是 GBK 文本（`v_sh600519="..."`），按 `~` 分隔读取名称、代码、现价、时间、涨跌额与涨跌幅；每个字段重新校验，缺失、越界、代码不匹配或未来时间都会按失败处理。原始响应、错误正文和请求明细不会进入客户端。
+- 只投影为 `symbol/name/price/changePercent/quotedAt/marketStatus`。`quotedAt` 按交易所时间（UTC+08:00）解释；供应商不提供休市标志，因此 `marketStatus` 固定为 `unknown`，三分钟前的报价由界面标为旧报价。停牌或长期无成交的代码会显示最后一笔价格并因时间过旧被标记，不能被当作实时价。
+- 来源名称固定为 `qt.gtimg.cn (unofficial)`，会在详情页「数据来源」中展示，便于区分授权源。
+- 启用方式（选择一种）：
+  - 当前 profile 的 `cordis.patch.yml` 中按 id 覆盖：`- id: dsh-x-stock`、`name: dsh-x-stock`、`config: { freeSource: true }`。
+  - 启动宿主前设置 `DSH_X_STOCK_FREE_SOURCE=1`（适合 headless 组合）。
+- 关闭时行为与之前完全一致：不发起任何行情请求，界面保持「未配置行情」。`dsh_x_stock_quote` 工具仍只使用 Finnhub，不会自动改走该源。
 
 客户端 `resources` provider 通过官方 `connection.rpc.call('/api', 'dsh-x-stock.quotes', { symbols }, signal)` 调用；Host 使用同一 Connection 的 `connection.fetch.register` 精确 POST `/api/dsh-x-stock.quotes`（不占用 Gateway 的 `/api` 拦截器），验证并回显标准 RPC envelope；官方 shared Connection 在调用精确 route 前强制验证所有者，仅接受 owner principal、确切参数、最多八个不重复的交易所限定代码。原有工具在没有 Connection 的 headless composition 下继续工作。没有自行开放监听端口，也不通过模型调用获取 UI 数据。
 
