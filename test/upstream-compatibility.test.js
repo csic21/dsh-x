@@ -134,7 +134,7 @@ test('workflow confines candidate execution and does not enable automatic update
 
 test('committed policy pin and package-manager version are exact', async () => {
   const committed = JSON.parse(await readFile(new URL('../compatibility/policy.json', import.meta.url), 'utf8'))
-  assert.equal(committed.baseline.version, baseline)
+  assert.equal(committed.baseline.version, '0.2.1-rc.2')
   assert.equal(committed.baseline.sourceCommit, undefined)
   assert.match(committed.baseline.inspectedSourceCommit, /^[0-9a-f]{40}$/)
   validateIntegrity(committed.baseline.integrity)

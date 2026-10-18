@@ -4,7 +4,7 @@
 
 ## 安装与配置
 
-以本仓库的插件打包流程安装该包，`cordis.patch.yml` 会加载 `dsh-x-chat`。运行环境需要官方 `@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-llm` **0.2.1-alpha.5** 与 Cordis；Node.js 要求与该内核一致：`^22.19.0 || >=24.0.0`。这里只验证了该官方版本，不承诺其他预发布版本兼容。
+以本仓库的插件打包流程安装该包，`cordis.patch.yml` 会加载 `dsh-x-chat`。运行环境需要官方 `@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-llm` **0.2.1-rc.2** 与 Cordis；Node.js 要求与该内核一致：`^22.19.0 || >=24.0.0`。这里只验证了该官方版本，不承诺其他预发布版本兼容。
 
 在 Harness 中先完成提供方的正常安装和登录。插件不新增认证流程。`provider` 是 Harness 注册的提供方路由 ID，`model` 是该路由支持的模型 ID；不要把 API 地址或密钥填到这两个字段。
 

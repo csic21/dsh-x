@@ -4,7 +4,7 @@
 
 ## 当前状态与启用条件
 
-- 配置的已验证基线是 `@deepseek-ai/dsh@0.2.1-alpha.5`；审查过的官方源码快照提交（`inspectedSourceCommit`）与 npm SHA-512 位于 `policy.json`；该快照提交不是 npm tarball 构建来源的证明。基线不会随 npm 的 `latest` 标签漂移。
+- 配置的已验证基线是 `@deepseek-ai/dsh@0.2.1-rc.2`；审查过的官方源码快照提交（`inspectedSourceCommit`）与 npm SHA-512 位于 `policy.json`；该快照提交不是 npm tarball 构建来源的证明。基线不会随 npm 的 `latest` 标签漂移。
 - `.github/workflows/upstream-compatibility.yml` 每 6 小时检查一次，也支持手动运行。定时任务默认只找稳定版；预发布版必须在这一次手动运行中明确勾选 `allow_prerelease`。
 - **GitHub 只运行默认分支上的定时 workflow。** 只把这个文件提交到当前私有工作分支，并不代表监控已启用。需要按仓库审批流程把 workflow 放到默认分支、启用 Actions，并确认第一次真实运行和报告。手动运行同样受 GitHub 的 workflow 可见性与仓库设置限制。
 - 本地单元测试、静态 YAML 检查或本地旧运行时测试，不能代替一次真实候选 CI。未实际执行的阶段必须保持 `not-run` / `needs-qualification`。
@@ -28,7 +28,7 @@
 ```sh
 node scripts/test-suite-install.mjs \
   --dsh /absolute/path/to/isolated/node_modules/.bin/dsh \
-  --dsh-version 0.2.1-alpha.5 \
+  --dsh-version 0.2.1-rc.2 \
   --report /output/suite-install-report.json
 ```
 
@@ -70,7 +70,7 @@ Suite harness 使用该次安装的官方 CLI、包管理器、本地产生的�
 node --test test/upstream-compatibility.test.js
 node scripts/check-upstream-compatibility.mjs discover --report /tmp/dsh-upstream-discovery.json
 node scripts/check-upstream-compatibility.mjs discover \
-  --version 0.2.1-alpha.5 --allow-prerelease \
+  --version 0.2.1-rc.2 --allow-prerelease \
   --report /tmp/dsh-upstream-discovery.json
 ```
 

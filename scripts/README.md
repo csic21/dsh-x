@@ -7,7 +7,7 @@
 Node.js `^22.19.0 || >=24.0.0`。使用官方 npm 发布包，建议安装到独立目录：
 
 ```sh
-npm install --prefix ../dsh-runtime @deepseek-ai/dsh@0.2.1-alpha.5
+npm install --prefix ../dsh-runtime @deepseek-ai/dsh@0.2.1-rc.2
 ../dsh-runtime/node_modules/.bin/dsh --version
 pnpm install --frozen-lockfile
 pnpm test # 自动先构建各插件客户端
@@ -42,10 +42,10 @@ Code (`dsh-x-code`) 已加入 link 脚本。它可独立启用/禁用；只读�
 
 ```sh
 pnpm run build
-node scripts/check-suite-install.mjs --home /绝对路径/dsh-home --profile web --dsh-version 0.2.1-alpha.5
+node scripts/check-suite-install.mjs --home /绝对路径/dsh-home --profile web --dsh-version 0.2.1-rc.2
 node scripts/test-suite-install.mjs \
   --dsh /绝对路径/dsh-runtime/node_modules/.bin/dsh \
-  --dsh-version 0.2.1-alpha.5 \
+  --dsh-version 0.2.1-rc.2 \
   --report /绝对路径/suite-install-report.json
 ```
 
