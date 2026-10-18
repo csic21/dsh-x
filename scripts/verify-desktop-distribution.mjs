@@ -23,7 +23,7 @@ function run(command, args) {
   const result = spawnSync(command, args, { stdio: 'inherit' })
   if (result.error || result.status !== 0) throw new Error(`${command} failed: ${result.error?.message ?? result.status}`)
 }
-let root, application
+let root, application, runtimeLogs = ''
 try {
   if (process.platform === 'darwin') {
     const volume = path.join(temporary, 'volume')
@@ -45,7 +45,12 @@ try {
   report.kernelSha = manifest.kernelSha; report.kernelVersion = manifest.kernelVersion
   assert.equal(await bootstrap.digest(path.join(root, manifest.archive)), manifest.archiveSha256)
   const environment = bootstrap.runtimeEnvironment(home, Object.fromEntries(Object.entries(process.env).filter(([key]) => !/KEY|TOKEN|SECRET|PASSWORD|COOKIE/i.test(key))))
-  const launch = () => _electron.launch({ executablePath: path.join(root, manifest.executable), args: [`--user-data-dir=${path.join(home, 'electron')}`], cwd: home, env: environment, timeout: 120000 })
+  const launch = async () => {
+    const app = await _electron.launch({ executablePath: path.join(root, manifest.executable), args: [`--user-data-dir=${path.join(home, 'electron')}`], cwd: home, env: environment, chromiumSandbox: true, timeout: 120000 })
+    const receive = bytes => { runtimeLogs = (runtimeLogs + bytes.toString().replace(/(token=)[A-Za-z0-9_-]+/g, '$1[redacted]')).slice(-24000) }
+    app.process().stdout?.on('data', receive); app.process().stderr?.on('data', receive)
+    return app
+  }
   const initialized = await bootstrap.installDistribution({ root, home, initialize: async () => {
     application = await launch()
     for (let n = 0; n < 120; n++) {
@@ -74,7 +79,9 @@ try {
         if (result?.entries?.length === 6) snapshot = result
       } catch {}
     }
-    if (snapshot) break
+    // Entry registration precedes module evaluation. Windows can expose the
+    // rows while the nested suite components are still initializing.
+    if (snapshot?.entries?.every(entry => entry.active) && snapshot.clients?.length === 6 && snapshot.plugins?.every(entry => entry.enabled && entry.phase === 'active')) break
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
   assert(snapshot, 'Actual Desktop Host did not expose all six installed plugins')
@@ -91,7 +98,7 @@ try {
   report.assertions.push('repeated startup does not reinstall plugins or override user plugin controls')
   report.status = 'passed'
 } catch (error) {
-  report.status = 'failed'; report.error = String(error); process.exitCode = 1
+  report.status = 'failed'; report.error = String(error); report.runtimeLogs = runtimeLogs; process.exitCode = 1
 } finally {
   try { await application?.close() } catch (error) { report.status = 'failed'; report.cleanupError = String(error); process.exitCode = 1 }
   if (process.platform === 'win32' && root) {
