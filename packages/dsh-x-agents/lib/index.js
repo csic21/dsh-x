@@ -5,6 +5,8 @@ import { createAgentsController, RUNTIMES } from './controller.js';
 import { createAgentsRoute } from './routes.js';
 import { createCodexAdapter } from './adapters/codex.js';
 import { createOpenCodeAdapter } from './adapters/opencode.js';
+import { createOpenCodeV2Adapter } from './adapters/opencode-v2.js';
+import { createHttp, loopbackEndpoint } from './adapters/opencode-http.js';
 import { createOwnedOpenCodeAdapter } from './adapters/opencode-owned.js';
 import { bindNativeBrowser, isBrowserChild } from './browser-bridge.js';
 import { createClaudeAdapter } from './adapters/claude.js';
@@ -52,8 +54,26 @@ export function apply(context, config = {}) {
                 return createCodexAdapter({ spawn, config: { executable: process.env.DSH_X_AGENTS_CODEX_COMMAND ?? 'codex', ...config.codex } });
             if (runtime === 'opencode' && config.opencode?.mode === 'owned-browser')
                 return createOwnedOpenCodeAdapter({ spawn, fetch: globalThis.fetch, config: config.opencode });
-            if (runtime === 'opencode')
-                return createOpenCodeAdapter({ fetch: globalThis.fetch, config: { endpoint: process.env.DSH_X_AGENTS_OPENCODE_URL, password: process.env.DSH_X_AGENTS_OPENCODE_PASSWORD, username: process.env.DSH_X_AGENTS_OPENCODE_USERNAME ?? 'opencode', ...config.opencode } });
+            if (runtime === 'opencode') {
+                const opencodeConfig = { endpoint: process.env.DSH_X_AGENTS_OPENCODE_URL, password: process.env.DSH_X_AGENTS_OPENCODE_PASSWORD, username: process.env.DSH_X_AGENTS_OPENCODE_USERNAME ?? 'opencode', ...config.opencode };
+                const protocol = config.opencode?.protocol ?? 'auto';
+                if (protocol === 'v2')
+                    return createOpenCodeV2Adapter({ fetch: globalThis.fetch, config: opencodeConfig });
+                if (protocol !== 'auto')
+                    return createOpenCodeAdapter({ fetch: globalThis.fetch, config: opencodeConfig });
+                // The 1.19.x and 2.x servers do not share a wire protocol. Probe the
+                // versioned info route once per adapter construction; an unreachable or
+                // unconfigured endpoint falls back to the v1 adapter, which reports the
+                // configuration problem without starting anything.
+                try {
+                    const http = createHttp({ fetch: globalThis.fetch, config: opencodeConfig, endpoint: loopbackEndpoint(opencodeConfig.endpoint) });
+                    const info = await http('/api/info', { timeout: 3000 });
+                    if (info && typeof info.version === 'string' && !/^1\./.test(info.version))
+                        return createOpenCodeV2Adapter({ fetch: globalThis.fetch, config: opencodeConfig });
+                }
+                catch { }
+                return createOpenCodeAdapter({ fetch: globalThis.fetch, config: opencodeConfig });
+            }
             if (runtime === 'claude')
                 return createClaudeAdapter({ spawn, config: { ...(process.env.DSH_X_AGENTS_CLAUDE_COMMAND ? { executable: process.env.DSH_X_AGENTS_CLAUDE_COMMAND } : {}), ...config.claude } });
             if (runtime === 'grok')
