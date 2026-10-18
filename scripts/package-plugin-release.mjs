@@ -23,7 +23,11 @@ function run(command, args, cwd = root) {
   return result.stdout
 }
 function pack(directory) {
-  return JSON.parse(run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', output], directory))[0]
+  // .cmd files cannot be spawned directly by Node on Windows. Use npm's
+  // JavaScript entry from the active setup-node installation, without a shell.
+  const command = process.platform === 'win32' ? process.execPath : 'npm'
+  const prefix = process.platform === 'win32' ? [path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js')] : []
+  return JSON.parse(run(command, [...prefix, 'pack', '--ignore-scripts', '--json', '--pack-destination', output], directory))[0]
 }
 async function record(info, bundled = []) {
   const bytes = await readFile(path.join(output, info.filename))
