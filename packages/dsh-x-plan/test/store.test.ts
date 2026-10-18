@@ -36,8 +36,8 @@ test('session ids and rounds cannot escape storage', t => {
   for (const round of [0, -1, 1.5, '../x', Number.MAX_SAFE_INTEGER + 1] as const) assert.throws(() => readApproved(dir, round), code('ROUND_INVALID'))
 })
 
-test('home resolution keeps DSH_HOME override and product default', () => {
-  assert.equal(path.basename(resolveHome({})), '.dsh-x')
+test('home resolution keeps DSH_HOME override and native default', () => {
+  assert.equal(path.basename(resolveHome({})), '.dsh')
   assert.equal(resolveHome({ DSH_HOME: '/tmp/custom-home' }), path.resolve('/tmp/custom-home'))
 })
 

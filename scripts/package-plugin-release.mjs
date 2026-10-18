@@ -1,7 +1,7 @@
 // Produce prebuilt GitHub assets without npm credentials or kernel changes.
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm, copyFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
@@ -15,7 +15,7 @@ const tag = `plugins-v${suite.version}`
 if (values.tag && values.tag !== tag) throw new Error(`Release tag must be ${tag}.`)
 await mkdir(output, { recursive: false })
 const temporary = await mkdtemp(path.join(tmpdir(), 'dsh-plugin-release-'))
-const names = [...components, 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser']
+const names = [...components, 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser', 'dsh-x-update']
 const artifacts = []
 // Git Bash's GNU tar treats D:\\ paths as remote hosts. Windows' bundled
 // bsdtar accepts native drive paths and supports the same extraction flags.
@@ -74,9 +74,14 @@ try {
   }
   await record(info, [...components])
   const commit = run('git', ['rev-parse', 'HEAD']).trim()
-  await writeFile(path.join(output, 'build-manifest.json'), JSON.stringify({ tag, commit, runtime, packageManager: readJson(path.join(root, 'compatibility/policy.json')).packageManager, artifacts }, null, 2) + '\n')
-  await writeFile(path.join(output, 'SHA256SUMS'), artifacts.map(item => `${item.sha256}  ${item.file}\n`).join(''))
-  await writeFile(path.join(output, 'INSTALL.md'), `# DSH-X ${suite.version} 插件预览版\n\n兼容官方 DSH：\`${runtime}\`。这是插件包，需要已有官方 DSH；不包含桌面安装程序。\n\n下载 \`dsh-x-suite-${suite.version}.tgz\`。私有仓库请在已登录的 GitHub 页面下载，不要将私有附件 URL 直接交给包管理器。套件已包含 Code、Agents；仍需联网从 npm 下载第三方依赖。\n\n先确认运行时版本，再在官方 Plugins 页面安装本地套件文件，或运行：\n\n\`\`\`sh\ndsh --version\ndsh plugin --profile web add /绝对路径/dsh-x-suite-${suite.version}.tgz --config.auto-install-peers=false\n\`\`\`\n\nDesktop 先启动一次后完全退出，使用 Desktop 自带的 dsh，将 profile 改为 desktop；npm CLI 不替换 Desktop 内核。已有独立 Code / Agents 时，先在 Plugins 页面停用它们，再启用套件。安装后检查插件状态，按官方提示重启。\n\n可选 Chat、Plan、Stocks、Browser 分别下载对应 tgz，通过同样的官方安装入口安装。卸载套件使用 \`dsh plugin --profile web remove dsh-x-suite\`；保留独立组件时检查其启用状态。升级先退出应用，安装目标版本文件，再按官方提示重启；不承诺失败自动回滚。\n\nmacOS / Linux 用 \`shasum -a 256 -c SHA256SUMS\` 验证下载文件；Windows PowerShell 用 \`Get-FileHash 文件名 -Algorithm SHA256\` 与 SHA256SUMS 对照。\n\n限制：原生 Agents 的供应商登录、真实模型调用及所有平台的 Electron 交互不属于本次插件安装验证。此前免费模型请求被服务商拒绝，Google 证明未完成；不能把本版本当作完整原生流程已通过验证。\n`)
+  // The installer travels with the assets and is covered by SHA256SUMS, so a
+  // downloaded Release does not need a repository checkout to be installed.
+  await copyFile(path.join(root, 'scripts/install-plugins.mjs'), path.join(output, 'install-plugins.mjs'))
+  const installer = await readFile(path.join(output, 'install-plugins.mjs'))
+  const installerSha256 = createHash('sha256').update(installer).digest('hex')
+  await writeFile(path.join(output, 'build-manifest.json'), JSON.stringify({ tag, commit, runtime, installer: { file: 'install-plugins.mjs', sha256: installerSha256 }, packageManager: readJson(path.join(root, 'compatibility/policy.json')).packageManager, artifacts }, null, 2) + '\n')
+  await writeFile(path.join(output, 'SHA256SUMS'), [...artifacts.map(item => `${item.sha256}  ${item.file}\n`), `${installerSha256}  install-plugins.mjs\n`].join(''))
+  await writeFile(path.join(output, 'INSTALL.md'), `# DSH-X ${suite.version} 插件预览版\n\n兼容官方 DSH：\`${runtime}\`（peer 范围 \`^0.2.0-rc.2 || ^0.2.1-rc.2\`，npm \`latest\` 也可装；完整矩阵只在 ${runtime} 上跑过）。这是插件包，需要已有官方 DSH；不包含桌面安装程序。\n\n## 一条命令安装\n\n下载本 Release 的资产到同一个目录，然后在该目录运行（\`install-plugins.mjs\` 随 Release 附带，已列入 SHA256SUMS）：\n\n\`\`\`sh\nnode install-plugins.mjs --release-dir .\n\`\`\`\n\n默认安装 suite、plan、stock、chat、update；用 \`--plugins\` 换集合，\`--profile\` / \`--home\` / \`--dsh\` 指定目标，\`--dry-run\` 先看命令。脚本只调用官方 \`dsh plugin\`，不创建自己的 home。\n\n## 手工安装\n\n也可以在官方 Plugins 页面安装本地套件文件，或运行：\n\n\`\`\`sh\ndsh --version\ndsh plugin --profile web add /绝对路径/dsh-x-suite-${suite.version}.tgz --config.auto-install-peers=false\n\`\`\`\n\n套件已包含 Code、Agents；仍需联网从 npm 下载第三方依赖。Desktop 先启动一次后完全退出，使用 Desktop 自带的 dsh，将 profile 改为 desktop；npm CLI 不替换 Desktop 内核。已有独立 Code / Agents 时，先在 Plugins 页面停用它们，再启用套件。安装后检查插件状态，按官方提示重启。\n\n可选 Chat、Plan、Stocks、Browser、Update 分别下载对应 tgz，通过同样的官方安装入口安装。\`dsh-x-browser\` 是实验包，默认不在安装集合里。卸载套件使用 \`dsh plugin --profile web remove dsh-x-suite\`；保留独立组件时检查其启用状态。升级先退出应用，安装目标版本文件，再按官方提示重启；不承诺失败自动回滚。\n\nmacOS / Linux 用 \`shasum -a 256 -c SHA256SUMS\` 验证下载文件；Windows PowerShell 用 \`Get-FileHash 文件名 -Algorithm SHA256\` 与 SHA256SUMS 对照。\n\n限制：原生 Agents 的供应商登录、真实模型调用及所有平台的 Electron 交互不属于本次插件安装验证。此前免费模型请求被服务商拒绝，Google 证明未完成；不能把本版本当作完整原生流程已通过验证。\n`)
   console.log(JSON.stringify({ tag, output, artifacts: artifacts.length, runtime }))
 } finally {
   await rm(temporary, { recursive: true, force: true })

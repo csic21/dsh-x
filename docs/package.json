@@ -1,0 +1,15 @@
+{
+  "name": "dsh-x-docs",
+  "private": true,
+  "version": "0.0.0",
+  "description": "DSH-X documentation site (GitHub Pages)",
+  "homepage": "https://csic21.github.io/dsh-x/",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}

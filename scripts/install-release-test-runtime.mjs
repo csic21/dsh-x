@@ -1,14 +1,25 @@
-// Install the exact qualified official npm CLI into a disposable directory.
+// Install one exact, integrity-pinned official npm CLI into a disposable directory.
+// `--baseline next` is the qualified release runtime; `--baseline latest` is the
+// additional baseline the peer range must keep admitting.
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { parseArgs } from 'node:util'
 import { readJson, root } from './suite-support.mjs'
 
-const directory = process.argv[2]
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { baseline: { type: 'string', default: 'next' }, help: { type: 'boolean', short: 'h' } } })
+if (values.help) {
+  console.log('node scripts/install-release-test-runtime.mjs <new absolute runtime directory> [--baseline next|latest]')
+  process.exit(0)
+}
+const directory = positionals[0]
 if (!directory || !path.isAbsolute(directory)) throw new Error('Pass a new absolute runtime directory.')
 const policy = readJson(path.join(root, 'compatibility/policy.json'))
-const { version, integrity } = policy.baseline
+const baselines = [policy.baseline, ...(policy.additionalBaselines ?? [])]
+const selected = baselines.find(entry => (entry.npmTag ?? 'next') === values.baseline)
+if (!selected) throw new Error(`Unknown baseline ${JSON.stringify(values.baseline)}; policy declares ${baselines.map(entry => entry.npmTag ?? 'next').join(', ')}.`)
+const { version, integrity } = selected
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Invalid pinned official version')
 await mkdir(directory, { recursive: false })
 const response = await fetch(`https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-${version}.tgz`, { redirect: 'error', signal: AbortSignal.timeout(60000) })
@@ -22,3 +33,4 @@ const result = spawnSync('npm', ['install', '--ignore-scripts', '--engine-strict
 if (result.error || result.status !== 0) throw new Error('Official test runtime installation failed')
 const installed = readJson(path.join(directory, 'node_modules/@deepseek-ai/dsh/package.json'))
 if (installed.version !== version || installed.name !== policy.package) throw new Error('Wrong test runtime installed')
+console.log(`installed ${policy.package}@${version} (${values.baseline ?? 'next'}) at ${directory}`)

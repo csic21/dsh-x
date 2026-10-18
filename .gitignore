@@ -6,3 +6,7 @@ kernel.local.json
 
 # Local dependency links
 node_modules
+
+# Documentation site build output and cache
+docs/.vitepress/dist/
+docs/.vitepress/cache/

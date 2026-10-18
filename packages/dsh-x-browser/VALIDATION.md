@@ -33,6 +33,8 @@ The smoke used a deterministic loopback page and a synthetic offline LLM through
 
 Evidence artifact: `desktop-browser-proof-39032141251-1`, including `report.json`, `visible-browser-proof.png` and `user-takeover.png`. Reported client SHA-256: `1108bcea3f4b15862ab705654e897a737b99e18da677d67dec4f52fcdc6b8164`.
 
+The packaging workflow and packaged-app smoke driver were removed when the desktop app moved out of this repository. These runs remain historical evidence and are not reproducible from this plugin-only checkout; desktop qualification is owned by the separate application repository.
+
 This result applies to that exact published baseline. The baseline smoke does not establish AI navigation lifecycle, multiple tabs, close races, downloads, popup or permission behavior, macOS compatibility, or native-agent browser bridges. Later bounded evidence is recorded below.
 
 ## Later failed qualification attempt
@@ -57,7 +59,7 @@ Client SHA-256: `b87e8d562a2e961b2c0aed0c03db3c8f0e181e0dc77e18b526c29a3951b9413
 
 The cloud development environment is Linux x64. Official Desktop build targets are macOS arm64/x64 and Windows x64. Therefore a browser-like Linux page or mock webview is not accepted as native proof.
 
-The dedicated Windows Desktop smoke in the packaging workflow launches the actual prepared official packaged application, uses its own primary preload and owned CLI, installs this plugin explicitly, and exercises a deterministic loopback fixture through a synthetic offline LLM and the real ToolRuntime/approval UI. The broader qualification gate remains:
+The dedicated Windows Desktop smoke previously lived in this repository's packaging workflow. It launched the actual prepared official packaged application, used its own primary preload and owned CLI, installed this plugin explicitly, and exercised a deterministic loopback fixture through a synthetic offline LLM and the real ToolRuntime/approval UI. That workflow is now part of the separate desktop application repository. The broader qualification gate remains:
 
 1. Conversation left / real visible owned Chromium guest right, address bar and tabs.
 2. Same guest navigation, observation, native text input and click with observable fixture effects.

@@ -19,7 +19,7 @@ const EXTENSIONS = new Set([
 const FILENAMES = new Set(['Dockerfile', 'Makefile', 'LICENSE', 'NOTICE', '.gitignore', '.gitattributes', '.editorconfig'])
 const PRIVATE_NAME = /^(?:.*[._-])?(?:credentials?|secrets?|passwords?|tokens?)(?:\.(?:json|ya?ml|toml|txt|ini|conf|xml))?$|^id_(?:rsa|ed25519)(?:\.pub)?$/i
 const PRIVATE_FILES = new Set(['.npmrc', '.netrc', '.pypirc', '.git-credentials', 'credentials.json', 'credentials.yaml'])
-const PRIVATE_DIRECTORIES = new Set(['.git', '.ssh', '.aws', '.azure', '.gnupg', '.dsh-x', 'node_modules', 'vendor'])
+const PRIVATE_DIRECTORIES = new Set(['.git', '.ssh', '.aws', '.azure', '.gnupg', '.dsh', '.dsh-x', 'node_modules', 'vendor'])
 
 /** Conservative credential screening, not a general-purpose secret scrubber. */
 export function containsCredentialLikeText(text: any) {

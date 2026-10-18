@@ -5,7 +5,7 @@
 - 默认挂载 `dsh-x-code` 和 `dsh-x-agents`，依赖版本精确锁定。
 - Code 文件浏览与默认 DSH 模型审查独立可用；原生修复需要 Agents。
 - 启用 Agents 不等于初始化原生运行时、登录、读取模型目录或发送任务。现有官方审批和原生权限边界不变。
-- Chat、Plan、Stocks 与 Browser 是独立可选插件，不是本套件依赖。Browser 的真实 Desktop 验证单独记录。
+- Chat、Plan、Stocks 与 Browser 是独立可选插件，不是本套件依赖。Browser 的真实 Desktop 验证由独立应用仓库记录。
 - Plan 当前仍有自己的 ACP 适配层；以后复用 Agents 是演进方向，不是当前已完成的能力。
 
 ## 安装
@@ -18,9 +18,9 @@ GitHub Release 使用专门的打包脚本，将精确版本的 Code、Agents �
 
 普通源码目录直接 `npm pack` 得到的 suite tgz 仍要求两个精确组件依赖在 registry 可获取，不能代替 GitHub Release 专用产物。目前未发布这些 npm 包，不能把包名当作已经可在公共 npm 安装。发行验证使用实际 Release tarball 和真实官方 CLI / Web Host，并检查套件首次安装不查询未发布组件；普通集成测试仍用临时本地 registry 验证 registry 安装路径。
 
-安装前运行只读检查：`node scripts/check-suite-install.mjs --home /绝对路径/home --profile web --dsh-version 0.2.1-rc.2`。先用真实 CLI 的 `dsh --version` 核对版本。若已独立启用 Code 或 Agents，先在官方 Plugins 页面停用对应 bundle，再启用套件；不需要删除组件数据。检查不会改用户配置，也不能替代官方安装时的兼容检查。
+安装前运行只读检查：`node scripts/check-suite-install.mjs --home "$(mktemp -d)" --profile web --dsh-version 0.2.1-rc.2`。先用真实 CLI 的 `dsh --version` 核对版本。若已独立启用 Code 或 Agents，先在官方 Plugins 页面停用对应 bundle，再启用套件；不需要删除组件数据。检查不会改用户配置，也不能替代官方安装时的兼容检查。
 
-**Windows Desktop 的嵌套 suite 激活目前未通过验收**：rc.2 实测安装成功后 Code / Agents 未激活。桌面 DMG / EXE 因此直接携带六个独立插件，不使用 suite；CLI / Web 验收不能作为 Windows Desktop suite 支持证明。
+**Windows Desktop 的嵌套 suite 激活仍未通过验收**：rc.2 实测安装成功后 Code / Agents 未激活。桌面应用如果采用 suite，必须在独立应用仓库重新验收；本仓库只提供 CLI / Web 证据，不能作为 Windows Desktop suite 支持证明。
 
 Desktop 先启动一次以初始化 profile，再完全退出。使用 Desktop 自带的 `dsh plugin --profile desktop add <安装规格>`；npm 版 CLI 不可替换 Desktop 的依赖图。也可以使用 Desktop 自己的 Plugins 页面。开发用 `link:` 不是可移交给其他机器的安装产物。
 

@@ -110,7 +110,7 @@ ACP 清理失败、shell 停止状态不明或验收后台作业未确认终止�
 
 ## 文件与官方接口
 
-默认存放于 `$DSH_HOME/plans/<session-id>/`；未设置 `DSH_HOME` 时用 `~/.dsh-x/plans/<session-id>/`：
+默认存放于 `$DSH_HOME/plans/<session-id>/`；未设置 `DSH_HOME` 时用原生 `~/.dsh/plans/<session-id>/`：
 
 ```text
 plan-1.md                       草稿正文

@@ -1,8 +1,19 @@
 name: Release prebuilt plugins
 
+# Tag pushes publish after full qualification. A manual dispatch rehearses the
+# same pipeline without creating a tag; it runs the heavy suite matrix only when
+# asked. The nightly schedule watches the default branch for drift, never publishes.
 on:
   push:
     tags: ['plugins-v*']
+  workflow_dispatch:
+    inputs:
+      full_qualification:
+        description: Also run the suite install/upgrade/remove matrix (slow)
+        type: boolean
+        default: false
+  schedule:
+    - cron: '41 3 * * *'
 
 permissions:
   contents: read
@@ -14,15 +25,129 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read the qualified pnpm version
+        id: policy
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p = JSON.parse(fs.readFileSync("compatibility/policy.json", "utf8"));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `pnpm=${p.packageManager.version}\n`);
+          '
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.policy.outputs.pnpm }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - name: Build and test with bounded execution
+        timeout-minutes: 15
+        run: |
+          pnpm run build
+          node --test --test-timeout=600000 packages/*/test/*.test.ts test/*.test.js
+      - name: Resolve the version this commit would release
+        id: version
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const suite = JSON.parse(fs.readFileSync("packages/dsh-x-suite/package.json", "utf8"));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${suite.version}\n`);
+          '
+      - name: Package release assets and bundled suite
+        env:
+          RELEASE_TAG: plugins-v${{ steps.version.outputs.tag }}
+        run: node scripts/package-plugin-release.mjs --output "$RUNNER_TEMP/plugin-release" --tag "$RELEASE_TAG"
+      - name: Verify the release checksums
+        run: cd "$RUNNER_TEMP/plugin-release" && sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-release
+          path: ${{ runner.temp }}/plugin-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  admit:
+    # The peer range, not engines.dsh, decides whether the official CLI installs
+    # these builds, so every baseline that range claims is proved here.
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        baseline: [next, latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read the qualified pnpm version
+        id: policy
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p = JSON.parse(fs.readFileSync("compatibility/policy.json", "utf8"));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `pnpm=${p.packageManager.version}\n`);
+          '
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.policy.outputs.pnpm }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-release
+          path: release
+      - name: Resolve the baseline version from policy
+        id: baseline
+        env:
+          BASELINE: ${{ matrix.baseline }}
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p = JSON.parse(fs.readFileSync("compatibility/policy.json", "utf8"));
+            const entry = [p.baseline, ...(p.additionalBaselines ?? [])].find(item => (item.npmTag ?? "next") === process.env.BASELINE);
+            if (!entry) throw new Error(`Policy declares no ${process.env.BASELINE} baseline`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${entry.version}\n`);
+          '
+      - name: Install the pinned official runtime for this baseline
+        run: node scripts/install-release-test-runtime.mjs "$RUNNER_TEMP/runtime" --baseline "${{ matrix.baseline }}"
+      - name: Prove installation and Web startup admission
+        run: |
+          node scripts/check-peer-admission.mjs \
+            --dsh "$RUNNER_TEMP/runtime/node_modules/.bin/dsh" \
+            --dsh-version "${{ steps.baseline.outputs.version }}" \
+            --release-dir release \
+            --report "$RUNNER_TEMP/admission-${{ matrix.baseline }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: admission-${{ matrix.baseline }}
+          path: ${{ runner.temp }}/admission-${{ matrix.baseline }}.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify:
+    # Full suite matrix on the qualified runtime: installation, single/whole
+    # enablement, mixed sources, upgrade fixture, removal and incompatible refusal.
+    needs: build
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.full_qualification == 'true'
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Read qualified pnpm version
+      - name: Read the qualified pnpm and runtime versions
         id: policy
         run: |
           node --input-type=module -e '
@@ -33,39 +158,35 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ steps.policy.outputs.pnpm }}
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run typecheck
-      - name: Build and test with bounded execution
-        timeout-minutes: 15
-        run: |
-          pnpm run build
-          node --test --test-timeout=600000 packages/*/test/*.test.ts test/*.test.js
-      - name: Package release assets and bundled suite
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: node scripts/package-plugin-release.mjs --output "$RUNNER_TEMP/plugin-release" --tag "$RELEASE_TAG"
-      - name: Install integrity-pinned official test runtime
-        run: node scripts/install-release-test-runtime.mjs "$RUNNER_TEMP/plugin-runtime"
-      - name: Qualify the actual release tarball through the official CLI and Web Host
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-release
+          path: release
+      - name: Install the integrity-pinned official test runtime
+        run: node scripts/install-release-test-runtime.mjs "$RUNNER_TEMP/plugin-runtime" --baseline next
+      - name: Qualify the actual release tarballs through the official CLI and Web Host
         env:
           DSH_VERSION: ${{ steps.policy.outputs.runtime }}
         run: |
           node scripts/test-suite-install.mjs \
             --dsh "$RUNNER_TEMP/plugin-runtime/node_modules/.bin/dsh" \
             --dsh-version "$DSH_VERSION" \
-            --release-dir "$RUNNER_TEMP/plugin-release" \
-            --report "$RUNNER_TEMP/plugin-release/suite-install-report.json"
-          cd "$RUNNER_TEMP/plugin-release"
-          sha256sum -c SHA256SUMS
+            --release-dir release \
+            --report "$RUNNER_TEMP/suite-install-report.json"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: qualified-plugin-release
-          path: ${{ runner.temp }}/plugin-release/*
-          if-no-files-found: error
+          name: suite-install-report
+          path: ${{ runner.temp }}/suite-install-report.json
+          if-no-files-found: warn
           retention-days: 14
 
   publish:
-    needs: build
+    needs: [build, admit, qualify]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/plugins-v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -73,8 +194,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: qualified-plugin-release
+          name: plugin-release
           path: release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: admission-*
+          path: admission
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: suite-install-report
+          path: qualification
       - name: Publish a plugin prerelease after qualification
         env:
           GH_TOKEN: ${{ github.token }}
@@ -84,6 +214,8 @@ jobs:
           set -euo pipefail
           cd release
           sha256sum -c SHA256SUMS
-          gh release create "$RELEASE_TAG" ./*.tgz ./SHA256SUMS ./build-manifest.json ./INSTALL.md ./suite-install-report.json \
+          cp ../admission/*.json . 2>/dev/null || true
+          cp ../qualification/suite-install-report.json ./suite-install-report.json 2>/dev/null || true
+          gh release create "$RELEASE_TAG" ./*.tgz ./SHA256SUMS ./build-manifest.json ./INSTALL.md ./install-plugins.mjs ./suite-install-report.json ./*admission*.json \
             --verify-tag --prerelease --latest=false \
             --title "DSH-X $RELEASE_TAG 插件预览版" --notes-file INSTALL.md

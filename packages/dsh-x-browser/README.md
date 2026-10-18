@@ -2,7 +2,7 @@
 
 Experimental, opt-in Desktop browser plugin for DSH `0.2.1-rc.2`.
 
-This package is **not included in the default development suite**. A bounded real Windows packaged-app smoke passed, including pre-input confirmation, takeover, manual navigation and tab closure. Real OpenCode/provider interaction and the broader restriction/platform matrix still require qualification. See [VALIDATION.md](VALIDATION.md) for exact versions, commit and evidence. Source/API compatibility and automated unit tests alone do not establish packaged Desktop compatibility.
+This package is **not included in the default development suite** and `scripts/install-plugins.mjs` does not install it unless asked. Electron and packaged-app behavior is not verified in this repository: the automated evidence here is Web-side unit and integration testing only, and earlier packaged-app proofs lived in the separate app repository. Treat it as experimental until a packaged Desktop run is recorded again. Source/API compatibility and automated unit tests alone do not establish packaged Desktop compatibility.
 
 ## What it does
 

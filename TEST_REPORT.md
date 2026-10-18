@@ -52,14 +52,14 @@
 - 真正 Finnhub 行情：无已授权凭据，没有发送请求或产生服务费用。
 - 真正模型问答、Codex/Claude/Grok ACP 登录、真实规划→用户审批→执行→交叉验收完整链路：未配置服务账户，只有本地协议与官方运行时集成测试。
 - 现有 plan 的 authenticateIfNeeded 依赖 authMethods 名称中 cached/existing/login 判断；“login” 不保证是无交互缓存认证。此项须针对实际适配器和已登录账户另行验证，未擅自更改登录行为。
-- macOS/Windows Desktop 安装包、打包、签名与远端 CI：未运行。Linux 云端官方 Web/Chromium 实测不代表 Electron Desktop 安装包已验证。
+- macOS/Windows Desktop 安装包、打包、签名与远端 CI：已随桌面应用移出本仓库，本报告不覆盖。Linux 云端官方 Web/Chromium 实测不代表 Electron Desktop 安装包已验证。
 - 已登录模型会话的草稿保留、真实 Inspector 插件启停竞争、所有窄屏/键盘读屏场景：尚未完整实测；纯 UI/slot 生命周期已做离线测试。
 - 清单按官方 profileContext.dir 对应的普通随机 scope + 浏览器 origin 隔离；不等于独立登录账户隔离。同一个 DSH profile 的使用者共用其清单；复制整个 profile 也会复制标识。
 - 精确测试版本以外的 dsh 预发布版本兼容性。
 
 ## 复现
 
-参见 `scripts/README.md`。完整测试：`npm ci --ignore-scripts && npm test`。实际加载：用 link-plugins.mjs 链接，再运行 smoke-web.mjs。测试脚本仅使用临时文件与本地 fixture，不调用外部模型/行情服务。
+参见 `scripts/README.md`。完整测试：`pnpm install --frozen-lockfile && pnpm test`。实际加载：用 link-plugins.mjs 链接到临时 home，再运行 smoke-web.mjs。测试脚本仅使用临时文件与本地 fixture，不调用外部模型/行情服务。
 
 官方安装与插件文档：[README](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/README.md)、[组合包安装](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/docs/user/develop/basic/publish.zh.md)。
 
@@ -74,7 +74,7 @@
 
 原版 plan 是工具插件，没有独立计划页面；本次验证的是原生会话与官方审批卡。规划与验收文本来自本地确定性模拟模型，不代表真实 Codex/Claude/Grok 账号与模型质量已验证。测试没有使用外部模型、私密凭据或付费服务。演示 home、会话、测试仓库与 fixture 均在产品仓库外，不纳入源码提交。
 
-同日已将原80测试通过版本推送至 `work/stock-chat-plugins`，提交 `1d438fa793a1e1e711b89515bcb7cca6d7f0929e`，源码树与本地交付相同。未合并或发布；现有 Desktop workflow 仅支持手动触发，该提交没有自动 Actions/check runs，不应称 CI 已通过。
+同日已将原80测试通过版本推送至 `work/stock-chat-plugins`，提交 `1d438fa793a1e1e711b89515bcb7cca6d7f0929e`。当时没有自动 Actions/check runs，不应称 CI 已通过。插件发布现在由 `.github/workflows/plugin-release.yml` 在 `plugins-v*` tag 上执行；桌面应用构建不属于本仓库。
 
 ## 2026-10-17 补充：三个插件国际化
 
