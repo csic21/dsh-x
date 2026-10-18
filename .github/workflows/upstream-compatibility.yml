@@ -5,7 +5,10 @@ name: Check upstream DSH compatibility
 # activate a monitor. This workflow never updates manifests or publishes.
 on:
   schedule:
-    - cron: '19 */6 * * *'
+    # Daily. The plugin release pipeline already proves peer admission for the
+    # declared baselines on every tag and every night; this monitor answers the
+    # slower question of whether a *new* upstream release can be adopted.
+    - cron: '19 5 * * *'
   workflow_dispatch:
     inputs:
       version:

@@ -4,11 +4,23 @@
   "registry": "https://registry.npmjs.org",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
   "baseline": {
+    "npmTag": "next",
     "version": "0.2.1-rc.2",
     "integrity": "sha512-tvY+yhfKRifthbqPe/OK0AYxM5ZkvqfYq/jMYgJcEUxiRRL1Vwra3Ti5TB6AXgSWQdiPHYh/Vp6SJa9yHwMNuw==",
-    "status": "cli-and-independent-desktop-qualified",
+    "status": "cli-qualified",
     "inspectedSourceCommit": "687f282e8625c6b8d11ff58211a90524be2e4317"
   },
+  "additionalBaselines": [
+    {
+      "npmTag": "latest",
+      "version": "0.2.0-rc.2",
+      "integrity": "sha512-EAJ3gPNcVt/uv8X19PMm9NkVhWgT7xXNMk0UKCVm+IQ5rpSQOcsMUa0HWlnYYVybKMsccjcRB21vVVsaXQ6IdA==",
+      "status": "peer-admission-smoke",
+      "verifiedAt": "2026-10-18",
+      "scope": "installation and Web startup only; native vendor paths, Electron and model calls stay unverified"
+    }
+  ],
+  "supportedPeerRange": "^0.2.0-rc.2 || ^0.2.1-rc.2",
   "prereleases": "explicit-opt-in",
   "admission": "exact-engines-and-human-qualification",
   "pluginDirectories": [
@@ -17,6 +29,8 @@
     "packages/dsh-x-plan",
     "packages/dsh-x-agents",
     "packages/dsh-x-code",
+    "packages/dsh-x-browser",
+    "packages/dsh-x-update",
     "packages/dsh-x-suite"
   ],
   "packageManager": {

@@ -1,7 +1,7 @@
 {
   "name": "dsh-x-update",
   "version": "0.1.3",
-  "description": "DSH-X updater: distinguishes plugin updates from desktop and kernel updates.",
+  "description": "DSH-X plugin updater: checks public plugin releases; installation stays in the official Plugins page.",
   "type": "module",
   "main": "./lib/index.js",
   "files": [
@@ -23,7 +23,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-tools": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2 || ^0.2.1-rc.2"
   },
   "scripts": {
     "build": "node ../../scripts/build-package.mjs",

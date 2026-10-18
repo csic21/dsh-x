@@ -5,9 +5,24 @@
 ## 当前状态与启用条件
 
 - 配置的已验证基线是 `@deepseek-ai/dsh@0.2.1-rc.2`；审查过的官方源码快照提交（`inspectedSourceCommit`）与 npm SHA-512 位于 `policy.json`；该快照提交不是 npm tarball 构建来源的证明。基线不会随 npm 的 `latest` 标签漂移。
-- `.github/workflows/upstream-compatibility.yml` 每 6 小时检查一次，也支持手动运行。定时任务默认只找稳定版；预发布版必须在这一次手动运行中明确勾选 `allow_prerelease`。
+- `.github/workflows/upstream-compatibility.yml` 每日检查一次（05:19 UTC），也支持手动运行。定时任务默认只找稳定版；预发布版必须在这一次手动运行中明确勾选 `allow_prerelease`。
 - **GitHub 只运行默认分支上的定时 workflow。** 只把这个文件提交到当前私有工作分支，并不代表监控已启用。需要按仓库审批流程把 workflow 放到默认分支、启用 Actions，并确认第一次真实运行和报告。手动运行同样受 GitHub 的 workflow 可见性与仓库设置限制。
 - 本地单元测试、静态 YAML 检查或本地旧运行时测试，不能代替一次真实候选 CI。未实际执行的阶段必须保持 `not-run` / `needs-qualification`。
+
+## 加载准入与发布资格是两件事
+
+官方在 composition 边界只读插件 `peerDependencies` 中 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 的范围，判定时使用 semver 的 `includePrerelease`；它**不读 `engines.dsh`**。本仓库因此分开两个概念：
+
+| 概念 | 声明位置 | 当前值 | 含义 |
+| --- | --- | --- | --- |
+| 加载准入 | `policy.json` → `supportedPeerRange`，各包 DSH peer 必须逐字一致 | `^0.2.0-rc.2 \|\| ^0.2.1-rc.2` | 官方 CLI 允许安装、Host 允许加载的运行时范围；`test/peer-ranges.test.js` 守住一致性 |
+| 发布资格 | 各包 `engines.dsh` | `0.2.1-rc.2`（精确） | 本次发布用哪个运行时做完整矩阵验证；`test-suite-install.mjs` 只接受它 |
+
+联合范围而不是单个 `^0.2.0-rc.2`：原生 semver 对预发布版本有一条 tuple 规则，单个 `^0.2.0-rc.2` 在**默认**语义下只会选中 0.2.0-rc.2，pnpm 会把 workspace 的开发解析降级；写成联合后默认与 `includePrerelease` 两种语义都准入两个基线，解析仍取较高的 0.2.1-rc.2。
+
+精确 pin 的 peer 会让用户在 npm `latest`（0.2.0-rc.2）上**安装即被拒**：官方会报 `Plugin … is incompatible with dsh 0.2.0-rc.2`。范围放宽后，这两个基线都能装；`additionalBaselines` 记录声明的额外基线，以及它们实际验证到什么程度。
+
+`additionalBaselines` 当前只有 npm `latest` = `0.2.0-rc.2`，状态 `peer-admission-smoke`，证据来自 `scripts/check-peer-admission.mjs`：用固定完整性下载的真实运行时，通过官方 CLI 安装真实 tgz、选中为 bundle、启动官方 Web Host 并调用插件 RPC。它**不**覆盖 Electron、原生供应商登录、真实模型调用，也不覆盖依赖安装脚本；完整矩阵仍只在基线运行时上跑。
 
 ## 两条独立证据链
 
@@ -36,7 +51,7 @@ node scripts/test-suite-install.mjs \
 
 Suite harness 使用该次安装的官方 CLI、包管理器、本地产生的真实 tarball 与 Web Host。它的证据范围是开发者套装 Code + Agents；其他可选插件只做 manifest 准入，不会因这份报告被宣称完成了功能验证。以下仍需独立资格验证：
 
-- Electron / macOS / Windows Desktop 实机行为
+- Electron / macOS / Windows Desktop 实机行为（桌面应用与安装器不在本仓库）
 - 浏览器页面渲染、交互与 Browser 的实际原生能力
 - 原生供应商登录、真实模型执行与授权流程
 - 真正的上游版本迁移及用户数据兼容性
