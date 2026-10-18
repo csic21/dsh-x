@@ -13,6 +13,7 @@ Actions 中手动运行 **Package desktop**，选择待发源码分支：
 - `build_only=true` 只编译官方安装包，保留 `official-macos-arm64`、`official-windows-x64` artifact。
 - `reuse_build` 可填写上述构建的 run ID；组装器核对内核提交、版本和安装包 SHA-256 后复用，避免反复编译内核。
 - `distribution_target` 选择两平台或单独一平台。复用 ID 留空且 `build_only=false` 时，会先编译再组装。
+- `release_from_run` 填写两平台均验收成功的组装 run ID，仅发布该次安装包，不重复编译。发布前再次校验来源、六个插件激活报告与安装包 SHA-256，生成 `desktop-v<版本>` prerelease。
 
 macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`；Windows 使用 x64 runner 与 `package:desktop:win:x64:unsigned`。Linux 不生成 Desktop 安装包，macOS Intel 尚未加入本矩阵。依赖固定到锁文件及官方 pnpm 版本。
 
@@ -36,6 +37,8 @@ macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`
 - `desktop-install-report.json`：最终容器的实际安装与插件加载结果。
 
 验证会从最终 DMG 重新提取应用，或静默安装最终 EXE 到临时目录，然后使用真实 Electron 初始化 profile、经官方 CLI 安装打包的插件，并检查真实 Host 中六个插件与六个客户端模块各加载一次。test-only probe 仅装入临时 profile，不进入发行文件。供应商登录、真实模型执行、所有 UI 操作和真实历史数据迁移另行验收。
+
+两平台最终验收已通过：[run 39112220220](https://github.com/csic21/dsh-x/actions/runs/39112220220)，安装包来源提交 `090a372d83345063aa25db671a8d1f20d3d3c8c4`；报告保存在 `compatibility/evidence/rc2-desktop-*-2026-10-18.json`。此结论限于六个独立插件；嵌套 suite 的 Windows Desktop 激活未通过，不能套用 CLI / Web 验收结果。
 
 ## 签名与后续自更新
 

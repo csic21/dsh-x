@@ -40,6 +40,10 @@ on:
         default: all
         type: choice
         options: [all, macos-arm64, windows-x64]
+      release_from_run:
+        description: 将已全部验收成功的两平台构建 run 发布到 GitHub Release（留空不发布）
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -51,7 +55,7 @@ concurrency:
 
 jobs:
   package:
-    if: github.event_name == 'workflow_dispatch' && inputs.reuse_build == ''
+    if: github.event_name == 'workflow_dispatch' && inputs.reuse_build == '' && inputs.release_from_run == ''
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -91,16 +95,16 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install kernel dependencies
-        working-directory: deepseek-harness
-        run: pnpm install --frozen-lockfile
-
       - name: Verify official source and qualified plugin runtime
         shell: bash
         env:
           KERNEL_REPOSITORY: ${{ inputs.kernel_repository }}
           KERNEL_REF: ${{ inputs.kernel_ref }}
         run: node dsh-x/scripts/collect-desktop-runtime.mjs check --kernel deepseek-harness
+
+      - name: Install kernel dependencies
+        working-directory: deepseek-harness
+        run: pnpm install --frozen-lockfile
 
       - name: Write Windows packaging env
         if: matrix.name == 'windows-x64'
@@ -143,7 +147,7 @@ jobs:
 
   distribute:
     needs: package
-    if: always() && github.event_name == 'workflow_dispatch' && !inputs.build_only && (needs.package.result == 'success' || (inputs.reuse_build != '' && needs.package.result == 'skipped'))
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.release_from_run == '' && !inputs.build_only && (needs.package.result == 'success' || (inputs.reuse_build != '' && needs.package.result == 'skipped'))
     strategy:
       fail-fast: false
       matrix:
@@ -200,6 +204,39 @@ jobs:
           path: ${{ runner.temp }}/dsh-x-desktop/*
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_from_run != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: dsh-x-macos-arm64
+          path: release/macos
+          run-id: ${{ inputs.release_from_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dsh-x-windows-x64
+          path: release/windows
+          run-id: ${{ inputs.release_from_run }}
+          github-token: ${{ github.token }}
+      - name: Verify both installed artifacts and publish their exact bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          QUALIFIED_RUN: ${{ inputs.release_from_run }}
+        run: node scripts/publish-desktop-release.mjs --input release
 
   browser-smoke:
     if: github.event_name == 'push'

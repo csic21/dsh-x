@@ -6,7 +6,7 @@
   "baseline": {
     "version": "0.2.1-rc.2",
     "integrity": "sha512-tvY+yhfKRifthbqPe/OK0AYxM5ZkvqfYq/jMYgJcEUxiRRL1Vwra3Ti5TB6AXgSWQdiPHYh/Vp6SJa9yHwMNuw==",
-    "status": "cli-qualified-desktop-pending",
+    "status": "cli-and-independent-desktop-qualified",
     "inspectedSourceCommit": "687f282e8625c6b8d11ff58211a90524be2e4317"
   },
   "prereleases": "explicit-opt-in",

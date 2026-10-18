@@ -1,0 +1,105 @@
+{
+  "status": "passed",
+  "target": "windows-x64",
+  "assertions": [
+    "final installer extracts a runnable application without editing the official archive",
+    "official application creates its Desktop profile; bundled official CLI installs all plugin tarballs",
+    "six independent plugin packages resolve to the packaged exact versions",
+    "actual packaged Electron Host activates all six plugins and registers all six client modules once",
+    "repeated startup does not reinstall plugins or override user plugin controls"
+  ],
+  "notVerified": [
+    "code signing and notarization",
+    "real vendor login and model calls",
+    "previous released version data migration",
+    "self-update and deep-link integration"
+  ],
+  "kernelSha": "687f282e8625c6b8d11ff58211a90524be2e4317",
+  "kernelVersion": "0.2.1-rc.2",
+  "runtime": {
+    "packaged": true,
+    "version": "0.2.1-rc.2",
+    "userData": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\dsh-x-installed-proof-S7BfIS\\home\\electron",
+    "home": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\dsh-x-installed-proof-S7BfIS\\home"
+  },
+  "snapshot": {
+    "entries": [
+      {
+        "name": "dsh-x-agents",
+        "active": true
+      },
+      {
+        "name": "dsh-x-browser",
+        "active": true
+      },
+      {
+        "name": "dsh-x-chat",
+        "active": true
+      },
+      {
+        "name": "dsh-x-code",
+        "active": true
+      },
+      {
+        "name": "dsh-x-plan",
+        "active": true
+      },
+      {
+        "name": "dsh-x-stock",
+        "active": true
+      }
+    ],
+    "clients": [
+      {
+        "id": "dsh-x-agents"
+      },
+      {
+        "id": "dsh-x-chat"
+      },
+      {
+        "id": "dsh-x-plan"
+      },
+      {
+        "id": "dsh-x-stock"
+      },
+      {
+        "id": "dsh-x-browser"
+      },
+      {
+        "id": "dsh-x-code"
+      }
+    ],
+    "plugins": [
+      {
+        "name": "dsh-x-agents",
+        "enabled": true,
+        "phase": "active"
+      },
+      {
+        "name": "dsh-x-browser",
+        "enabled": true,
+        "phase": "active"
+      },
+      {
+        "name": "dsh-x-chat",
+        "enabled": true,
+        "phase": "active"
+      },
+      {
+        "name": "dsh-x-code",
+        "enabled": true,
+        "phase": "active"
+      },
+      {
+        "name": "dsh-x-plan",
+        "enabled": true,
+        "phase": "active"
+      },
+      {
+        "name": "dsh-x-stock",
+        "enabled": true,
+        "phase": "active"
+      }
+    ]
+  }
+}

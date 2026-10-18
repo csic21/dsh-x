@@ -20,6 +20,8 @@ GitHub Release 使用专门的打包脚本，将精确版本的 Code、Agents �
 
 安装前运行只读检查：`node scripts/check-suite-install.mjs --home /绝对路径/home --profile web --dsh-version 0.2.1-rc.2`。先用真实 CLI 的 `dsh --version` 核对版本。若已独立启用 Code 或 Agents，先在官方 Plugins 页面停用对应 bundle，再启用套件；不需要删除组件数据。检查不会改用户配置，也不能替代官方安装时的兼容检查。
 
+**Windows Desktop 的嵌套 suite 激活目前未通过验收**：rc.2 实测安装成功后 Code / Agents 未激活。桌面 DMG / EXE 因此直接携带六个独立插件，不使用 suite；CLI / Web 验收不能作为 Windows Desktop suite 支持证明。
+
 Desktop 先启动一次以初始化 profile，再完全退出。使用 Desktop 自带的 `dsh plugin --profile desktop add <安装规格>`；npm 版 CLI 不可替换 Desktop 的依赖图。也可以使用 Desktop 自己的 Plugins 页面。开发用 `link:` 不是可移交给其他机器的安装产物。
 
 ## 独立安装、禁用与升级
