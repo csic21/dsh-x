@@ -65,6 +65,8 @@ home 使用官方默认的 `~/.dsh`，不再重定向到 `~/.dsh-x`。用户级�
 
 Electron userData 也使用内嵌官方应用的默认路径，不再指向 home 下的 `electron/`。
 
+桌面发行和官方 Harness 共用同一个 `desktop` profile。DSH-X 只是把插件装进这个 profile 的便捷载体；官方 Harness 自己通过 Plugins 页面或 `dsh plugin add` 安装的插件，DSH-X 也会加载，反之亦然。
+
 ## 更新与安装包
 
 官方 Desktop 的壳和内核是同一精确版本、同一签名更新单元；插件随官方提供的运行时启动，不能在 Desktop 内用 npm 单独替换内核。独立 npm CLI 使用官方 npm 发布的 CLI 包更新，与 Desktop 包依赖图分离。`dsh plugin update` 更新的是 profile 插件，并非 Desktop 内核。
