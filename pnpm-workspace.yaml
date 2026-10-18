@@ -1,13 +1,10 @@
 packages:
   - packages/*
-# The suite depends on local plugin packages by exact published versions; link
-# them inside the workspace instead of querying the registry for unpublished
-# names. Packed tarballs keep plain version ranges, so the npm-based fixture
-# install in scripts/test-suite-install.mjs is unaffected.
+# Future packages may depend on each other; keep workspace names linked instead
+# of querying the registry for unpublished packages.
 linkWorkspacePackages: true
-# Dependencies allowed to run install scripts. These carry native or generated
-# payloads that the npm baseline also built: the official subprocess package,
-# esbuild, and the native bindings used by @anthropic-ai/claude-agent-sdk.
+# Dependencies allowed to run install scripts: the official subprocess package,
+# its native bindings, and esbuild carry generated/native payloads.
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   esbuild: true
