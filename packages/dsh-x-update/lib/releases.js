@@ -1,8 +1,10 @@
 import { compareVersions } from './semver.js';
-const TAG = /^(desktop|plugins)-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+// The plugin repository publishes only plugin releases. Desktop installers are
+// owned by a separate application repository and are not part of this updater.
+const TAG = /^plugins-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 export function classifyTag(tag) {
     const match = TAG.exec(tag);
-    return match ? { kind: match[1], version: match[2] } : null;
+    return match ? { kind: 'plugins', version: match[1] } : null;
 }
 function decodeEntities(value) {
     return value.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -95,7 +97,4 @@ export function newestFor(entries, kind, limit = 6) {
         .filter(entry => entry.kind === kind)
         .sort((left, right) => compareVersions(right.version, left.version))
         .slice(0, limit);
-}
-export function latestVersion(entries, kind) {
-    return newestFor(entries, kind, 1)[0]?.version ?? null;
 }

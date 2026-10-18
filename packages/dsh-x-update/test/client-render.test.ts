@@ -24,18 +24,16 @@ function status(): UpdateStatus {
   return {
     schema: 1, phase: 'idle', checkedAt: '2026-10-18T00:00:00.000Z', error: null,
     local: {
-      desktop: true, home: '/home', profile: 'desktop', appVersion: '0.1.1', kernelVersion: '0.2.1-rc.2',
-      target: 'macos-arm64', distributionPath: '/Applications/DSH-X.app/Contents/Resources/distribution.json',
-      installRoot: '/Applications', appPath: '/Applications/DSH-X.app', plugins: [{ name: 'dsh-x-code', version: '0.1.1' }],
+      home: '/home', profile: 'desktop', runtimeVersion: '0.2.1-rc.2',
+      plugins: [{ name: 'dsh-x-code', version: '0.1.1' }],
     },
     plan: {
-      kind: 'plugin', reason: 'plugin-newer', desktop: null, plugin: null,
+      kind: 'plugin', reason: 'plugin-newer', plugin: null,
       targets: [{ name: 'dsh-x-code', version: '0.1.2', file: 'dsh-x-code-0.1.2.tgz', sha256: 'a'.repeat(64), integrity: '', url: 'https://example.invalid/code.tgz' }],
-      current: { appVersion: '0.1.1', kernelVersion: '0.2.1-rc.2', pluginVersion: '0.1.1' },
-      available: { appVersion: '0.1.1', kernelVersion: '0.2.1-rc.2', pluginVersion: '0.1.2', runtime: '0.2.1-rc.2' },
+      current: { pluginVersion: '0.1.1', runtimeVersion: '0.2.1-rc.2' },
+      available: { pluginVersion: '0.1.2', runtime: '0.2.1-rc.2' },
     },
-    pending: null, progress: null,
-    config: { repository: 'csic21/dsh-x', autoCheck: true, autoDownload: true, autoInstallApp: true },
+    config: { repository: 'csic21/dsh-x', autoCheck: true },
   }
 }
 
@@ -77,16 +75,16 @@ test('built settings section registers and renders an available plugin update', 
     assert.equal(entry.options.id, 'dsh-x-update')
     assert.equal(entry.options.order, 30)
     assert.equal(entry.options.locale, NS)
-    assert.equal(entry.options.label(), 'Updates')
+    assert.equal(entry.options.label(), 'Plugin updates')
 
     const { createRoot } = await import('react-dom/client')
     root = createRoot(dom.window.document.getElementById('app')!)
     await act(async () => root.render(React.createElement(entry.component, { rpc, t, close() {} })))
     const text = () => dom.window.document.body.textContent ?? ''
-    assert.match(text(), /Updates/)
+    assert.match(text(), /Plugin updates/)
     assert.match(text(), /Plugin update available/)
     assert.match(text(), /0\.1\.2/)
-    assert.match(text(), /Download update/)
+    assert.match(text(), /Open Releases/)
     assert.ok(calls.includes('dsh-x-update/status'))
   } finally {
     await act(async () => root?.unmount())

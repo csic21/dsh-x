@@ -1,24 +1,18 @@
-import type { LocalPlugin, LocalState, UpdateTarget } from './types.ts';
-export interface DistributionInfo {
-    path: string;
-    appVersion: string;
-    kernelVersion: string;
-    target: UpdateTarget;
-    installRoot: string;
-    appPath: string;
-    plugins: LocalPlugin[];
-}
-/** Read the outer DSH-X distribution manifest when this process runs from it. */
-export declare function readDistribution(execPath: string, env: NodeJS.ProcessEnv): Promise<DistributionInfo | null>;
+import type { LocalState } from './types.ts';
+/**
+ * The running DSH version for this build. The plugin declares an exact
+ * `engines.dsh`, and the official loader only mounts it on that same runtime,
+ * so the manifest is the one value available in both npm and Desktop profiles.
+ */
+export declare function readOwnRuntimeVersion(): Promise<string | null>;
 export interface ReadLocalStateOptions {
     env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    arch?: string;
-    execPath?: string;
+    profileContext?: {
+        name?: string;
+        dir?: string;
+        home?: string;
+    };
+    runtimeVersion?: string | null;
 }
-/** Read the running app, kernel and installed plugin versions without writing anything. */
+/** Read the running profile and installed plugin versions without writing anything. */
 export declare function readLocalState(options?: ReadLocalStateOptions): Promise<LocalState>;
-export declare function updatesDir(home: string): string;
-export declare function pendingPluginPath(home: string): string;
-export declare function pendingAppPath(home: string): string;
-export declare function statusPath(home: string): string;

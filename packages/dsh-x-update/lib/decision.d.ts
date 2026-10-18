@@ -1,13 +1,12 @@
-import type { DesktopRelease, LocalState, PluginRelease, UpdatePlan } from './types.ts';
+import type { LocalState, PluginRelease, UpdatePlan } from './types.ts';
 /**
- * Decide what an installation can actually consume.
+ * Decide whether the published plugin release can be installed here.
  *
- * - A new desktop release is an app update because it carries the kernel.
- * - A plugin release is only installable when its exact runtime matches the
- *   running kernel; otherwise the user needs an app update first.
+ * The release runtime must equal the running DSH version exactly. Installed
+ * plugins are matched by package name; a release that only raises the suite
+ * version without shipping those packages is not installable.
  */
 export declare function decideUpdate(options: {
     local: LocalState;
-    desktop?: DesktopRelease | null;
     plugin?: PluginRelease | null;
 }): UpdatePlan;

@@ -2,7 +2,6 @@ import type { UpdateService } from './service.ts'
 
 export const STATUS_ENDPOINT = 'dsh-x-update/status'
 export const CHECK_ENDPOINT = 'dsh-x-update/check'
-export const STAGE_ENDPOINT = 'dsh-x-update/stage'
 
 function route(endpoint: string, handle: (payload: unknown, signal: AbortSignal) => Promise<unknown> | unknown) {
   return {
@@ -35,10 +34,6 @@ export function createUpdateRoutes(service: UpdateService) {
     route(STATUS_ENDPOINT, () => ({ ok: true, value: service.snapshot() })),
     route(CHECK_ENDPOINT, () => {
       void service.check()
-      return { ok: true, value: service.snapshot() }
-    }),
-    route(STAGE_ENDPOINT, () => {
-      void service.stage()
       return { ok: true, value: service.snapshot() }
     }),
   ]

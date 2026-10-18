@@ -1,1 +1,0 @@
-{"name":"dsh-x-desktop-browser-smoke","version":"0.0.0-fixture","private":true,"type":"module","main":"index.js","peerDependencies":{"@deepseek-ai/dsh-llm":"*"},"dsh":{"bundle":{"patch":"./cordis.patch.yml"}}}

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Updates",
-    "description": "Check plugin and desktop updates, distinguishing plugin updates from app updates that carry a kernel."
+    "title": "Plugin updates",
+    "description": "Check DSH-X plugin versions against the public release index. Installation stays in the official Plugins page."
   }
 }

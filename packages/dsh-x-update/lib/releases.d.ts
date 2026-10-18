@@ -1,5 +1,5 @@
 export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
-export type ReleaseKind = 'desktop' | 'plugins';
+export type ReleaseKind = 'plugins';
 export interface ReleaseEntry {
     tag: string;
     version: string;
@@ -25,4 +25,3 @@ export declare function fetchReleaseIndex(options: {
     signal?: AbortSignal;
 }): Promise<ReleaseEntry[]>;
 export declare function newestFor(entries: ReleaseEntry[], kind: ReleaseKind, limit?: number): ReleaseEntry[];
-export declare function latestVersion(entries: ReleaseEntry[], kind: ReleaseKind): string | null;

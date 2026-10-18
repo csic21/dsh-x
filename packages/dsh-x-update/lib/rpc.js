@@ -1,6 +1,5 @@
 export const STATUS_ENDPOINT = 'dsh-x-update/status';
 export const CHECK_ENDPOINT = 'dsh-x-update/check';
-export const STAGE_ENDPOINT = 'dsh-x-update/stage';
 function route(endpoint, handle) {
     return {
         path: `/api/${endpoint}`,
@@ -41,10 +40,6 @@ export function createUpdateRoutes(service) {
         route(STATUS_ENDPOINT, () => ({ ok: true, value: service.snapshot() })),
         route(CHECK_ENDPOINT, () => {
             void service.check();
-            return { ok: true, value: service.snapshot() };
-        }),
-        route(STAGE_ENDPOINT, () => {
-            void service.stage();
             return { ok: true, value: service.snapshot() };
         }),
     ];

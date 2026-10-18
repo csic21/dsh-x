@@ -1,34 +1,9 @@
 import { assetUrl, type FetchLike } from './releases.ts'
 import { isVersion } from './semver.ts'
-import type { DesktopRelease, PluginArtifact, PluginRelease, UpdateTarget } from './types.ts'
+import type { PluginArtifact, PluginRelease } from './types.ts'
 
 const SHA256 = /^[0-9a-f]{64}$/
-const KERNEL_SHA = /^[0-9a-f]{40}$/
 const INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/
-
-export function targetForPlatform(platform: NodeJS.Platform, arch: string): UpdateTarget | null {
-  if (platform === 'darwin') return arch === 'arm64' ? 'macos-arm64' : arch === 'x64' ? 'macos-x64' : null
-  if (platform === 'win32') return arch === 'x64' ? 'windows-x64' : null
-  return null
-}
-
-export function installerSuffix(target: UpdateTarget): string {
-  if (target === 'macos-arm64') return '-mac-arm64-preview.dmg'
-  if (target === 'macos-x64') return '-mac-x64-preview.dmg'
-  return '-win-x64-preview.exe'
-}
-
-export function parseSha256Sums(text: string): Map<string, string> {
-  const sums = new Map<string, string>()
-  for (const line of text.split(/\r?\n/)) {
-    const match = /^([0-9a-f]{64})\s+\*?(\S.*)$/.exec(line.trim())
-    if (!match) continue
-    const file = match[2].trim()
-    if (!safeFileName(file)) continue
-    sums.set(file, match[1])
-  }
-  return sums
-}
 
 export function safeFileName(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 240
@@ -52,45 +27,7 @@ function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
-/** Load one target's distribution manifest and its installer checksum. */
-export async function loadDesktopRelease(options: {
-  repository: string
-  tag: string
-  version: string
-  target: UpdateTarget
-  fetchImpl: FetchLike
-  signal?: AbortSignal
-}): Promise<DesktopRelease | null> {
-  const { repository, tag, version, target, fetchImpl, signal } = options
-  const manifestText = await fetchText(assetUrl(repository, tag, `distribution-${target}.json`), fetchImpl, signal, 256_000)
-  if (manifestText === null) return null
-  let raw: Record<string, unknown>
-  try { raw = object(JSON.parse(manifestText)) as Record<string, unknown> } catch { return null }
-  if (!raw || raw.schema !== 1) return null
-  if (raw.version !== version || raw.target !== target) return null
-  if (typeof raw.kernelVersion !== 'string' || !isVersion(raw.kernelVersion)) return null
-  if (typeof raw.kernelSha !== 'string' || !KERNEL_SHA.test(raw.kernelSha)) return null
-  if (typeof raw.unsigned !== 'boolean') return null
-  const sumText = await fetchText(assetUrl(repository, tag, 'SHA256SUMS'), fetchImpl, signal, 128_000)
-  if (sumText === null) return null
-  const sums = parseSha256Sums(sumText)
-  const suffix = installerSuffix(target)
-  const expected = `DSH-X-${version}${suffix}`
-  const file = sums.has(expected) ? expected : [...sums.keys()].find(name => name.endsWith(suffix) && name.startsWith(`DSH-X-${version}`))
-  if (!file) return null
-  return {
-    tag,
-    version,
-    target,
-    kernelVersion: raw.kernelVersion as string,
-    kernelSha: raw.kernelSha,
-    unsigned: raw.unsigned,
-    autoUpdate: raw.autoUpdate === true,
-    installer: { file, sha256: sums.get(file) as string, url: assetUrl(repository, tag, file) },
-  }
-}
-
-/** Load the build manifest published with a plugin release. */
+/** Load the build manifest published with a plugin release. Nothing is downloaded or executed. */
 export async function loadPluginRelease(options: {
   repository: string
   tag: string

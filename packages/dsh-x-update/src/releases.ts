@@ -2,7 +2,7 @@ import { compareVersions } from './semver.ts'
 
 export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>
 
-export type ReleaseKind = 'desktop' | 'plugins'
+export type ReleaseKind = 'plugins'
 
 export interface ReleaseEntry {
   tag: string
@@ -11,11 +11,13 @@ export interface ReleaseEntry {
   updatedAt: string | null
 }
 
-const TAG = /^(desktop|plugins)-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/
+// The plugin repository publishes only plugin releases. Desktop installers are
+// owned by a separate application repository and are not part of this updater.
+const TAG = /^plugins-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/
 
 export function classifyTag(tag: string): { kind: ReleaseKind; version: string } | null {
   const match = TAG.exec(tag)
-  return match ? { kind: match[1] as ReleaseKind, version: match[2] as string } : null
+  return match ? { kind: 'plugins', version: match[1] as string } : null
 }
 
 function decodeEntities(value: string): string {
@@ -111,8 +113,4 @@ export function newestFor(entries: ReleaseEntry[], kind: ReleaseKind, limit = 6)
     .filter(entry => entry.kind === kind)
     .sort((left, right) => compareVersions(right.version, left.version))
     .slice(0, limit)
-}
-
-export function latestVersion(entries: ReleaseEntry[], kind: ReleaseKind): string | null {
-  return newestFor(entries, kind, 1)[0]?.version ?? null
 }
