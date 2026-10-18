@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile, readFile, access, symlink, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
-import { digest, localPath, runtimeEnvironment, installDistribution } from '../scripts/desktop-distribution/bootstrap.mjs'
+import { defaultHome, digest, localPath, runtimeEnvironment, installDistribution } from '../scripts/desktop-distribution/bootstrap.mjs'
 
 async function fixture(t) {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-distribution-test-'))
@@ -52,9 +52,15 @@ test('launching an installed distribution honors user plugin removals without re
   assert.equal(result.changed, false)
   await assert.rejects(access(path.join(home, 'profiles')), { code: 'ENOENT' })
 })
-test('distribution paths cannot escape and environment isolates runtime roots', () => {
+test('default home is the official native home unless DSH_HOME overrides it', () => {
+  assert.equal(defaultHome({}), path.join(homedir(), '.dsh'))
+  assert.equal(defaultHome({ DSH_HOME: '/custom/home' }), path.resolve('/custom/home'))
+  assert.equal(defaultHome({ DSH_HOME: 'relative' }), path.join(homedir(), '.dsh'))
+})
+test('distribution paths cannot escape and environment keeps the native layout', () => {
   for (const file of ['../secret', 'a/../secret', '/secret']) assert.throws(() => localPath('/application', file))
-  const env = runtimeEnvironment('/isolated', { PATH: '/bin', DSH_HOME: '/original', DSH_AGENTS_HOME: '/original/agents', NODE_OPTIONS: '--require malicious', ELECTRON_RUN_AS_NODE: '1' })
-  assert.equal(env.DSH_HOME, '/isolated'); assert.equal(env.DSH_AGENTS_HOME, '/isolated/agents')
+  const env = runtimeEnvironment('/native-home', { PATH: '/bin', DSH_HOME: '/original', DSH_AGENTS_HOME: '/original/agents', DSH_DESKTOP_USER_DATA_DIR: '/original/electron', NODE_OPTIONS: '--require malicious', ELECTRON_RUN_AS_NODE: '1' })
+  assert.equal(env.DSH_HOME, '/native-home'); assert.equal(env.DSH_AGENTS_HOME, '/original/agents')
+  assert.equal(env.DSH_DESKTOP_USER_DATA_DIR, undefined)
   assert.equal(env.NODE_OPTIONS, undefined); assert.equal(env.ELECTRON_RUN_AS_NODE, undefined)
 })

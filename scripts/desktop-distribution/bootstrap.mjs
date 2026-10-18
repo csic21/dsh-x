@@ -10,7 +10,10 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const defaultHome = () => path.join(homedir(), '.dsh-x', 'desktop-preview')
+export const defaultHome = (env = process.env) => {
+  const configured = typeof env.DSH_HOME === 'string' && path.isAbsolute(env.DSH_HOME) ? path.resolve(env.DSH_HOME) : null
+  return configured ?? path.join(homedir(), '.dsh')
+}
 export async function digest(file) {
   const hash = createHash('sha256')
   for await (const bytes of createReadStream(file)) hash.update(bytes)
@@ -22,8 +25,11 @@ export function localPath(root, relative) {
   return path.join(root, relative)
 }
 export function runtimeEnvironment(home, inherited = process.env) {
-  const environment = Object.fromEntries(Object.entries(inherited).filter(([key]) => !['NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE', 'DSH_HOME', 'DSH_AGENTS_HOME'].includes(key)))
-  return { ...environment, DSH_HOME: home, DSH_AGENTS_HOME: path.join(home, 'agents'), DSH_DESKTOP_USER_DATA_DIR: path.join(home, 'electron'), DSH_TELEMETRY_DISABLED: '1' }
+  // Native layout: the official home and Electron userData defaults are kept.
+  // Only the Node injection variables are removed so a packaged app cannot be
+  // hijacked by the shell that happened to launch it.
+  const environment = Object.fromEntries(Object.entries(inherited).filter(([key]) => !['NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE', 'DSH_DESKTOP_USER_DATA_DIR'].includes(key)))
+  return { ...environment, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' }
 }
 export async function readDistribution(root) {
   const manifest = JSON.parse(await readFile(path.join(root, 'distribution.json'), 'utf8'))
@@ -61,9 +67,9 @@ export async function desktopCli(root, manifest, home, args, log) {
   })
 }
 export async function initializeByUser(root, manifest, home) {
-  await dialog(root, '首次安装会打开官方应用初始化独立配置。窗口出现后，请完全退出应用（macOS 用 Command+Q，Windows 用托盘菜单的退出）。安装器随后会安装插件并重新打开应用。此时无需登录。')
+  await dialog(root, '首次安装会打开官方应用初始化原生配置。窗口出现后，请完全退出应用（macOS 用 Command+Q，Windows 用托盘菜单的退出）。安装器随后会安装插件并重新打开应用。此时无需登录。')
   await new Promise((resolve, reject) => {
-    const child = spawn(localPath(root, manifest.executable), [`--user-data-dir=${path.join(home, 'electron')}`], { env: runtimeEnvironment(home), stdio: 'ignore' })
+    const child = spawn(localPath(root, manifest.executable), [], { env: runtimeEnvironment(home), stdio: 'ignore' })
     child.once('error', reject)
     child.once('exit', () => resolve())
   })
@@ -240,7 +246,7 @@ export async function applyPendingPluginUpdate({ root, manifest, home = defaultH
 }
 
 export async function launchRuntime(root, manifest, home = defaultHome()) {
-  const child = spawn(localPath(root, manifest.executable), [`--user-data-dir=${path.join(home, 'electron')}`], { env: runtimeEnvironment(home), detached: true, stdio: 'ignore' })
+  const child = spawn(localPath(root, manifest.executable), [], { env: runtimeEnvironment(home), detached: true, stdio: 'ignore' })
   await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject) })
   child.unref()
 }

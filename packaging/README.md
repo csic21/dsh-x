@@ -24,9 +24,9 @@ macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`
 
 用户从 DMG 将 `DSH-X.app` 拖到 Applications，或运行 EXE。始终使用 **DSH-X** 入口启动。
 
-首次运行会打开官方应用初始化独立 profile。窗口出现后，用户必须完全退出（macOS：Command+Q；Windows：托盘菜单退出）。安装器随后调用内嵌官方 Desktop CLI 分别安装 Code、Agents、Chat、Plan、Stocks、Browser、Update，再重新打开应用。桌面版直接选择七个独立 bundle，不使用嵌套 suite；Web 插件套件仍保留独立发行路径。初次安装仍需联网下载第三方依赖，不需要用户手动安装 tgz。
+首次运行会打开官方应用初始化原生 profile。窗口出现后，用户必须完全退出（macOS：Command+Q；Windows：托盘菜单退出）。安装器随后调用内嵌官方 Desktop CLI 分别安装 Code、Agents、Chat、Plan、Stocks、Browser、Update，再重新打开应用。桌面版直接选择七个独立 bundle，不使用嵌套 suite；Web 插件套件仍保留独立发行路径。初次安装仍需联网下载第三方依赖，不需要用户手动安装 tgz。
 
-用户数据根为 `~/.dsh-x/desktop-preview`，不导入原有官方账号、profile 或凭据。插件 tarball 在该目录内按发行身份保留，避免替换应用目录后破坏 profile 锁文件的本地安装来源。安装后仍由官方 Plugins 页面管理插件；同一发行版再次启动不会重新启用用户停用或移除的组件。失败不会写成功标记，不承诺失败自动回滚；诊断记录在该独立目录的 `distribution-install.log`。
+用户数据根为官方默认的 `~/.dsh`，插件安装在同一个 `desktop` profile 中，与原生会话、凭据和用户指令共用。插件 tarball 在 home 内按发行身份保留，避免替换应用目录后破坏 profile 锁文件的本地安装来源。安装后仍由官方 Plugins 页面管理插件；同一发行版再次启动不会重新启用用户停用或移除的组件。失败不会写成功标记，不承诺失败自动回滚；诊断记录在该 home 的 `distribution-install.log`。
 
 ## 产物与验证
 
@@ -45,12 +45,12 @@ macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`
 
 `dsh-x-update` 随 Desktop 一起安装，从公开 GitHub Releases 读取 `desktop-v*` 和 `plugins-v*`，并明确区分两条路径：
 
-- **插件更新**：`build-manifest.json` 的 `runtime` 必须等于当前内核。下载的 tgz 经 SHA-256 / SHA-512 校验后写入 `~/.dsh-x/desktop-preview/updates/pending-plugins.json`，下次启动由 `bootstrap.mjs` 在应用启动前调用官方 CLI 应用。
+- **插件更新**：`build-manifest.json` 的 `runtime` 必须等于当前内核。下载的 tgz 经 SHA-256 / SHA-512 校验后写入 `~/.dsh/updates/pending-plugins.json`，下次启动由 `bootstrap.mjs` 在应用启动前调用官方 CLI 应用。
 - **应用更新**：新的 `desktop-v*` 版本或不同的 `kernelVersion` 都只能走整包更新。下载 DMG/EXE 并按发布清单的 SHA-256 校验；退出应用后由分离的 helper 替换应用并重启。应用更新是更新内核的唯一路径。
 - **不混用通道**：检查使用 `releases.atom`，不需要 GitHub API token；下载只接受 `github.com/<repo>/releases/download/...`。官方 Electron 更新通道仍保持关闭，`distribution.json` 的 `autoUpdate` 仍为 `false`。
 - **未签名警告**：当前预览包没有 Developer ID、公证或 Windows 代码签名。自动应用更新只验证发布清单中的 SHA-256，不验证签名；在补齐签名、公证和真实旧版→新版升级验证前，不能把这条路径称为可信自更新。
 
-状态、下载暂存和 helper 日志都在 `~/.dsh-x/desktop-preview/updates/`；用户数据不随应用替换而删除。
+状态、下载暂存和 helper 日志都在 `~/.dsh/updates/`；用户数据不随应用替换而删除。
 
 ## 签名与后续自更新
 
@@ -58,4 +58,4 @@ macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`
 
 官方 Electron 自更新源仍未连接：macOS 未签名路径关闭更新，Windows 使用保留的 `.invalid` 策略地址。DSH-X 更新器是独立的 GitHub Releases 客户端，不复用官方更新通道。后续仍需要独立发行身份、签名、公证和旧版到新版的真实升级验证；不能把官方 production 更新源直接当成我们的更新源。
 
-内嵌应用仍显示官方品牌，协议唤起与全局 `dsh` 命令尚未作为 DSH-X 独立入口验收。用户应通过 DSH-X 启动器进入独立 profile。官方说明：[打包](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/apps/desktop/packaging/README.zh.md)、[更新发布](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/apps/desktop/publishing/README.zh.md)。
+内嵌应用仍显示官方品牌，协议唤起与全局 `dsh` 命令尚未作为 DSH-X 独立入口验收。用户应通过 DSH-X 启动器进入官方原生 profile。官方说明：[打包](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/apps/desktop/packaging/README.zh.md)、[更新发布](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/apps/desktop/publishing/README.zh.md)。

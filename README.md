@@ -50,20 +50,20 @@ dsh-x/
 | 位置 | 是什么 |
 |---|---|
 | 官方 `deepseek-ai/deepseek-harness` | 内核。流水线临时检出，或本机另放一份克隆 |
-| `~/.dsh-x` | 运行数据：密钥、desktop profile、用户指令、Electron 数据 |
+| `~/.dsh` | 运行数据：密钥、desktop profile、会话、用户指令（官方原生目录） |
 
-home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH_AGENTS_HOME` 指向那里。
+home 使用官方默认的 `~/.dsh`，不再重定向到 `~/.dsh-x`。用户级指令回到官方默认的 `~/.agents/`；DSH-X 不再设置 `DSH_AGENTS_HOME`。
 
 ```text
-~/.dsh-x/
+~/.dsh/
   .credentials.yaml
   profiles/desktop/             link: 记在这里，不记在内核仓库里
-  agents/AGENTS.md
-  agents/skills/
-  plans/<会话>/               dsh-x-plan 写下的计划、批准副本和验收结论
-  electron-user-data/
-  logs/
+  sessions/<工作区>/            官方会话记录
+  plans/<会话>/                  dsh-x-plan 写下的计划、批准副本和验收结论
+  installer-packages/           DSH-X 发行版插件 tarball
 ```
+
+Electron userData 也使用内嵌官方应用的默认路径，不再指向 home 下的 `electron/`。
 
 ## 更新与安装包
 

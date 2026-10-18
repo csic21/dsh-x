@@ -153,10 +153,10 @@ importers:
   packages/dsh-x-suite:
     dependencies:
       dsh-x-agents:
-        specifier: 0.1.2
+        specifier: 0.1.3
         version: link:../dsh-x-agents
       dsh-x-code:
-        specifier: 0.1.2
+        specifier: 0.1.3
         version: link:../dsh-x-code
 
   packages/dsh-x-update:

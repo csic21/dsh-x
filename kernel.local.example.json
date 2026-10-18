@@ -1,7 +1,7 @@
 {
   "kernelPath": "/Users/karl/workspace/ai/deepseek-harness",
   "kernelRemote": "https://github.com/deepseek-ai/deepseek-harness.git",
-  "dshHome": "/Users/karl/.dsh-x",
-  "agentsHome": "/Users/karl/.dsh-x/agents",
-  "electronUserData": "/Users/karl/.dsh-x/electron-user-data"
+  "dshHome": "/Users/karl/.dsh",
+  "agentsHome": "/Users/karl/.agents",
+  "electronUserData": "/Users/karl/Library/Application Support/DeepSeek Harness"
 }

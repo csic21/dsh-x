@@ -22,7 +22,7 @@ node scripts/link-plugins.mjs --dsh ../dsh-runtime/node_modules/.bin/dsh --profi
 DSH_HOME=/绝对路径/dsh-x-home ../dsh-runtime/node_modules/.bin/dsh web --no-open
 ```
 
-脚本将 `dsh-x-plan`、`dsh-x-stock`、`dsh-x-chat`、`dsh-x-agents`、`dsh-x-code`、`dsh-x-update` 通过官方 `dsh plugin add link:` 安装；已有 profile 保持原有组合包并追加这些插件。`link:` 指向当前 checkout，移动目录后需要重新链接。默认 home 是 `~/.dsh-x`，建议测试时明确传入临时目录。缓存目录受限时，可以传 `--store-dir /可写目录 --cache-dir /可写目录`。不要使用该脚本修改 `desktop` profile。
+脚本将 `dsh-x-plan`、`dsh-x-stock`、`dsh-x-chat`、`dsh-x-agents`、`dsh-x-code`、`dsh-x-update` 通过官方 `dsh plugin add link:` 安装；已有 profile 保持原有组合包并追加这些插件。`link:` 指向当前 checkout，移动目录后需要重新链接。默认 home 是官方原生的 `~/.dsh`，建议测试时明确传入临时目录。缓存目录受限时，可以传 `--store-dir /可写目录 --cache-dir /可写目录`。不要使用该脚本修改 `desktop` profile。
 
 ## 无密钥启动冒烟测试
 

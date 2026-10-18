@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util'
 const { values } = parseArgs({ options: {
   dsh: { type: 'string', default: 'dsh' },
   profile: { type: 'string', default: 'web' },
-  home: { type: 'string', default: path.join(homedir(), '.dsh-x') },
+  home: { type: 'string', default: path.join(homedir(), '.dsh') },
   'store-dir': { type: 'string' },
   'cache-dir': { type: 'string' },
   help: { type: 'boolean', short: 'h' },
