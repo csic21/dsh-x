@@ -8,3 +8,4 @@
 - 操作脚本只放在 `scripts/`。不要把脚本写进内核仓库，也不要写进 home。
 - `kernel.local.json` 只在本机，从 `kernel.local.example.json` 复制。不要提交。
 - 不要把签名证书、公证密钥或 `.env.macos` / `.env.windows` 提交到这里。打包只通过 `.github/workflows/desktop-package.yml` 调用内核仓库里的官方命令。
+- 用户已授权 DSH-X 外层安装器：官方应用仍由上述 workflow 调用官方命令编译，本仓库的 `scripts/desktop-distribution/` 可以组装外层 DMG/EXE、携带插件并通过官方 Desktop CLI 安装。不得改写官方源码、可执行文件或 `app.asar`，不得直接生成或改写用户 profile；首次初始化由官方应用完成。安装器使用独立的 DSH-X 用户目录。

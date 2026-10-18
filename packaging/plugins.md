@@ -10,7 +10,7 @@
 
 ```sh
 dsh --version
-dsh plugin --profile web add /绝对路径/dsh-x-suite-0.1.0.tgz --config.auto-install-peers=false
+dsh plugin --profile web add /绝对路径/dsh-x-suite-0.1.1.tgz --config.auto-install-peers=false
 ```
 
 Desktop 先启动一次以初始化 profile，然后完全退出；使用 Desktop 自带的 dsh，将 profile 改为 `desktop`。npm CLI 不能替换 Desktop 的内核或依赖图。已有独立 Code、Agents 时，先在官方 Plugins 页面停用它们，再启用套件。安装后检查插件状态，并按官方提示重启。
@@ -24,8 +24,8 @@ Desktop 先启动一次以初始化 profile，然后完全退出；使用 Deskto
 发布前同步工作目录并检查待发源码。所有包版本必须与 suite 版本相同，兼容版本仍须通过现有准入，不得为发布放宽。tag 必须指向包含本流水线及完整源码的提交：
 
 ```sh
-git tag plugins-v0.1.0 <待发布提交>
-git push origin plugins-v0.1.0
+git tag plugins-v0.1.1 <待发布提交>
+git push origin plugins-v0.1.1
 ```
 
 推送 tag 会自动发布，不能用于试跑。Release 始终标记为插件预览版，不成为 Desktop 更新通道的 latest。该仓库当前为私有，发布不会改变仓库可见性。首次发布不需要 npm token。
@@ -36,11 +36,11 @@ git push origin plugins-v0.1.0
 pnpm install --frozen-lockfile
 pnpm run typecheck
 pnpm test
-node scripts/package-plugin-release.mjs --output /tmp/dsh-plugin-release --tag plugins-v0.1.0
+node scripts/package-plugin-release.mjs --output /tmp/dsh-plugin-release --tag plugins-v0.1.1
 node scripts/install-release-test-runtime.mjs /tmp/dsh-release-runtime
 node scripts/test-suite-install.mjs \
   --dsh /tmp/dsh-release-runtime/node_modules/.bin/dsh \
-  --dsh-version 0.2.1-alpha.5 --release-dir /tmp/dsh-plugin-release \
+  --dsh-version 0.2.1-rc.2 --release-dir /tmp/dsh-plugin-release \
   --report /tmp/dsh-plugin-release/suite-install-report.json
 ```
 

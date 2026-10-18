@@ -5,7 +5,7 @@ DSH-X 是运行在官方 DeepSeek Harness 上的开发者插件套件。对用�
 - 默认开发组合：`dsh-x-suite`，精确依赖 Code + Agents。启用入口不自动初始化原生账号、准备模型目录或执行任务。
 - 可选独立功能：Chat、Plan、Stocks、Browser。Code 浏览和默认 DSH 模型审查不依赖 Agents；原生修复才需要它。Browser 的真实 Electron 验证单独记录，Web 测试不替代 Desktop 验证。
 - 第一条交付路径：GitHub Release 的预构建插件包 + 官方 Plugins 管理器。套件随包携带 Code、Agents，不依赖它们已发布到 npm；安装及发布方法见 [插件发行](packaging/plugins.md)。源码存在不表示已有成功发布的 Release。
-- 桌面发行版是后续分发目标。现有打包矩阵仍只生成官方 Desktop，不能把其中的 `dshXSha` 当作插件已经进入安装包的证据。
+- 桌面发行使用官方源码编译的原样 Desktop，加上获用户授权的 DSH-X 外层安装器和插件初始化层，详见 [桌面发行](packaging/README.md)。只有最终 DMG/EXE 的实际安装报告通过，才能称为已验证的桌面交付。
 
 套件安装、冲突检查及可独立使用边界见 [Developer Suite](packages/dsh-x-suite/README.md)。上游版本检查与尚未激活的调度条件见 [兼容策略](compatibility/README.md)。真实桌面验证流程见 [Desktop Browser proof](docs/desktop-browser-proof.md)。
 
@@ -71,7 +71,7 @@ home 不用默认的 `~/.dsh`。用户级指令在 `~/.dsh-x/agents/`，由 `DSH
 
 Desktop 当前支持安装包固定的 `nightly` / `latest` 更新通道；`latest` 拒绝预发布版本，切换通道需要手动安装另一通道的包，没有已验证的应用内切换按钮。自动检查不会自动下载或安装。普通最新正式版与主动选择的预发布版都要先经过兼容验证；未验证版本不会自动放宽 `engines.dsh`、替换本地内核或发布 DSH-X。
 
-检查工作流只产出精确版本和测试证据；Web Host / 协议 fixture 通过不代表 Electron、真实原生账号或真实模型调用已验证。当前精确准入仍为 `0.2.1-alpha.5`，后续版本需要明确验证后更新声明。
+检查工作流只产出精确版本和测试证据；Web Host / 协议 fixture 通过不代表 Electron、真实原生账号或真实模型调用已验证。当前精确准入仍为 `0.2.1-rc.2`，后续版本需要明确验证后更新声明。
 
 官方依据：[Desktop 更新边界](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/README.md)、[安装包通道规则](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/packaging/README.md)、[插件兼容检查](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/packages/boot/plugin-manager/README.md)。
 

@@ -1,55 +1,46 @@
-# 桌面打包
+# DSH-X 桌面发行
 
-可下载的插件版使用独立的 [GitHub 插件发行流程](plugins.md)，不需要先生成桌面安装包。本页只说明 Desktop 打包。
+`.github/workflows/desktop-package.yml` 在 GitHub Actions 中检出官方源码、编译官方 Desktop，再由本仓库的原生启动器和安装脚本组装 DSH-X DMG / EXE。外层安装器已获用户授权；官方内核源码、可执行文件和 `app.asar` 保持原样。独立插件包另见 [插件发行](plugins.md)。
 
-DSH-X 的第一条交付路径是独立插件与 `dsh-x-suite` 组合包，通过官方 Plugins 管理器安装。本页的原有 Desktop 打包矩阵不是已集成 DSH-X 的桌面发行版。新增的 Windows Browser proof job 是隔离验证，不是发布安装包，见 [验证说明](../docs/desktop-browser-proof.md)。
+当前精确目标为官方 `0.2.1-rc.2`、提交 `687f282e8625c6b8d11ff58211a90524be2e4317`。源码 SHA、npm 完整性和 CLI 兼容证据位于 `compatibility/policy.json` 与 `compatibility/evidence/rc2-suite-2026-10-18.json`。Desktop 验收以最终安装包附带的 `desktop-install-report.json` 为准，不能用 CLI 测试代替。
 
-安装包由官方内核的 Desktop 打包命令产生。本仓库不另写一套 Electron 壳，也不包含内核源码。GitHub Actions 在运行时检出 `kernel_ref`，在那份临时目录里打包，产物留成 artifact。要跟最新内核，改这次运行的 ref。
+## 构建与组装
 
-## 平台
+Actions 中手动运行 **Package desktop**，选择待发源码分支：
 
-官方当前的发布目标是三个，Linux 不是 Desktop 的发布目标。
+- `kernel_repository` 必须是 `deepseek-ai/deepseek-harness`。
+- `kernel_ref` 选精确的已审查官方提交；脚本拒绝与兼容策略不符的源码或版本。
+- `build_only=true` 只编译官方安装包，保留 `official-macos-arm64`、`official-windows-x64` artifact。
+- `reuse_build` 可填写上述构建的 run ID；组装器核对内核提交、版本和安装包 SHA-256 后复用，避免反复编译内核。
+- `distribution_target` 选择两平台或单独一平台。复用 ID 留空且 `build_only=false` 时，会先编译再组装。
 
-| 目标 | 官方命令 | 本仓库的 Action |
-|---|---|---|
-| macOS Apple Silicon | `pnpm run package:desktop:mac:arm64:unsigned` | `macos-14` |
-| macOS Intel | `pnpm run package:desktop:mac:x64:unsigned` | 先不做。需要 Intel 机器，或在 Apple Silicon 上用 Rosetta。GitHub 托管的 macOS runner 是 arm64，这条还没验证 |
-| Windows x64 | `pnpm run package:desktop:win:x64:unsigned` | `windows-2022` |
-| Linux | 无 | 不生成安装包 |
+macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`；Windows 使用 x64 runner 与 `package:desktop:win:x64:unsigned`。Linux 不生成 Desktop 安装包，macOS Intel 尚未加入本矩阵。依赖固定到锁文件及官方 pnpm 版本。
 
-macOS arm64 必须在 Apple Silicon 上打包。Windows x64 必须在 Windows x64 上打包。不能在 Linux runner 上交叉编译出官方安装包。
+外层 macOS DMG 包含 `DSH-X.app` 与安装说明，其中原样嵌套官方应用。外层启动器用 C 编译，单独 ad-hoc 签名，不重签内嵌应用。Windows 安装器通过固定版本 NSIS 生成，含原样官方应用文件和 C# 启动器，使用当前用户安装范围，不要求管理员权限。已运行的安装目录会阻止覆盖；不强制停止用户应用。Windows 卸载只移除自有文件，保留用户数据。
 
-## 签名
+## 首次启动与插件
 
-这条 Action 只打未签名的内部包。
+用户从 DMG 将 `DSH-X.app` 拖到 Applications，或运行 EXE。始终使用 **DSH-X** 入口启动。
 
-- macOS 未签名命令不读 `.env.macos`，不做 Developer ID 签名，也不做公证。下载后 Gatekeeper 会拦，需要在系统设置里放行。
-- Windows 未签名命令会读 `apps/desktop/.env.windows`，要求应用 ID 和强制更新策略里的 HTTPS 来源。不需要 EV 证书。SmartScreen 会对未签名安装包报警。
-- 公证和 Windows EV 签名是另一条流水线，用本机或自托管 runner 上的证书。上游自己的打包 workflow 也是自托管机器，不在 GitHub 托管 runner 上签名。
+首次运行会打开官方应用初始化独立 profile。窗口出现后，用户必须完全退出（macOS：Command+Q；Windows：托盘菜单退出）。安装器随后调用内嵌官方 Desktop CLI 安装 suite、Chat、Plan、Stocks、Browser，再重新打开应用；suite 已携带 Code、Agents。初次安装仍需联网下载第三方依赖，不需要用户手动安装 tgz。
 
-## 插件还不会进安装包
+用户数据根为 `~/.dsh-x/desktop-preview`，不导入原有官方账号、profile 或凭据。插件 tarball 在该目录内按发行身份保留，避免替换应用目录后破坏 profile 锁文件的本地安装来源。安装后仍由官方 Plugins 页面管理插件；同一发行版再次启动不会重新启用用户停用或移除的组件。失败不会写成功标记，不承诺失败自动回滚；诊断记录在该独立目录的 `distribution-install.log`。
 
-开发时插件用 `link:` 指到本机目录。这个路径在别人的电脑上不存在，也不能写进安装包。
+## 产物与验证
 
-官方安装包把内置 bundle 放在应用自己的 `app.asar/dsh` 里。外部插件装在用户 home 的 `profiles/desktop`。上游没有一个可以让我们把 `packages/` 塞进安装包的固定入口。
+成功组装的 artifact 名为 `dsh-x-macos-arm64` / `dsh-x-windows-x64`，包含：
 
-所以原有打包矩阵只打包指定提交上的官方 Desktop，并在 artifact 里放一份 `build-manifest.json`，记下内核提交和本仓库提交。插件随安装包分发尚无已经验证的实现；必须验证受支持的插件交付、首次初始化、签名、升级、卸载和失败恢复后，才能称为 DSH-X 桌面发行版。不能通过硬写 `app.asar`、写入本机 `link:` 路径或修改内核绕过此边界。
+- DMG 或 EXE；
+- `distribution.json`：内核提交、内核版本、插件提交、包版本与校验值；
+- `SHA256SUMS` 与 `INSTALL.txt`；
+- `desktop-install-report.json`：最终容器的实际安装与插件加载结果。
 
-## 更新身份
+验证会从最终 DMG 重新提取应用，或静默安装最终 EXE 到临时目录，然后使用真实 Electron 初始化 profile、经官方 CLI 安装打包的插件，并检查真实 Host 中六个插件与六个客户端模块各加载一次。test-only probe 仅装入临时 profile，不进入发行文件。供应商登录、真实模型执行、所有 UI 操作和真实历史数据迁移另行验收。
 
-官方 Desktop 的 Electron 壳、匹配内核与 pnpm 是同一个签名更新单元。npm CLI 的包更新不更新 Desktop。插件包在 profile 中独立管理，但仍须通过运行时 `engines.dsh` 兼容准入。
+## 签名与后续自更新
 
-安装包将 `nightly` 或 `latest` 通道写入 manifest（打包参数 `DSH_DESKTOP_UPDATE_CHANNEL`）；自动更新保持该通道，`latest` 不接受预发布版本。切换通道要手动安装另一通道包，不能描述为已有应用内开关。自动检查不会自动下载或在退出时静默安装。详见官方 [packaging](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/packaging/README.md) 与 [更新协调器](https://github.com/deepseek-ai/deepseek-harness/blob/1517a4dbca0a2789ff1d41ba439600f8547d23fa/apps/desktop/src/update-coordinator.ts)。
+这阶段生成未签名预览包：macOS 无 Developer ID、公证，Windows 无发行代码签名。Mac 外层 ad-hoc 签名只用于本地完整性，不是可信发行签名。文件名显式带 `preview`，不能当作正式自更新包。
 
-## 怎么跑
+未连接自更新源。官方 Mac 未签名路径关闭更新；Windows 使用保留的 `.invalid` 策略地址，不能提供真实更新决策。后续需要我们的 HTTPS 更新源、独立更新身份、发行签名和旧版到新版的真实升级验证。不能把官方 production 更新源直接当成我们的更新源。
 
-Actions 里手动运行 **Package desktop**。`kernel_ref` 填 `deepseek-ai/deepseek-harness` 的分支、tag 或提交。没有 push 触发，避免每次提交都去编三个小时。
-
-Windows 任务还要在仓库变量里准备：
-
-- `DSH_DESKTOP_APP_ID`
-- `DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN`，必须是 `https://` 开头
-
-缺了 Windows 任务会在写 `.env.windows` 之前停下。macOS arm64 不需要这两项。
-
-产物在 Actions 的 artifact 里，保留 14 天。这不是 GitHub Release。以后要挂到 Release，单独加发布 workflow，不要和打包混在一起。
+内嵌应用仍显示官方品牌，协议唤起与全局 `dsh` 命令尚未作为 DSH-X 独立入口验收。用户应通过 DSH-X 启动器进入独立 profile。官方说明：[打包](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/apps/desktop/packaging/README.zh.md)、[更新发布](https://github.com/deepseek-ai/deepseek-harness/blob/687f282e8625c6b8d11ff58211a90524be2e4317/apps/desktop/publishing/README.zh.md)。

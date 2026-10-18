@@ -1,6 +1,6 @@
 # Agents / 原生 Agent 工作台
 
-Native runtime delegation for DSH 0.2.1-alpha.5. DSH coordinates the current host conversation; the selected native runtime owns its delegated native turn. Selecting an Agent in the sidebar **prepares a request in the existing composer**; the user sends it. It does not silently change DSH's primary model or send a second hidden conversation.
+Native runtime delegation for DSH 0.2.1-rc.2. DSH coordinates the current host conversation; the selected native runtime owns its delegated native turn. Selecting an Agent in the sidebar **prepares a request in the existing composer**; the user sends it. It does not silently change DSH's primary model or send a second hidden conversation.
 
 ## Current capabilities
 

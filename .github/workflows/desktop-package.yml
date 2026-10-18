@@ -46,7 +46,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: ${{ github.event_name == 'push' && format('desktop-proof-{0}', github.ref) || format('desktop-package-manual-{0}', github.ref) }}
+  group: ${{ github.event_name == 'push' && format('desktop-proof-{0}', github.ref) || format('desktop-package-manual-{0}-{1}-{2}', github.ref, inputs.reuse_build || 'build', inputs.distribution_target || 'all') }}
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/work/stock-chat-plugins' && contains(github.event.head_commit.message, '[replace-failed-proof]') }}
 
 jobs:
