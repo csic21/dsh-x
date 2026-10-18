@@ -25,10 +25,20 @@ on:
       kernel_ref:
         description: 内核的分支、tag 或提交
         required: true
+        default: 687f282e8625c6b8d11ff58211a90524be2e4317
+        type: string
+      build_only:
+        description: 只编译官方安装包，暂不组装 DSH-X 外层安装器
+        default: false
+        type: boolean
+      reuse_build:
+        description: 复用本工作流已完成的官方构建 run ID（留空重新编译）
+        default: ''
         type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.event_name == 'push' && format('desktop-proof-{0}', github.ref) || format('desktop-package-manual-{0}', github.ref) }}
@@ -36,7 +46,7 @@ concurrency:
 
 jobs:
   package:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.reuse_build == ''
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -58,6 +68,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: dsh-x
+          persist-credentials: false
 
       - name: Checkout kernel
         uses: actions/checkout@v4
@@ -79,58 +90,100 @@ jobs:
         working-directory: deepseek-harness
         run: pnpm install --frozen-lockfile
 
+      - name: Verify official source and qualified plugin runtime
+        shell: bash
+        env:
+          KERNEL_REPOSITORY: ${{ inputs.kernel_repository }}
+          KERNEL_REF: ${{ inputs.kernel_ref }}
+        run: node dsh-x/scripts/collect-desktop-runtime.mjs check --kernel deepseek-harness
+
       - name: Write Windows packaging env
         if: matrix.name == 'windows-x64'
         working-directory: deepseek-harness
         shell: pwsh
-        env:
-          APP_ID: ${{ vars.DSH_DESKTOP_APP_ID }}
-          UPDATE_ORIGIN: ${{ vars.DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:APP_ID)) {
-            throw '仓库变量 DSH_DESKTOP_APP_ID 未设置'
-          }
-          if ($env:UPDATE_ORIGIN -notmatch '^https://') {
-            throw '仓库变量 DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN 必须是 https:// 开头'
-          }
-          $config = @{ allowedAuthOrigins = @($env:UPDATE_ORIGIN) } | ConvertTo-Json -Compress
+          # Explicitly unsigned preview: updater is not connected yet.
           @(
-            "DSH_DESKTOP_APP_ID=$($env:APP_ID)"
-            "DSH_DESKTOP_AUTO_UPDATE_ENV=test"
-            "DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN=$($env:UPDATE_ORIGIN)"
-            "DSH_DESKTOP_MANDATORY_UPDATE_CONFIG=$config"
+            'DSH_DESKTOP_APP_ID=com.csic21.dshx.preview'
+            'DSH_DESKTOP_AUTO_UPDATE_ENV=production'
+            'DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://updates.dsh-x.invalid'
           ) | Set-Content -Encoding utf8 apps/desktop/.env.windows
 
       - name: Package unsigned desktop
         working-directory: deepseek-harness
         run: pnpm run ${{ matrix.package_script }}
 
-      - name: Write build manifest
-        working-directory: deepseek-harness
+      - name: Collect official installer with exact source provenance
         shell: bash
+        env:
+          DESKTOP_TARGET: ${{ matrix.name }}
         run: |
-          mkdir -p apps/desktop/.desktop-build/manifest
-          cat > apps/desktop/.desktop-build/manifest/build-manifest.json <<EOF
-          {
-            "kernelRepository": "${{ inputs.kernel_repository }}",
-            "kernelRef": "${{ inputs.kernel_ref }}",
-            "kernelSha": "$(git rev-parse HEAD)",
-            "dshXSha": "$(git -C "$GITHUB_WORKSPACE/dsh-x" rev-parse HEAD)",
-            "target": "${{ matrix.name }}",
-            "packageScript": "${{ matrix.package_script }}"
-          }
-          EOF
+          node dsh-x/scripts/collect-desktop-runtime.mjs collect --kernel deepseek-harness --output "$RUNNER_TEMP/official-runtime"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.name }}-${{ github.run_id }}
+          name: official-${{ matrix.name }}
           retention-days: 14
           if-no-files-found: error
-          path: |
-            deepseek-harness/apps/desktop/.desktop-build/manifest/build-manifest.json
-            deepseek-harness/${{ matrix.artifact_glob }}
+          path: ${{ runner.temp }}/official-runtime/*
+
+      - name: Retain official build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-build-logs-${{ matrix.name }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: deepseek-harness/apps/desktop/.desktop-build/packaging-runs/**
+
+  distribute:
+    needs: package
+    if: always() && github.event_name == 'workflow_dispatch' && !inputs.build_only && (needs.package.result == 'success' || (inputs.reuse_build != '' && needs.package.result == 'skipped'))
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            os: macos-14
+          - target: windows-x64
+            os: windows-2022
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.28.5'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - uses: actions/download-artifact@v4
+        with:
+          name: official-${{ matrix.target }}
+          path: ${{ runner.temp }}/official-runtime
+          run-id: ${{ inputs.reuse_build || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Package plugins
+        shell: bash
+        run: node scripts/package-plugin-release.mjs --output "$RUNNER_TEMP/desktop-plugins"
+      - name: Assemble and verify DSH-X installer
+        shell: bash
+        env:
+          DESKTOP_TARGET: ${{ matrix.target }}
+        run: node scripts/package-desktop-distribution.mjs --runtime "$RUNNER_TEMP/official-runtime" --plugins "$RUNNER_TEMP/desktop-plugins" --output "$RUNNER_TEMP/dsh-x-desktop"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-x-${{ matrix.target }}
+          path: ${{ runner.temp }}/dsh-x-desktop/*
+          if-no-files-found: error
+          retention-days: 14
 
   browser-smoke:
+    if: github.event_name == 'push'
     name: Actual Windows Desktop browser smoke
     runs-on: windows-2022
     timeout-minutes: 180
