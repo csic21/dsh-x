@@ -1,0 +1,29 @@
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, writeFile, link, unlink } from 'node:fs/promises'
+import path from 'node:path'
+import { validateScope } from './watchlist.ts'
+
+// The launcher-owned profile directory is the authority. The browser sees only
+// this ordinary random identifier, never a home path or credential-derived hash.
+export async function loadProfileScope(profileDirectory: any) {
+  if (typeof profileDirectory !== 'string' || !path.isAbsolute(profileDirectory)) throw new Error('缺少有效的宿主 profile 目录。')
+  const directory = path.join(profileDirectory, '.dsh-x-stock')
+  const target = path.join(directory, 'scope.json')
+  const read = async () => {
+    const text = await readFile(target, 'utf8')
+    if (text.length > 1024) throw new Error('自选存储标识无效。')
+    const value = JSON.parse(text)
+    if (value?.version !== 1) throw new Error('自选存储标识版本无效。')
+    return validateScope(value.scope)
+  }
+  try { return await read() } catch (error: any) { if (error.code !== 'ENOENT') throw error }
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const temporary = path.join(directory, `${randomUUID()}.tmp`)
+  try {
+    await writeFile(temporary, JSON.stringify({ version: 1, scope: randomUUID() }), { flag: 'wx', mode: 0o600 })
+    // Atomic exclusive publication: concurrent Host starts never overwrite an
+    // established identity or observe a partially written destination.
+    try { await link(temporary, target) } catch (error: any) { if (error.code !== 'EEXIST') throw error }
+  } finally { await unlink(temporary).catch(() => {}) }
+  return read()
+}

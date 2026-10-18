@@ -7,7 +7,7 @@ import {Context} from '@deepseek-ai/cordis'
 import ToolRuntime,{defineTool} from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
-import * as agents from '../packages/dsh-x-agents/index.js'
+import * as agents from '../packages/dsh-x-agents/lib/index.js'
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve}}
 async function fixture(t,run,approve=async()=> 'allowed-once'){
  const dir=mkdtempSync(path.join(tmpdir(),'agents-browser-bridge-')),ctx=new Context(),agent={session:{id:crypto.randomUUID()}}

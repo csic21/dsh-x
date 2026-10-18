@@ -161,11 +161,10 @@ jobs:
       - name: Build plugin clients
         working-directory: dsh-x
         run: |
-          npm ci
+          # Installs and builds every plugin client, including dsh-x-browser.
+          pnpm install --frozen-lockfile
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run build
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm --prefix packages/dsh-x-browser run build
+          pnpm run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Configure isolated unsigned smoke package
         working-directory: deepseek-harness
@@ -305,9 +304,8 @@ jobs:
       - name: Install plugin and official kernel dependencies
         run: |
           cd dsh-x
-          npm ci
-          npm run build
-          npm --prefix packages/dsh-x-browser run build
+          pnpm install --frozen-lockfile
+          pnpm run build
           cd ../deepseek-harness
           pnpm install --frozen-lockfile
       - name: Preflight full official Seatbelt and requested public catalog

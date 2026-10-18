@@ -36,3 +36,13 @@ The final model-directory increment passes **581/581** complete tests, including
 Added 22 focused tests covering effective native configuration, normalized defaults, zero-price-only selection, inherited credential removal, exact child tickets, pending-call races, revocation, bounded shutdown, MCP authentication/origin/replay/UTF-8/call budgets, and official ToolRuntime nested Browser ownership/approval. The broader Agents, official-runtime, model-operation and Code ownership selection passes 307 tests in total. These are synthetic protocol/ownership tests; they do not prove a provider reply.
 
 The official v1.19.3 Linux archive was downloaded and its release SHA-256 verified. A zero-prompt startup attempt was blocked before spawn because this execution environment exposes Git sentinel directories on every writable ancestor. The guard was not bypassed. No local model prompt was sent. Actual packaged Windows Desktop startup, fresh public catalog, hello response and same-guest Google navigation remain gated on the separate real-provider proof workflow and its captured evidence.
+
+## Completed TypeScript migration — 2026-10-18
+
+- All seven workspace packages use the shared TypeScript builder. Strict type checking includes source and package tests; the temporary Code `allowJs` bridge is removed. Host entries load from `lib/index.js`, with declarations and lazy client factories included in package checks.
+- `pnpm run typecheck` and `pnpm run build` pass. Full regression (`TMPDIR=/private/tmp pnpm test`, with local loopback listeners allowed): **762 tests, 760 passed, 0 failed, 2 skipped**. Skips are the unavailable upstream ApprovalPanel source fixture and a platform-specific non-macOS CLI check.
+- Plan's ACP input-closure fixture now reads its handshake synchronously before closing fd 0, preserving open stdout and the exact `EPIPE` assertion. Closing a descriptor behind an active Node stdin stream could terminate the fixture before the host write. The test passes within the complete regression.
+- Stock's compiled Workbench fixture intercepts the migrated `.tsx` chart module; its twelve cases pass with the intended chart seam. Numeric indicator and dataset validation behavior is retained.
+- Package dry runs verify built entries, declarations, client bundles, chart license notices and Agents protocol notes; TypeScript source/tests are excluded from delivery. `git diff --check` is clean.
+
+No provider authentication, real model calls, Electron UI, or paid/network market-data calls are claimed by these synthetic tests.

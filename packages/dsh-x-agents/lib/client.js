@@ -1,4 +1,5 @@
 window.__ModuleLoader__.load({ id: "dsh-x-agents", factory: (require) => { var module = { exports: {} }; var exports = module.exports;
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -27,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/client/index.js
+// src/client/index.ts
 var index_exports = {};
 __export(index_exports, {
   apply: () => apply,
@@ -35,7 +36,7 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// src/client/model.js
+// src/client/model.ts
 var STATES = ["idle", "running", "waiting_permission", "waiting_input", "completed", "cancelled", "blocked", "failed", "interrupted"];
 var CAPABILITIES = ["nativeSessions", "resume", "streaming", "tools", "plans", "permissions", "input", "usage", "cancel", "models", "authDiscovery"];
 var EVENT_TYPES = ["session", "assistant", "tool", "plan", "permission", "input", "usage", "status", "diagnostic"];
@@ -168,7 +169,7 @@ ${text}
   return inserted;
 }
 
-// src/client/controller.js
+// src/client/controller.ts
 var empty = () => ({ status: "loading", snapshot: null, error: null, pending: false });
 var errorOf = (code, message = "") => ({ code: typeof code === "string" && /^[A-Za-z0-9/_-]{1,160}$/.test(code) ? code : "agents/unavailable", message: typeof message === "string" ? message.slice(0, 2e3) : "" });
 function abortable(call, signal) {
@@ -379,10 +380,10 @@ function createAgentsController(rpc, { documentObject = globalThis.document, pol
   };
 }
 
-// src/client/components.jsx
+// src/client/components.tsx
 var import_react = __toESM(require("react"), 1);
 
-// src/client/locales.js
+// src/client/locales.ts
 var NS = "dshXAgents";
 var en = {
   title: "Agents",
@@ -702,7 +703,7 @@ var zh = {
 };
 var errorKey = (code) => Object.hasOwn(en, `error.${code}`) ? `error.${code}` : "error.generic";
 
-// src/client/components.jsx
+// src/client/components.tsx
 function AgentsEntry({ useAgents, openAgents, t }) {
   const state = useAgents((state2) => state2);
   const task = state.snapshot?.task, operation = state.snapshot?.operation;
@@ -821,7 +822,7 @@ function AgentsToolRow({ phase, block, inspect, openCurrent, operationKind, t, f
   return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxa-tool", "aria-label": t("title") }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-task-heading" }, /* @__PURE__ */ import_react.default.createElement("strong", null, t(modelsOperation ? "modelCatalogTitle" : "title")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxa-status", role: "status" }, phase !== "result" ? t(modelsOperation ? "modelsOperationRunning" : "operationRunning") : block?.isError ? t("operationFailed") : modelsOperation ? t(modelAgent?.modelCatalog ? `modelCatalog.${modelAgent.modelCatalog.status}` : "historyResult") : task ? t(`state.${task.cancellationRequested ? "stopping" : task.state}`) : t("historyResult"))), phase === "result" && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, snapshot ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t("historyResult"), !modelsOperation && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, " \xB7 ", t("host"))), modelsOperation ? modelAgent ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("strong", null, modelAgent.label), /* @__PURE__ */ import_react.default.createElement(ModelCatalog, { agent: modelAgent, t, formatTime })) : /* @__PURE__ */ import_react.default.createElement("p", null, t("unsupportedResult")) : /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, task && /* @__PURE__ */ import_react.default.createElement("p", null, task.title), task?.summary && /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxa-raw" }, task.summary.slice(0, 1400), task.summary.length > 1400 ? "\u2026" : ""), task && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxa-muted" }, t(task.state)))) : /* @__PURE__ */ import_react.default.createElement("p", null, t("unsupportedResult")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxa-stop" }, snapshot && openCurrent && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => openCurrent(snapshot) }, t("openCurrent")), inspect && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: inspect }, t("inspectRecord")))));
 }
 
-// src/client/styles.js
+// src/client/styles.ts
 var CSS = `
 .dxa-workspace .dxa-model-request{font-size:12px;flex:0 0 auto}.dxa-model-catalog{margin-top:14px}.dxa-catalog-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.dxa-catalog-heading p{flex:1;margin:0}.dxa-runtime-details{margin:12px 0;font-size:12px}.dxa-runtime-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#62666d)}.dxa-runtime-details ul{padding-inline-start:18px;margin:8px 0}.dxa-model-catalog summary{font-size:12px;cursor:pointer}.dxa-model-operation{margin-top:14px}
 .dxa-entry{display:inline-flex;align-items:center;align-self:flex-start;gap:6px;color:var(--dsw-alias-label-secondary,#62666d);background:transparent;border:1px solid var(--dsw-alias-border-l2,#d9dce0);border-radius:7px;padding:5px 8px;margin:0 0 7px;font:12px/1.4 system-ui,sans-serif;cursor:pointer;max-width:260px;min-width:0}.dxa-entry:disabled{opacity:.65;cursor:default}.dxa-mark{border:1px solid currentColor;border-radius:4px;font-size:10px;line-height:15px;width:16px;text-align:center}.dxa-entry-state{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px}
@@ -835,7 +836,7 @@ var CSS = `
 @media(max-width:480px){.dxa-workspace,.dxa-message{padding:14px}.dxa-selectors{grid-template-columns:1fr}.dxa-header{flex-wrap:wrap}.dxa-entry-state{display:none}.dxa-prepare{padding:11px}}
 `;
 
-// src/client/index.js
+// src/client/index.ts
 var inject = ["slots", "connection", "resources", "sidebarRight", "sidebarRightTabs", "locale"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "agents: dictionaries");

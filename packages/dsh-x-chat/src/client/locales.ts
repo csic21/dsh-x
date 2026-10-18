@@ -1,0 +1,88 @@
+export const NS = 'dsh-x-chat'
+
+export const en = Object.freeze({
+  'title': 'Read-only Q&A',
+  'status.preparing': 'Preparing question',
+  'status.running': 'Generating answer',
+  'status.complete': 'Answer ready',
+  'status.failed': 'Question failed',
+  'status.cancelled': 'Question cancelled',
+  'details.show': 'Show question details',
+  'details.hide': 'Hide question details',
+  'inspect': 'Inspect call',
+  'prompt': 'Question',
+  'context': 'Reference material',
+  'provider': 'Provider',
+  'model': 'Model',
+  'answer': 'Answer',
+  'empty': 'No recorded answer is available.',
+  'truncated': 'The answer reached the output token limit and may be incomplete.',
+  'error.unknown': 'The question could not be completed. Inspect the call for details.',
+  'error.DSH_X_CHAT_ROUTE': 'Set both provider and model to non-empty strings of at most 256 characters.',
+  'error.DSH_X_CHAT_CONFIG': 'Plugin configuration must be an object.',
+  'error.DSH_X_CHAT_CONFIG_KEY': 'The plugin configuration contains an unsupported option.',
+  'error.DSH_X_CHAT_TIMEOUT_CONFIG': 'timeoutMs must be an integer between 1 and 120000.',
+  'error.DSH_X_CHAT_TOKENS_CONFIG': 'maxOutputTokens must be an integer between 1 and 8192.',
+  'error.DSH_X_CHAT_PROMPT_TYPE': 'prompt must be a non-empty string.',
+  'error.DSH_X_CHAT_CONTEXT_TYPE': 'context must be a string.',
+  'error.DSH_X_CHAT_PROMPT_LIMIT': 'prompt exceeds the 16384-byte UTF-8 limit. Shorten it and try again.',
+  'error.DSH_X_CHAT_CONTEXT_LIMIT': 'context exceeds the 49152-byte UTF-8 limit. Shorten it and try again.',
+  'error.DSH_X_CHAT_CANCELLED': 'The question was cancelled.',
+  'error.DSH_X_CHAT_TIMEOUT': 'The question timed out.',
+  'error.DSH_X_CHAT_AFTER_FINISH': 'The model returned more data after its finish marker.',
+  'error.DSH_X_CHAT_RESPONSE_LIMIT': 'The model response exceeded the safety size limit and was stopped.',
+  'error.DSH_X_CHAT_TOOL_CALL': 'Read-only Q&A does not allow model tool calls.',
+  'error.DSH_X_CHAT_FINISH': 'The model did not finish normally because of an error, cancellation, or tool request.',
+  'error.DSH_X_CHAT_INCOMPLETE': 'The model response has no finish marker and cannot be treated as a complete answer.',
+  'error.DSH_X_CHAT_CONTENT': 'The model returned an unsupported content type.',
+  'error.DSH_X_CHAT_EMPTY': 'The model returned no visible text.',
+  'error.DSH_X_CHAT_PROVIDER': 'The question failed. Check the configured provider, model, and connection.',
+})
+
+/** Every key this namespace owns; the zh dictionary must cover it exactly. */
+export type ChatLocaleKey = keyof typeof en
+
+export const zh: Readonly<Record<ChatLocaleKey, string>> = Object.freeze({
+  'title': '只读问答',
+  'status.preparing': '正在准备问题',
+  'status.running': '正在生成回答',
+  'status.complete': '回答已完成',
+  'status.failed': '问答失败',
+  'status.cancelled': '问答已取消',
+  'details.show': '展开问答详情',
+  'details.hide': '收起问答详情',
+  'inspect': '检查调用',
+  'prompt': '问题',
+  'context': '参考材料',
+  'provider': '提供方',
+  'model': '模型',
+  'answer': '回答',
+  'empty': '没有可显示的已记录回答。',
+  'truncated': '回答达到输出 token 上限，内容可能不完整。',
+  'error.unknown': '无法完成问答，请检查调用详情。',
+  'error.DSH_X_CHAT_ROUTE': 'provider 和 model 必须同时设置为非空字符串（最多 256 字符）。',
+  'error.DSH_X_CHAT_CONFIG': '插件配置必须是对象。',
+  'error.DSH_X_CHAT_CONFIG_KEY': '不支持的插件配置项。',
+  'error.DSH_X_CHAT_TIMEOUT_CONFIG': 'timeoutMs 必须为 1–120000 的整数。',
+  'error.DSH_X_CHAT_TOKENS_CONFIG': 'maxOutputTokens 必须为 1–8192 的整数。',
+  'error.DSH_X_CHAT_PROMPT_TYPE': 'prompt 必须是非空字符串。',
+  'error.DSH_X_CHAT_CONTEXT_TYPE': 'context 必须是字符串。',
+  'error.DSH_X_CHAT_PROMPT_LIMIT': 'prompt 超过 16384 UTF-8 字节限制，请缩短后重试。',
+  'error.DSH_X_CHAT_CONTEXT_LIMIT': 'context 超过 49152 UTF-8 字节限制，请缩短后重试。',
+  'error.DSH_X_CHAT_CANCELLED': '问答已取消。',
+  'error.DSH_X_CHAT_TIMEOUT': '问答超时。',
+  'error.DSH_X_CHAT_AFTER_FINISH': '模型在结束标记后继续返回数据。',
+  'error.DSH_X_CHAT_RESPONSE_LIMIT': '模型响应超过安全大小限制，已中止。',
+  'error.DSH_X_CHAT_TOOL_CALL': '只读问答拒绝模型工具调用。',
+  'error.DSH_X_CHAT_FINISH': '模型未正常完成问答（错误、取消或工具请求）。',
+  'error.DSH_X_CHAT_INCOMPLETE': '模型响应缺少结束标记，不能作为完整回答。',
+  'error.DSH_X_CHAT_CONTENT': '模型返回了不支持的内容类型。',
+  'error.DSH_X_CHAT_EMPTY': '模型没有返回可见文字。',
+  'error.DSH_X_CHAT_PROVIDER': '问答调用失败，请检查已配置的提供方、模型及其连接状态。',
+})
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    'dsh-x-chat': ChatLocaleKey
+  }
+}

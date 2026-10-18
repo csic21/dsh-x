@@ -10,10 +10,10 @@ import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
-import * as plan from '../packages/dsh-x-plan/index.js'
-import { captureBaseline } from '../packages/dsh-x-plan/src/baseline.js'
-import { parseContract } from '../packages/dsh-x-plan/src/contract.js'
-import { readApproved, readWorkflow, sessionPlansDir, taskLockState, writeNewPlan } from '../packages/dsh-x-plan/src/store.js'
+import * as plan from '../packages/dsh-x-plan/lib/index.js'
+import { captureBaseline } from '../packages/dsh-x-plan/lib/baseline.js'
+import { parseContract } from '../packages/dsh-x-plan/lib/contract.js'
+import { readApproved, readWorkflow, sessionPlansDir, taskLockState, writeNewPlan } from '../packages/dsh-x-plan/lib/store.js'
 
 // These tests use the real Cordis policy pipeline and official local subprocess
 // provider. ACP and the structured bash tool are explicitly labelled fixtures;
@@ -290,7 +290,7 @@ test('unrelated history cannot be reapproved from needs_user', onlyPosix, async 
   await h.draft('node --version')
   h.installApproval(() => 'allowed-once')
   assert.equal((await h.invoke('dsh_x_approve_plan')).isError, false)
-  const { transitionWorkflow } = await import('../packages/dsh-x-plan/src/store.js')
+  const { transitionWorkflow } = await import('../packages/dsh-x-plan/lib/store.js')
   transitionWorkflow(h.dir, 1, 'needs_user')
   await git(h.repo, ['checkout', '--orphan', 'reapproval-unrelated-root'])
   await git(h.repo, ['commit', '-qm', 'unrelated root before reapproval'])

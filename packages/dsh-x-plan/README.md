@@ -146,7 +146,19 @@ dsh plugin --profile <name> add link:/绝对路径/packages/dsh-x-plan
 已安装仓库依赖时，在根目录运行：
 
 ```sh
-npm test
+pnpm test
 ```
 
-根脚本会先构建客户端，再运行单元与集成测试；也可用 `npm run test:unit`、`npm run test:integration` 单独运行。测试覆盖使用本地 ACP fixtures 和仓库固定版本的官方运行时。**没有真实调用 Codex、Claude 或 Grok，也没有实测认证任何厂商适配器发布版本。** fixture 版本号不是生产兼容承诺；当前厂商能力与依赖限制以 [ADAPTERS.md](./ADAPTERS.md) 为准。
+根脚本会先构建客户端，再运行单元与集成测试；也可用 `pnpm run test:unit`、`pnpm run test:integration` 单独运行。测试覆盖使用本地 ACP fixtures 和仓库固定版本的官方运行时。**没有真实调用 Codex、Claude 或 Grok，也没有实测认证任何厂商适配器发布版本。** fixture 版本号不是生产兼容承诺；当前厂商能力与依赖限制以 [ADAPTERS.md](./ADAPTERS.md) 为准。
+
+## TypeScript development
+
+Host sources live in `src/` with entry `src/index.ts`; browser sources are in `src/client/`, and package tests are `test/*.test.ts`. The shared builder emits host JavaScript and declarations into `lib/` and bundles `lib/client.js`. `main` and the root export use `./lib/index.js`; built artifacts ship with the package and remain tracked in this repository.
+
+```sh
+pnpm --filter dsh-x-plan run typecheck
+pnpm --filter dsh-x-plan run build
+pnpm --filter dsh-x-plan test
+```
+
+The root `pnpm test` builds every package before running source unit tests and built-entry integration tests.

@@ -10,7 +10,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { root, components, suiteName, validateSuite } from './suite-support.mjs'
 
-const { values } = parseArgs({ options: { dsh: { type: 'string' }, 'dsh-version': { type: 'string' }, report: { type: 'string' }, help: { type: 'boolean', short: 'h' } } })
+const { values } = parseArgs({ options: { dsh: { type: 'string' }, 'dsh-version': { type: 'string' }, 'release-dir': { type: 'string' }, report: { type: 'string' }, help: { type: 'boolean', short: 'h' } } })
 if (values.help) { console.log('node scripts/test-suite-install.mjs --dsh /absolute/path/to/dsh --dsh-version <exact> --report /path/report.json'); process.exit(0) }
 if (!values.dsh || !path.isAbsolute(values.dsh) || !values['dsh-version']) throw new Error('An explicit absolute DSH command and exact expected version are required.')
 const report = { status: 'running', startedAt: new Date().toISOString(), runtime: values['dsh-version'], checks: [], evidence: 'real official CLI, package manager, installed tarballs and Web Host', notVerified: ['Electron execution', 'browser rendering and interaction', 'native vendor authentication or model execution', 'release-to-release user-data migration'], fixtureVersions: true }
@@ -23,6 +23,7 @@ Object.assign(env, { NPM_CONFIG_GLOBALCONFIG: path.join(temporary, 'empty-global
 await writeFile(env.NPM_CONFIG_USERCONFIG, '')
 await writeFile(env.NPM_CONFIG_GLOBALCONFIG, '')
 let registry, app
+const componentLookups = []
 
 function signalTree(child, signal) {
   if (!child.pid) return
@@ -68,6 +69,18 @@ async function pack(directory) {
   if (components.includes(manifest.name)) assert.ok(info.files.some(item => item.path === 'lib/client.js'), `${manifest.name} packed client missing`)
   return { manifest, file, bytes, integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}` }
 }
+async function releasePackage(name) {
+  const source = JSON.parse(await readFile(path.join(root, 'packages', name, 'package.json'), 'utf8'))
+  const file = path.resolve(values['release-dir'], `${name}-${source.version}.tgz`)
+  const stage = path.join(temporary, `release-${name}`)
+  await mkdir(stage)
+  const extracted = await run('tar', ['-xzf', file, '--strip-components=1', '-C', stage])
+  assert.equal(extracted.code, 0, extracted.err)
+  const manifest = JSON.parse(await readFile(path.join(stage, 'package.json'), 'utf8'))
+  assert.equal(manifest.name, name); assert.equal(manifest.version, source.version)
+  const bytes = await readFile(file)
+  return { manifest, file, stage, bytes, integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}` }
+}
 async function startRegistry(packages) {
   const server = createServer(async (request, response) => {
     try {
@@ -76,6 +89,7 @@ async function startRegistry(packages) {
       const artifact = packages.find(item => pathname === `/tarballs/${path.basename(item.file)}`)
       if (artifact) { response.writeHead(200, { 'content-type': 'application/octet-stream' }).end(artifact.bytes); return }
       const name = decodeURIComponent(pathname.slice(1)), matches = packages.filter(item => item.manifest.name === name)
+      if (components.includes(name)) componentLookups.push(name)
       if (matches.length) {
         const versions = Object.fromEntries(matches.map(item => [item.manifest.version, { ...item.manifest, dist: { tarball: `${registry.url}/tarballs/${path.basename(item.file)}`, integrity: item.integrity } }]))
         response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ name, 'dist-tags': { latest: matches.at(-1).manifest.version }, versions, time: Object.fromEntries(matches.map(item => [item.manifest.version, '2020-01-01T00:00:00.000Z'])) })); return
@@ -172,9 +186,9 @@ try {
   assert.equal(pm.code, 0, pm.err); assert.equal(pm.out.trim(), packageManager.version, 'Use the exact qualified pnpm version on PATH.')
   report.packageManager = { name: 'pnpm', version: pm.out.trim() }
   const packages = []
-  for (const name of [...components, suiteName]) packages.push(await pack(path.join(root, 'packages', name)))
+  for (const name of [...components, suiteName]) packages.push(values['release-dir'] ? await releasePackage(name) : await pack(path.join(root, 'packages', name)))
   for (const [version, engine] of [[upgradeVersion, runtime], [disabledUpgradeVersion, runtime], [incompatibleVersion, '99.0.0']]) {
-    const stage = path.join(temporary, `suite-${version}`); await cp(path.join(root, 'packages', suiteName), stage, { recursive: true })
+    const stage = path.join(temporary, `suite-${version}`); await cp(values['release-dir'] ? packages.find(item => item.manifest.name === suiteName).stage : path.join(root, 'packages', suiteName), stage, { recursive: true })
     const manifest = JSON.parse(await readFile(path.join(stage, 'package.json'), 'utf8')); manifest.version = version; manifest.engines.dsh = engine
     await writeFile(path.join(stage, 'package.json'), JSON.stringify(manifest, null, 2)); packages.push(await pack(stage))
   }
@@ -191,6 +205,10 @@ export function apply(ctx){ctx.effect(()=>ctx.connection.fetch.register({path:'/
 `)
   const artifact = version => packages.find(item => item.manifest.name === suiteName && item.manifest.version === version).file
   await plugin(['add', artifact(suiteVersion), `link:${probe}`]); app = await start()
+  if (values['release-dir']) {
+    assert.deepEqual(componentLookups, [], 'Release suite must install without fetching unpublished Code or Agents packages.')
+    check('release tarball installs bundled Code + Agents without registry lookups')
+  }
   let snapshot = await app.snapshot(); counts(snapshot, { 'dsh-x-code': 1, 'dsh-x-agents': 1 }); check('packed suite installs and boots Code + Agents once')
   let code = snapshot.plugins.find(row => row.moduleName === 'dsh-x-code'); assert.equal(code.readOnlyReason, undefined)
   snapshot = await app.change({ action: 'plugin', id: code.entryId, enabled: false }); counts(snapshot, { 'dsh-x-agents': 1 })

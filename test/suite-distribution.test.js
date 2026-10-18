@@ -8,7 +8,9 @@ import { inspectSuiteTarget, validateSuite, root, components } from '../scripts/
 test('developer suite pins built Code and dormant Agents, with no optional product dependencies', () => {
   const { suite, runtime } = validateSuite()
   assert.equal(runtime, '0.2.1-alpha.5')
-  assert.equal(suite.scripts, undefined)
+  // The suite is a pure configuration bundle: dev-time build/typecheck
+  // scripts are fine, but nothing may run when a consumer installs it.
+  for (const hook of ['install', 'preinstall', 'postinstall', 'prepare']) assert.equal(suite.scripts?.[hook], undefined)
   const patch = readFileSync(path.join(root, 'packages/dsh-x-suite/cordis.patch.yml'), 'utf8')
   for (const name of components) {
     assert.match(patch, new RegExp(`id: ${name}\\n\\s+name: ${name}`))

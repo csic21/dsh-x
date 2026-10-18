@@ -1,4 +1,5 @@
 window.__ModuleLoader__.load({ id: "dsh-x-chat", factory: (require) => { var module = { exports: {} }; var exports = module.exports;
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -27,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/client/index.js
+// src/client/index.ts
 var index_exports = {};
 __export(index_exports, {
   apply: () => apply,
@@ -35,10 +36,10 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// src/client/ChatToolRow.jsx
+// src/client/ChatToolRow.tsx
 var import_react = __toESM(require("react"), 1);
 
-// src/client/locales.js
+// src/client/locales.ts
 var NS = "dsh-x-chat";
 var en = Object.freeze({
   "title": "Read-only Q&A",
@@ -117,36 +118,48 @@ var zh = Object.freeze({
   "error.DSH_X_CHAT_PROVIDER": "\u95EE\u7B54\u8C03\u7528\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u5DF2\u914D\u7F6E\u7684\u63D0\u4F9B\u65B9\u3001\u6A21\u578B\u53CA\u5176\u8FDE\u63A5\u72B6\u6001\u3002"
 });
 
-// src/client/model.js
+// src/client/model.ts
 var CANCELLED = /* @__PURE__ */ new Set(["interrupted", "ABORTED", "ABORTED_BEFORE_DISPATCH", "DSH_X_CHAT_CANCELLED"]);
 function resultMetadata(meta, content) {
-  if (!meta || typeof meta !== "object" || Array.isArray(meta) || meta.kind !== "dsh-x-chat" || meta.version !== 1 || meta.answerBlocks !== 1 || typeof meta.provider !== "string" || typeof meta.model !== "string" || typeof meta.truncated !== "boolean" || !Array.isArray(content) || content.length !== (meta.truncated ? 2 : 1) || content.some((item) => item?.type !== "text" || typeof item.text !== "string")) return null;
-  return meta;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const value = meta;
+  if (value.kind !== "dsh-x-chat" || value.version !== 1 || value.answerBlocks !== 1 || typeof value.provider !== "string" || typeof value.model !== "string" || typeof value.truncated !== "boolean" || !Array.isArray(content) || content.length !== (value.truncated ? 2 : 1) || content.some((item) => !item || typeof item !== "object" || item.type !== "text" || typeof item.text !== "string")) return null;
+  return { answerBlocks: value.answerBlocks, provider: value.provider, model: value.model, truncated: value.truncated };
 }
 function argument(block, key) {
   const value = block?.args?.text?.(key);
   return typeof value === "string" ? value : "";
 }
+function visibleText(block, settled, failed, meta) {
+  if (!settled || failed) return "";
+  const content = block?.content;
+  if (!Array.isArray(content)) return "";
+  const shown = meta ? content.slice(0, meta.answerBlocks) : content;
+  return shown.map((item) => item && typeof item === "object" && item.type === "text" ? String(item.text) : JSON.stringify(item, null, 2)).join("\n");
+}
 function chatViewModel(phase, block) {
   const settled = phase === "result";
-  const failed = settled && block.isError === true;
-  const cancelled = failed && CANCELLED.has(block.error?.code);
-  const meta = settled && !failed ? resultMetadata(block.meta, block.content) : null;
-  const ownError = block.error?.name === "DshXChatError" && Object.hasOwn(en, `error.${block.error.code}`);
+  const failed = settled && block?.isError === true;
+  const code = block?.error?.code;
+  const cancelled = failed && typeof code === "string" && CANCELLED.has(code);
+  const meta = settled && !failed ? resultMetadata(block?.meta, block?.content) : null;
+  const ownError = block?.error?.name === "DshXChatError" && typeof code === "string" && Object.hasOwn(en, `error.${code}`);
+  const errorKey = !failed ? null : ownError ? `error.${code}` : cancelled ? "error.DSH_X_CHAT_CANCELLED" : "error.unknown";
   return {
     state: !settled ? phase === "preparing" ? "preparing" : "running" : cancelled ? "cancelled" : failed ? "failed" : "complete",
-    errorKey: !failed ? null : ownError ? `error.${block.error.code}` : cancelled ? "error.DSH_X_CHAT_CANCELLED" : "error.unknown",
+    errorKey,
     prompt: argument(block, "prompt"),
     context: argument(block, "context"),
     provider: meta?.provider ?? argument(block, "provider"),
     model: meta?.model ?? argument(block, "model"),
     // A locale change must never translate or rewrite recorded model content.
-    text: settled && !failed && Array.isArray(block.content) ? (meta ? block.content.slice(0, meta.answerBlocks) : block.content).map((item) => item.type === "text" ? item.text : JSON.stringify(item, null, 2)).join("\n") : "",
+    text: visibleText(block, settled, failed, meta),
     truncated: meta?.truncated === true
   };
 }
 
-// src/client/ChatToolRow.jsx
+// src/client/ChatToolRow.tsx
+var FIELDS = ["provider", "model", "prompt", "context"];
 function ChatToolRow({ phase, block, inspect, useDisclosure, t }) {
   const { expanded, toggle } = useDisclosure();
   const view = chatViewModel(phase, block);
@@ -163,10 +176,10 @@ function ChatToolRow({ phase, block, inspect, useDisclosure, t }) {
     /* @__PURE__ */ import_react.default.createElement("span", { "aria-hidden": "true" }, expanded ? "\u25BE" : "\u25B8"),
     /* @__PURE__ */ import_react.default.createElement("strong", null, t("title")),
     /* @__PURE__ */ import_react.default.createElement("span", { role: "status" }, t(`status.${view.state}`))
-  ), inspect && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-inspect", onClick: inspect, title: t("inspect") }, t("inspect"))), view.errorKey && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-error", role: "alert" }, t(view.errorKey)), view.truncated && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-warning", role: "status" }, t("truncated")), expanded && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-details" }, /* @__PURE__ */ import_react.default.createElement("dl", null, ["provider", "model", "prompt", "context"].filter((key) => view[key] !== "").map((key) => /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, { key }, /* @__PURE__ */ import_react.default.createElement("dt", null, t(key)), /* @__PURE__ */ import_react.default.createElement("dd", { "data-chat-field": key }, view[key])))), phase === "result" && !view.errorKey && /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("strong", null, t("answer")), view.text !== "" ? /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxc-answer" }, view.text) : /* @__PURE__ */ import_react.default.createElement("p", null, t("empty")))));
+  ), inspect && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-inspect", onClick: inspect, title: t("inspect") }, t("inspect"))), view.errorKey && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-error", role: "alert" }, t(view.errorKey)), view.truncated && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-warning", role: "status" }, t("truncated")), expanded && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-details" }, /* @__PURE__ */ import_react.default.createElement("dl", null, FIELDS.filter((key) => view[key] !== "").map((key) => /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, { key }, /* @__PURE__ */ import_react.default.createElement("dt", null, t(key)), /* @__PURE__ */ import_react.default.createElement("dd", { "data-chat-field": key }, view[key])))), phase === "result" && !view.errorKey && /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("strong", null, t("answer")), view.text !== "" ? /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxc-answer" }, view.text) : /* @__PURE__ */ import_react.default.createElement("p", null, t("empty")))));
 }
 
-// src/client/styles.js
+// src/client/styles.ts
 var CSS = `
 .dxc-card { color: var(--dsw-alias-label-primary); margin-block: 8px; font: inherit; }
 .dxc-heading { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -181,7 +194,7 @@ var CSS = `
 .dxc-error, .dxc-warning { margin-block: 8px; padding-inline-start: 18px; }
 `;
 
-// src/client/index.js
+// src/client/index.ts
 var inject = ["slots", "locale"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "chat: dictionaries");

@@ -21,8 +21,8 @@ A native turn ending is not proof of tests passing or task acceptance. Worktree 
 Use the official DSH plugin mechanism from the repository root:
 
 ```sh
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 dsh plugin --profile web add link:$(pwd)/packages/dsh-x-agents
 ```
 
@@ -89,3 +89,15 @@ At most 2,000 normalized entries are projected to the workbench; excess is visib
 Grok's ACP filesystem and terminal client services are not advertised by this host. The inspected official implementation falls back to native `LocalFs` and `TerminalRunner`; this does not remove Grok's own file or command tools. A host bridge would mainly add host-level mediation/editor integration and requires a separate lifecycle/identity design.
 
 Claude skills are executable workflow extensions: they may grant tools, expand commands, run hooks or fork agents. A skills-name allowlist alone is insufficient. Project/plugin extensions therefore remain disabled in this batch. Future opt-in support needs explicit trusted content/path manifests and separate tool/hook/MCP ownership rules; no unknown project hooks or MCP servers are loaded by this change.
+
+## TypeScript development
+
+Host sources live in `src/` with entry `src/index.ts`; browser sources are in `src/client/`, and package tests are `test/*.test.ts`. The shared builder emits host JavaScript and declarations into `lib/` and bundles `lib/client.js`. `main` and the root export use `./lib/index.js`; built artifacts ship with the package and remain tracked in this repository.
+
+```sh
+pnpm --filter dsh-x-agents run typecheck
+pnpm --filter dsh-x-agents run build
+pnpm --filter dsh-x-agents test
+```
+
+The root `pnpm test` builds every package before running source unit tests and built-entry integration tests.

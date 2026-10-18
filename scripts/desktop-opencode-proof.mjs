@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 import { deadline, proofLifecycle } from './lib/proof-lifecycle.mjs';
 import { approvalInScope } from './lib/opencode-proof-policy.mjs';
-import { safeText } from '../packages/dsh-x-agents/src/store.js';
+import { safeText } from '../packages/dsh-x-agents/lib/store.js';
 import { publicTaskEvidence } from './lib/public-proof-evidence.mjs';
-import { presentationEvents } from '../packages/dsh-x-agents/src/client/model.js';
+import { presentationEvents } from '../packages/dsh-x-agents/src/client/model.ts';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, writeFile, readdir, stat, copyFile, realpath } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';

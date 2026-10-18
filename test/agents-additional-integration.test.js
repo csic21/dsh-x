@@ -8,7 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
-import * as agents from '../packages/dsh-x-agents/index.js'
+import * as agents from '../packages/dsh-x-agents/lib/index.js'
 
 // Real official DSH ToolRuntime + managed OS subprocess + official Anthropic
 // SDK. Only the native CLI protocol peer is synthetic; no model/account calls.

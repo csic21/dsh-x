@@ -1,5 +1,5 @@
 /** Bounded evidence from this public-only proof; never export profiles/configuration. */
-import { safeData, safeText } from '../../packages/dsh-x-agents/src/store.js';
+import { safeData, safeText } from '../../packages/dsh-x-agents/lib/store.js';
 function omitContext(value) {
   if (Array.isArray(value)) return value.map(omitContext);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)

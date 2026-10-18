@@ -10,12 +10,12 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import Approval from '@deepseek-ai/dsh-user-approval'
-import * as agents from '../packages/dsh-x-agents/index.js'
-import * as plan from '../packages/dsh-x-plan/index.js'
-import { sessionPlansDir, writeNewPlan, prepareApproval, approvePlan, discardPlan } from '../packages/dsh-x-plan/src/store.js'
-import { createTaskStore } from '../packages/dsh-x-agents/src/store.js'
-import { createAgentsController } from '../packages/dsh-x-agents/src/controller.js'
-import { readSnapshot } from '../packages/dsh-x-agents/src/client/model.js'
+import * as agents from '../packages/dsh-x-agents/lib/index.js'
+import * as plan from '../packages/dsh-x-plan/lib/index.js'
+import { sessionPlansDir, writeNewPlan, prepareApproval, approvePlan, discardPlan } from '../packages/dsh-x-plan/lib/store.js'
+import { createTaskStore } from '../packages/dsh-x-agents/lib/store.js'
+import { createAgentsController } from '../packages/dsh-x-agents/lib/controller.js'
+import { readSnapshot } from '../packages/dsh-x-agents/src/client/model.ts'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => {

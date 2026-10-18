@@ -1,4 +1,5 @@
 window.__ModuleLoader__.load({ id: "dsh-x-plan", factory: (require) => { var module = { exports: {} }; var exports = module.exports;
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -27,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/client/index.js
+// src/client/index.ts
 var index_exports = {};
 __export(index_exports, {
   apply: () => apply,
@@ -35,10 +36,10 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// src/client/PlanToolRow.jsx
+// src/client/PlanToolRow.tsx
 var import_react = __toESM(require("react"), 1);
 
-// src/client/locales.js
+// src/client/locales.ts
 var NS = "dsh-x-plan";
 var zh = {
   "tool.dsh_x_plan": "\u751F\u6210\u8BA1\u5212",
@@ -425,7 +426,7 @@ function planErrorKey(error) {
   return Object.hasOwn(en, key) ? key : "error.UNKNOWN";
 }
 
-// src/client/presentation.js
+// src/client/presentation.ts
 function readPresentation(meta) {
   if (!meta || meta.kind !== "dsh-x-plan.result") return null;
   if (meta.version === 2) return readTaskPresentation(meta);
@@ -464,7 +465,7 @@ function list(value, max, valid) {
   return Array.isArray(value) && value.length <= max && value.every(valid);
 }
 
-// src/client/PlanToolRow.jsx
+// src/client/PlanToolRow.tsx
 function PlanToolRow({ toolName, phase, block, t, formatCount, openFile, inspect }) {
   const settled = phase === "result";
   const meta = settled && !block.isError ? readPresentation(block.meta) : null;
@@ -485,7 +486,7 @@ function TaskCard({ meta, t, formatCount, openFile, inspect }) {
   return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxp-tool dxp-task", "data-plan-state": meta.workflowState, "aria-label": t("task.label", { goal: meta.goal }) }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-heading" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-title" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-eyebrow" }, t("task.title")), /* @__PURE__ */ import_react.default.createElement("strong", null, meta.goal || t("task.untitled"))), /* @__PURE__ */ import_react.default.createElement("span", { className: `dxp-status dxp-${status.tone}`, role: "status" }, t(status.key))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-meta" }, /* @__PURE__ */ import_react.default.createElement("span", null, t("task.version", { round: formatCount(meta.round), revision: formatCount(meta.revision) })), /* @__PURE__ */ import_react.default.createElement("span", null, t("snapshot"))), /* @__PURE__ */ import_react.default.createElement("dl", { className: "dxp-roles" }, /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("dt", null, t("role.planner")), /* @__PURE__ */ import_react.default.createElement("dd", null, meta.planner || t("value.unavailable"))), /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("dt", null, t("role.executor")), /* @__PURE__ */ import_react.default.createElement("dd", null, t("role.current-session"))), /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("dt", null, t("role.reviewer")), /* @__PURE__ */ import_react.default.createElement("dd", null, meta.reviewer || t("value.unavailable")))), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-counts" }, t("task.counts", { files: formatCount(meta.files.length), steps: formatCount(meta.steps.length), checks: formatCount(meta.checks.length) })), blockedQuestions > 0 && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-warning" }, t("task.blocking", { count: formatCount(blockedQuestions) })), (hasObservedChecks || ["review", "status"].includes(meta.operation)) && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-evidence", "aria-label": t("checks.title") }, /* @__PURE__ */ import_react.default.createElement("strong", null, t("checks.title")), meta.checks.length ? /* @__PURE__ */ import_react.default.createElement("p", null, t("checks.summary", { passed: formatCount(summary.counts.passed), failed: formatCount(summary.counts.failed), inconclusive: formatCount(summary.counts.inconclusive), pending: formatCount(summary.counts["not-run"]) })) : /* @__PURE__ */ import_react.default.createElement("p", null, t("checks.empty"))), status.key === "result.incomplete" && /* @__PURE__ */ import_react.default.createElement("p", { role: "alert", className: "dxp-warning" }, t("checks.incomplete")), reason && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-reason" }, /* @__PURE__ */ import_react.default.createElement("strong", null, t("reason.title")), /* @__PURE__ */ import_react.default.createElement("p", null, reason)), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-next" }, t(nextKey)), meta.workflowState === "cancelled" && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-warning" }, t("discard.notice")), /* @__PURE__ */ import_react.default.createElement("details", { className: "dxp-details" }, /* @__PURE__ */ import_react.default.createElement("summary", null, t("details.plan")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-detail-content" }, /* @__PURE__ */ import_react.default.createElement("section", null, /* @__PURE__ */ import_react.default.createElement("h4", null, t("files.title")), meta.files.length ? /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxp-file-list" }, meta.files.map((file, index) => /* @__PURE__ */ import_react.default.createElement("li", { key: `${index}:${file}` }, file))) : /* @__PURE__ */ import_react.default.createElement("p", null, t("files.empty"))), /* @__PURE__ */ import_react.default.createElement("section", null, /* @__PURE__ */ import_react.default.createElement("h4", null, t("steps.title")), /* @__PURE__ */ import_react.default.createElement("ol", null, meta.steps.map((step, index) => /* @__PURE__ */ import_react.default.createElement("li", { key: `${index}:${step.id}` }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-item-id" }, step.id), step.title)))), /* @__PURE__ */ import_react.default.createElement("section", null, /* @__PURE__ */ import_react.default.createElement("h4", null, t("questions.title")), meta.questions.length ? /* @__PURE__ */ import_react.default.createElement("ul", null, meta.questions.map((question, index) => /* @__PURE__ */ import_react.default.createElement("li", { key: index }, /* @__PURE__ */ import_react.default.createElement("span", { className: `dxp-tag ${question.blocking ? "dxp-warning" : ""}` }, t(question.blocking ? "question.blocking" : "question.assumption")), question.text))) : /* @__PURE__ */ import_react.default.createElement("p", null, t("questions.empty"))), /* @__PURE__ */ import_react.default.createElement("section", null, /* @__PURE__ */ import_react.default.createElement("h4", null, t("checks.title")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-muted" }, t("checks.notice")), meta.checks.length ? /* @__PURE__ */ import_react.default.createElement("ol", { className: "dxp-checks" }, meta.checks.map((check, index) => /* @__PURE__ */ import_react.default.createElement("li", { key: `${index}:${check.id}` }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-check-heading" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-item-id" }, check.id), /* @__PURE__ */ import_react.default.createElement("span", { className: `dxp-check-state dxp-check-${check.status}` }, t(`check.${check.status}`)), Number.isSafeInteger(check.exitCode) && /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-muted" }, t("check.exit", { code: formatCount(check.exitCode) }))), /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxp-command" }, check.command)))) : /* @__PURE__ */ import_react.default.createElement("p", null, t("checks.empty"))))), /* @__PURE__ */ import_react.default.createElement("details", { className: "dxp-details dxp-technical" }, /* @__PURE__ */ import_react.default.createElement("summary", null, t("details.record")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-detail-content" }, /* @__PURE__ */ import_react.default.createElement("dl", { className: "dxp-record" }, /* @__PURE__ */ import_react.default.createElement("dt", null, t("file.path")), /* @__PURE__ */ import_react.default.createElement("dd", null, meta.path || t("value.unavailable")), /* @__PURE__ */ import_react.default.createElement("dt", null, t("task.hash")), /* @__PURE__ */ import_react.default.createElement("dd", null, meta.hash)), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-muted" }, t("raw.notice")), /* @__PURE__ */ import_react.default.createElement("pre", { className: "dxp-body" }, meta.body || t("raw.empty")))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-actions" }, meta.path && openFile && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => openFile(meta.path) }, t("file.open")), inspect && /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxp-inspect", onClick: inspect }, t("inspect"))));
 }
 
-// src/client/index.js
+// src/client/index.ts
 var inject = ["slots", "locale"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "plan: dictionaries");

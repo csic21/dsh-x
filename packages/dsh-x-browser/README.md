@@ -13,7 +13,7 @@ This package is **not included in the default development suite**. A bounded rea
 
 ## Install and use
 
-Build with `npm --prefix packages/dsh-x-browser run build`, package this directory, and explicitly install the resulting local package through the official DSH plugin install workflow. Do not add it to the default suite until packaged-app validation passes.
+Build with `pnpm --filter dsh-x-browser run build`, package this directory, and explicitly install the resulting local package through the official DSH plugin install workflow. Do not add it to the default suite until packaged-app validation passes.
 
 Open AI Browser from the conversation dock or sidebar guide. Enter an HTTP(S) address. To let the model access the page, choose **Allow AI on this tab**, review the data disclosure and confirm. Page observations enter conversation history and may be sent to the configured model.
 
@@ -45,8 +45,21 @@ Direct DSH tool calls and registered isolated OpenCode children are supported. O
 
 ## Development checks
 
-`npm --prefix packages/dsh-x-browser run build`
+`pnpm --filter dsh-x-browser run build`
 
 `node --test packages/dsh-x-browser/test/*.test.js`
 
 Tests use the real published Cordis, ToolRuntime and locale runtime where applicable, plus clearly synthetic broker/DOM/webview fixtures. They make no vendor model calls and do not establish Electron rendering proof.
+
+## TypeScript 开发
+
+宿主入口是 `src/index.ts`，前端入口是 `src/client/index.ts`，测试位于 `test/*.test.ts`。
+
+```sh
+pnpm --filter dsh-x-browser run typecheck
+pnpm --filter dsh-x-browser run build
+pnpm --filter dsh-x-browser test
+```
+
+构建统一使用根目录的 `scripts/build-package.mjs`：`tsc` 生成宿主 JS 和声明，esbuild 生成 `lib/client.js`；包入口指向 `lib/index.js`。
+Browser 尚未进入套件，`lib/` 不入库；运行或打包前须先构建。

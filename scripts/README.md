@@ -9,11 +9,11 @@ Node.js `^22.19.0 || >=24.0.0`。使用官方 npm 发布包，建议安装到独
 ```sh
 npm install --prefix ../dsh-runtime @deepseek-ai/dsh@0.2.1-alpha.5
 ../dsh-runtime/node_modules/.bin/dsh --version
-npm ci --ignore-scripts
-npm test # 自动先构建各插件客户端
+pnpm install --frozen-lockfile
+pnpm test # 自动先构建各插件客户端
 ```
 
-这里 `npm ci` 只安装插件开发/测试依赖，官方内核源码不进入本仓库。根仍不声明 packageManager，原有 pnpm workspace 可继续使用。
+这里 `pnpm install` 只安装插件开发/测试依赖，官方内核源码不进入本仓库；依赖的 install/postinstall 默认不执行，`pnpm-workspace.yaml` 只放行官方 `@deepseek-ai/dsh-subprocess-local`、esbuild、node-pty、koffi。根不声明 `packageManager`，pnpm 版本跟内核仓库走（当前 `11.28.5`）。
 
 ## 将五个插件链接到独立 home
 
@@ -41,7 +41,7 @@ Code (`dsh-x-code`) 已加入 link 脚本。它可独立启用/禁用；只读�
 推荐入口是 `dsh-x-suite`，精确依赖 Code + Agents；Chat、Plan、Stocks、Browser 按需单独安装。开发用“五插件链接”脚本不是套件发布方式，默认也不启用 Browser。套件说明见 `packages/dsh-x-suite/README.md`。
 
 ```sh
-npm run build
+pnpm run build
 node scripts/check-suite-install.mjs --home /绝对路径/dsh-home --profile web --dsh-version 0.2.1-alpha.5
 node scripts/test-suite-install.mjs \
   --dsh /绝对路径/dsh-runtime/node_modules/.bin/dsh \

@@ -4,8 +4,8 @@ import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import LlmRuntime, { LlmAdapter } from '@deepseek-ai/dsh-llm'
-import * as stock from '../packages/dsh-x-stock/index.js'
-import * as chat from '../packages/dsh-x-chat/index.js'
+import * as stock from '../packages/dsh-x-stock/lib/index.js'
+import * as chat from '../packages/dsh-x-chat/src/index.ts'
 
 const invoke = (ctx, name, args) => ctx.tools.execute({name,arguments:args,callId:crypto.randomUUID(),signal:new AbortController().signal})
 

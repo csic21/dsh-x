@@ -40,4 +40,17 @@ Client imports use the official shell module table and syntax-highlighting primi
 
 ## Test
 
-Run `npm run build`, `npm test`, or focused `node --test packages/dsh-x-code/test/*.test.js test/code-*.test.js`. See `VALIDATION.md` for what was exercised and what remains unverified.
+Run `pnpm run build`, `pnpm test`, or focused `node --test packages/dsh-x-code/test/*.test.js test/code-*.test.js`. See `VALIDATION.md` for what was exercised and what remains unverified.
+
+## TypeScript 开发
+
+宿主入口是 `src/index.ts`，前端入口是 `src/client/index.ts`，测试位于 `test/*.test.ts`。
+
+```sh
+pnpm --filter dsh-x-code run typecheck
+pnpm --filter dsh-x-code run build
+pnpm --filter dsh-x-code test
+```
+
+构建统一使用根目录的 `scripts/build-package.mjs`：`tsc` 生成宿主 JS 和声明，esbuild 生成 `lib/client.js`；包入口指向 `lib/index.js`。
+Code 的 `lib/` 随源码交付，根级集成测试从构建入口加载。

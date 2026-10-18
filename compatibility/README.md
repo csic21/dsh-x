@@ -48,7 +48,7 @@ Suite harness 使用该次安装的官方 CLI、包管理器、本地产生的�
 - GitHub token 只有 `contents: read`；checkout 禁止持久保存 credentials。
 - 发现阶段不下载执行包。执行阶段导出 `git archive`，不会把 `.git`、主机 HOME、Docker socket 或 action/service token 交给候选进程；发现敏感本机配置文件被跟踪时拒绝导出。
 - 候选代码只运行在一次性的非 root Docker 容器内：只读根文件系统、移除 capabilities、禁止提权、进程/内存限制、临时 HOME/DSH_HOME/cache。宿主仅挂载无 credentials 的输入与报告目录。容器销毁后不保留用户配置。
-- 所有下载包的 lifecycle scripts 都禁用。仓库自身已审查的 `npm run build` 是显式构建步骤，不给候选开启 install/postinstall/prepare。pnpm 使用源码快照声明的精确 `11.28.5`，安装在同一临时目录内，不安装到用户 home 或全局目录。
+- 所有下载包的 lifecycle scripts 都禁用。仓库自身已审查的 `pnpm run build` 是显式构建步骤，不给候选开启 install/postinstall/prepare。pnpm 使用源码快照声明的精确 `11.28.5`，安装在同一临时目录内，不安装到用户 home 或全局目录。
 - 网络仅用于公开依赖下载和测试的本地 HTTP，但 Docker 没有强制出站域名防火墙。它不是离线容器，也不是对恶意内核的完整证明。不要把 secrets 加进这个 job 或这些挂载。
 - SHA-512 证明这次执行的字节与固定发布描述一致，不等于上游签名验证。根运行时及其本次解析出的传递依赖版本/完整性保存在 `runtime-package-lock.json`；传递依赖范围以后仍可能改变，因此每次运行都保留锁的 SHA-256。
 - 不记录 Web 登录引导 token、环境变量或原始启动日志。报告和依赖锁作为 Actions artifacts 保留 30 天；失败也上传已有证据。

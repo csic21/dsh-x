@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
-import * as agents from '../packages/dsh-x-agents/index.js'
+import * as agents from '../packages/dsh-x-agents/lib/index.js'
 async function harness(t, options={}) {
  const dir=mkdtempSync(path.join(tmpdir(),'agents-official-runtime-')),ctx=new Context()
  await ctx.plugin(SystemPrompt);await ctx.plugin(ToolRuntime);await ctx.plugin(SubprocessLocal)

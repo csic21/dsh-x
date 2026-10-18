@@ -9,10 +9,10 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import LlmRuntime, { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
-import * as agents from '../packages/dsh-x-agents/index.js'
-import * as code from '../packages/dsh-x-code/index.js'
-import { createCodeRoute } from '../packages/dsh-x-code/src/routes.js'
-import { createReviewStore } from '../packages/dsh-x-code/src/store.js'
+import * as agents from '../packages/dsh-x-agents/lib/index.js'
+import * as code from '../packages/dsh-x-code/lib/index.js'
+import { createCodeRoute } from '../packages/dsh-x-code/lib/routes.js'
+import { createReviewStore } from '../packages/dsh-x-code/lib/store.js'
 
 // Official Cordis, ToolRuntime, managed Git subprocess, durable stores, native
 // approval bridge, and Code/Agents ownership are real. Only the model driver is

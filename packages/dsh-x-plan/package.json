@@ -2,13 +2,11 @@
   "name": "dsh-x-plan",
   "version": "0.1.0",
   "type": "module",
-  "main": "index.js",
+  "main": "./lib/index.js",
   "files": [
-    "index.js",
-    "src",
+    "lib",
     "cordis.patch.yml",
     "README.md",
-    "lib/client.js",
     "locale/*.json",
     "ADAPTERS.md",
     "UPGRADE.md",
@@ -16,12 +14,14 @@
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-tools": "0.2.1-alpha.5",
     "@deepseek-ai/dsh-llm": "0.2.1-alpha.5"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "build": "node scripts/build-client.mjs"
+    "test": "node --test test/*.test.ts",
+    "build": "node ../../scripts/build-package.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "pretest": "pnpm run build"
   },
   "dsh": {
     "bundle": {
@@ -36,7 +36,7 @@
     }
   },
   "exports": {
-    ".": "./index.js",
+    ".": "./lib/index.js",
     "./client": "./lib/client.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
