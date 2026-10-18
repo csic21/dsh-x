@@ -35,6 +35,11 @@ on:
         description: 复用本工作流已完成的官方构建 run ID（留空重新编译）
         default: ''
         type: string
+      distribution_target:
+        description: 组装与安装验证的平台
+        default: all
+        type: choice
+        options: [all, macos-arm64, windows-x64]
 
 permissions:
   contents: read
@@ -142,11 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: macos-arm64
-            os: macos-14
-          - target: windows-x64
-            os: windows-2022
+        include: ${{ fromJSON(inputs.distribution_target == 'macos-arm64' && '[{"target":"macos-arm64","os":"macos-14"}]' || inputs.distribution_target == 'windows-x64' && '[{"target":"windows-x64","os":"windows-2022"}]' || '[{"target":"macos-arm64","os":"macos-14"},{"target":"windows-x64","os":"windows-2022"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -170,11 +171,29 @@ jobs:
       - name: Package plugins
         shell: bash
         run: node scripts/package-plugin-release.mjs --output "$RUNNER_TEMP/desktop-plugins"
+      - name: Install pinned Windows installer compiler
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: choco install nsis --version=3.12.0 --yes --no-progress
       - name: Assemble and verify DSH-X installer
         shell: bash
         env:
           DESKTOP_TARGET: ${{ matrix.target }}
         run: node scripts/package-desktop-distribution.mjs --runtime "$RUNNER_TEMP/official-runtime" --plugins "$RUNNER_TEMP/desktop-plugins" --output "$RUNNER_TEMP/dsh-x-desktop"
+      - name: Install pinned real Electron test driver
+        shell: bash
+        run: npm install --prefix "$RUNNER_TEMP/desktop-driver" --ignore-scripts --no-audit --no-fund playwright@1.61.1
+      - name: Verify installed final DMG or EXE with actual Desktop Host
+        shell: bash
+        run: node scripts/verify-desktop-distribution.mjs --stage "$RUNNER_TEMP/dsh-x-desktop-stage" --driver "$RUNNER_TEMP/desktop-driver" --report "$RUNNER_TEMP/dsh-x-desktop/desktop-install-report.json"
+      - name: Retain installer qualification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-x-install-proof-${{ matrix.target }}
+          path: ${{ runner.temp }}/dsh-x-desktop/desktop-install-report.json
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-x-${{ matrix.target }}

@@ -1,0 +1,9 @@
+{
+  "name": "dsh-x-distribution-test-probe",
+  "version": "0.0.0-fixture",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "engines": { "dsh": "0.2.1-rc.2" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

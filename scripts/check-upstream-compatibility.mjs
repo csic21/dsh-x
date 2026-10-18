@@ -273,8 +273,8 @@ async function qualify(discovery, policy, role, reportPath) {
     if (report.admission.status === 'passed') {
       const harness = path.join(ROOT, 'scripts/test-suite-install.mjs')
       if (existsSync(harness)) {
-        run('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: ROOT, env })
-        run('npm', ['run', 'build'], { cwd: ROOT, env })
+        run('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts'], { cwd: ROOT, env })
+        run('pnpm', ['run', 'build'], { cwd: ROOT, env })
         const suiteReportPath = path.join(path.dirname(reportPath), 'suite-install-report.json')
         run(process.execPath, [harness, '--dsh', dsh, '--dsh-version', descriptor.version, '--report', suiteReportPath], { cwd: ROOT, env })
         report.suiteEvidence = validateSuiteReport(JSON.parse(await readFile(suiteReportPath, 'utf8')), descriptor.version)
