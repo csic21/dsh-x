@@ -1,9 +1,15 @@
 // Shared market-board contract. Everything here is plain data and pure
 // functions so the Host, the browser bundle and tests can use the same
 // identities, taxonomy and arithmetic. No prices are invented here.
+//
+// The same provider and the same opt-in switch serve the market board, the
+// stock page and the bottom bar: there is exactly one A-share quote source.
+import { validateSymbol } from './watchlist.ts'
 export const MARKET_ENDPOINT = 'dsh-x-stock.market'
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-stock.market-preference'
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)'
+/** One batched request covers the whole fixed bottom bar. */
+export const MARKET_MAX_QUOTES = 8
 export const MARKET_MAX_BOARD_STOCKS = 200
 export const MARKET_MAX_SECTORS = 200
 export const MARKET_MAX_STOCKS = 12_000
@@ -115,15 +121,33 @@ export interface MarketUnconfigured {
   source: null
 }
 
+/**
+ * One watchlist/stock-page quote. `status` is part of the contract: a symbol
+ * the source does not answer for is reported as `unavailable` with null
+ * numbers, never as a zero or a previous close.
+ */
+export interface MarketQuote {
+  symbol: string
+  status: 'available' | 'unavailable'
+  name: string
+  price: number | null
+  changePercent: number | null
+  quotedAt: string | null
+  fetchedAt: string | null
+  marketStatus: 'closed' | 'unknown'
+}
+
 export type MarketOverviewResult = MarketUnconfigured | { status: 'ready'; overview: MarketOverview }
 export type MarketBreadthResult = MarketUnconfigured | { status: 'ready'; breadth: MarketBreadth }
 export type MarketBoardResult = MarketUnconfigured | { status: 'ready'; board: BoardDetail }
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult
+export type MarketQuotesResult = MarketUnconfigured | { status: 'ready'; source: string; quotes: MarketQuote[] }
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult
 
 export type MarketRequest =
   | { kind: 'overview' }
   | { kind: 'breadth' }
   | { kind: 'board'; board: string }
+  | { kind: 'quotes'; symbols: string[] }
 
 export interface MarketPreference {
   enabled: boolean
@@ -139,6 +163,8 @@ export interface MarketProvider {
   overview(): Promise<MarketOverview>
   breadth(): Promise<MarketBreadth>
   board(code: string): Promise<BoardDetail>
+  /** Unpaged current quotes for at most MARKET_MAX_QUOTES A-share symbols. */
+  quotes(symbols: string[]): Promise<MarketQuote[]>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -434,6 +460,15 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
   if (kind === 'board') {
     if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')
     return { kind: 'board', board: validateBoardCode((payload as { board?: unknown }).board) }
+  }
+  if (kind === 'quotes') {
+    if (keys.join(',') !== 'kind,symbols') throw stockMarketError('invalid-input')
+    const raw = (payload as { symbols?: unknown }).symbols
+    if (!Array.isArray(raw) || !raw.length || raw.length > MARKET_MAX_QUOTES) throw stockMarketError('invalid-input')
+    let symbols: string[]
+    try { symbols = raw.map(validateSymbol) } catch { throw stockMarketError('invalid-input') }
+    if (new Set(symbols).size !== symbols.length) throw stockMarketError('invalid-input')
+    return { kind: 'quotes', symbols }
   }
   throw stockMarketError('invalid-input')
 }

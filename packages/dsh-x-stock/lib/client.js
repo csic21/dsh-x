@@ -39,10 +39,11 @@ module.exports = __toCommonJS(index_exports);
 
 // src/watchlist.ts
 var watchlistError = (code) => Object.assign(new Error(code), { code });
-var MAX_PINS = 8;
-var STORAGE_KEY = "dsh-x-stock:watchlist:v1";
+var MAX_WATCHLIST = 200;
+var MAX_FIXED = 8;
+var STORAGE_KEY = "dsh-x-stock:watchlist:v2";
+var LEGACY_STORAGE_KEY = "dsh-x-stock:watchlist:v1";
 var QUOTE_CHANNEL = "/api";
-var QUOTE_ENDPOINT = "dsh-x-stock.quotes";
 function normalizeAShare(exchange, code) {
   const market = String(exchange).trim().toUpperCase();
   const digits = String(code).trim();
@@ -53,21 +54,29 @@ function validateSymbol(symbol) {
   if (typeof symbol !== "string" || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) throw watchlistError("invalid-symbol");
   return symbol;
 }
-function normalizePin(raw) {
-  const pin = raw;
-  if (!pin || typeof pin !== "object") throw watchlistError("invalid-pin");
-  const symbol = validateSymbol(pin.symbol);
-  const alias = typeof pin.alias === "string" ? pin.alias.trim().slice(0, 24) : "";
-  return { symbol, alias };
+function normalizeItem(raw) {
+  const item = raw;
+  if (!item || typeof item !== "object") throw watchlistError("invalid-item");
+  const symbol = validateSymbol(item.symbol);
+  const alias = typeof item.alias === "string" ? item.alias.trim().slice(0, 24) : "";
+  return { symbol, alias, fixed: item.fixed === true };
 }
 function parseSaved(raw) {
-  if (!raw) return { pins: [], collapsed: false };
+  if (!raw) return { items: [], collapsed: false, barHidden: false };
   const value = JSON.parse(raw);
-  if (value?.version !== 1 || !Array.isArray(value.pins) || value.pins.length > MAX_PINS) throw watchlistError("invalid-saved");
-  const pins = value.pins.map(normalizePin);
-  if (new Set(pins.map((p2) => p2.symbol)).size !== pins.length) throw watchlistError("duplicate-saved");
-  return { pins, collapsed: value.collapsed === true };
+  if (value?.version === 1) {
+    if (!Array.isArray(value.pins) || value.pins.length > MAX_WATCHLIST) throw watchlistError("invalid-saved");
+    const items2 = value.pins.map(normalizeItem);
+    if (new Set(items2.map((item) => item.symbol)).size !== items2.length) throw watchlistError("duplicate-saved");
+    return { items: items2, collapsed: value.collapsed === true, barHidden: false };
+  }
+  if (value?.version !== 2 || !Array.isArray(value.items) || value.items.length > MAX_WATCHLIST) throw watchlistError("invalid-saved");
+  const items = value.items.map(normalizeItem);
+  if (new Set(items.map((item) => item.symbol)).size !== items.length) throw watchlistError("duplicate-saved");
+  if (items.filter((item) => item.fixed).length > MAX_FIXED) throw watchlistError("invalid-saved");
+  return { items, collapsed: value.collapsed === true, barHidden: value.barHidden === true };
 }
+var fixedItems = (items) => items.filter((item) => item.fixed);
 function quoteStatus(quote, now = Date.now()) {
   if (!quote || quote.status === "unconfigured") return "unconfigured";
   if (quote.status === "unavailable") return "unavailable";
@@ -81,12 +90,13 @@ function validateScope(scope) {
   return scope.toLowerCase();
 }
 var scopedStorageKey = (scope) => `${STORAGE_KEY}:${validateScope(scope)}`;
+var legacyScopedStorageKey = (scope) => `${LEGACY_STORAGE_KEY}:${validateScope(scope)}`;
 
 // src/client/controller.ts
 function createWatchlistController(storage, eventTarget) {
   const listeners = /* @__PURE__ */ new Set();
   let storageKey = null;
-  let state = { pins: [], collapsed: false, storageError: "", scopeStatus: "loading", scopeId: null, placement: "waiting", selectedSymbol: null };
+  let state = { items: [], collapsed: false, barHidden: false, storageError: "", scopeStatus: "loading", scopeId: null, placement: "waiting", selectedSymbol: null };
   const publish = (patch) => {
     state = { ...state, ...patch };
     for (const listener of listeners) listener();
@@ -96,7 +106,7 @@ function createWatchlistController(storage, eventTarget) {
     publish(patch);
     try {
       if (!storage) throw new Error();
-      storage.setItem(storageKey, JSON.stringify({ version: 1, pins: state.pins, collapsed: state.collapsed }));
+      storage.setItem(storageKey, JSON.stringify({ version: 2, items: state.items, collapsed: state.collapsed, barHidden: state.barHidden }));
       publish({ storageError: "" });
     } catch {
       publish({ storageError: "storage-save" });
@@ -120,42 +130,53 @@ function createWatchlistController(storage, eventTarget) {
       const key = scopedStorageKey(scope);
       if (key === storageKey && state.scopeStatus === "ready") return;
       storageKey = key;
-      let saved = { pins: [], collapsed: false }, storageError = "";
+      let saved = { items: [], collapsed: false, barHidden: false }, storageError = "";
       try {
-        saved = parseSaved(storage?.getItem(storageKey));
+        const raw = storage?.getItem(key) ?? storage?.getItem(legacyScopedStorageKey(validateScope(scope)));
+        saved = parseSaved(raw);
       } catch {
         storageError = "storage-read";
       }
-      publish({ ...saved, selectedSymbol: saved.pins[0]?.symbol ?? null, storageError, scopeStatus: "ready", scopeId: scope });
+      publish({ ...saved, selectedSymbol: saved.items[0]?.symbol ?? null, storageError, scopeStatus: "ready", scopeId: scope });
     },
     scopeLoading: () => {
       storageKey = null;
-      publish({ scopeStatus: "loading", scopeId: null, pins: [], selectedSymbol: null, collapsed: false });
+      publish({ scopeStatus: "loading", scopeId: null, items: [], selectedSymbol: null, collapsed: false, barHidden: false });
     },
     scopeFailed: () => {
       storageKey = null;
-      publish({ pins: [], selectedSymbol: null, scopeStatus: "failed", scopeId: null, storageError: "scope-unavailable" });
+      publish({ items: [], selectedSymbol: null, scopeStatus: "failed", scopeId: null, storageError: "scope-unavailable" });
     },
     select: (symbol) => publish({ selectedSymbol: symbol }),
     setPlacement: (placement) => {
       if (state.placement !== placement) publish({ placement });
     },
-    add(pin) {
-      const item = normalizePin(pin);
-      if (state.pins.some((p2) => p2.symbol === item.symbol)) throw watchlistError("duplicate");
-      if (state.pins.length >= MAX_PINS) throw watchlistError("limit");
-      persist({ pins: [...state.pins, item] });
+    add(raw) {
+      const item = normalizeItem(raw);
+      if (state.items.some((current) => current.symbol === item.symbol)) throw watchlistError("duplicate");
+      if (state.items.length >= MAX_WATCHLIST) throw watchlistError("limit");
+      if (item.fixed && fixedItems(state.items).length >= MAX_FIXED) throw watchlistError("fixed-limit");
+      persist({ items: [...state.items, item] });
     },
     remove(symbol) {
-      const pins = state.pins.filter((p2) => p2.symbol !== symbol);
-      persist({ pins, selectedSymbol: state.selectedSymbol === symbol ? pins[0]?.symbol ?? null : state.selectedSymbol });
+      const items = state.items.filter((item) => item.symbol !== symbol);
+      persist({ items, selectedSymbol: state.selectedSymbol === symbol ? items[0]?.symbol ?? null : state.selectedSymbol });
     },
     move(symbol, offset) {
-      const pins = [...state.pins], index = pins.findIndex((p2) => p2.symbol === symbol), target = index + offset;
-      if (index < 0 || ![-1, 1].includes(offset) || target < 0 || target >= pins.length) return;
-      [pins[index], pins[target]] = [pins[target], pins[index]];
-      persist({ pins });
+      const items = [...state.items], index = items.findIndex((item) => item.symbol === symbol), target = index + offset;
+      if (index < 0 || ![-1, 1].includes(offset) || target < 0 || target >= items.length) return;
+      [items[index], items[target]] = [items[target], items[index]];
+      persist({ items });
     },
+    /** Fixing a stock for the bottom bar is a separate, bounded decision. */
+    setFixed(symbol, fixed) {
+      const wanted = fixed === true;
+      const current = state.items.find((item) => item.symbol === symbol);
+      if (!current || current.fixed === wanted) return;
+      if (wanted && fixedItems(state.items).length >= MAX_FIXED) throw watchlistError("fixed-limit");
+      persist({ items: state.items.map((item) => item.symbol === symbol ? { ...item, fixed: wanted } : item) });
+    },
+    toggleBar: () => persist({ barHidden: !state.barHidden }),
     collapse: (collapsed) => persist({ collapsed: Boolean(collapsed) }),
     dispose() {
       eventTarget?.removeEventListener("storage", storageChanged);
@@ -165,36 +186,155 @@ function createWatchlistController(storage, eventTarget) {
 }
 
 // src/client/placement.ts
-function mountWhenVacant(slots, options, Component, onPlacement) {
+function mountWhenVacant(slots, options, Component, hooks) {
   return slots.inject("shell.bottom", () => {
     let disposeEntry, stopped = false;
     const occupied = () => slots.entries("shell.bottom").some((entry) => entry.component !== Component);
+    const withdraw = (placement) => {
+      const dispose = disposeEntry;
+      disposeEntry = void 0;
+      dispose?.();
+      hooks.onPlacement(placement);
+    };
     const reconcile = () => {
       if (stopped) return;
+      if (!hooks.visible()) {
+        if (disposeEntry) withdraw("waiting");
+        return;
+      }
       if (occupied()) {
-        const dispose = disposeEntry;
-        disposeEntry = void 0;
-        dispose?.();
-        onPlacement("occupied");
-      } else if (!disposeEntry) {
+        withdraw("occupied");
+        return;
+      }
+      if (!disposeEntry) {
         disposeEntry = slots.register({ ...options, name: "shell.bottom", priority: Number.MAX_SAFE_INTEGER }, Component);
-        onPlacement("mounted");
+        hooks.onPlacement("mounted");
       }
     };
-    const unsubscribe = slots.subscribe("shell.bottom", reconcile);
+    const unsubscribeSlots = slots.subscribe("shell.bottom", reconcile);
+    const unsubscribeState = hooks.subscribe(reconcile);
     reconcile();
     return () => {
       stopped = true;
-      unsubscribe();
+      unsubscribeSlots();
+      unsubscribeState();
       disposeEntry?.();
-      onPlacement("waiting");
+      hooks.onPlacement("waiting");
     };
   });
 }
 
+// src/market.ts
+var MARKET_ENDPOINT = "dsh-x-stock.market";
+var MARKET_PREFERENCE_ENDPOINT = "dsh-x-stock.market-preference";
+var MARKET_CACHE_TTL_MS = 5 * 6e4;
+var MARKET_BOARD_TTL_MS = 2 * 6e4;
+var MARKET_LEVEL1 = [
+  { code: "801010", name: "\u519C\u6797\u7267\u6E14" },
+  { code: "801030", name: "\u57FA\u7840\u5316\u5DE5" },
+  { code: "801040", name: "\u94A2\u94C1" },
+  { code: "801050", name: "\u6709\u8272\u91D1\u5C5E" },
+  { code: "801080", name: "\u7535\u5B50" },
+  { code: "801880", name: "\u6C7D\u8F66" },
+  { code: "801110", name: "\u5BB6\u7528\u7535\u5668" },
+  { code: "801120", name: "\u98DF\u54C1\u996E\u6599" },
+  { code: "801130", name: "\u7EBA\u7EC7\u670D\u9970" },
+  { code: "801140", name: "\u8F7B\u5DE5\u5236\u9020" },
+  { code: "801150", name: "\u533B\u836F\u751F\u7269" },
+  { code: "801160", name: "\u516C\u7528\u4E8B\u4E1A" },
+  { code: "801170", name: "\u4EA4\u901A\u8FD0\u8F93" },
+  { code: "801180", name: "\u623F\u5730\u4EA7" },
+  { code: "801200", name: "\u5546\u8D38\u96F6\u552E" },
+  { code: "801210", name: "\u793E\u4F1A\u670D\u52A1" },
+  { code: "801780", name: "\u94F6\u884C" },
+  { code: "801790", name: "\u975E\u94F6\u91D1\u878D" },
+  { code: "801230", name: "\u7EFC\u5408" },
+  { code: "801710", name: "\u5EFA\u7B51\u6750\u6599" },
+  { code: "801720", name: "\u5EFA\u7B51\u88C5\u9970" },
+  { code: "801730", name: "\u7535\u529B\u8BBE\u5907" },
+  { code: "801890", name: "\u673A\u68B0\u8BBE\u5907" },
+  { code: "801740", name: "\u56FD\u9632\u519B\u5DE5" },
+  { code: "801750", name: "\u8BA1\u7B97\u673A" },
+  { code: "801760", name: "\u4F20\u5A92" },
+  { code: "801770", name: "\u901A\u4FE1" },
+  { code: "801950", name: "\u7164\u70AD" },
+  { code: "801960", name: "\u77F3\u6CB9\u77F3\u5316" },
+  { code: "801970", name: "\u73AF\u4FDD" },
+  { code: "801980", name: "\u7F8E\u5BB9\u62A4\u7406" }
+];
+var MARKET_LEVEL1_CODES = MARKET_LEVEL1.map((item) => item.code);
+var level1Names = new Map(MARKET_LEVEL1.map((item) => [item.code, item.name]));
+var clamp = (value, min = 0, max = 100) => Math.min(max, Math.max(min, value));
+var average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+var round1 = (value) => Math.round(value * 10) / 10;
+function computeSentiment(input) {
+  const indexAverage = average(input.indexChanges.filter(Number.isFinite));
+  const sectorAverage = average(input.sectorChanges.filter(Number.isFinite));
+  const sectors = input.sectorChanges.filter(Number.isFinite);
+  const breadth = input.breadth;
+  const breadthTotal = breadth ? breadth.up + breadth.down + breadth.flat : 0;
+  const factors = [];
+  let missing = false;
+  if (indexAverage !== null) factors.push({ key: "index", score: round1(clamp(50 + indexAverage * 10)), weight: 0.2 });
+  else missing = true;
+  if (breadth && breadthTotal > 0) factors.push({ key: "breadth", score: round1(clamp(50 + (breadth.up - breadth.down) / breadthTotal * 50)), weight: 0.45 });
+  else missing = true;
+  if (sectors.length) factors.push({ key: "sector", score: round1(sectors.filter((value2) => value2 > 0).length / sectors.length * 100), weight: 0.25 });
+  else missing = true;
+  if (sectorAverage !== null) factors.push({ key: "momentum", score: round1(clamp(50 + sectorAverage * 10)), weight: 0.1 });
+  else missing = true;
+  if (!factors.length) return null;
+  const totalWeight = factors.reduce((sum, factor) => sum + factor.weight, 0);
+  const score = factors.reduce((sum, factor) => sum + factor.score * (factor.weight / totalWeight), 0);
+  const value = clamp(score);
+  return {
+    score: Math.round(value),
+    label: value < 25 ? "extreme-fear" : value < 45 ? "fear" : value <= 55 ? "neutral" : value < 75 ? "greed" : "extreme-greed",
+    factors: factors.map((factor) => ({ ...factor, weight: factor.weight / totalWeight })),
+    partial: missing
+  };
+}
+function shanghaiParts(at2) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    weekday: "short",
+    hourCycle: "h23"
+  }).formatToParts(at2);
+  const pick = (type) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    date: `${pick("year")}-${pick("month")}-${pick("day")}`,
+    hour: Number(pick("hour")),
+    minute: Number(pick("minute")),
+    weekday: pick("weekday")
+  };
+}
+function marketClock(now, quotedAt) {
+  const current = shanghaiParts(now);
+  const weekend = current.weekday === "Sat" || current.weekday === "Sun";
+  const minutes = current.hour * 60 + current.minute;
+  const phase = weekend ? "weekend" : minutes < 9 * 60 + 15 ? "preopen" : minutes < 9 * 60 + 30 ? "auction" : minutes < 11 * 60 + 30 ? "open" : minutes < 13 * 60 ? "lunch" : minutes < 15 * 60 ? "open" : "closed";
+  let quoteToday = false;
+  let stale = true;
+  if (typeof quotedAt === "string" && Number.isFinite(Date.parse(quotedAt))) {
+    const quote = shanghaiParts(new Date(quotedAt));
+    quoteToday = quote.date === current.date;
+    stale = !quoteToday || now.getTime() - Date.parse(quotedAt) > 10 * 6e4;
+  }
+  return { phase, quoteToday, stale };
+}
+
 // src/client/resource.ts
 var PROTOCOL = "dsh-x-stock";
-var addressFor = (symbol) => `dsh-resource://${PROTOCOL}/${symbol}`;
+var addressFor = (symbol) => `dsh-resource://${PROTOCOL}/quote/${validateSymbol(symbol)}`;
+var fixedAddressFor = (symbols) => `dsh-resource://${PROTOCOL}/fixed/${symbols.join(",")}`;
+var FIXED_POLL_MS = 5e3;
+var IDLE_POLL_MS = 6e4;
+var STALE_AFTER_MS = 18e4;
 function wait(ms2, signal, target) {
   return new Promise((resolve) => {
     let timer;
@@ -212,11 +352,18 @@ function wait(ms2, signal, target) {
     if (Number.isFinite(ms2)) timer = setTimeout(done, ms2);
   });
 }
+function parseSymbols(path) {
+  const [kind, rest = ""] = String(path).slice(1).split("/");
+  const raw = kind === "fixed" ? rest.split(",") : [rest];
+  const symbols = raw.filter(Boolean).map(validateSymbol);
+  if (!symbols.length || symbols.length > MAX_FIXED || new Set(symbols).size !== symbols.length) throw new Error("invalid resource address");
+  return { realtime: kind === "fixed", symbols };
+}
 function quoteResource(rpc, documentObject = globalThis.document, navigatorObject = globalThis.navigator) {
   return {
     protocol: PROTOCOL,
     async *open(address, { signal }) {
-      const symbol = validateSymbol(new URL(address).pathname.slice(1));
+      const { realtime, symbols } = parseSymbols(new URL(address).pathname);
       while (!signal.aborted) {
         if (documentObject?.hidden || navigatorObject?.onLine === false) {
           yield { ok: false, error: { code: navigatorObject?.onLine === false ? "stock/offline" : "stock/hidden", message: "Updates paused", details: {} } };
@@ -225,21 +372,29 @@ function quoteResource(rpc, documentObject = globalThis.document, navigatorObjec
         }
         let result;
         try {
-          result = await rpc.call(QUOTE_CHANNEL, QUOTE_ENDPOINT, { symbols: [symbol] }, signal);
+          result = await rpc.call(QUOTE_CHANNEL, MARKET_ENDPOINT, { kind: "quotes", symbols }, signal);
         } catch {
           result = { ok: false, error: { code: "stock/connection", message: "Connection lost", details: {} } };
         }
         if (signal.aborted) return;
-        if (result.ok) {
-          const quote = result.value?.quotes?.find((item) => item.symbol === symbol);
-          if (!quote) result = { ok: false, error: { code: "stock/invalid", message: "Invalid quote response", details: {} } };
-          else result = { ok: true, value: { ...quote, source: result.value.source } };
+        if (result.ok && result.value?.status === "unconfigured") result = { ok: true, value: { status: "unconfigured", source: null, quotes: [] } };
+        else if (result.ok) {
+          const quotes = Array.isArray(result.value?.quotes) ? result.value.quotes : null;
+          if (!quotes || symbols.some((symbol) => !quotes.some((quote) => quote?.symbol === symbol))) result = { ok: false, error: { code: "stock/invalid", message: "Invalid quote response", details: {} } };
+          else result = { ok: true, value: { status: "ready", source: typeof result.value.source === "string" ? result.value.source : null, quotes: symbols.map((symbol) => quotes.find((quote) => quote.symbol === symbol)) } };
         }
         yield result;
-        await wait(result.ok && result.value.status === "unconfigured" ? Infinity : 6e4, signal, documentObject);
+        const unconfigured = result.ok && result.value?.status === "unconfigured";
+        await wait(unconfigured ? Infinity : pollDelay(result, realtime), signal, documentObject);
       }
     }
   };
+}
+function pollDelay(result, realtime, now = Date.now()) {
+  if (!realtime) return IDLE_POLL_MS;
+  const times = (result?.ok ? result.value?.quotes ?? [] : []).map((quote) => Date.parse(quote?.quotedAt)).filter((time) => Number.isFinite(time));
+  if (!times.length) return IDLE_POLL_MS;
+  return now - Math.max(...times) > STALE_AFTER_MS ? IDLE_POLL_MS : FIXED_POLL_MS;
 }
 
 // src/client/components.tsx
@@ -9226,110 +9381,6 @@ function StockWorkbench({ symbol, scope, t, format, locale }) {
 // src/client/market/MarketView.tsx
 var import_react4 = __toESM(require("react"), 1);
 
-// src/market.ts
-var MARKET_ENDPOINT = "dsh-x-stock.market";
-var MARKET_PREFERENCE_ENDPOINT = "dsh-x-stock.market-preference";
-var MARKET_CACHE_TTL_MS = 5 * 6e4;
-var MARKET_BOARD_TTL_MS = 2 * 6e4;
-var MARKET_LEVEL1 = [
-  { code: "801010", name: "\u519C\u6797\u7267\u6E14" },
-  { code: "801030", name: "\u57FA\u7840\u5316\u5DE5" },
-  { code: "801040", name: "\u94A2\u94C1" },
-  { code: "801050", name: "\u6709\u8272\u91D1\u5C5E" },
-  { code: "801080", name: "\u7535\u5B50" },
-  { code: "801880", name: "\u6C7D\u8F66" },
-  { code: "801110", name: "\u5BB6\u7528\u7535\u5668" },
-  { code: "801120", name: "\u98DF\u54C1\u996E\u6599" },
-  { code: "801130", name: "\u7EBA\u7EC7\u670D\u9970" },
-  { code: "801140", name: "\u8F7B\u5DE5\u5236\u9020" },
-  { code: "801150", name: "\u533B\u836F\u751F\u7269" },
-  { code: "801160", name: "\u516C\u7528\u4E8B\u4E1A" },
-  { code: "801170", name: "\u4EA4\u901A\u8FD0\u8F93" },
-  { code: "801180", name: "\u623F\u5730\u4EA7" },
-  { code: "801200", name: "\u5546\u8D38\u96F6\u552E" },
-  { code: "801210", name: "\u793E\u4F1A\u670D\u52A1" },
-  { code: "801780", name: "\u94F6\u884C" },
-  { code: "801790", name: "\u975E\u94F6\u91D1\u878D" },
-  { code: "801230", name: "\u7EFC\u5408" },
-  { code: "801710", name: "\u5EFA\u7B51\u6750\u6599" },
-  { code: "801720", name: "\u5EFA\u7B51\u88C5\u9970" },
-  { code: "801730", name: "\u7535\u529B\u8BBE\u5907" },
-  { code: "801890", name: "\u673A\u68B0\u8BBE\u5907" },
-  { code: "801740", name: "\u56FD\u9632\u519B\u5DE5" },
-  { code: "801750", name: "\u8BA1\u7B97\u673A" },
-  { code: "801760", name: "\u4F20\u5A92" },
-  { code: "801770", name: "\u901A\u4FE1" },
-  { code: "801950", name: "\u7164\u70AD" },
-  { code: "801960", name: "\u77F3\u6CB9\u77F3\u5316" },
-  { code: "801970", name: "\u73AF\u4FDD" },
-  { code: "801980", name: "\u7F8E\u5BB9\u62A4\u7406" }
-];
-var MARKET_LEVEL1_CODES = MARKET_LEVEL1.map((item) => item.code);
-var level1Names = new Map(MARKET_LEVEL1.map((item) => [item.code, item.name]));
-var clamp = (value, min = 0, max = 100) => Math.min(max, Math.max(min, value));
-var average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-var round1 = (value) => Math.round(value * 10) / 10;
-function computeSentiment(input) {
-  const indexAverage = average(input.indexChanges.filter(Number.isFinite));
-  const sectorAverage = average(input.sectorChanges.filter(Number.isFinite));
-  const sectors = input.sectorChanges.filter(Number.isFinite);
-  const breadth = input.breadth;
-  const breadthTotal = breadth ? breadth.up + breadth.down + breadth.flat : 0;
-  const factors = [];
-  let missing = false;
-  if (indexAverage !== null) factors.push({ key: "index", score: round1(clamp(50 + indexAverage * 10)), weight: 0.2 });
-  else missing = true;
-  if (breadth && breadthTotal > 0) factors.push({ key: "breadth", score: round1(clamp(50 + (breadth.up - breadth.down) / breadthTotal * 50)), weight: 0.45 });
-  else missing = true;
-  if (sectors.length) factors.push({ key: "sector", score: round1(sectors.filter((value2) => value2 > 0).length / sectors.length * 100), weight: 0.25 });
-  else missing = true;
-  if (sectorAverage !== null) factors.push({ key: "momentum", score: round1(clamp(50 + sectorAverage * 10)), weight: 0.1 });
-  else missing = true;
-  if (!factors.length) return null;
-  const totalWeight = factors.reduce((sum, factor) => sum + factor.weight, 0);
-  const score = factors.reduce((sum, factor) => sum + factor.score * (factor.weight / totalWeight), 0);
-  const value = clamp(score);
-  return {
-    score: Math.round(value),
-    label: value < 25 ? "extreme-fear" : value < 45 ? "fear" : value <= 55 ? "neutral" : value < 75 ? "greed" : "extreme-greed",
-    factors: factors.map((factor) => ({ ...factor, weight: factor.weight / totalWeight })),
-    partial: missing
-  };
-}
-function shanghaiParts(at2) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    weekday: "short",
-    hourCycle: "h23"
-  }).formatToParts(at2);
-  const pick = (type) => parts.find((part) => part.type === type)?.value ?? "";
-  return {
-    date: `${pick("year")}-${pick("month")}-${pick("day")}`,
-    hour: Number(pick("hour")),
-    minute: Number(pick("minute")),
-    weekday: pick("weekday")
-  };
-}
-function marketClock(now, quotedAt) {
-  const current = shanghaiParts(now);
-  const weekend = current.weekday === "Sat" || current.weekday === "Sun";
-  const minutes = current.hour * 60 + current.minute;
-  const phase = weekend ? "weekend" : minutes < 9 * 60 + 15 ? "preopen" : minutes < 9 * 60 + 30 ? "auction" : minutes < 11 * 60 + 30 ? "open" : minutes < 13 * 60 ? "lunch" : minutes < 15 * 60 ? "open" : "closed";
-  let quoteToday = false;
-  let stale = true;
-  if (typeof quotedAt === "string" && Number.isFinite(Date.parse(quotedAt))) {
-    const quote = shanghaiParts(new Date(quotedAt));
-    quoteToday = quote.date === current.date;
-    stale = !quoteToday || now.getTime() - Date.parse(quotedAt) > 10 * 6e4;
-  }
-  return { phase, quoteToday, stale };
-}
-
 // src/client/market/treemap.ts
 var area = (value) => Number.isFinite(value) && value > 0 ? value : 0;
 function worst(row, side, scale) {
@@ -10415,13 +10466,23 @@ var zh = {
   ...workbenchZh,
   ...marketZh,
   "title": "\u80A1\u7968",
-  "watchlist": "\u81EA\u9009 {count}",
-  "watchlist.aria": "\u56FA\u5B9A\u80A1\u7968",
-  "watchlist.expand": "\u5C55\u5F00\u81EA\u9009\u80A1\u7968",
-  "watchlist.collapse": "\u6536\u8D77\u81EA\u9009\u80A1\u7968",
-  "watchlist.order": "\u6309\u624B\u52A8\u987A\u5E8F\u6392\u5217\u7684\u81EA\u9009\u80A1\u7968",
-  "watchlist.hint": "\u56FA\u5B9A\u5E38\u770B\u7684 A \u80A1\uFF0C\u5DE5\u4F5C\u65F6\u4E00\u773C\u67E5\u770B",
-  "watchlist.add": "\u80A1\u7968 \xB7 \u6DFB\u52A0",
+  // The watchlist is the long list on this page; only explicitly fixed stocks
+  // reach the bottom bar, so the two never share a label.
+  "bar.title": "\u56FA\u5B9A {count}",
+  "bar.aria": "\u56FA\u5B9A\u80A1\u7968\u6761",
+  "bar.expand": "\u5C55\u5F00\u56FA\u5B9A\u80A1\u7968\u6761",
+  "bar.collapse": "\u6536\u8D77\u56FA\u5B9A\u80A1\u7968\u6761",
+  "bar.order": "\u6309\u81EA\u9009\u6E05\u5355\u987A\u5E8F\u6392\u5217\u7684\u56FA\u5B9A\u80A1\u7968",
+  "bar.hide": "\u9690\u85CF\u56FA\u5B9A\u680F",
+  "bar.hide-hint": "\u9690\u85CF\u56FA\u5B9A\u680F\uFF08\u5FEB\u6377\u952E Alt+Shift+S\uFF0C\u53EF\u5728\u80A1\u7968\u9875\u6062\u590D\uFF09",
+  "bar.source-off": "\u56FA\u5B9A\u680F\u884C\u60C5\u672A\u5F00\u542F\uFF1A\u5B83\u548C\u5E02\u573A\u9875\u5171\u7528\u540C\u4E00\u4E2A\u672C\u673A\u514D\u8D39\u6E90\u3002",
+  "source.enable": "\u5F00\u542F\u514D\u8D39\u6E90",
+  "source.enabling": "\u6B63\u5728\u5F00\u542F\u2026",
+  "source.enable-hint": "\u5E02\u573A\u9875\u3001\u540D\u79F0\u641C\u7D22\u3001\u81EA\u9009\u8BE6\u60C5\u548C\u56FA\u5B9A\u680F\u5171\u7528\u8FD9\u4E00\u4E2A\u672C\u673A\u514D\u8D39\u6E90\u5F00\u5173\u3002",
+  "source.enable-error": "\u65E0\u6CD5\u5F00\u542F\u514D\u8D39\u6E90\uFF0C\u8BF7\u68C0\u67E5 profile \u76EE\u5F55\u6743\u9650\uFF0C\u6216\u624B\u52A8\u914D\u7F6E marketSource\u3002",
+  "source.unavailable": "\u65E0\u6CD5\u8BFB\u53D6\u514D\u8D39\u6E90\u5F00\u5173\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u6216\u624B\u52A8\u914D\u7F6E\u3002",
+  "source.off-title": "\u884C\u60C5\u672A\u5F00\u542F",
+  "source.off-notice": "\u81EA\u9009\u8BE6\u60C5\u548C\u5E95\u90E8\u56FA\u5B9A\u680F\u4E0E\u300C\u5E02\u573A\u300D\u9875\u5171\u7528\u540C\u4E00\u4E2A\u672C\u673A\u514D\u8D39\u6E90\uFF08\u817E\u8BAF\u516C\u5F00\u63A5\u53E3\uFF0C\u975E\u5B98\u65B9\u3001\u65E0 SLA\uFF09\u3002\u5F00\u542F\u540E\u624D\u4F1A\u8BF7\u6C42\u884C\u60C5\uFF1B\u5173\u95ED\u65F6\u4E0D\u4F1A\u53D1\u51FA\u4EFB\u4F55\u884C\u60C5\u8BF7\u6C42\u3002",
   "chip.title": "{symbol} \xB7 {status} \xB7 \u70B9\u51FB\u67E5\u770B\u8BE6\u60C5",
   "stale": "\u65E7",
   "status.loading": "\u83B7\u53D6\u4E2D",
@@ -10432,7 +10493,7 @@ var zh = {
   "status.stale": "\u65E7\u62A5\u4EF7 \xB7 \u53EF\u80FD\u5EF6\u8FDF/\u4F11\u5E02",
   "status.closed": "\u4F11\u5E02 \xB7 \u6700\u8FD1\u62A5\u4EF7",
   "status.recent": "\u6700\u8FD1\u62A5\u4EF7 \xB7 \u53EF\u80FD\u5EF6\u8FDF",
-  "add.title": "\u56FA\u5B9A\u80A1\u7968",
+  "add.title": "\u6DFB\u52A0\u81EA\u9009",
   "add.search": "\u6309\u540D\u79F0\u641C\u7D22\uFF08\u542B ETF\uFF09",
   "add.search.placeholder": "\u6BD4\u4E9A\u8FEA / 300ETF / 600519",
   "add.search.checking": "\u6B63\u5728\u68C0\u67E5\u540D\u79F0\u641C\u7D22\u2026",
@@ -10457,12 +10518,14 @@ var zh = {
   "add.code": "\u516D\u4F4D\u80A1\u7968\u4EE3\u7801",
   "add.alias": "\u663E\u793A\u522B\u540D\uFF08\u9009\u586B\uFF09",
   "add.alias.placeholder": "\u81EA\u5DF1\u719F\u6089\u7684\u540D\u79F0",
-  "add.submit": "\u6DFB\u52A0\u5230\u81EA\u9009 \xB7 {count}/{max}",
-  "add.notice": "\u4EE3\u7801\u4EC5\u505A\u683C\u5F0F\u6821\u9A8C\uFF1B\u641C\u7D22\u7ED3\u679C\u6765\u81EA\u516C\u5F00\u76EE\u5F55\uFF0C\u672A\u4E0E\u4EA4\u6613\u6240\u6838\u5BF9\u540D\u79F0\u6216\u4E0A\u5E02\u72B6\u6001\u3002\u6E05\u5355\u4EC5\u4FDD\u5B58\u5728\u6B64\u6D4F\u89C8\u5668\uFF0C\u4E0D\u8DE8\u8BBE\u5907\u540C\u6B65\u3002",
+  "add.fix": "\u540C\u65F6\u56FA\u5B9A\u5230\u5E95\u90E8\uFF08\u6700\u591A {max} \u53EA\uFF09",
+  "add.submit": "\u6DFB\u52A0\u5230\u81EA\u9009 \xB7 \u5F53\u524D {count} \u53EA",
+  "add.notice": "\u4EE3\u7801\u4EC5\u505A\u683C\u5F0F\u6821\u9A8C\uFF1B\u641C\u7D22\u7ED3\u679C\u6765\u81EA\u516C\u5F00\u76EE\u5F55\uFF0C\u672A\u4E0E\u4EA4\u6613\u6240\u6838\u5BF9\u540D\u79F0\u6216\u4E0A\u5E02\u72B6\u6001\u3002\u81EA\u9009\u6E05\u5355\u4E0E\u56FA\u5B9A\u72B6\u6001\u4EC5\u4FDD\u5B58\u5728\u6B64\u6D4F\u89C8\u5668\uFF0C\u4E0D\u8DE8\u8BBE\u5907\u540C\u6B65\u3002",
   "detail.aria": "{symbol} \u80A1\u7968\u8BE6\u60C5",
   "detail.alias": " \xB7 \u81EA\u5B9A\u4E49\u522B\u540D",
+  "detail.fixed": " \xB7 \u5DF2\u56FA\u5B9A\u5230\u5E95\u90E8",
   "detail.source": "\u6570\u636E\u6765\u6E90",
-  "detail.no-source": "\u5C1A\u672A\u63A5\u5165\u83B7\u6388\u6743\u7684 A \u80A1\u6570\u636E\u6E90",
+  "detail.no-source": "\u5C1A\u672A\u5F00\u542F\u884C\u60C5\u6765\u6E90",
   "detail.quoted-at": "\u62A5\u4EF7\u65F6\u95F4",
   "detail.fetched-at": "\u83B7\u53D6\u65F6\u95F4",
   "time.missing": "\u672A\u63D0\u4F9B",
@@ -10479,22 +10542,33 @@ var zh = {
   "detail.analysis-notice": "\u9700\u8981\u53EF\u9760\u7684\u884C\u60C5\u3001\u8D22\u52A1\u4E0E\u516C\u544A\u4F9D\u636E\uFF1B\u5206\u6790\u5E94\u533A\u5206\u4E8B\u5B9E\u3001\u63A8\u65AD\u548C\u98CE\u9669\u3002\u4E0D\u63D0\u4F9B\u4EA4\u6613\u6267\u884C\u3002",
   "page.subtitle": "\u624B\u52A8\u81EA\u9009 \xB7 A \u80A1\u8BE6\u60C5\u4E0E\u5206\u6790",
   "page.back": "\u8FD4\u56DE\u5BF9\u8BDD",
-  "page.notice": "\u884C\u60C5\u672A\u914D\u7F6E\uFF1A\u5148\u6574\u7406\u4F60\u7684\u81EA\u9009\u6E05\u5355\u3002\u5F53\u524D\u6CA1\u6709\u63A5\u5165\u83B7\u6388\u6743\u7684 A \u80A1\u884C\u60C5\uFF0C\u4EF7\u683C\u548C\u6DA8\u8DCC\u5E45\u4E0D\u4F1A\u663E\u793A\u4E3A\u5B9E\u65F6\u6570\u636E\u3002",
-  "page.occupied": "\u5E95\u90E8\u63D2\u69FD\u5DF2\u6709\u5176\u4ED6\u63D2\u4EF6\u5360\u7528\uFF0C\u81EA\u9009\u6761\u5DF2\u8BA9\u51FA\u4F4D\u7F6E\u3002\u4F60\u4ECD\u53EF\u5728\u6B64\u7BA1\u7406\u548C\u67E5\u770B\u80A1\u7968\u3002",
+  "page.notice": "\u884C\u60C5\u6765\u81EA\u300C\u5E02\u573A\u300D\u9875\u540C\u4E00\u4E2A\u672C\u673A\u514D\u8D39\u6E90\uFF08\u817E\u8BAF\u516C\u5F00\u884C\u60C5\uFF0C\u975E\u5B98\u65B9\u3001\u65E0 SLA\uFF09\u3002\u53EA\u6709\u6807\u8BB0\u4E3A\u300C\u56FA\u5B9A\u300D\u7684\u80A1\u7968\u4F1A\u51FA\u73B0\u5728\u5E95\u90E8\u680F\uFF0C\u81EA\u9009\u6E05\u5355\u672C\u8EAB\u4E0D\u4F1A\u3002",
+  "page.occupied": "\u5E95\u90E8\u63D2\u69FD\u5DF2\u6709\u5176\u4ED6\u63D2\u4EF6\u5360\u7528\uFF0C\u56FA\u5B9A\u680F\u5DF2\u8BA9\u51FA\u4F4D\u7F6E\u3002\u4F60\u4ECD\u53EF\u5728\u6B64\u7BA1\u7406\u548C\u67E5\u770B\u80A1\u7968\u3002",
+  "page.bar-hidden": "\u56FA\u5B9A\u680F\u5DF2\u9690\u85CF\u3002",
+  "page.bar-show": "\u663E\u793A\u56FA\u5B9A\u680F",
+  "page.bar-hide": "\u9690\u85CF\u56FA\u5B9A\u680F",
+  "page.bar-shortcut": "\u5FEB\u6377\u952E Alt+Shift+S",
   "page.scope-loading": "\u6B63\u5728\u786E\u8BA4\u6B64 profile \u7684\u81EA\u9009\u5B58\u50A8\u2026",
   "page.scope-retry": "\u91CD\u8BD5\u8FDE\u63A5\u81EA\u9009\u5B58\u50A8",
   "page.manage": "\u81EA\u9009\u7BA1\u7406",
   "page.my-watchlist": "\u6211\u7684\u81EA\u9009",
-  "page.empty": "\u8FD8\u6CA1\u6709\u56FA\u5B9A\u80A1\u7968\u3002\u6DFB\u52A0\u4E00\u53EA\u5F00\u59CB\u3002",
+  "page.counts": "\u5171 {count} \u53EA \xB7 \u5DF2\u56FA\u5B9A {fixed}/{max}",
+  "page.fixed-hint": "\u81EA\u9009\u53EA\u662F\u6E05\u5355\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u51FA\u73B0\u5728\u5E95\u90E8\uFF1B\u70B9\u300C\u56FA\u5B9A\u300D\u624D\u4F1A\u8FDB\u5165\u56FA\u5B9A\u680F\uFF08\u6700\u591A {max} \u53EA\uFF0C\u53EF\u6EDA\u52A8\u67E5\u770B\uFF09\u3002",
+  "page.empty": "\u8FD8\u6CA1\u6709\u81EA\u9009\u80A1\u7968\u3002\u6DFB\u52A0\u4E00\u53EA\u5F00\u59CB\u3002",
   "page.move-up": "\u4E0A\u79FB {symbol}",
   "page.move-down": "\u4E0B\u79FB {symbol}",
+  "page.fixed": "\u56FA\u5B9A",
+  "page.fix": "\u56FA\u5B9A",
+  "page.unfix": "\u53D6\u6D88\u56FA\u5B9A",
+  "page.fix-aria": "\u56FA\u5B9A {symbol} \u5230\u5E95\u90E8\u680F",
+  "page.unfix-aria": "\u53D6\u6D88\u56FA\u5B9A {symbol}",
   "page.remove-aria": "\u79FB\u9664 {symbol}",
   "page.remove": "\u79FB\u9664",
   "page.select": "\u9009\u4E00\u53EA\u80A1\u7968\uFF0C\u770B\u6E05\u5B83\u7684\u60C5\u51B5",
-  "page.select-hint": "\u8FD9\u91CC\u5C06\u5C55\u793A\u62A5\u4EF7\u3001\u8D70\u52BF\u3001\u57FA\u672C\u9762\u548C\u6709\u4F9D\u636E\u7684\u5206\u6790\u3002\u5E95\u90E8\u81EA\u9009\u6761\u53EA\u8D1F\u8D23\u5DE5\u4F5C\u65F6\u7684\u5FEB\u6377\u67E5\u770B\u3002",
+  "page.select-hint": "\u8FD9\u91CC\u5C06\u5C55\u793A\u62A5\u4EF7\u3001\u8D70\u52BF\u3001\u57FA\u672C\u9762\u548C\u6709\u4F9D\u636E\u7684\u5206\u6790\u3002\u5E95\u90E8\u56FA\u5B9A\u680F\u53EA\u8D1F\u8D23\u5DE5\u4F5C\u65F6\u7684\u5FEB\u6377\u67E5\u770B\u3002",
   "error.invalid-code": "\u8BF7\u9009\u62E9\u4EA4\u6613\u6240\u5E76\u8F93\u5165\u516D\u4F4D\u80A1\u7968\u4EE3\u7801\u3002",
   "error.invalid-symbol": "A \u80A1\u4EE3\u7801\u987B\u5305\u542B\u4EA4\u6613\u6240\u548C\u516D\u4F4D\u6570\u5B57\u3002",
-  "error.invalid-pin": "\u65E0\u6548\u81EA\u9009\u9879\u3002",
+  "error.invalid-item": "\u65E0\u6548\u7684\u81EA\u9009\u9879\u3002",
   "error.invalid-saved": "\u4FDD\u5B58\u7684\u81EA\u9009\u6E05\u5355\u683C\u5F0F\u4E0D\u517C\u5BB9\u3002",
   "error.duplicate-saved": "\u4FDD\u5B58\u7684\u81EA\u9009\u6E05\u5355\u542B\u91CD\u590D\u4EE3\u7801\u3002",
   "error.invalid-scope": "\u5BBF\u4E3B\u81EA\u9009\u5B58\u50A8\u6807\u8BC6\u65E0\u6548\u3002",
@@ -10503,19 +10577,21 @@ var zh = {
   "error.storage-sync": "\u53E6\u4E00\u7A97\u53E3\u7684\u6E05\u5355\u683C\u5F0F\u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u5F53\u524D\u6E05\u5355\u3002",
   "error.storage-read": "\u65E0\u6CD5\u8BFB\u53D6\u6B64 profile \u7684\u672C\u5730\u6E05\u5355\uFF1B\u672C\u6B21\u4FEE\u6539\u524D\u4E0D\u4F1A\u8986\u76D6\u539F\u8BB0\u5F55\u3002",
   "error.scope-unavailable": "\u65E0\u6CD5\u786E\u8BA4\u6B64 profile \u7684\u5B58\u50A8\u4F4D\u7F6E\uFF1B\u5DF2\u6682\u505C\u8BFB\u53D6\u548C\u4FDD\u5B58\u6E05\u5355\u3002",
-  "error.duplicate": "\u8FD9\u53EA\u80A1\u7968\u5DF2\u7ECF\u56FA\u5B9A\u3002",
-  "error.limit": "\u6700\u591A\u56FA\u5B9A {max} \u53EA\u80A1\u7968\uFF0C\u8BF7\u5148\u79FB\u9664\u4E00\u53EA\u3002",
+  "error.duplicate": "\u8FD9\u53EA\u80A1\u7968\u5DF2\u7ECF\u5728\u81EA\u9009\u91CC\u3002",
+  "error.limit": "\u81EA\u9009\u6700\u591A {max} \u53EA\uFF0C\u8BF7\u5148\u79FB\u9664\u4E00\u53EA\u3002",
+  "error.fixed-limit": "\u5E95\u90E8\u56FA\u5B9A\u680F\u6700\u591A {max} \u53EA\uFF0C\u8BF7\u5148\u53D6\u6D88\u4E00\u53EA\u7684\u56FA\u5B9A\u3002",
   "error.offline": "\u79BB\u7EBF \xB7 \u5DF2\u6682\u505C\u66F4\u65B0",
   "error.hidden": "\u7A97\u53E3\u9690\u85CF \xB7 \u5DF2\u6682\u505C\u66F4\u65B0",
   "error.connection": "\u8FDE\u63A5\u4E2D\u65AD \xB7 \u4FDD\u7559\u6700\u8FD1\u62A5\u4EF7",
   "error.invalid": "\u884C\u60C5\u54CD\u5E94\u65E0\u6548",
-  "error.forbidden": "\u53EA\u5141\u8BB8\u5BBF\u4E3B\u6240\u6709\u8005\u8BFB\u53D6\u81EA\u9009\u884C\u60C5\u3002",
+  "error.forbidden": "\u53EA\u5141\u8BB8\u5BBF\u4E3B\u6240\u6709\u8005\u8BFB\u53D6\u884C\u60C5\u3002",
   "error.not-found": "\u672A\u77E5\u80A1\u7968\u63A5\u53E3\u3002",
   "error.invalid-input": "\u8BF7\u8F93\u5165\u6700\u591A {max} \u4E2A\u4E0D\u91CD\u590D\u7684 A \u80A1\u4EE3\u7801\u3002",
   "error.invalid-query": "\u8BF7\u8F93\u5165 1\u201324 \u4E2A\u5B57\u7B26\u7684\u540D\u79F0\u3001\u62FC\u97F3\u6216\u4EE3\u7801\u3002",
   "error.search-unavailable": "\u540D\u79F0\u641C\u7D22\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   "error.cancelled": "\u884C\u60C5\u8BF7\u6C42\u5DF2\u53D6\u6D88\u3002",
   "error.unavailable": "\u884C\u60C5\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
+  "error.market-unavailable": "\u884C\u60C5\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   "error.unknown": "\u64CD\u4F5C\u672A\u5B8C\u6210\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002"
 };
 var en2 = {
@@ -10524,13 +10600,21 @@ var en2 = {
   ...workbenchEn,
   ...marketEn,
   "title": "Stocks",
-  "watchlist": "Watchlist {count}",
-  "watchlist.aria": "Pinned stocks",
-  "watchlist.expand": "Expand watchlist",
-  "watchlist.collapse": "Collapse watchlist",
-  "watchlist.order": "Watchlist in manual order",
-  "watchlist.hint": "Pin frequently viewed A-shares for a quick glance while you work",
-  "watchlist.add": "Stocks \xB7 Add",
+  "bar.title": "Fixed {count}",
+  "bar.aria": "Fixed stocks bar",
+  "bar.expand": "Expand the fixed stocks bar",
+  "bar.collapse": "Collapse the fixed stocks bar",
+  "bar.order": "Fixed stocks in watchlist order",
+  "bar.hide": "Hide the fixed bar",
+  "bar.hide-hint": "Hide the fixed bar (Alt+Shift+S; restore it on the stock page)",
+  "bar.source-off": "The fixed bar has no quotes yet: it shares the local free source with the market page.",
+  "source.enable": "Turn on free source",
+  "source.enabling": "Turning on\u2026",
+  "source.enable-hint": "The market page, name search, stock details and the fixed bar share this one local free-source switch.",
+  "source.enable-error": "Could not turn on the free source. Check profile directory permissions or configure marketSource manually.",
+  "source.unavailable": "Could not read the free-source switch. Try again shortly or configure it manually.",
+  "source.off-title": "Quotes are not on",
+  "source.off-notice": "Stock details and the bottom fixed bar share the same local free source as the Market tab (Tencent public endpoint, unofficial, no SLA). Nothing is requested until you turn it on, and nothing is requested after you turn it off.",
   "chip.title": "{symbol} \xB7 {status} \xB7 View details",
   "stale": "Stale",
   "status.loading": "Loading",
@@ -10541,7 +10625,7 @@ var en2 = {
   "status.stale": "Previous quote \xB7 Possibly delayed / market closed",
   "status.closed": "Market closed \xB7 Latest quote",
   "status.recent": "Latest quote \xB7 Possibly delayed",
-  "add.title": "Pin a stock",
+  "add.title": "Add to the watchlist",
   "add.search": "Search by name (incl. ETFs)",
   "add.search.placeholder": "BYD / 300ETF / 600519",
   "add.search.checking": "Checking name search\u2026",
@@ -10554,7 +10638,7 @@ var en2 = {
   "add.search.loading": "Searching\u2026",
   "add.search.empty": "No matching A-share, ETF, LOF or REIT.",
   "add.search.results": "Name search results",
-  "add.selected": "Selected {name} \xB7 {symbol} \xB7 {kind}. Add an alias or pin it directly.",
+  "add.selected": "Selected {name} \xB7 {symbol} \xB7 {kind}. Add an alias before adding it.",
   "add.kind.stock": "Stock",
   "add.kind.etf": "ETF",
   "add.kind.fund": "LOF",
@@ -10566,12 +10650,14 @@ var en2 = {
   "add.code": "Six-digit stock code",
   "add.alias": "Display alias (optional)",
   "add.alias.placeholder": "A name you recognize",
-  "add.submit": "Add to watchlist \xB7 {count}/{max}",
-  "add.notice": "Only the code format is checked; search results come from a public directory and are not verified against an exchange. This list is saved in this browser only and does not sync across devices.",
+  "add.fix": "Also fix it to the bottom bar (max {max})",
+  "add.submit": "Add to watchlist \xB7 {count} in list",
+  "add.notice": "Only the code format is checked; search results come from a public directory and are not verified against an exchange. The watchlist and its fixed marks are saved in this browser only and do not sync across devices.",
   "detail.aria": "{symbol} stock details",
   "detail.alias": " \xB7 Custom alias",
+  "detail.fixed": " \xB7 Fixed to the bottom bar",
   "detail.source": "Data source",
-  "detail.no-source": "No licensed A-share data source connected",
+  "detail.no-source": "No quote source is on",
   "detail.quoted-at": "Quote time",
   "detail.fetched-at": "Retrieved at",
   "time.missing": "Not provided",
@@ -10588,22 +10674,33 @@ var en2 = {
   "detail.analysis-notice": "Reliable prices, financials, and announcements are required. Analysis should distinguish facts, inferences, and risks. Trading is not supported.",
   "page.subtitle": "Manual watchlist \xB7 A-share details and analysis",
   "page.back": "Back to conversation",
-  "page.notice": "Quotes are not configured. You can organize your watchlist now. No licensed A-share feed is connected, so prices and changes are not presented as live data.",
-  "page.occupied": "Another plugin occupies the bottom slot, so the watchlist bar has yielded its place. You can still manage and view stocks here.",
+  "page.notice": "Quotes come from the same local free source as the Market tab (Tencent public endpoint, unofficial, no SLA). Only stocks marked \u201CFixed\u201D appear in the bottom bar; the watchlist itself never does.",
+  "page.occupied": "Another plugin occupies the bottom slot, so the fixed bar has yielded its place. You can still manage and view stocks here.",
+  "page.bar-hidden": "The fixed bar is hidden.",
+  "page.bar-show": "Show the fixed bar",
+  "page.bar-hide": "Hide the fixed bar",
+  "page.bar-shortcut": "Shortcut Alt+Shift+S",
   "page.scope-loading": "Checking watchlist storage for this profile\u2026",
   "page.scope-retry": "Retry connecting to watchlist storage",
   "page.manage": "Manage watchlist",
   "page.my-watchlist": "My watchlist",
-  "page.empty": "No stocks pinned yet. Add one to get started.",
+  "page.counts": "{count} in total \xB7 {fixed}/{max} fixed",
+  "page.fixed-hint": "The watchlist is only a list and never shows up at the bottom by itself; press \u201CFix\u201D to put a stock in the bottom bar (max {max}, scrollable).",
+  "page.empty": "No stocks yet. Add one to get started.",
   "page.move-up": "Move {symbol} up",
   "page.move-down": "Move {symbol} down",
+  "page.fixed": "Fixed",
+  "page.fix": "Fix",
+  "page.unfix": "Unfix",
+  "page.fix-aria": "Fix {symbol} to the bottom bar",
+  "page.unfix-aria": "Unfix {symbol}",
   "page.remove-aria": "Remove {symbol}",
   "page.remove": "Remove",
   "page.select": "Select a stock to explore",
-  "page.select-hint": "Quotes, charts, fundamentals, and evidence-based analysis will appear here. The bottom watchlist bar provides a quick glance while you work.",
+  "page.select-hint": "Quotes, charts, fundamentals, and evidence-based analysis will appear here. The bottom fixed bar provides a quick glance while you work.",
   "error.invalid-code": "Choose an exchange and enter a six-digit stock code.",
   "error.invalid-symbol": "An A-share code must include an exchange and six digits.",
-  "error.invalid-pin": "Invalid watchlist item.",
+  "error.invalid-item": "Invalid watchlist item.",
   "error.invalid-saved": "The saved watchlist format is incompatible.",
   "error.duplicate-saved": "The saved watchlist contains duplicate codes.",
   "error.invalid-scope": "Invalid host watchlist storage identifier.",
@@ -10612,19 +10709,21 @@ var en2 = {
   "error.storage-sync": "The list from another window is invalid. The current list has been kept.",
   "error.storage-read": "Could not read this profile\u2019s local list. The saved record will remain untouched until you make a change.",
   "error.scope-unavailable": "Could not identify storage for this profile. Reading and saving the list are paused.",
-  "error.duplicate": "This stock is already pinned.",
-  "error.limit": "You can pin up to {max} stocks. Remove one first.",
+  "error.duplicate": "This stock is already in the watchlist.",
+  "error.limit": "The watchlist holds up to {max} stocks. Remove one first.",
+  "error.fixed-limit": "The bottom bar holds up to {max} fixed stocks. Unfix one first.",
   "error.offline": "Offline \xB7 Updates paused",
   "error.hidden": "Window hidden \xB7 Updates paused",
   "error.connection": "Connection lost \xB7 Keeping the latest quote",
   "error.invalid": "Invalid quote response",
-  "error.forbidden": "Only the host owner can read watchlist quotes.",
+  "error.forbidden": "Only the host owner can read quotes.",
   "error.not-found": "Unknown stock endpoint.",
   "error.invalid-input": "Enter up to {max} unique A-share codes.",
   "error.invalid-query": "Enter 1\u201324 characters: a name fragment, pinyin initials or a code.",
   "error.search-unavailable": "Name search is temporarily unavailable. Please try again later.",
   "error.cancelled": "Quote request cancelled.",
   "error.unavailable": "Quotes are temporarily unavailable. Please try again later.",
+  "error.market-unavailable": "Quotes are temporarily unavailable. Please try again later.",
   "error.unknown": "The action could not be completed. Please try again."
 };
 function errorKey(code) {
@@ -10801,33 +10900,58 @@ function InstrumentSearch({ rpc, onPick, t, delay = 250 }) {
 
 // src/client/components.tsx
 var tone = (value) => value > 0 ? "dxs-up" : value < 0 ? "dxs-down" : "";
-function Status({ snapshot, t, format }) {
+var quoteFor = (snapshot, symbol) => snapshot?.value?.quotes?.find((quote) => quote?.symbol === symbol);
+var sourceOf = (snapshot) => snapshot?.value?.source ?? null;
+function Status({ snapshot, quote, t, format }) {
   if (snapshot.status === "loading") return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
-  if (snapshot.status === "failed") return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_PINS) }) : t("status.failed"));
-  return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(snapshot.value)}`));
+  if (snapshot.status === "failed") return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_WATCHLIST) }) : t("status.failed"));
+  return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(quote)}`));
 }
-function StockChip({ pin, useResource, open, t, format }) {
-  const snapshot = useResource(addressFor(pin.symbol)), quote = snapshot.value;
+function SourceButton({ preference, t, large = false }) {
+  const [busy, setBusy] = (0, import_react6.useState)(false), [failed, setFailed] = (0, import_react6.useState)(false);
+  if (preference.status !== "ready" || preference.enabled) return null;
+  const enable = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      await preference.setEnabled(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: large ? "dxs-source-enable is-large" : "dxs-source-enable", disabled: busy || preference.forced, onClick: enable, title: failed ? t("source.enable-error") : t("source.enable-hint") }, busy ? t("source.enabling") : t("source.enable"));
+}
+function StockChip({ item, quote, snapshot, open, t, format }) {
   const status = quoteStatus(quote);
-  return /* @__PURE__ */ import_react6.default.createElement("button", { className: "dxs-chip", onClick: () => open(pin.symbol), title: t("chip.title", { symbol: pin.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react6.default.createElement("strong", null, pin.alias || quote?.name || pin.symbol), /* @__PURE__ */ import_react6.default.createElement("span", null, format.price(quote?.price)), quote?.price != null ? /* @__PURE__ */ import_react6.default.createElement("span", { className: tone(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react6.default.createElement(Status, { snapshot, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
+  return /* @__PURE__ */ import_react6.default.createElement("button", { className: "dxs-chip", onClick: () => open(item.symbol), title: t("chip.title", { symbol: item.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react6.default.createElement("strong", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react6.default.createElement("span", null, format.price(quote?.price)), quote?.price != null ? /* @__PURE__ */ import_react6.default.createElement("span", { className: tone(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react6.default.createElement(Status, { snapshot, quote, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
 }
-function StockBar({ useWatchlist, useResource, collapse, open, t, format }) {
+function FixedStrip({ items, symbols, useResource, open, t, format }) {
+  const snapshot = useResource(fixedAddressFor(symbols));
+  return /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-strip", "aria-label": t("bar.order") }, items.map((item) => /* @__PURE__ */ import_react6.default.createElement(StockChip, { key: item.symbol, item, quote: quoteFor(snapshot, item.symbol), snapshot, open, t, format })));
+}
+function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideBar, t, format }) {
   const state = useWatchlist((value) => value);
-  if (!state.pins.length) return null;
-  return /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxs dxs-bar", "aria-label": t("watchlist.aria") }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "watchlist.expand" : "watchlist.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("watchlist", { count: format.count(state.pins.length) })), !state.collapsed && /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-strip", "aria-label": t("watchlist.order") }, state.pins.map((pin) => /* @__PURE__ */ import_react6.default.createElement(StockChip, { key: pin.symbol, pin, useResource, open, t, format }))), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t("title")));
+  const preference = useMarketPreference(rpc);
+  const fixed = fixedItems(state.items);
+  if (!fixed.length) return null;
+  const sourceOff = preference.status === "ready" && !preference.enabled;
+  return /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxs dxs-bar", "aria-label": t("bar.aria") }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "bar.expand" : "bar.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("bar.title", { count: format.count(fixed.length) })), !state.collapsed && (sourceOff ? /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-strip dxs-bar-hint" }, /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t("bar.source-off")), /* @__PURE__ */ import_react6.default.createElement(SourceButton, { preference, t })) : /* @__PURE__ */ import_react6.default.createElement(FixedStrip, { key: `${preference.enabled ? "on" : "off"}:${fixed.map((item) => item.symbol).join(",")}`, items: fixed, symbols: fixed.map((item) => item.symbol), useResource, open, t, format })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-bar-actions" }, sourceOff ? null : /* @__PURE__ */ import_react6.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => hideBar(), title: t("bar.hide-hint"), "aria-label": t("bar.hide") }, "\u2715"), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t("title"))));
 }
 function StockIcon({ size: size2 = 20 }) {
   return /* @__PURE__ */ import_react6.default.createElement("svg", { width: size2, height: size2, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react6.default.createElement("path", { d: "M4 4v16h16M7 15l4-5 4 3 5-7", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
-function AddStock({ add, count, ready, rpc, t, format }) {
-  const [exchange, setExchange] = (0, import_react6.useState)("SH"), [code, setCode] = (0, import_react6.useState)(""), [alias, setAlias] = (0, import_react6.useState)(""), [error, setError] = (0, import_react6.useState)("");
+function AddStock({ add, count, fixedCount, ready, rpc, t, format }) {
+  const [exchange, setExchange] = (0, import_react6.useState)("SH"), [code, setCode] = (0, import_react6.useState)(""), [alias, setAlias] = (0, import_react6.useState)(""), [fix, setFix] = (0, import_react6.useState)(false), [error, setError] = (0, import_react6.useState)("");
   const [picked, setPicked] = (0, import_react6.useState)(null);
   const submit = (event) => {
     event.preventDefault();
     try {
-      add({ symbol: normalizeAShare(exchange, code), alias });
+      add({ symbol: normalizeAShare(exchange, code), alias, fixed: fix });
       setCode("");
       setAlias("");
+      setFix(false);
       setError("");
       setPicked(null);
     } catch (failure) {
@@ -10848,22 +10972,42 @@ function AddStock({ add, count, ready, rpc, t, format }) {
   } }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react6.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react6.default.createElement("label", null, t("add.code"), /* @__PURE__ */ import_react6.default.createElement("input", { name: "code", value: code, onChange: (event) => {
     setCode(event.target.value);
     setPicked(null);
-  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" })), /* @__PURE__ */ import_react6.default.createElement("label", null, t("add.alias"), /* @__PURE__ */ import_react6.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react6.default.createElement("button", { type: "submit", disabled: !ready || count >= MAX_PINS }, t("add.submit", { count: format.count(count), max: format.count(MAX_PINS) })), error && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(MAX_PINS) })), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("add.notice")));
+  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" })), /* @__PURE__ */ import_react6.default.createElement("label", null, t("add.alias"), /* @__PURE__ */ import_react6.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react6.default.createElement("label", { className: "dxs-check" }, /* @__PURE__ */ import_react6.default.createElement("input", { type: "checkbox", name: "fixed", checked: fix, disabled: fixedCount >= MAX_FIXED, onChange: (event) => setFix(event.target.checked) }), " ", t("add.fix", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react6.default.createElement("button", { type: "submit", disabled: !ready || count >= MAX_WATCHLIST }, t("add.submit", { count: format.count(count) })), error && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(error === "error.fixed-limit" ? MAX_FIXED : MAX_WATCHLIST) })), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("add.notice")));
 }
-function Detail({ pin, useResource, t, format, scope, locale }) {
-  const snapshot = useResource(addressFor(pin.symbol)), quote = snapshot.value;
-  return /* @__PURE__ */ import_react6.default.createElement("article", { "aria-label": t("detail.aria", { symbol: pin.symbol }) }, /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react6.default.createElement("h2", null, pin.alias || quote?.name || pin.symbol), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, pin.symbol, pin.alias ? t("detail.alias") : ""), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-price" }, format.price(quote?.price), " ", /* @__PURE__ */ import_react6.default.createElement("span", { className: tone(quote?.changePercent), style: { fontSize: 18 } }, format.change(quote?.changePercent))), /* @__PURE__ */ import_react6.default.createElement("p", null, /* @__PURE__ */ import_react6.default.createElement(Status, { snapshot, t, format })), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react6.default.createElement("dl", null, /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react6.default.createElement("dd", null, quote?.source || t("detail.no-source")), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react6.default.createElement(StockWorkbench, { key: `${scope}:${pin.symbol}`, symbol: pin.symbol, scope, t, format, locale }), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.fundamentals")), /* @__PURE__ */ import_react6.default.createElement("p", null, t("detail.no-fundamentals")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.fundamentals-notice"))), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react6.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice"))));
+function Detail({ item, useResource, t, format, scope, locale }) {
+  const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol);
+  return /* @__PURE__ */ import_react6.default.createElement("article", { "aria-label": t("detail.aria", { symbol: item.symbol }) }, /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react6.default.createElement("h2", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, item.symbol, item.alias ? t("detail.alias") : "", item.fixed ? t("detail.fixed") : ""), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-price" }, format.price(quote?.price), " ", /* @__PURE__ */ import_react6.default.createElement("span", { className: tone(quote?.changePercent), style: { fontSize: 18 } }, format.change(quote?.changePercent))), /* @__PURE__ */ import_react6.default.createElement("p", null, /* @__PURE__ */ import_react6.default.createElement(Status, { snapshot, quote, t, format })), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react6.default.createElement("dl", null, /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react6.default.createElement("dd", null, sourceOf(snapshot) || t("detail.no-source")), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react6.default.createElement(StockWorkbench, { key: `${scope}:${item.symbol}`, symbol: item.symbol, scope, t, format, locale }), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.fundamentals")), /* @__PURE__ */ import_react6.default.createElement("p", null, t("detail.no-fundamentals")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.fundamentals-notice"))), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react6.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice"))));
 }
-function StockPage({ useWatchlist, useResource, add, remove, move, select, back, retryScope, t, format, getLocale = () => "en", rpc }) {
+function StockPage({ useWatchlist, useResource, rpc, add, remove, move, select, setFixed, toggleBar, back, retryScope, t, format, getLocale = () => "en" }) {
   const state = useWatchlist((value) => value);
-  const pin = state.pins.find((item) => item.symbol === state.selectedSymbol) ?? state.pins[0];
+  const preference = useMarketPreference(rpc);
+  const item = state.items.find((entry) => entry.symbol === state.selectedSymbol) ?? state.items[0];
+  const fixedCount = fixedItems(state.items).length;
   const [view, setView] = (0, import_react6.useState)("watchlist");
+  const [fixError, setFixError] = (0, import_react6.useState)("");
   const previousSelection = (0, import_react6.useRef)(state.selectedSymbol);
   (0, import_react6.useEffect)(() => {
     if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView("watchlist");
     previousSelection.current = state.selectedSymbol;
   }, [state.selectedSymbol]);
-  return /* @__PURE__ */ import_react6.default.createElement("main", { className: "dxs dxs-page" }, /* @__PURE__ */ import_react6.default.createElement("header", { className: "dxs-heading" }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("h1", null, t("title")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, view === "market" ? t("market.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react6.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist", onClick: () => setView("watchlist") }, t("page.view.watchlist")), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-pressed": view === "market", onClick: () => setView("market") }, t("page.view.market"))), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: back }, t("page.back"))), view === "market" ? /* @__PURE__ */ import_react6.default.createElement(MarketView, { rpc, t, format, locale: getLocale() }) : /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-notice" }, t("page.notice")), state.placement === "occupied" && /* @__PURE__ */ import_react6.default.createElement("p", { role: "status", className: "dxs-notice" }, t("page.occupied")), state.scopeStatus === "loading" && /* @__PURE__ */ import_react6.default.createElement("p", { role: "status" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react6.default.createElement("button", { onClick: retryScope }, t("page.scope-retry")), state.storageError && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_PINS) })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react6.default.createElement("aside", { "aria-label": t("page.manage") }, /* @__PURE__ */ import_react6.default.createElement("h2", null, t("page.my-watchlist")), !state.pins.length && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), !state.pins.length && /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint")), /* @__PURE__ */ import_react6.default.createElement("ol", { className: "dxs-list" }, state.pins.map((item, index) => /* @__PURE__ */ import_react6.default.createElement("li", { key: item.symbol }, /* @__PURE__ */ import_react6.default.createElement("button", { className: "dxs-select", "aria-pressed": pin?.symbol === item.symbol, onClick: () => select(item.symbol) }, /* @__PURE__ */ import_react6.default.createElement("strong", null, item.alias || item.symbol), item.alias && /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, " \xB7 ", item.symbol)), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react6.default.createElement("button", { disabled: index === 0, "aria-label": t("page.move-up", { symbol: item.symbol }), onClick: () => move(item.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react6.default.createElement("button", { disabled: index === state.pins.length - 1, "aria-label": t("page.move-down", { symbol: item.symbol }), onClick: () => move(item.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react6.default.createElement("button", { "aria-label": t("page.remove-aria", { symbol: item.symbol }), onClick: () => remove(item.symbol) }, t("page.remove")))))), /* @__PURE__ */ import_react6.default.createElement(AddStock, { add, count: state.pins.length, ready: state.scopeStatus === "ready", rpc, t, format })), state.scopeStatus === "ready" && (pin ? /* @__PURE__ */ import_react6.default.createElement(Detail, { key: `${state.scopeId}:${pin.symbol}`, pin, useResource, t, format, scope: state.scopeId, locale: getLocale() }) : /* @__PURE__ */ import_react6.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale() })))));
+  const toggleFix = (entry) => {
+    try {
+      setFixed(entry.symbol, !entry.fixed);
+      setFixError("");
+    } catch (failure) {
+      setFixError(errorKey(failure.code));
+    }
+  };
+  const sourceOff = preference.status === "ready" && !preference.enabled;
+  return /* @__PURE__ */ import_react6.default.createElement("main", { className: "dxs dxs-page" }, /* @__PURE__ */ import_react6.default.createElement("header", { className: "dxs-heading" }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("h1", null, t("title")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, view === "market" ? t("market.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react6.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist", onClick: () => setView("watchlist") }, t("page.view.watchlist")), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-pressed": view === "market", onClick: () => setView("market") }, t("page.view.market"))), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: back }, t("page.back"))), view === "market" ? /* @__PURE__ */ import_react6.default.createElement(MarketView, { rpc, t, format, locale: getLocale() }) : /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: sourceOff ? "dxs-notice dxs-source-card" : "dxs-notice" }, sourceOff ? /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("strong", null, t("source.off-title", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("source.off-notice")), /* @__PURE__ */ import_react6.default.createElement(SourceButton, { preference, t, large: true }), preference.status === "error" ? /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null) : /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, t("page.notice"), preference.status === "error" ? /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null)), state.placement === "occupied" && /* @__PURE__ */ import_react6.default.createElement("p", { role: "status", className: "dxs-notice" }, t("page.occupied")), state.barHidden && /* @__PURE__ */ import_react6.default.createElement("p", { role: "status", className: "dxs-notice" }, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))), state.scopeStatus === "loading" && /* @__PURE__ */ import_react6.default.createElement("p", { role: "status" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react6.default.createElement("button", { onClick: retryScope }, t("page.scope-retry")), state.storageError && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react6.default.createElement("aside", { "aria-label": t("page.manage") }, /* @__PURE__ */ import_react6.default.createElement("h2", null, t("page.my-watchlist")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("page.counts", { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("page.fixed-hint", { max: format.count(MAX_FIXED) })), !state.items.length && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), !state.items.length && /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint")), /* @__PURE__ */ import_react6.default.createElement("ol", { className: "dxs-list" }, state.items.map((entry, index) => /* @__PURE__ */ import_react6.default.createElement("li", { key: entry.symbol }, /* @__PURE__ */ import_react6.default.createElement("button", { className: "dxs-select", "aria-pressed": item?.symbol === entry.symbol, onClick: () => select(entry.symbol) }, /* @__PURE__ */ import_react6.default.createElement("strong", null, entry.alias || entry.symbol), entry.alias && /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, " \xB7 ", entry.symbol), entry.fixed && /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-fixed-mark" }, " \xB7 ", t("page.fixed"))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react6.default.createElement("button", { disabled: index === 0, "aria-label": t("page.move-up", { symbol: entry.symbol }), onClick: () => move(entry.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react6.default.createElement("button", { disabled: index === state.items.length - 1, "aria-label": t("page.move-down", { symbol: entry.symbol }), onClick: () => move(entry.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react6.default.createElement("button", { "aria-pressed": entry.fixed, "aria-label": t(entry.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: entry.symbol }), onClick: () => toggleFix(entry) }, entry.fixed ? t("page.unfix") : t("page.fix")), /* @__PURE__ */ import_react6.default.createElement("button", { "aria-label": t("page.remove-aria", { symbol: entry.symbol }), onClick: () => remove(entry.symbol) }, t("page.remove")))))), fixError && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t(fixError, { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, state.barHidden ? /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))) : /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-hide")), " ", /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t("page.bar-shortcut"))), /* @__PURE__ */ import_react6.default.createElement(AddStock, { add, count: state.items.length, fixedCount, ready: state.scopeStatus === "ready", rpc, t, format })), state.scopeStatus === "ready" && (item ? /* @__PURE__ */ import_react6.default.createElement(Detail, { key: `${state.scopeId}:${preference.enabled}:${item.symbol}`, item, useResource, t, format, scope: state.scopeId, locale: getLocale() }) : /* @__PURE__ */ import_react6.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale() })))));
+}
+
+// src/client/shortcut.ts
+function isFixedBarShortcut(event) {
+  if (!event || event.repeat || !event.altKey || !event.shiftKey || event.code !== "KeyS") return false;
+  const target = event.target;
+  if (target?.isContentEditable) return false;
+  return !["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName);
 }
 
 // src/client/chart/styles.ts
@@ -11069,6 +11213,7 @@ var MARKET_CSS = `
 var CSS = `
 .dxs{color:var(--dsw-alias-label-primary,#202124);font:13px/1.5 system-ui,sans-serif;box-sizing:border-box}.dxs *{box-sizing:border-box}.dxs button,.dxs input,.dxs select{font:inherit;color:inherit}.dxs button{cursor:pointer;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:7px;background:var(--dsw-alias-bg-layer-1,#fff);padding:5px 9px;white-space:nowrap}.dxs button:hover{background:var(--dsw-alias-bg-layer-2,#eee)}.dxs button:focus-visible,.dxs input:focus-visible,.dxs select:focus-visible{outline:2px solid var(--dsw-alias-primary,#4169e1);outline-offset:2px}.dxs button:disabled{opacity:.4;cursor:default}.dxs-bar{display:flex;align-items:center;gap:8px;width:100%;max-width:100vw;padding:5px 12px;border-top:1px solid var(--dsw-alias-border-main,#ddd);background:var(--dsw-alias-bg-layer-1,#fff);min-height:40px}.dxs-strip{display:flex;align-items:center;gap:8px;min-width:0;flex:1;overflow-x:auto;padding:2px}.dxs-chip{display:flex;align-items:center;gap:8px;flex:none}.dxs-muted{color:var(--dsw-alias-label-secondary,#666);font-size:12px}.dxs-up{color:var(--dsw-alias-error,#bc2737)}.dxs-down{color:var(--dsw-alias-success,#16784e)}.dxs-page{height:100%;overflow:auto;padding:28px;max-width:1200px;margin:auto}.dxs-heading{display:flex;justify-content:space-between;gap:12px;align-items:start}.dxs h1{font-size:23px;margin:0}.dxs h2{font-size:16px;margin:0 0 12px}.dxs p{margin:8px 0}.dxs-notice{padding:10px 12px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);border-radius:8px;margin:12px 0}.dxs-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:22px;margin-top:20px}.dxs-list{padding:0;list-style:none}.dxs-list li{margin:8px 0}.dxs-list .dxs-select{width:100%;text-align:left;white-space:normal}.dxs-controls{display:flex;gap:5px;margin-top:4px}.dxs-form{display:grid;gap:8px;margin-top:16px}.dxs input,.dxs select{min-width:0;width:100%;padding:7px 9px;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:6px}.dxs-section{padding:18px;border:1px solid var(--dsw-alias-border-main,#ddd);border-radius:10px;margin-bottom:16px}.dxs-price{font-size:30px;font-variant-numeric:tabular-nums}.dxs dl{display:grid;grid-template-columns:auto 1fr;gap:5px 16px}.dxs dd{margin:0;overflow-wrap:anywhere}.dxs-error{color:var(--dsw-alias-error,#bc2737)}@media(max-width:650px){.dxs-page{padding:16px}.dxs-layout{grid-template-columns:1fr}.dxs-bar{padding:4px 6px;gap:4px}.dxs-heading{flex-wrap:wrap}}` + CHART_CSS + `
 .dxs-file-label{position:relative;cursor:pointer}.dxs-file-label input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.dxs-file-label:focus-within{outline:2px solid Highlight;outline-offset:2px}.dxs-instrument-summary{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.dxs-instrument-summary h2,.dxs-instrument-summary p{margin:0!important}.dxs-instrument-summary .dxs-price{font-size:22px;margin-left:auto}.dxs-quote-metadata{width:100%;font-size:12px}.dxs-page{max-width:none;padding:20px}.dxs-layout{grid-template-columns:200px minmax(0,1fr);gap:16px}.dxs-layout>article{min-width:0}.dxs-workbench{min-width:0;margin-bottom:16px}.dxs-data-actions{display:flex;gap:8px;flex-wrap:wrap}.dxs-file-label{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:7px;padding:5px 9px}.dxs-file-label input{max-width:220px;padding:0}.dxs-data-banner{border:1px solid var(--dsw-alias-primary,#4169e1);padding:10px;margin:12px 0;font-weight:600}.dxs-dataset-heading{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}.dxs-chart-empty{padding:48px 20px;text-align:center;border:1px dashed var(--dsw-alias-border-main,#bbb);border-radius:10px;margin:16px 0}.dxs-attribution{font-size:11px;color:var(--dsw-alias-label-secondary,#666)}.dxs-attribution a{color:inherit}.dxs-instrument-summary{padding:12px}.dxs-instrument-summary .dxs-price{font-size:25px}.dxs-instrument-summary dl{font-size:12px;margin:8px 0}.dxs-instrument-summary p{margin:4px 0}.dxs-search{display:grid;gap:6px}.dxs-search>label{font-size:12px;color:var(--dsw-alias-label-secondary,#666)}.dxs-search input[type=search]{width:100%}.dxs-search-results{margin:0;padding:0;list-style:none;max-height:238px;overflow:auto;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff)}.dxs-search-results li{display:flex;align-items:center;gap:8px;padding:6px 9px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-main,#eee)}.dxs-search-results li:last-child{border-bottom:0}.dxs-search-results li[aria-selected=true],.dxs-search-results li:hover{background:var(--dsw-alias-bg-layer-2,#f4f4f5)}.dxs-search-symbol{color:var(--dsw-alias-label-secondary,#666);font-size:12px;font-variant-numeric:tabular-nums}.dxs-search-kind{margin-left:auto;font-size:11px;padding:1px 6px;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:999px;color:var(--dsw-alias-label-secondary,#666)}@media(max-width:850px){.dxs-layout{grid-template-columns:1fr}.dxs-layout>aside{max-height:230px;overflow:auto}.dxs-page{padding:12px}}
+.dxs-check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary,#666)}.dxs-check input[type=checkbox]{width:auto;min-width:0;flex:none}.dxs-bar-actions{display:flex;align-items:center;gap:8px;margin-left:auto}.dxs-bar-hint{margin:0;min-height:28px}.dxs-bar-hint .dxs-muted{white-space:normal}.dxs-source-enable{font-weight:600}.dxs-source-enable.is-large{margin-top:6px}.dxs-source-card strong{display:block;margin-bottom:2px}.dxs-fixed-mark{color:var(--dsw-alias-primary,#4169e1);font-size:11px}.dxs-list .dxs-controls button[aria-pressed=true]{border-color:var(--dsw-alias-primary,#4169e1);color:var(--dsw-alias-primary,#4169e1)}
 ${MARKET_CSS}
 `;
 
@@ -11146,6 +11291,16 @@ function apply(ctx) {
     return () => style.remove();
   }, "stock: styles");
   ctx.effect(() => ctx.resources.register(quoteResource(ctx.connection.rpc)), "stock: quote resources");
+  const shortcut = (event) => {
+    if (!isFixedBarShortcut(event)) return;
+    event.preventDefault();
+    try {
+      controller.toggleBar();
+    } catch {
+    }
+  };
+  globalThis.addEventListener?.("keydown", shortcut, true);
+  ctx.effect(() => () => globalThis.removeEventListener?.("keydown", shortcut, true), "stock: fixed bar shortcut");
   const face = () => ({
     format,
     rpc: ctx.connection.rpc,
@@ -11154,21 +11309,31 @@ function apply(ctx) {
     retryScope: () => {
       void loadScope();
     },
-    add: (pin) => {
-      controller.add(pin);
-      controller.select(pin.symbol);
+    add: (item) => {
+      controller.add(item);
+      controller.select(item.symbol);
     },
     remove: controller.remove,
     move: controller.move,
     select: controller.select,
     collapse: controller.collapse,
+    setFixed: controller.setFixed,
+    toggleBar: controller.toggleBar,
+    hideBar: controller.toggleBar,
     open: (symbol) => {
       if (symbol) controller.select(symbol);
       ctx.layout.selectPanel("dsh-x-stock");
     },
     back: () => ctx.layout.selectPanel(null)
   });
-  mountWhenVacant(ctx.slots, { inject: face, locale: NS }, StockBar, controller.setPlacement);
+  mountWhenVacant(ctx.slots, { inject: face, locale: NS }, StockBar, {
+    onPlacement: controller.setPlacement,
+    visible: () => {
+      const state = controller.source.getSnapshot();
+      return !state.barHidden && fixedItems(state.items).length > 0;
+    },
+    subscribe: controller.source.subscribe
+  });
   ctx.slots.inject("main", () => ctx.slots.register({ name: "main", key: "dsh-x-stock", inject: face, locale: NS }, StockPage));
   ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({ name: "sidebar.panellist", id: "dsh-x-stock", order: 80, label: () => t("title") }, StockIcon));
 }

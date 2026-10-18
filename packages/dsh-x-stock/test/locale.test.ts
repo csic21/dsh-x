@@ -50,7 +50,7 @@ test('stable stock statuses and errors never depend on localized text', () => {
   controller.setScope('11111111-1111-4111-8111-111111111111')
   controller.add({ symbol: 'SH.600519', alias: '贵州茅台' })
   assert.equal(controller.source.getSnapshot().storageError, 'storage-save')
-  assert.equal(controller.source.getSnapshot().pins[0].alias, '贵州茅台')
+  assert.equal(controller.source.getSnapshot().items[0].alias, '贵州茅台')
   assert.equal(errorKey('stock/offline'), 'error.offline')
   assert.equal(errorKey('foreign sensitive error'), 'error.unknown')
   assert.equal(quoteErrorKey({ name: 'DshXStockError', code: 'DSH_X_STOCK_MISSING_KEY' }), 'quote.error.MISSING_KEY')

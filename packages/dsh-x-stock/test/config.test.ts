@@ -54,13 +54,15 @@ const escapeHintName = (text: string) => [...text]
   .map(character => character.codePointAt(0)! > 127 ? `\\u${character.codePointAt(0)!.toString(16).padStart(4, '0')}` : character)
   .join('')
 
-async function call(routes: any[]) {
-  const route = routes.find(item => item.path === '/api/dsh-x-stock.quotes')
-  const request = new Request('http://localhost/api/dsh-x-stock.quotes', {
+/** The stock page and the fixed bottom bar both read quotes from this route. */
+async function call(routes: any[], symbols: string[] = ['SH.600519']) {
+  const endpoint = 'dsh-x-stock.market'
+  const route = routes.find(item => item.path === `/api/${endpoint}`)
+  const request = new Request(`http://localhost/api/${endpoint}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      type: 'client-request', rpcId: 'r1', method: 'dsh-x-stock.quotes', payload: { symbols: ['SH.600519'] },
+      type: 'client-request', rpcId: 'r1', method: endpoint, payload: { kind: 'quotes', symbols },
     }),
   })
   return (await (await route.fetch(request)).json()) as any
@@ -74,14 +76,13 @@ test('defaults to no provider: the route reports unconfigured and never fetches'
     apply(ctx)
     const body = await call(routes)
     assert.equal(body.result.ok, true)
-    assert.equal(body.result.value.source, null)
-    assert.equal(body.result.value.quotes[0].status, 'unconfigured')
+    assert.deepEqual(body.result.value, { status: 'unconfigured', source: null })
   } finally {
     globalThis.fetch = original
   }
 })
 
-test('freeSource config wires the opt-in adapter through the owner-only RPC', async () => {
+test('the deprecated freeSource flag still forces the one shared A-share source on', async () => {
   const original = globalThis.fetch
   globalThis.fetch = async (url: any) => {
     assert.equal(String(url), 'https://qt.gtimg.cn/q=sh600519')
@@ -92,7 +93,7 @@ test('freeSource config wires the opt-in adapter through the owner-only RPC', as
     apply(ctx, { freeSource: true })
     const body = await call(routes)
     assert.equal(body.result.ok, true)
-    assert.equal(body.result.value.source, 'qt.gtimg.cn (unofficial)')
+    assert.equal(body.result.value.source, '腾讯行情 (unofficial)')
     assert.deepEqual(body.result.value.quotes[0], {
       symbol: 'SH.600519',
       status: 'available',
@@ -167,6 +168,52 @@ test('the market free-source switch also gates the directory and stops requests 
     await callEndpoint(routes, MARKET_PREFERENCE_ENDPOINT, { action: 'set', enabled: false })
     assert.equal((await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'search', query: 'xx' })).result.value.status, 'disabled')
     assert.equal(calls, 1, 'a disabled directory must not keep fetching')
+  } finally {
+    globalThis.fetch = original
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('the one market switch turns the page and bar quotes on and off without a restart', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dsh-x-stock-source-'))
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = async (url: any) => {
+    calls++
+    assert.equal(String(url), 'https://qt.gtimg.cn/q=sh600519')
+    return new Response(gbk(payload()), { headers: { 'content-type': 'text/html; charset=GBK' } })
+  }
+  try {
+    const { ctx, routes } = harness(dir)
+    apply(ctx)
+    // Off by default: the page and the fixed bar share this one switch, and an
+    // off switch must not produce a single request.
+    assert.deepEqual((await call(routes)).result.value, { status: 'unconfigured', source: null })
+    assert.equal(calls, 0)
+    await callEndpoint(routes, MARKET_PREFERENCE_ENDPOINT, { action: 'set', enabled: true })
+    const body = await call(routes)
+    assert.equal(body.result.value.source, '腾讯行情 (unofficial)')
+    assert.deepEqual(body.result.value.quotes.map((quote: any) => [quote.symbol, quote.price, quote.changePercent, quote.quotedAt]), [['SH.600519', 1329, 1.22, '2026-10-16T16:14:47+08:00']])
+    assert.equal(calls, 1)
+    await callEndpoint(routes, MARKET_PREFERENCE_ENDPOINT, { action: 'set', enabled: false })
+    assert.deepEqual((await call(routes)).result.value, { status: 'unconfigured', source: null })
+    assert.equal(calls, 1, 'a disabled source must not keep fetching')
+  } finally {
+    globalThis.fetch = original
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('a symbol the source does not answer for is unavailable, never a fabricated price', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dsh-x-stock-source-'))
+  const original = globalThis.fetch
+  globalThis.fetch = async () => new Response('v_pv_none_match="1";', { headers: { 'content-type': 'text/html; charset=GBK' } })
+  try {
+    const { ctx, routes } = harness(dir)
+    apply(ctx, { marketSource: true })
+    const body = await call(routes, ['SH.600519', 'SZ.000001'])
+    assert.deepEqual(body.result.value.quotes.map((quote: any) => [quote.symbol, quote.status, quote.price]), [['SH.600519', 'unavailable', null], ['SZ.000001', 'unavailable', null]])
+    assert.equal(body.result.value.source, '腾讯行情 (unofficial)')
   } finally {
     globalThis.fetch = original
     await rm(dir, { recursive: true, force: true })

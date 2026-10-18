@@ -1,4 +1,4 @@
-import type { MarketStock, MarketTopStock, MarketProvider } from './market.ts';
+import type { MarketQuote, MarketStock, MarketTopStock, MarketProvider } from './market.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank";
 export declare const MARKET_STOCK_RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList";
@@ -34,6 +34,12 @@ export interface MarketProviderOptions {
     retryDelayMs?: number;
     concurrency?: number;
 }
+/**
+ * The upstream stamp is `yyyyMMddHHmmss` in exchange time (China Standard
+ * Time, UTC+08:00, no DST). Invalid, impossible or future stamps are rejected
+ * instead of being silently clamped. Exported for tests.
+ */
+export declare function parseTencentTimestamp(raw: unknown, now: number): string;
 /** Parses the tilde-separated Tencent batch format. Exported for tests. */
 export declare function parseTencentBatch(text: string): Map<string, string[]>;
 interface RankBoard {
@@ -50,5 +56,7 @@ interface StockRankPage {
 }
 /** Parses one `getBoardRankList` page. Exported for tests. */
 export declare function parseStockRankPage(payload: any): StockRankPage;
+/** Parses one `v_sh600519="..."` stock line into the projected quote. */
+export declare function parseStockQuote(key: string, fields: string[], now: number): MarketQuote;
 export declare function createTencentMarketProvider(options?: MarketProviderOptions): MarketProvider;
 export { INDEXES as MARKET_INDEXES };

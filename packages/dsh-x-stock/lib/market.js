@@ -1,9 +1,15 @@
 // Shared market-board contract. Everything here is plain data and pure
 // functions so the Host, the browser bundle and tests can use the same
 // identities, taxonomy and arithmetic. No prices are invented here.
+//
+// The same provider and the same opt-in switch serve the market board, the
+// stock page and the bottom bar: there is exactly one A-share quote source.
+import { validateSymbol } from './watchlist.js';
 export const MARKET_ENDPOINT = 'dsh-x-stock.market';
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-stock.market-preference';
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)';
+/** One batched request covers the whole fixed bottom bar. */
+export const MARKET_MAX_QUOTES = 8;
 export const MARKET_MAX_BOARD_STOCKS = 200;
 export const MARKET_MAX_SECTORS = 200;
 export const MARKET_MAX_STOCKS = 12_000;
@@ -290,6 +296,23 @@ export function parseMarketRequest(payload) {
         if (keys.join(',') !== 'board,kind')
             throw stockMarketError('invalid-input');
         return { kind: 'board', board: validateBoardCode(payload.board) };
+    }
+    if (kind === 'quotes') {
+        if (keys.join(',') !== 'kind,symbols')
+            throw stockMarketError('invalid-input');
+        const raw = payload.symbols;
+        if (!Array.isArray(raw) || !raw.length || raw.length > MARKET_MAX_QUOTES)
+            throw stockMarketError('invalid-input');
+        let symbols;
+        try {
+            symbols = raw.map(validateSymbol);
+        }
+        catch {
+            throw stockMarketError('invalid-input');
+        }
+        if (new Set(symbols).size !== symbols.length)
+            throw stockMarketError('invalid-input');
+        return { kind: 'quotes', symbols };
     }
     throw stockMarketError('invalid-input');
 }

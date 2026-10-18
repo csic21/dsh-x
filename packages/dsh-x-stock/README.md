@@ -34,39 +34,40 @@
 
 界面与原有 Finnhub 工具相互独立。侧栏新增「股票」入口，通过官方 `main` keyed slot 打开独立股票详情页；底部条点击股票先选择该股，再用 `ctx.layout.selectPanel('dsh-x-stock')` 导航，不改当前 Session，也不向对话插入消息。「返回对话」调用 `selectPanel(null)`。
 
+- **自选是自选，固定是固定。** 自选清单只在这个页面显示、可以滚动了，加入自选不会让任何股票出现在底部；只有显式点「固定」的股票才进入底栏，最多 8 只（`MAX_FIXED`）。自选本身只受 200 条的存储安全上限约束，不按涨跌重排，保持用户手动顺序。取消固定不会移除自选。
 - 可以手动选择上海、深圳或北京交易所并填写六位代码（内部标识如 `SH.600519`、`SZ.000001`、`BJ.430047`），也可以在搜索框输入名称片段、拼音首字母或代码，从目录结果中选择后自动回填交易所与代码。不把同代码的不同交易所合并，不猜上市市场。
-- 最多固定八只，可填自定义别名、删除、上移/下移；添加只校验代码格式，不声称验证证券存在性。保持用户手动顺序，不自动按涨跌排序。
-- 底条单行横向滚动，不跑马灯；显示名称或代码、价格、带正负号的涨跌幅；收起后保留自选数量及恢复按钮。股票详情页始终是独立入口。
-- `localStorage` 只保存版本、代码/别名、顺序、收起状态；不保存行情、密钥、账户、持仓或生成的分析。同浏览器、同站点、同宿主 profile 可恢复，标签页通过 storage 事件同步；不跨设备或浏览器同步。宿主在官方 `profileContext.dir` 下持久化普通随机 scope 标识，通过受保护的精确 route 交给客户端。客户端确认 scope 后才读取对应 localStorage key；不同 home/profile 隔离，同 profile 重启稳定。旧未分区 key 不迁移。切换/重连期间清空旧视图并停止存储事件读取，获取 scope 失败时暂停管理，可重试。scope 不是凭据，不包含目录路径或凭据哈希。存储拒绝时保留当前内存操作并展示提示。
+- 底栏单行横向滚动，不跑马灯；显示名称或代码、价格、带正负号的涨跌幅；收起后保留固定数量及恢复按钮。一条都没固定时底栏完全不注册 `shell.bottom`，把插槽让给其他插件。`Alt+Shift+S` 可以随时隐藏/显示整个底栏（输入框内不劫持按键），隐藏状态写入同一份本地记录，页面里有恢复按钮。股票详情页始终是独立入口。
+- `localStorage` 只保存版本、代码/别名、顺序、固定状态、收起与隐藏状态；不保存行情、密钥、账户、持仓或生成的分析。载荷为 `version: 2`（`items[].fixed`、`barHidden`）；旧 `version: 1`（`pins`，自选即底栏）与其旧 scope key 会被一次性导入为「全部未固定」，不改写原记录。同浏览器、同站点、同宿主 profile 可恢复，标签页通过 storage 事件同步；不跨设备或浏览器同步。宿主在官方 `profileContext.dir` 下持久化普通随机 scope 标识，通过受保护的精确 route 交给客户端。客户端确认 scope 后才读取对应 localStorage key；不同 home/profile 隔离，同 profile 重启稳定。未分区 key 不读取。切换/重连期间清空旧视图并停止存储事件读取，获取 scope 失败时暂停管理，可重试。scope 不是凭据，不包含目录路径或凭据哈希。存储拒绝时保留当前内存操作并展示提示。
 - 详情页提供报价/来源/报价时间/获取时间，走势与成交、基本面和分析区块。没有数据时明确留空，不绘制假 K 线、不编财务指标、不生成没有依据的判断。
 
 ### 名称搜索（含 ETF）
 
 - 搜索框按名称片段（如「比亚」→ 比亚迪）、拼音首字母（`byd`）或代码（`002594`、`510300`）查询；结果限制为可交易的 A 股、ETF、QDII-ETF、LOF、QDII-LOF 与 REIT，最多 10 条。指数、港美股、场外基金（`jj`）与权证被过滤，不进入自选。选中结果后自动填入交易所和六位代码，并在别名为空时预填目录名称，仍可直接手填或修改。
-- 目录来自腾讯公开接口 `https://smartbox.gtimg.cn/s3/`（来源名 `smartbox.gtimg.cn (unofficial)`）。它和市场全景、自选报价同属本机免费源并默认关闭：只有页面「免费源」开关（或 `marketSource` / `freeSource` 配置）开启后才会请求；关闭时搜索框只显示开启入口，不发送任何请求。
+- 目录来自腾讯公开接口 `https://smartbox.gtimg.cn/s3/`（来源名 `smartbox.gtimg.cn (unofficial)`）。它和市场全景、自选详情、固定栏报价共用同一个默认关闭的「本机免费源」开关：只有页面开关（或 `marketSource` 配置）开启后才会请求；关闭时搜索框只显示开启入口，不发送任何请求。
 - 搜索仅由用户显式输入触发。关键词经 Host 通过固定 HTTPS 主机发出，拒绝重定向，8 秒超时，响应上限 64 KiB；关键词限 1–24 个字符，名称按 `\uXXXX` 解码并去除控制字符，非法或超长条目直接丢弃。Host 只向客户端投影 `symbol/name/kind`，不把原始响应或上游错误送出。
 - 关键词会发往该第三方接口，但不会进入模型、自选清单或磁盘。目录只用于代码解析：名称与上市状态未与交易所核对，不保证覆盖全部证券，也不构成行情、交易或投资建议。
 
 ### 行情现状与可替换接口
 
-**A 股界面默认仍是「未配置行情」。** 插件新增一个**显式选择性开启**的本机适配器 `qt.gtimg.cn`（免密钥、非官方），默认关闭；只有配置 `freeSource: true` 或设置 `DSH_X_STOCK_FREE_SOURCE=1` 时才会请求它。它只适合个人本机查看：无 SLA、可能被限流或中断、没有交易所授权，不得对外分发或用于商业展示。Finnhub 工具仍可用，但不会把美股订阅当作 A 股数据源，也不会自动索取或把 `FINNHUB_API_KEY` 发到浏览器。
+**A 股界面默认仍是「未配置行情」。** 插件新增一个**显式选择性开启**的本机适配器 `qt.gtimg.cn`（免密钥、非官方），默认关闭；打开页面「免费源」开关、配置 `marketSource: true` 或设置 `DSH_X_STOCK_MARKET_SOURCE=1` 才会请求它。它只适合个人本机查看：无 SLA、可能被限流或中断、没有交易所授权，不得对外分发或用于商业展示。Finnhub 工具仍可用，但不会把美股订阅当作 A 股数据源，也不会自动索取或把 `FINNHUB_API_KEY` 发到浏览器。
 
-Host 的 `createWatchlistHandler({ provider })` 为可替换适配器保留边界；默认不传 provider。适配器实现 `name` 与 `quote(symbol, { signal })`，输出 `symbol/name/price/changePercent/quotedAt/marketStatus`。Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。本机免密钥源与未来获授权适配器实现同一接口，切换不需要改客户端。历史行情在线获取、基本面及基于真实来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
+**全插件只有一个 A 股行情来源。** 市场全景、自选详情和底部固定栏都解析同一个 `MarketProvider`，也都受同一个「免费源」开关控制：没有再区分「自选源」和「市场源」。可替换的适配器实现 `name`、`overview()`、`breadth()`、`board(code)` 与 `quotes(symbols)`；Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。`freeSource` 配置与 `DSH_X_STOCK_FREE_SOURCE` 保留为 `marketSource` 的**弃用别名**（等价于强制开启同一个开关），以免既有配置失效。历史行情在线获取、基本面及基于真实来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
 
 #### 本机免密钥源（可选，非官方）
 
-- 端点固定为 HTTPS `https://qt.gtimg.cn/q=sh600519` 形式，代码由 `SH.600519` 映射为 `sh600519`，`SZ`/`BJ` 同理。拒绝重定向，整个请求含响应体默认 10 秒，响应体上限 32 KiB。
+- 端点固定为 HTTPS `https://qt.gtimg.cn/q=sh600519` 形式，代码由 `SH.600519` 映射为 `sh600519`，`SZ`/`BJ` 同理；固定栏把整条底栏合并成**一次**批量请求（最多 8 个代码，`q=sh600519,sz000001,...`）。拒绝重定向，整个请求含响应体默认 10 秒，响应体上限 512 KiB。
 - 响应是 GBK 文本（`v_sh600519="..."`），按 `~` 分隔读取名称、代码、现价、时间、涨跌额与涨跌幅；每个字段重新校验，缺失、越界、代码不匹配或未来时间都会按失败处理。原始响应、错误正文和请求明细不会进入客户端。
-- 只投影为 `symbol/name/price/changePercent/quotedAt/marketStatus`。`quotedAt` 按交易所时间（UTC+08:00）解释；供应商不提供休市标志，因此 `marketStatus` 固定为 `unknown`，三分钟前的报价由界面标为旧报价。停牌或长期无成交的代码会显示最后一笔价格并因时间过旧被标记，不能被当作实时价。
-- 来源名称固定为 `qt.gtimg.cn (unofficial)`，会在详情页「数据来源」中展示，便于区分授权源。
+- 只投影为 `symbol/status/name/price/changePercent/quotedAt/fetchedAt/marketStatus`。源没有回答的代码是 `unavailable`（价格为空），不会被填成 0、昨收或任何猜测值。`quotedAt` 按交易所时间（UTC+08:00）解释；供应商不提供休市标志，因此 `marketStatus` 固定为 `unknown`，三分钟前的报价由界面标为旧报价。停牌或长期无成交的代码会显示最后一笔价格并因时间过旧被标记，不能被当作实时价。
+- 来源名称固定为 `腾讯行情 (unofficial)`，与市场页一致，会在详情页「数据来源」中展示，便于区分授权源。
 - 启用方式（选择一种）：
-  - 当前 profile 的 `cordis.patch.yml` 中按 id 覆盖：`- id: dsh-x-stock`、`name: dsh-x-stock`、`config: { freeSource: true }`。
-  - 启动宿主前设置 `DSH_X_STOCK_FREE_SOURCE=1`（适合 headless 组合）。
-- 关闭时行为与之前完全一致：不发起任何行情请求，界面保持「未配置行情」。`dsh_x_stock_quote` 工具仍只使用 Finnhub，不会自动改走该源。
+  - 页面「免费源」开关（推荐，写入当前 profile 的 `.dsh-x-stock/market.json`，无需重启）。
+  - 当前 profile 的 `cordis.patch.yml` 中按 id 覆盖：`- id: dsh-x-stock`、`name: dsh-x-stock`、`config: { marketSource: true }`；旧的 `freeSource: true` 仍然可用。
+  - 启动宿主前设置 `DSH_X_STOCK_MARKET_SOURCE=1`（旧的 `DSH_X_STOCK_FREE_SOURCE=1` 仍然可用，适合 headless 组合）。
+- 关闭时：不发起任何行情请求，界面保持「未配置行情」，固定栏只显示开启入口。`dsh_x_stock_quote` 工具仍只使用 Finnhub，不会自动改走该源。
 
-客户端 `resources` provider 通过官方 `connection.rpc.call('/api', 'dsh-x-stock.quotes', { symbols }, signal)` 调用；Host 使用同一 Connection 的 `connection.fetch.register` 精确 POST `/api/dsh-x-stock.quotes`（不占用 Gateway 的 `/api` 拦截器），验证并回显标准 RPC envelope；官方 shared Connection 在调用精确 route 前强制验证所有者，仅接受 owner principal、确切参数、最多八个不重复的交易所限定代码。原有工具在没有 Connection 的 headless composition 下继续工作。没有自行开放监听端口，也不通过模型调用获取 UI 数据。
+客户端 `resources` provider 通过官方 `connection.rpc.call('/api', 'dsh-x-stock.market', { kind: 'quotes', symbols }, signal)` 调用；Host 使用同一 Connection 的 `connection.fetch.register` 精确 POST `/api/dsh-x-stock.market`（不占用 Gateway 的 `/api` 拦截器），验证并回显标准 RPC envelope；官方 shared Connection 在调用精确 route 前强制验证所有者，仅接受 owner principal、确切参数、最多八个不重复的交易所限定代码。原有工具在没有 Connection 的 headless composition 下继续工作。没有自行开放监听端口，也不通过模型调用获取 UI 数据。
 
-有可用适配器时，资源按 60 秒周期更新；隐藏窗口或离线暂停，组件卸载/收起释放订阅并取消在途请求。未配置源不周期轮询。失败保留资源框架最近成功值并标注旧数据；三分钟前的报价标为旧报价。只有供应商明确提供 closed 才标休市，不用本地工作日规则猜节假日/停牌。此实现不承诺实时或交易所级延迟。
+**刷新节奏按用途区分**：只有固定栏是准实时视图，它整条底栏合并成一次请求，报价仍在变动时约每 5 秒轮询；报价时间超过三分钟（休市、停牌或源停更）自动降到 60 秒，源关闭时完全停止。详情页按 60 秒更新。隐藏窗口或离线暂停，组件卸载/收起释放订阅并取消在途请求。失败保留资源框架最近成功值并标注旧数据；三分钟前的报价标为旧报价。只有供应商明确提供 closed 才标休市，不用本地工作日规则猜节假日/停牌。此实现是轮询而非推送，不承诺实时或交易所级延迟。
 
 ### 市场全景（默认关闭，可在页面开关开启）
 
@@ -102,7 +103,7 @@ Host 的 `createWatchlistHandler({ provider })` 为可替换适配器保留边�
 
 ### 底部插槽与冲突
 
-依据官方源码 `1517a4dbca0a2789ff1d41ba439600f8547d23fa`，`shell.bottom` 是 **root/single**，不是增量列表；`experimental-inspector` 可能长期占用，即使其 DOM 隐藏也算占用。插件在 `slots.inject` 声明生命周期内通过公开 `entries/subscribe` 检查，仅空位时挂载，使用最低优先级作为竞争安全保障；其他注册出现就退让，移除后恢复。冲突状态在独立股票页说明，清单不会丢失。不覆盖 composer、不将浮层伪装为全宽底部槽，也不修改内核。
+依据官方源码 `1517a4dbca0a2789ff1d41ba439600f8547d23fa`，`shell.bottom` 是 **root/single**，不是增量列表；`experimental-inspector` 可能长期占用，即使其 DOM 隐藏也算占用。插件在 `slots.inject` 声明生命周期内通过公开 `entries/subscribe` 检查，仅空位时挂载，使用最低优先级作为竞争安全保障；其他注册出现就退让，移除后恢复。**没有固定股票、或用户用 `Alt+Shift+S` 隐藏底栏时，插件不注册这个插槽**，不会占着位置显示空条；状态变化（固定/取消固定、隐藏/显示）会重新评估，仍只在空位时挂载。冲突状态在独立股票页说明，清单不会丢失。不覆盖 composer、不将浮层伪装为全宽底部槽，也不修改内核。
 
 独立页使用 `main` 的自有 key `dsh-x-stock`；侧栏使用 `sidebar.panellist` 自有同名 id。`shell.bottom` 为 single，故不伪造 id。
 
@@ -110,7 +111,7 @@ Host 的 `createWatchlistHandler({ provider })` 为可替换适配器保留边�
 
 在仓库根 `pnpm install` 后执行 `pnpm --filter dsh-x-stock run build`。`lib/client.js` 是正式 `window.__ModuleLoader__.load({ id, factory(require) })` 客户端产物；React 由宿主共享模块表提供，`package.json` 声明 `./client` 导出及 `dsh.client.inject` 依赖。它不是动态 Cordis 代码片段。已生成的 `lib/client.js` 随包交付，宿主无需在运行时编译 JSX。
 
-`pnpm --filter dsh-x-stock test` 验证原有行情工具、A 股身份/清单/存储拒绝、RPC 所有者与输入边界、slot 冲突/恢复/卸载、资源暂停取消，profile 标识原子发布/跨 home 与 profile 隔离/重启稳定/初始化竞态，以及实际构建产物在 jsdom 中的独立页导航、管理和折叠交互。测试行情均为明确的离线 fixture，不是在线证券数据。jsdom 不验证像素布局，也不证明真实桌面浏览器完整流程；生产数据源及真实浏览器视觉验收仍需单独完成。
+`pnpm --filter dsh-x-stock test` 验证原有行情工具、A 股身份/自选与固定分离/上限/存储拒绝与 v1 导入、批量化报价 RPC 的所有者与输入边界、slot 空位判定/让位/隐藏后释放/恢复、固定栏实时与降频判定、快捷键匹配与输入框豁免、资源暂停取消，profile 标识原子发布/跨 home 与 profile 隔离/重启稳定/初始化竞态，以及实际构建产物在 jsdom 中的独立页导航、固定/取消固定、隐藏/恢复和折叠交互。测试行情均为明确的离线 fixture，不是在线证券数据。jsdom 不验证像素布局，也不证明真实桌面浏览器完整流程；生产数据源及真实浏览器视觉验收仍需单独完成。
 
 ### 国际化
 

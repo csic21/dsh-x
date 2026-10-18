@@ -226,6 +226,8 @@ test('stock page tabs switch between the watchlist and the market panorama', asy
   ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
   const rpc = {
     call: async (_channel: string, _endpoint: string, payload: any) => {
+      if (payload?.action === 'get') return { ok: true, value: { enabled: true, forced: false } }
+      if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       return { ok: true, value: { status: 'ready', board } }
@@ -233,13 +235,13 @@ test('stock page tabs switch between the watchlist and the market panorama', asy
   }
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('root')!)
-  const state = { pins: [], collapsed: false, storageError: '', scopeStatus: 'loading', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: null }
+  const state = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'loading', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: null }
   const useWatchlist = (selector: any) => selector(state)
   const useResource = () => ({ status: 'live', value: null })
   const noop = () => {}
   try {
     await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
-      useWatchlist, useResource, add: noop, remove: noop, move: noop, select: noop, back: noop, retryScope: noop,
+      useWatchlist, useResource, add: noop, remove: noop, move: noop, select: noop, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
       t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
     })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })

@@ -2,7 +2,8 @@ import { createWatchlistController } from './controller.ts'
 import { mountWhenVacant } from './placement.ts'
 import { quoteResource } from './resource.ts'
 import { StockBar, StockPage, StockIcon } from './components.tsx'
-import { SCOPE_ENDPOINT } from '../watchlist.ts'
+import { isFixedBarShortcut } from './shortcut.ts'
+import { fixedItems, SCOPE_ENDPOINT } from '../watchlist.ts'
 import { CSS } from './styles.ts'
 import { NS, zh, en } from './locales.ts'
 import { createFormatters } from './format.ts'
@@ -44,16 +45,35 @@ export function apply(ctx: any) {
     return () => style.remove()
   }, 'stock: styles')
   ctx.effect(() => ctx.resources.register(quoteResource(ctx.connection.rpc)), 'stock: quote resources')
+  // Alt+Shift+S shows or hides the fixed bar from anywhere in the app. Typing
+  // in a field keeps the key, and storage failures stay visible in the UI.
+  const shortcut = (event: any) => {
+    if (!isFixedBarShortcut(event)) return
+    event.preventDefault()
+    try { controller.toggleBar() } catch { /* Storage state is reported by the page. */ }
+  }
+  globalThis.addEventListener?.('keydown', shortcut, true)
+  ctx.effect(() => () => globalThis.removeEventListener?.('keydown', shortcut, true), 'stock: fixed bar shortcut')
   const face = () => ({
     format, rpc: ctx.connection.rpc, getLocale: () => ctx.locale.getLocale().active,
     hooks: { watchlist: controller.source },
     retryScope: () => { void loadScope() },
-    add: (pin: any) => { controller.add(pin); controller.select(pin.symbol) },
+    add: (item: any) => { controller.add(item); controller.select(item.symbol) },
     remove: controller.remove, move: controller.move, select: controller.select, collapse: controller.collapse,
+    setFixed: controller.setFixed, toggleBar: controller.toggleBar, hideBar: controller.toggleBar,
     open: (symbol: any) => { if (symbol) controller.select(symbol); ctx.layout.selectPanel('dsh-x-stock') },
     back: () => ctx.layout.selectPanel(null),
   })
-  mountWhenVacant(ctx.slots, { inject: face, locale: NS }, StockBar, controller.setPlacement)
+  // The bottom slot is single and contested: occupy it only while at least one
+  // stock is fixed and the user has not hidden the bar.
+  mountWhenVacant(ctx.slots, { inject: face, locale: NS }, StockBar, {
+    onPlacement: controller.setPlacement,
+    visible: () => {
+      const state = controller.source.getSnapshot()
+      return !state.barHidden && fixedItems(state.items).length > 0
+    },
+    subscribe: controller.source.subscribe,
+  })
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'dsh-x-stock', inject: face, locale: NS }, StockPage))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'dsh-x-stock', order: 80, label: () => t('title') }, StockIcon))
 }

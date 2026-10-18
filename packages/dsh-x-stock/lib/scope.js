@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile, link, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { validateScope } from './watchlist.js';
+import { SCOPE_ENDPOINT, validateScope } from './watchlist.js';
+import { createRpcRoute, failure } from './rpc.js';
 // The launcher-owned profile directory is the authority. The browser sees only
 // this ordinary random identifier, never a home path or credential-derived hash.
 export async function loadProfileScope(profileDirectory) {
@@ -43,4 +44,16 @@ export async function loadProfileScope(profileDirectory) {
         await unlink(temporary).catch(() => { });
     }
     return read();
+}
+export function createScopeRoute(readScope) {
+    return createRpcRoute(SCOPE_ENDPOINT, async (_endpoint, payload) => {
+        if (!payload || Object.getPrototypeOf(payload) !== Object.prototype || Object.keys(payload).length)
+            return failure('stock/invalid-input', '存储标识请求参数无效。');
+        try {
+            return { ok: true, value: { scope: await readScope() } };
+        }
+        catch {
+            return failure('stock/scope-unavailable', '无法打开此 profile 的自选存储，请检查宿主目录权限后重试。');
+        }
+    });
 }

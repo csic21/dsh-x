@@ -1,10 +1,12 @@
-// Shared browser/host contract. Quotes and credentials are never persisted.
-// Error codes are stable data; the client owns localized presentation.
 export const watchlistError = (code) => Object.assign(new Error(code), { code });
-export const MAX_PINS = 8;
-export const STORAGE_KEY = 'dsh-x-stock:watchlist:v1';
+/** Safety bound for the scrollable page list, not a product limit. */
+export const MAX_WATCHLIST = 200;
+/** The bottom bar is a glanceable strip and stays small on purpose. */
+export const MAX_FIXED = 8;
+export const STORAGE_KEY = 'dsh-x-stock:watchlist:v2';
+/** Pre-split payloads (watchlist == bottom bar) are imported once, unfixed. */
+export const LEGACY_STORAGE_KEY = 'dsh-x-stock:watchlist:v1';
 export const QUOTE_CHANNEL = '/api';
-export const QUOTE_ENDPOINT = 'dsh-x-stock.quotes';
 export function normalizeAShare(exchange, code) {
     const market = String(exchange).trim().toUpperCase();
     const digits = String(code).trim();
@@ -17,25 +19,37 @@ export function validateSymbol(symbol) {
         throw watchlistError('invalid-symbol');
     return symbol;
 }
-export function normalizePin(raw) {
-    const pin = raw;
-    if (!pin || typeof pin !== 'object')
-        throw watchlistError('invalid-pin');
-    const symbol = validateSymbol(pin.symbol);
-    const alias = typeof pin.alias === 'string' ? pin.alias.trim().slice(0, 24) : '';
-    return { symbol, alias };
+export function normalizeItem(raw) {
+    const item = raw;
+    if (!item || typeof item !== 'object')
+        throw watchlistError('invalid-item');
+    const symbol = validateSymbol(item.symbol);
+    const alias = typeof item.alias === 'string' ? item.alias.trim().slice(0, 24) : '';
+    return { symbol, alias, fixed: item.fixed === true };
 }
 export function parseSaved(raw) {
     if (!raw)
-        return { pins: [], collapsed: false };
+        return { items: [], collapsed: false, barHidden: false };
     const value = JSON.parse(raw);
-    if (value?.version !== 1 || !Array.isArray(value.pins) || value.pins.length > MAX_PINS)
+    // version 1: `pins` was both the watchlist and the bottom bar.
+    if (value?.version === 1) {
+        if (!Array.isArray(value.pins) || value.pins.length > MAX_WATCHLIST)
+            throw watchlistError('invalid-saved');
+        const items = value.pins.map(normalizeItem);
+        if (new Set(items.map((item) => item.symbol)).size !== items.length)
+            throw watchlistError('duplicate-saved');
+        return { items, collapsed: value.collapsed === true, barHidden: false };
+    }
+    if (value?.version !== 2 || !Array.isArray(value.items) || value.items.length > MAX_WATCHLIST)
         throw watchlistError('invalid-saved');
-    const pins = value.pins.map(normalizePin);
-    if (new Set(pins.map((p) => p.symbol)).size !== pins.length)
+    const items = value.items.map(normalizeItem);
+    if (new Set(items.map((item) => item.symbol)).size !== items.length)
         throw watchlistError('duplicate-saved');
-    return { pins, collapsed: value.collapsed === true };
+    if (items.filter((item) => item.fixed).length > MAX_FIXED)
+        throw watchlistError('invalid-saved');
+    return { items, collapsed: value.collapsed === true, barHidden: value.barHidden === true };
 }
+export const fixedItems = (items) => items.filter(item => item.fixed);
 export function quoteStatus(quote, now = Date.now()) {
     if (!quote || quote.status === 'unconfigured')
         return 'unconfigured';
@@ -54,3 +68,4 @@ export function validateScope(scope) {
     return scope.toLowerCase();
 }
 export const scopedStorageKey = (scope) => `${STORAGE_KEY}:${validateScope(scope)}`;
+export const legacyScopedStorageKey = (scope) => `${LEGACY_STORAGE_KEY}:${validateScope(scope)}`;

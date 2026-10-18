@@ -6,17 +6,17 @@
 //
 // Only projected fields leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
-import { parseTencentTimestamp } from './free-quote.ts'
 import {
   MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES,
-  MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE,
+  MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE,
   MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name,
   normalizeMarketCode, validateBoardCode,
 } from './market.ts'
 import type {
-  BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketSector, MarketStock,
+  BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketQuote, MarketSector, MarketStock,
   MarketTopStock, MarketProvider,
 } from './market.ts'
+import { validateSymbol } from './watchlist.ts'
 
 export const MARKET_QUOTE_ENDPOINT = 'https://qt.gtimg.cn/q='
 export const MARKET_BOARD_RANK_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank'
@@ -24,6 +24,7 @@ export const MARKET_STOCK_RANK_ENDPOINT = 'https://proxy.finance.qq.com/cgi/cgi-
 export const MARKET_TIMEOUT_MS = 10_000
 export const MARKET_MAX_BYTES = 512 * 1024
 export const MARKET_TOP_LIMIT = 8
+const STAMP = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/
 
 const INDEXES = [
   { quote: 'sh000001', code: 'SH.000001' },
@@ -76,6 +77,30 @@ function laterQuote(left: string | null, right: string | null): string | null {
 
 function toCnyFromWan(value: number | null): number | null {
   return value === null ? null : value * 10_000
+}
+
+/**
+ * The upstream stamp is `yyyyMMddHHmmss` in exchange time (China Standard
+ * Time, UTC+08:00, no DST). Invalid, impossible or future stamps are rejected
+ * instead of being silently clamped. Exported for tests.
+ */
+export function parseTencentTimestamp(raw: unknown, now: number): string {
+  const match = typeof raw === 'string' ? STAMP.exec(raw) : null
+  if (!match) throw new Error('invalid quote timestamp')
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) throw new Error('invalid quote timestamp')
+  const calendar = new Date(Date.UTC(year, month - 1, day))
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) throw new Error('invalid quote timestamp')
+  const stamp = Date.UTC(year, month - 1, day, hour - 8, minute, second)
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}+08:00`
+  if (!Number.isFinite(stamp) || Date.parse(iso) !== stamp) throw new Error('invalid quote timestamp')
+  if (stamp > now + 300_000) throw new Error('quote timestamp is in the future')
+  return iso
 }
 
 async function readBody(response: Response, maxBytes: number): Promise<Uint8Array> {
@@ -242,6 +267,30 @@ function parseIndexQuote(key: string, fields: string[], now: number): MarketInde
   }
 }
 
+/** Parses one `v_sh600519="..."` stock line into the projected quote. */
+export function parseStockQuote(key: string, fields: string[], now: number): MarketQuote {
+  const [market, digits] = [key.slice(0, 2), key.slice(2)] as [string, string]
+  const symbol = `${market.toUpperCase()}.${digits}`
+  validateSymbol(symbol)
+  if (fields[2] !== digits) throw new Error('stock quote mismatch')
+  const name = cleanText(fields[1], 64)
+  const price = finiteNumber(fields[3], 0.0001, 1e9)
+  const changePercent = finiteNumber(fields[32], -100, 100)
+  if (!name || price === null || changePercent === null) throw new Error('invalid stock quote')
+  return {
+    symbol,
+    status: 'available',
+    name,
+    price,
+    changePercent,
+    quotedAt: parseTencentTimestamp(fields[30], now),
+    fetchedAt: null,
+    // The source has no suspension flag; the UI labels freshness instead of
+    // claiming a session state it cannot verify.
+    marketStatus: 'unknown',
+  }
+}
+
 function parseBoardQuote(key: string, fields: string[], now: number, rank: Map<string, RankBoard>): MarketSector | null {
   const code = key.slice(4)
   if (!/^801\d{3}$/.test(code)) return null
@@ -353,14 +402,19 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     return value
   }
 
-  async function quoteBatch(codes: string[]): Promise<Map<string, string[]>> {
+  async function quoteBatch(codes: string[], { requireAny = true }: { requireAny?: boolean } = {}): Promise<Map<string, string[]>> {
     if (!codes.length || codes.length > 300) throw new Error('invalid market quote batch')
     const text = await request(`${MARKET_QUOTE_ENDPOINT}${codes.join(',')}`, 'gbk', MARKET_MAX_BYTES)
+    // An empty body means the request itself failed; a body without any usable
+    // line means the source does not know these codes. Only the first case is a
+    // transport failure, so the callers can tell "no data for this symbol" from
+    // "the feed is gone".
+    if (!text.trim()) throw new Error('empty market quote response')
     const parsed = parseTencentBatch(text)
     const allowed = new Set(codes)
     const result = new Map<string, string[]>()
     for (const [key, fields] of parsed) if (allowed.has(key)) result.set(key, fields)
-    if (!result.size) throw new Error('empty market quote batch')
+    if (!result.size && requireAny) throw new Error('empty market quote batch')
     return result
   }
 
@@ -521,6 +575,24 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     board: (input: unknown) => {
       const code = validateBoardCode(input)
       return getOrLoad(`board:${code}`, boardTtlMs, () => loadBoard(code))
+    },
+    // Deliberately uncached: the bottom bar is the one place that polls for a
+    // live price, and a cached snapshot would make it look fresher than it is.
+    // Concurrent callers still share a single upstream request.
+    quotes: (input: unknown) => {
+      if (!Array.isArray(input) || !input.length || input.length > MARKET_MAX_QUOTES) throw new Error('invalid market quote request')
+      const symbols = input.map(validateSymbol)
+      if (new Set(symbols).size !== symbols.length) throw new Error('invalid market quote request')
+      const codes = symbols.map(symbol => `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`)
+      return getOrLoad(`quotes:${codes.join(',')}`, 0, async () => {
+        const batch = await quoteBatch(codes, { requireAny: false })
+        const stamp = now()
+        const quotes: MarketQuote[] = []
+        for (const [key, fields] of batch) {
+          try { quotes.push(parseStockQuote(key, fields, stamp)) } catch { /* one bad line must not hide the others */ }
+        }
+        return quotes
+      })
     },
   }
 }

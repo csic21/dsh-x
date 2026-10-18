@@ -8,7 +8,7 @@ import { createOfficialLocale } from '../../../test/fixtures/locale.mjs'
 
 // DOM integration of the real published factory, using an explicit host fixture.
 // This does not claim a real browser layout or an assembled-kernel UI test.
-test('built client registers safe slots and supports add/order/remove/navigation/persistence',async()=>{
+test('built client separates the watchlist from the fixed bar and supports add/order/remove/navigation/persistence',async()=>{
   const dom=new JSDOM('<!doctype html><html><head></head><body><div id="app"></div></body></html>',{url:'http://localhost/'})
   const original: any={window:(globalThis as any).window,document:globalThis.document,localStorage:globalThis.localStorage,IS_REACT_ACT_ENVIRONMENT:(globalThis as any).IS_REACT_ACT_ENVIRONMENT}
   ;(globalThis as any).window=dom.window;globalThis.document=dom.window.document;globalThis.localStorage=dom.window.localStorage;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
@@ -20,6 +20,7 @@ test('built client registers safe slots and supports add/order/remove/navigation
     register(options: any,component: any){const entry: any={options,component};entries.set(options.name,[...(entries.get(options.name)??[]),entry]);return()=>entries.set(options.name,(entries.get(options.name)??[]).filter((x: any)=>x!==entry))},
   }
   const scope='11111111-1111-4111-8111-111111111111'
+  const storageKey=`dsh-x-stock:watchlist:v2:${scope}`
   const locale = await createOfficialLocale()
   const rpcCalls: any[]=[]
   const ctx: any={locale,slots,on(){return()=>{}},effect(fn: any){const dispose=fn();effects.push(dispose);return dispose},resources:{register(provider: any){resources.push(provider);return()=>{}}},connection:{rpc:{call:async(channel: any,endpoint: any,payload: any)=>{
@@ -33,25 +34,33 @@ test('built client registers safe slots and supports add/order/remove/navigation
   vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value: any){assert.equal(value.id,'dsh-x-stock');exported=value.factory((name: any)=>{assert.equal(name,'react');return React})}}},globalThis,navigator:dom.window.navigator,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
   const { createRoot } = await import('react-dom/client')
   const root=createRoot(dom.window.document.getElementById('app')!)
+  const saved=()=>JSON.parse(localStorage.getItem(storageKey)!)
   try {
     await act(async()=>exported.apply(ctx))
-    assert.deepEqual(Array.from(entries.keys()).sort(),['main','shell.bottom','sidebar.panellist','tool.call.toolview'])
+    // An empty watchlist registers no bottom bar: the single bottom slot stays free.
+    assert.deepEqual(Array.from(entries.keys()).sort(),['main','sidebar.panellist','tool.call.toolview'])
     assert.equal(entries.get('main')[0].options.key,'dsh-x-stock')
     assert.equal(entries.get('sidebar.panellist')[0].options.id,'dsh-x-stock')
     assert.equal(resources[0].protocol,'dsh-x-stock')
-    const page=entries.get('main')[0], bar=entries.get('shell.bottom')[0]
+    const page=entries.get('main')[0]
     function Render({entry}: any) {
       useSyncExternalStore<any>(locale.subscribe.bind(locale), locale.getSnapshot.bind(locale), locale.getSnapshot.bind(locale))
       const face=entry.options.inject()
       const source=face.hooks.watchlist
       const useWatchlist=(selector: any)=>selector(useSyncExternalStore<any>(source.subscribe,source.getSnapshot,source.getSnapshot))
-      const useResource=(address: any)=>({status:'live',value:{symbol:address.split('/').at(-1),status:'unconfigured',price:null,source:null,quotedAt:null,fetchedAt:'2026-10-16T07:00:00Z'}})
+      // One batched resource shape for a single stock and for the fixed bar.
+      const useResource=(address: any)=>{
+        const path=String(address).replace('dsh-resource://dsh-x-stock/','')
+        const [kind,rest]=path.split('/')
+        const symbols=kind==='fixed'?String(rest).split(','):[String(rest)]
+        return {status:'live',value:{source:'test-source',quotes:symbols.map(symbol=>({symbol,status:'unconfigured',name:'',price:null,changePercent:null,quotedAt:null,fetchedAt:'2026-10-16T07:00:00Z',marketStatus:'unknown'}))}}
+      }
       return React.createElement(entry.component,{...face,useWatchlist,useResource,t:locale.bind(entry.options.locale)})
     }
     const render=async (entry: any)=>act(async()=>root.render(React.createElement(Render,{entry})))
     const click=async (button: any)=>act(async()=>button.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})))
     await render(page)
-    assert.match(document.body.textContent,/还没有固定股票/)
+    assert.match(document.body.textContent,/还没有自选股票/)
     const input=async(element: any,value: any)=>act(async()=>{
       const prototype=element.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype
       ;(Object.getOwnPropertyDescriptor(prototype,'value'))!.set!.call(element,value)
@@ -68,19 +77,37 @@ test('built client registers safe slots and supports add/order/remove/navigation
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.getAttribute('aria-label'),'SZ.000001 股票详情')
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="上移 SZ.000001"]'))
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('ol li'))!.textContent,/平安银行/)
+    // Being on the watchlist is not being fixed: the bar is still absent.
+    assert.equal(entries.get('shell.bottom'),undefined)
+    assert.equal(saved().items.length,2)
+    assert.deepEqual(saved().items.map((item: any)=>item.fixed),[false,false])
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="固定 SZ.000001 到底部栏"]'))
+    assert.deepEqual(saved().items.map((item: any)=>[item.symbol,item.fixed]),[['SZ.000001',true],['SH.600519',false]])
+    assert.match(document.body.textContent,/已固定 1\/8/)
+    const bar=entries.get('shell.bottom')[0]
     await render(bar)
+    const barText=()=>document.querySelector<HTMLElement & HTMLInputElement>('.dxs-bar')!.textContent!
+    assert.match(barText(),/固定 1/)
+    assert.match(barText(),/平安银行/)
+    assert.doesNotMatch(barText(),/贵州茅台/)
     assert.match(document.body.textContent,/未配置行情/)
-    const firstStock=[...document.querySelectorAll('button')].find(button=>button.textContent.includes('平安银行'))
-    await click(firstStock);assert.equal(selectedPanel,'dsh-x-stock')
-    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="收起自选股票"]'))
+    await click([...document.querySelectorAll('button')].find(button=>button.textContent!.includes('平安银行')))
+    assert.equal(selectedPanel,'dsh-x-stock')
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="收起固定股票条"]'))
     assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-strip'),null)
-    assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="展开自选股票"]'))
-    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="展开自选股票"]'))
+    assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="展开固定股票条"]'))
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="展开固定股票条"]'))
+    // Hiding the bar releases the slot and the page can bring it back.
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="隐藏固定栏"]'))
+    assert.equal((entries.get('shell.bottom')??[]).length,0)
     await render(page)
-    await click([...document.querySelectorAll('button')].find(button=>button.textContent==='返回对话'))
+    assert.match(document.body.textContent,/固定栏已隐藏/)
+    await click([...document.querySelectorAll('button')].find(button=>button.textContent==='显示固定栏')!)
+    assert.equal((entries.get('shell.bottom')??[]).length,1)
+    await click([...document.querySelectorAll('button')].find(button=>button.textContent==='返回对话')!)
     assert.equal(selectedPanel,null);assert.deepEqual(calls,['dsh-x-stock',null])
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 SH.600519"]'))
-    assert.equal(JSON.parse(localStorage.getItem(`dsh-x-stock:watchlist:v1:${scope}`)!).pins.length,1)
+    assert.equal(saved().items.length,1)
     // Name search: an explicit query, a debounce, then a pick that fills the manual fields.
     assert.match(document.body.textContent!, /搜索使用本机免费源/)
     assert.deepEqual(rpcCalls.filter((call: any)=>call.endpoint==='dsh-x-stock.search')[0],{endpoint:'dsh-x-stock.search',payload:{action:'status'}})
@@ -88,13 +115,14 @@ test('built client registers safe slots and supports add/order/remove/navigation
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
     assert.deepEqual(rpcCalls.filter((call: any)=>call.payload?.action==='search'),[{endpoint:'dsh-x-stock.search',payload:{action:'search',query:'比亚'}}])
     assert.match(document.body.textContent!, /比亚迪/)
-    await click([...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option=>option.textContent!.includes('比亚迪')))
+    await click([...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
     assert.equal(document.querySelector<HTMLInputElement>('input[name="code"]')!.value,'002594')
     assert.equal(document.querySelector<HTMLSelectElement>('select[name="exchange"]')!.value,'SZ')
     assert.equal(document.querySelector<HTMLInputElement>('input[name="alias"]')!.value,'比亚迪')
     assert.match(document.body.textContent!, /已选择 比亚迪 · SZ.002594 · 股票/)
     await submit()
-    assert.deepEqual(JSON.parse(localStorage.getItem(`dsh-x-stock:watchlist:v1:${scope}`)!).pins.at(-1),{symbol:'SZ.002594',alias:'比亚迪'})
+    // Adding an alias alone never fixes a stock to the bar.
+    assert.deepEqual(saved().items.at(-1),{symbol:'SZ.002594',alias:'比亚迪',fixed:false})
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 SZ.002594"]'))
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.getAttribute('aria-label'),'SZ.000001 股票详情')
     const form=document.querySelector<HTMLElement & HTMLInputElement>('form')
@@ -107,6 +135,7 @@ test('built client registers safe slots and supports add/order/remove/navigation
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.textContent, /10\/16\/2026, 15:00:00 \(Shanghai\)/)
     assert.equal(entries.get('sidebar.panellist')[0].options.label(), 'Stocks')
     assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Move SZ.000001 up"]'))
+    assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Unfix SZ.000001"]'))
     assert.match(document.body.textContent, /No historical market data/)
     await act(async () => (locale as any).addLanguage({ id: 'fr', label: 'Français', fallback: 'en' }))
     await act(async () => locale.setLocale('fr'))

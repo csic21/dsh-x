@@ -1,62 +1,86 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeAShare, parseSaved, quoteStatus, STORAGE_KEY, scopedStorageKey } from '../src/watchlist.ts'
+import { MAX_FIXED, MAX_WATCHLIST, normalizeAShare, parseSaved, quoteStatus, scopedStorageKey, STORAGE_KEY, LEGACY_STORAGE_KEY } from '../src/watchlist.ts'
 import { createWatchlistController } from '../src/client/controller.ts'
-import { createWatchlistHandler, createWatchlistRoute } from '../src/watchlist-rpc.ts'
 import { mountWhenVacant } from '../src/client/placement.ts'
-import { quoteResource, addressFor } from '../src/client/resource.ts'
+import { quoteResource, addressFor, fixedAddressFor, pollDelay, FIXED_POLL_MS, IDLE_POLL_MS } from '../src/client/resource.ts'
+import { MARKET_ENDPOINT } from '../src/market.ts'
+import { isFixedBarShortcut } from '../src/client/shortcut.ts'
 const scope = '11111111-1111-4111-8111-111111111111'
 const key = scopedStorageKey(scope)
-const owner: any = { principal: { kind: 'owner' } }
-const endpoint = 'dsh-x-stock.quotes'
+const legacyKey = `${LEGACY_STORAGE_KEY}:${scope}`
 const signal = () => new AbortController().signal
+
+function quotePayload(symbols: string[]) {
+  return { status: 'ready', source: '腾讯行情 (unofficial)', quotes: symbols.map(symbol => ({ symbol, status: 'available', name: symbol, price: 10, changePercent: 1, quotedAt: '2026-10-16T07:00:00Z', fetchedAt: '2026-10-16T07:00:00Z', marketStatus: 'unknown' })) }
+}
 
 test('A-share identity is exchange-qualified and keeps leading zeros', () => {
   assert.equal(normalizeAShare('sz', '000001'), 'SZ.000001')
   for (const [market, code] of [['US','000001'], ['SH','AAPL'],['SH','60051'],['SH','600519x']] as const) assert.throws(() => normalizeAShare(market,code))
   assert.throws(() => parseSaved('{'))
-  assert.throws(() => parseSaved(JSON.stringify({version:1,pins:[{symbol:'SH.600519'},{symbol:'SH.600519'}]})))
+  assert.throws(() => parseSaved(JSON.stringify({version:2,items:[{symbol:'SH.600519'},{symbol:'SH.600519'}]})))
+  assert.throws(() => parseSaved(JSON.stringify({version:2,items:Array.from({length:MAX_WATCHLIST + 1},() => ({symbol:'SH.600519'}))})))
+  assert.throws(() => parseSaved(JSON.stringify({version:2,items:Array.from({length:MAX_FIXED + 1},(_,index) => ({symbol:`SZ.00000${index}`,fixed:true}))})))
 })
-test('pins add/remove/order/collapse persist only preferences; invalid and full lists reject', () => {
+
+test('a version 1 payload is imported as a watchlist with nothing fixed', () => {
+  const saved = parseSaved(JSON.stringify({ version: 1, pins: [{ symbol: 'SH.600519', alias: '贵州茅台' }], collapsed: true }))
+  assert.deepEqual(saved, { items: [{ symbol: 'SH.600519', alias: '贵州茅台', fixed: false }], collapsed: true, barHidden: false })
+})
+
+test('watchlist and the fixed bar are separate lists that persist only as preferences', () => {
   let raw: any
-  const storage: any = { getItem: () => raw, setItem: (key: any, value: any) => { assert.equal(key,scopedStorageKey(scope));raw=value } }
+  const storage: any = { getItem: () => raw, setItem: (storageKey: any, value: any) => { assert.equal(storageKey, key); raw = value } }
   const c = createWatchlistController(storage)
   c.setScope(scope)
-  c.add({symbol:'SZ.000001',alias:'平安'}); c.add({symbol:'SH.600519'}); c.move('SH.600519',-1); c.collapse(true)
-  assert.deepEqual(c.source.getSnapshot().pins.map(p=>p.symbol),['SH.600519','SZ.000001'])
-  assert.throws(()=>c.add({symbol:'SH.600519'}),/duplicate/)
-  for(let i=2;i<8;i++)c.add({symbol:`SZ.00000${i}`})
-  assert.throws(()=>c.add({symbol:'SZ.000009'}),/limit/)
-  c.remove('SH.600519'); c.move('missing',1)
+  c.add({symbol:'SZ.000001',alias:'平安'}); c.add({symbol:'SH.600519'}); c.move('SH.600519',-1); c.collapse(true); c.toggleBar()
+  assert.deepEqual(c.source.getSnapshot().items.map(item=>item.symbol),['SH.600519','SZ.000001'])
+  // Being on the watchlist never fixes a stock to the bottom bar.
+  assert.deepEqual(c.source.getSnapshot().items.map(item=>item.fixed),[false,false])
+  c.setFixed('SH.600519', true)
+  assert.deepEqual(c.source.getSnapshot().items.map(item=>item.fixed),[true,false])
+  for (let index = 2; index <= MAX_FIXED; index++) { c.add({symbol:`SZ.00000${index}`}); c.setFixed(`SZ.00000${index}`, true) }
+  assert.equal(c.source.getSnapshot().items.filter(item=>item.fixed).length, MAX_FIXED)
+  assert.throws(() => c.setFixed('SZ.000001', true), /fixed-limit/)
+  assert.throws(() => c.add({symbol:'SH.600519'}), /duplicate/)
+  c.setFixed('SH.600519', false)
+  c.setFixed('SZ.000001', true)
+  assert.equal(c.source.getSnapshot().items.filter(item=>item.fixed).length, MAX_FIXED)
+  c.remove('SZ.000001'); c.move('missing',1)
   const second=createWatchlistController(storage);second.setScope(scope)
   const restored=second.source.getSnapshot()
-  assert.equal(restored.collapsed,true);assert.equal(restored.pins.length,7)
-  assert.deepEqual(Object.keys(JSON.parse(raw)),['version','pins','collapsed'])
+  assert.equal(restored.collapsed,true);assert.equal(restored.barHidden,true)
+  assert.equal(restored.items.length,MAX_FIXED)
+  assert.equal(restored.items.filter(item=>item.fixed).length,MAX_FIXED-1)
+  assert.deepEqual(Object.keys(JSON.parse(raw)),['version','items','collapsed','barHidden'])
+  assert.equal(JSON.parse(raw).version,2)
 })
+
+test('a version 1 record under the legacy key is imported once and rewritten as version 2', () => {
+  const data = new Map<string, any>([[legacyKey, JSON.stringify({ version: 1, pins: [{ symbol: 'SH.600519', alias: '贵州茅台' }] })]])
+  const storage: any = { getItem: (storageKey: any) => data.get(storageKey), setItem: (storageKey: any, value: any) => data.set(storageKey, value) }
+  const c = createWatchlistController(storage)
+  c.setScope(scope)
+  assert.deepEqual(c.source.getSnapshot().items, [{ symbol: 'SH.600519', alias: '贵州茅台', fixed: false }])
+  assert.equal(c.source.getSnapshot().barHidden, false)
+  c.setFixed('SH.600519', true)
+  assert.equal(JSON.parse(data.get(key)).items[0].fixed, true)
+  const fresh = createWatchlistController(storage); fresh.setScope(scope)
+  assert.equal(fresh.source.getSnapshot().items[0].fixed, true)
+})
+
 test('storage denial is visible and keeps edits in memory; another window syncs', () => {
   const events = new EventTarget()
   const c=createWatchlistController({getItem(){throw Error()},setItem(){throw Error()}},events)
   c.setScope(scope)
   assert.match(c.source.getSnapshot().storageError,/storage-read/)
   c.add({symbol:'SH.600519'})
-  assert.equal(c.source.getSnapshot().pins.length,1);assert.match(c.source.getSnapshot().storageError,/storage-save/)
-  const event = new Event('storage');Object.assign(event,{key,newValue:JSON.stringify({version:1,pins:[{symbol:'BJ.430047'}]})});events.dispatchEvent(event)
-  assert.equal(c.source.getSnapshot().pins[0].symbol,'BJ.430047');c.dispose()
+  assert.equal(c.source.getSnapshot().items.length,1);assert.match(c.source.getSnapshot().storageError,/storage-save/)
+  const event = new Event('storage');Object.assign(event,{key,newValue:JSON.stringify({version:2,items:[{symbol:'BJ.430047',fixed:true}],barHidden:true})});events.dispatchEvent(event)
+  assert.equal(c.source.getSnapshot().items[0].symbol,'BJ.430047');c.dispose()
 })
-test('quote RPC requires verified owner, exact payload, bounded duplicates and validated A-share identities',async()=>{
-  const handler=createWatchlistHandler()
-  assert.equal(((await handler(endpoint,{symbols:['SH.600519']},signal(),{})) as any).error.code,'stock/forbidden')
-  for(const payload of [{symbols:['AAPL']},{symbols:['SH.600519'],key:'secret'},{symbols:Array(9).fill('SH.600519')},{symbols:['SH.600519','SH.600519']},null] as const)assert.equal(((await handler(endpoint,payload,signal(),owner)) as any).error.code,'stock/invalid-input')
-  const result=await handler(endpoint,{symbols:['SH.600519']},signal(),owner)
-  assert.equal((result as any).value.quotes[0].status,'unconfigured');assert.equal((result as any).value.quotes[0].price,null);assert.equal((result as any).value.source,null)
-})
-test('future provider projection excludes arbitrary fields and hides failures',async()=>{
-  const handler=createWatchlistHandler({now:()=>Date.parse('2026-10-16T07:00:00Z'),provider:{name:'Authorized test fixture',quote:async (symbol: any)=>({symbol,price:12,changePercent:1,quotedAt:'2026-10-16T06:59:00Z',credential:'never',name:'测试'})}})
-  const result=await handler(endpoint,{symbols:['SZ.000001']},signal(),owner)
-  assert.equal((result as any).value.quotes[0].price,12);assert.equal(JSON.stringify(result).includes('never'),false)
-  const failed=createWatchlistHandler({provider:{quote(){throw Error('SECRET')}}})
-  assert.equal(JSON.stringify(await failed(endpoint,{symbols:['SZ.000001']},signal(),owner)).includes('SECRET'),false)
-})
+
 function slotFixture(initial: any[]=[]) {
   let entries=[...initial], listener: any, disposeInjection: any
   const flush=()=>listener?.()
@@ -68,26 +92,66 @@ function slotFixture(initial: any[]=[]) {
     register(options: any,component: any){assert.equal(options.name,'shell.bottom');assert.equal(options.priority,Number.MAX_SAFE_INTEGER);const entry: any={component};entries.push(entry);return()=>{entries=entries.filter(e=>e!==entry)}},
   }
 }
-test('bottom never shadows even hidden occupants, yields to later competitors and recovers without loops',()=>{
+test('the empty or hidden bar releases the bottom slot; an occupant is never shadowed and recovery has no loops',()=>{
   const Component=()=>{}, Other=()=>{}
   const slots=slotFixture([{component:Other}]);const states: any=[]
-  const dispose=mountWhenVacant(slots,{},Component,(state: any)=>states.push(state))
+  let visible=true, notify: any
+  const dispose=mountWhenVacant(slots,{},Component,{onPlacement:(state: any)=>states.push(state),visible:()=>visible,subscribe:(listener: any)=>{notify=listener;return()=>{notify=undefined}}})
   assert.equal(slots.entriesNow.length,1);assert.equal(states.at(-1),'occupied')
   slots.remove(Other);assert.equal(slots.entriesNow[0].component,Component)
   slots.flush();slots.flush();assert.equal(slots.entriesNow.length,1)
   slots.add(Other);assert.equal(slots.entriesNow.length,1);assert.equal(slots.entriesNow[0].component,Other)
   slots.remove(Other);assert.equal(slots.entriesNow.length,1)
+  visible=false;notify();assert.equal(slots.entriesNow.length,0)
+  visible=true;notify();assert.equal(slots.entriesNow.length,1)
   dispose();slots.flush();assert.equal(slots.entriesNow.length,0)
 })
-test('resource uses official RPC, no market endpoint, and aborts unconfigured waiting without repolling',async()=>{
+
+test('resource asks the shared market route for the whole fixed bar in one call',async()=>{
+  const calls: any[]=[]
+  const rpc: any={call:async(channel: any,path: any,payload: any)=>{calls.push({channel,path,payload});return{ok:true,value:quotePayload(payload.symbols)}}}
+  const abort=new AbortController()
+  const stream=quoteResource(rpc,new EventTarget(),{onLine:true}).open(fixedAddressFor(['SH.600519','SZ.000001']),{signal:abort.signal})
+  const value=(await stream.next()).value.value
+  assert.deepEqual(calls,[{channel:'/api',path:MARKET_ENDPOINT,payload:{kind:'quotes',symbols:['SH.600519','SZ.000001']}}])
+  assert.equal(value.source,'腾讯行情 (unofficial)')
+  assert.deepEqual(value.quotes.map((quote: any)=>quote.symbol),['SH.600519','SZ.000001'])
+  const pending=stream.next();abort.abort();assert.equal((await pending).done,true);assert.equal(calls.length,1)
+})
+
+test('one resource reads one stock and never polls a deliberately unconfigured source',async()=>{
   let calls=0
-  const rpc: any={call:async(channel: any,path: any,payload: any)=>{calls++;assert.equal(channel,'/api');assert.equal(path,endpoint);return{ok:true,value:{source:null,quotes:[{symbol:payload.symbols[0],status:'unconfigured',price:null}]}}}}
+  const rpc: any={call:async(channel: any,path: any,payload: any)=>{calls++;assert.equal(path,MARKET_ENDPOINT);assert.deepEqual(payload,{kind:'quotes',symbols:['SH.600519']});return{ok:true,value:{status:'unconfigured',source:null}}}}
   const abort=new AbortController(),resource=quoteResource(rpc,new EventTarget(),{onLine:true})
   const stream=resource.open(addressFor('SH.600519'),{signal:abort.signal})
-  assert.equal((await stream.next()).value.value.status,'unconfigured')
+  const first=(await stream.next()).value
+  assert.equal(first.ok,true);assert.equal(first.value.status,'unconfigured');assert.deepEqual(first.value.quotes,[])
+  assert.equal(quoteStatus(first.value.quotes[0]),'unconfigured')
   const pending=stream.next();abort.abort();assert.equal((await pending).done,true);assert.equal(calls,1)
 })
-test('hidden/offline resources do not call host; old quote labels never imply realtime',async()=>{
+
+test('resource rejects malformed addresses and responses instead of inventing rows',async()=>{
+  const resource=quoteResource({call:async()=>({ok:true,value:{status:'ready',source:'x',quotes:[]}})},new EventTarget(),{onLine:true})
+  await assert.rejects(async()=>{const stream=resource.open('dsh-resource://dsh-x-stock/fixed/SH.600519,SH.600519',{signal:signal()});await stream.next()})
+  await assert.rejects(async()=>{const stream=resource.open('dsh-resource://dsh-x-stock/quote/AAPL',{signal:signal()});await stream.next()})
+  const abort=new AbortController()
+  const stream=resource.open(addressFor('SH.600519'),{signal:abort.signal})
+  const result=(await stream.next()).value
+  assert.equal(result.ok,false);assert.equal(result.error.code,'stock/invalid')
+  abort.abort();await stream.return()
+})
+
+test('realtime polling follows the quote time, not the wall clock',()=>{
+  const fresh=quotePayload(['SH.600519'])
+  assert.equal(pollDelay({ok:true,value:fresh},true,Date.parse('2026-10-16T07:00:30Z')),FIXED_POLL_MS)
+  // A closed market, a suspension or a stale feed backs off to the idle poll.
+  assert.equal(pollDelay({ok:true,value:fresh},true,Date.parse('2026-10-16T09:00:00Z')),IDLE_POLL_MS)
+  assert.equal(pollDelay({ok:false,error:{code:'stock/connection'}},true,Date.parse('2026-10-16T07:00:00Z')),IDLE_POLL_MS)
+  assert.equal(pollDelay({ok:true,value:quotePayload(['SH.600519'])},false,Date.parse('2026-10-16T07:00:00Z')),IDLE_POLL_MS)
+  assert.equal(pollDelay({ok:true,value:{status:'ready',source:'x',quotes:[{symbol:'SH.600519',quotedAt:null}]}},true,Date.parse('2026-10-16T07:00:00Z')),IDLE_POLL_MS)
+})
+
+test('hidden/offline resources do not call the host; old quotes never claim realtime',async()=>{
   const target=new EventTarget();(target as any).hidden=true
   let calls=0;const abort=new AbortController()
   const stream=quoteResource({call:()=>calls++},target,{onLine:false}).open(addressFor('SZ.000001'),{signal:abort.signal})
@@ -96,6 +160,7 @@ test('hidden/offline resources do not call host; old quote labels never imply re
   assert.equal(quoteStatus(), 'unconfigured')
   assert.match(quoteStatus({quotedAt:'2020-01-01T00:00:00Z'}),/stale/)
   assert.match(quoteStatus({quotedAt:null}),/unknown-time/)
+  assert.equal(quoteStatus({status:'unavailable'}),'unavailable')
 })
 
 test('resource rejection preserves protocol failure rather than throwing the stream',async()=>{
@@ -110,18 +175,24 @@ test('late resource results are dropped after unmount abort',async()=>{
   let resolve: any
   const abort=new AbortController()
   const stream=quoteResource({call:()=>new Promise<any>(done=>{resolve=done})},new EventTarget(),{onLine:true}).open(addressFor('SH.600519'),{signal:abort.signal})
-  const pending=stream.next();abort.abort();(resolve)!({ok:true,value:{quotes:[{symbol:'SH.600519',price:999}]}})
+  const pending=stream.next();abort.abort();(resolve)!({ok:true,value:quotePayload(['SH.600519'])})
   assert.equal((await pending).done,true)
 })
 
-test('exact shared route validates and echoes generic RPC envelopes without claiming the Gateway',async()=>{
-  const route=createWatchlistRoute()
-  assert.equal(route.path,'/api/dsh-x-stock.quotes');assert.deepEqual(route.methods,['POST'])
-  const request=(value: any,headers: any={})=>new Request(`http://host${route.path}`,{method:'POST',headers:{'content-type':'application/json',...headers},body:typeof value==='string'?value:JSON.stringify(value)})
-  const message: any={type:'client-request',rpcId:'r1',method:endpoint,payload:{symbols:['SH.600519']}}
-  const response=await route.fetch(request(message)),result=await response.json()
-  assert.equal(response.status,200);assert.equal(result.rpcId,'r1');assert.equal(result.type,'server-response');assert.equal(result.result.value.quotes[0].status,'unconfigured')
-  for(const input of [null,[],{}, {...message,method:'other'}, {...message,rpcId:4}, {...message,extra:true}, '{broken'] as const)assert.equal((await route.fetch(request(input))).status,400)
-  assert.equal((await route.fetch(request(message,{'content-type':'text/plain'}))).status,415)
-  assert.equal((await route.fetch(request('x'.repeat(8193)))).status,413)
+test('the fixed bar shortcut is deliberate, layout-independent and never steals typing',()=>{
+  const press = (patch: any) => ({ altKey: true, shiftKey: true, code: 'KeyS', target: { tagName: 'BODY' }, ...patch })
+  assert.equal(isFixedBarShortcut(press({})), true)
+  assert.equal(isFixedBarShortcut(press({ code: 'KeyB' })), false)
+  assert.equal(isFixedBarShortcut(press({ altKey: false })), false)
+  assert.equal(isFixedBarShortcut(press({ shiftKey: false })), false)
+  assert.equal(isFixedBarShortcut(press({ repeat: true })), false)
+  assert.equal(isFixedBarShortcut(undefined), false)
+  for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) assert.equal(isFixedBarShortcut(press({ target: { tagName } })), false, tagName)
+  assert.equal(isFixedBarShortcut(press({ target: { tagName: 'DIV', isContentEditable: true } })), false)
+  assert.equal(isFixedBarShortcut(press({ target: undefined })), true)
+})
+
+test('the storage key is scoped per profile scope',()=>{
+  assert.equal(key,`${STORAGE_KEY}:${scope}`)
+  assert.throws(()=>scopedStorageKey('not-a-scope'))
 })

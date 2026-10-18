@@ -28,7 +28,7 @@ const packages = {
   },
   'dsh-x-stock': {
     title: { en: 'Stocks', zh: '股票' },
-    description: { en: 'A-share watchlist with name search, quote details and a read-only stock quote tool.', zh: 'A 股自选（含名称搜索）、行情详情与只读报价工具。' },
+    description: { en: 'A-share watchlist with name search, a fixed realtime bottom bar and a read-only quote tool.', zh: 'A 股自选（含名称搜索）、可固定的准实时底栏与只读报价工具。' },
     category: 'data',
     icon: 'icons/dsh-x-stock.svg',
   },

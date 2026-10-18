@@ -1,6 +1,8 @@
 export declare const MARKET_ENDPOINT = "dsh-x-stock.market";
 export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-stock.market-preference";
 export declare const MARKET_SOURCE_NAME = "\u817E\u8BAF\u884C\u60C5 (unofficial)";
+/** One batched request covers the whole fixed bottom bar. */
+export declare const MARKET_MAX_QUOTES = 8;
 export declare const MARKET_MAX_BOARD_STOCKS = 200;
 export declare const MARKET_MAX_SECTORS = 200;
 export declare const MARKET_MAX_STOCKS = 12000;
@@ -102,6 +104,21 @@ export interface MarketUnconfigured {
     status: 'unconfigured';
     source: null;
 }
+/**
+ * One watchlist/stock-page quote. `status` is part of the contract: a symbol
+ * the source does not answer for is reported as `unavailable` with null
+ * numbers, never as a zero or a previous close.
+ */
+export interface MarketQuote {
+    symbol: string;
+    status: 'available' | 'unavailable';
+    name: string;
+    price: number | null;
+    changePercent: number | null;
+    quotedAt: string | null;
+    fetchedAt: string | null;
+    marketStatus: 'closed' | 'unknown';
+}
 export type MarketOverviewResult = MarketUnconfigured | {
     status: 'ready';
     overview: MarketOverview;
@@ -114,7 +131,12 @@ export type MarketBoardResult = MarketUnconfigured | {
     status: 'ready';
     board: BoardDetail;
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult;
+export type MarketQuotesResult = MarketUnconfigured | {
+    status: 'ready';
+    source: string;
+    quotes: MarketQuote[];
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -122,6 +144,9 @@ export type MarketRequest = {
 } | {
     kind: 'board';
     board: string;
+} | {
+    kind: 'quotes';
+    symbols: string[];
 };
 export interface MarketPreference {
     enabled: boolean;
@@ -138,6 +163,8 @@ export interface MarketProvider {
     overview(): Promise<MarketOverview>;
     breadth(): Promise<MarketBreadth>;
     board(code: string): Promise<BoardDetail>;
+    /** Unpaged current quotes for at most MARKET_MAX_QUOTES A-share symbols. */
+    quotes(symbols: string[]): Promise<MarketQuote[]>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {

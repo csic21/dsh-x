@@ -1,5 +1,5 @@
 import { SEARCH_MAX_RESULTS, SEARCH_RPC_ENDPOINT, SEARCH_SOURCE_NAME, normalizeMatch, parseSearchRequest } from './instrument-search.js';
-import { createRpcRoute } from './watchlist-rpc.js';
+import { createRpcRoute } from './rpc.js';
 const failure = (code, message) => ({ ok: false, error: { code, message, details: {} } });
 /**
  * Exact-route handler behind the official shared Connection admission bridge.

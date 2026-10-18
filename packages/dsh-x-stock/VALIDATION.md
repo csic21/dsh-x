@@ -1,5 +1,15 @@
 # Stock validation
 
+## Watchlist / fixed bar split and one shared source — 2026-10-19
+
+- `pnpm --filter dsh-x-stock test`: 152 tests, 0 failed; `pnpm run typecheck`, package build and the repository integration suite (17 tests) pass. All quote tests use offline fixtures; no network call or credential is involved.
+- Watchlist and bottom bar are separate collections: watchlist items carry `fixed`, the bar renders only fixed ones, and mounting `shell.bottom` additionally requires the bar not to be hidden. Removing every fixed mark or pressing `Alt+Shift+S` releases the slot instead of holding an empty bar.
+- Storage payload is `version: 2` (`items[].fixed`, `barHidden`) under a new scoped key; a `version: 1` record (watchlist == bar) under the previous scoped key is imported once as an unfixed watchlist. Covered by controller tests, including the fixed-limit rejection and cross-window sync.
+- One A-share source: `MarketProvider` gained `quotes(symbols)`, `dsh-x-stock.market` gained `{ kind: 'quotes', symbols }`, and the retired `dsh-x-stock.quotes` route plus the separate `freeSource` adapter were deleted. `freeSource` / `DSH_X_STOCK_FREE_SOURCE` remain as deprecated aliases that force the same switch on.
+- The fixed bar issues one batched request per tick (max 8 symbols). Polling is 5 s while the newest quote is moving and falls back to 60 s from the quote timestamp (closed market, suspension, stalled feed); an unconfigured source is never polled. Covered by resource and `pollDelay` tests.
+- A symbol the source does not answer for is projected as `unavailable` with null numbers — never zero, previous close or any substitute.
+- Not verified: pixel layout in the Desktop window, the real upstream feed under load, rate limiting, and whether the quoting endpoint keeps serving this batch form. The `Alt+Shift+S` handler is unit-tested only; its behaviour inside the real Electron window is a manual check.
+
 ## Completed TypeScript migration — 2026-10-18
 
 - All seven workspace packages use the shared TypeScript builder. Strict type checking includes source and package tests; the temporary Code `allowJs` bridge is removed. Host entries load from `lib/index.js`, with declarations and lazy client factories included in package checks.

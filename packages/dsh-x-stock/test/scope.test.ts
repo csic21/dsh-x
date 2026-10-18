@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { loadProfileScope } from '../src/scope.ts'
-import { createScopeRoute } from '../src/watchlist-rpc.ts'
+import { createScopeRoute } from '../src/scope.ts'
 import { createWatchlistController } from '../src/client/controller.ts'
 import { STORAGE_KEY, scopedStorageKey } from '../src/watchlist.ts'
 
@@ -30,15 +30,15 @@ test('client does not read before scope, ignores legacy key, and separates two p
   const events=new EventTarget()
   const first=createWatchlistController(storage,events)
   assert.equal(reads.length,0);assert.throws(()=>first.add({symbol:'SZ.000001'}))
-  first.setScope(a);assert.equal(first.source.getSnapshot().pins.length,0)
+  first.setScope(a);assert.equal(first.source.getSnapshot().items.length,0)
   first.add({symbol:'SZ.000001'})
   const second=createWatchlistController(storage);second.setScope(b)
-  assert.equal(second.source.getSnapshot().pins.length,0);second.add({symbol:'BJ.430047'})
-  first.scopeLoading();assert.equal(first.source.getSnapshot().pins.length,0)
+  assert.equal(second.source.getSnapshot().items.length,0);second.add({symbol:'BJ.430047'})
+  first.scopeLoading();assert.equal(first.source.getSnapshot().items.length,0)
   const event=new Event('storage');Object.assign(event,{key:scopedStorageKey(a),newValue:data.get(scopedStorageKey(a))});events.dispatchEvent(event)
-  assert.equal(first.source.getSnapshot().pins.length,0)
-  first.setScope(b);assert.equal(first.source.getSnapshot().pins[0].symbol,'BJ.430047')
-  first.setScope(a);assert.equal(first.source.getSnapshot().pins[0].symbol,'SZ.000001')
+  assert.equal(first.source.getSnapshot().items.length,0)
+  first.setScope(b);assert.equal(first.source.getSnapshot().items[0].symbol,'BJ.430047')
+  first.setScope(a);assert.equal(first.source.getSnapshot().items[0].symbol,'SZ.000001')
   assert.equal(reads.includes(STORAGE_KEY),false)
   assert.ok(data.has(scopedStorageKey(a)));assert.ok(data.has(scopedStorageKey(b)))
   first.scopeFailed();assert.throws(()=>first.add({symbol:'SH.600519'}))

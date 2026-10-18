@@ -1,7 +1,7 @@
 import { SEARCH_MAX_RESULTS, SEARCH_RPC_ENDPOINT, SEARCH_SOURCE_NAME, normalizeMatch, parseSearchRequest } from './instrument-search.ts'
 import type { InstrumentMatch } from './instrument-search.ts'
 import type { InstrumentSearchProvider } from './instrument-search-provider.ts'
-import { createRpcRoute } from './watchlist-rpc.ts'
+import { createRpcRoute } from './rpc.ts'
 
 const failure = (code: string, message: string) => ({ ok: false, error: { code, message, details: {} } })
 

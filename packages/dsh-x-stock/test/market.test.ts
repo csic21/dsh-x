@@ -8,6 +8,7 @@ import {
   createTencentMarketProvider, parseBoardRank, parseStockRankPage, parseTencentBatch,
 } from '../src/market-provider.ts'
 import { createMarketHandler, createMarketRoute } from '../src/market-rpc.ts'
+import { MARKET_MAX_QUOTES } from '../src/market.ts'
 
 const NOW = Date.parse('2026-10-16T16:20:00+08:00')
 const STAMP = '20261016150000'
@@ -99,6 +100,9 @@ test('market request identity is exact and bounded', () => {
   assert.deepEqual(parseMarketRequest({ kind: 'overview' }), { kind: 'overview' })
   assert.deepEqual(parseMarketRequest({ kind: 'breadth' }), { kind: 'breadth' })
   assert.deepEqual(parseMarketRequest({ kind: 'board', board: '801080' }), { kind: 'board', board: '801080' })
+  assert.deepEqual(parseMarketRequest({ kind: 'quotes', symbols: ['SH.600519'] }), { kind: 'quotes', symbols: ['SH.600519'] })
+  assert.deepEqual(parseMarketRequest({ kind: 'quotes', symbols: ['SH.600519', 'SZ.000001'] }), { kind: 'quotes', symbols: ['SH.600519', 'SZ.000001'] })
+  for (const payload of [{ kind: 'quotes' }, { kind: 'quotes', symbols: [] }, { kind: 'quotes', symbols: ['SH.600519', 'SH.600519'] }, { kind: 'quotes', symbols: ['AAPL'] }, { kind: 'quotes', symbols: ['SH.600519'], extra: true }, { kind: 'quotes', symbols: Array(MARKET_MAX_QUOTES + 1).fill('SH.600519') }]) assert.throws(() => parseMarketRequest(payload), { code: 'invalid-input' })
   assert.throws(() => parseMarketRequest({ kind: 'overview', extra: true }), { code: 'invalid-input' })
   assert.throws(() => parseMarketRequest({ kind: 'board' }), { code: 'invalid-input' })
   assert.throws(() => parseMarketRequest({ kind: 'board', board: 'US.AAPL' }), { code: 'invalid-board' })
@@ -217,14 +221,24 @@ test('market RPC requires owner, validates the exact payload and hides provider 
     overview: async () => ({ source: 'test', fetchedAt: new Date(NOW).toISOString(), quotedAt: null, indices: [], sectors: [] }),
     breadth: async () => ({ source: 'test', fetchedAt: new Date(NOW).toISOString(), expected: 0, covered: 0, up: 0, down: 0, flat: 0, suspended: 0, coverage: 0, partial: false, amount: 0, distribution: [], topGainers: [], topLosers: [], topAmount: [] }),
     board: async () => ({ source: 'test', fetchedAt: new Date(NOW).toISOString(), code: '801080', name: '电子', changePercent: 0, amount: null, marketCap: null, total: 0, truncated: false, stocks: [] }),
+    quotes: async (symbols: string[]) => symbols.map(symbol => ({ symbol, status: 'available' as const, name: '电子', price: 10, changePercent: 1, quotedAt: new Date(NOW - 60_000).toISOString(), fetchedAt: null, marketStatus: 'unknown' as const })),
   }
-  const handler = createMarketHandler({ provider: provider as any })
+  const handler = createMarketHandler({ provider: provider as any, now: () => NOW })
   const owner = { principal: { kind: 'owner' } }
   assert.equal((await handler(MARKET_ENDPOINT, { kind: 'overview' }, undefined, owner)).ok, true)
   assert.equal(((await handler(MARKET_ENDPOINT, { kind: 'overview' }, undefined, { principal: { kind: 'guest' } })) as any).error.code, 'stock/forbidden')
   assert.equal(((await handler('other', { kind: 'overview' }, undefined, owner)) as any).error.code, 'stock/not-found')
   assert.equal(((await handler(MARKET_ENDPOINT, { kind: 'board', board: 'bad' }, undefined, owner)) as any).error.code, 'stock/invalid-input')
   assert.equal(((await handler(MARKET_ENDPOINT, { kind: 'overview' }, undefined, undefined)) as any).error.code, 'stock/forbidden')
+  const quotes = await handler(MARKET_ENDPOINT, { kind: 'quotes', symbols: ['SH.600519'] }, undefined, owner) as any
+  assert.equal(quotes.ok, true)
+  assert.equal(quotes.value.source, 'test')
+  assert.equal(quotes.value.quotes[0].symbol, 'SH.600519')
+  assert.equal(quotes.value.quotes[0].price, 10)
+  assert.equal(quotes.value.quotes[0].fetchedAt, new Date(NOW).toISOString())
+  const noQuotes = await createMarketHandler({ provider: { ...provider, quotes: async () => { throw new Error('raw secret') } } as any })(MARKET_ENDPOINT, { kind: 'quotes', symbols: ['SH.600519'] }, undefined, owner) as any
+  assert.equal(noQuotes.error.code, 'stock/market-unavailable')
+  assert.doesNotMatch(JSON.stringify(noQuotes), /raw secret/)
   const unconfigured = await createMarketHandler()(MARKET_ENDPOINT, { kind: 'overview' }, undefined, owner)
   assert.deepEqual(unconfigured, { ok: true, value: { status: 'unconfigured', source: null } })
   const broken = createMarketHandler({ provider: { ...provider, overview: async () => { throw new Error('raw secret') } } as any })
