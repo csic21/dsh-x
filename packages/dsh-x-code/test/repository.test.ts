@@ -25,7 +25,7 @@ test('unknown/traversal paths, credential filenames, ignored content, symlinks a
 test('selected parent-directory symlink is rejected and repository outside host root is blocked',async t=>{
  const h=fixture(t);mkdirSync(path.join(h.root,'src'));writeFileSync(path.join(h.root,'src','a.js'),'export const x = 1\n');h.git('add','src/a.js');h.git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','nested');rmSync(path.join(h.root,'src'),{recursive:true});symlinkSync('/tmp',path.join(h.root,'src'))
  const inv=await h.repository.inventory(h.options);await assert.rejects(()=>h.repository.file(inv,'src/a.js'),{code:'CODE_GIT'})
- await assert.rejects(()=>h.repository.inventory({...h.options,policy:{mode:'danger-full-access',workspaceRoot:'/var'}}),{code:'CODE_BOUNDARY'})
+ await assert.rejects(()=>h.repository.inventory({...h.options,policy:{mode:'danger-full-access',workspaceRoot:'/usr'}}),{code:'CODE_BOUNDARY'})
 })
 test('review capture requires bounded explicit files and immutable content hashes change',async t=>{
  const h=fixture(t),inv=await h.repository.inventory(h.options),first=await h.repository.capture(inv,['app.js']);assert.ok(reviewPrompt(first).startsWith('CODE_REVIEW_V1'))

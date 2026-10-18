@@ -10,9 +10,6 @@ export type CodeReview = PublicReview & { complete?: boolean }
 export type CodeSource = SourceView & { diffTruncated?: boolean }
 export interface DiffHunk { oldStart: number, oldLines: number, newStart: number, newLines: number, heading?: string, lines: string[] }
 export interface DiffRow { kind: string, old: number | null, new: number | null, text: string }
-import { canPrepare, insertRequest, prepareModels, prepareRun, readSnapshot as readAgentsSnapshot } from '../../../dsh-x-agents/src/client/model.ts'
-
-export { canPrepare, insertRequest, prepareModels, prepareRun, readAgentsSnapshot }
 export const MODES = ['worktree', 'staged', 'range']
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info']
 const record = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -24,7 +21,7 @@ export function readSnapshot(value: unknown, sessionId: string): CodeSnapshot | 
   if (!record(value) || value.sessionId !== sessionId || !identifier(value.scope) || !Number.isSafeInteger(value.revision) || !record(value.workspace) || !identifier(value.workspace.id) || !MODES.includes(value.workspace.mode) || !Array.isArray(value.files) || !record(value.limits)) return null
   if (!value.files.every(file => record(file) && identifier(file.path) && text(file.status) && typeof file.selectable === 'boolean')) return null
   if (new Set(value.files.map(file => file.path)).size !== value.files.length) return null
-  if (value.operation != null && (!record(value.operation) || !identifier(value.operation.id) || !['review', 'repair'].includes(value.operation.kind) || !['preparing', 'waiting_permission', 'reviewing', 'repairing', 'verifying', 'cancelling'].includes(value.operation.state))) return null
+  if (value.operation != null && (!record(value.operation) || !identifier(value.operation.id) || value.operation.kind !== 'review' || !['preparing', 'waiting_permission', 'reviewing', 'verifying', 'cancelling'].includes(value.operation.state))) return null
   if (value.review != null) {
     const review = value.review
     if (!record(review) || !identifier(review.id) || !text(review.state) || !Array.isArray(review.paths) || !review.paths.every(identifier) || !Array.isArray(review.findings) || !Array.isArray(review.checks ?? []) || typeof review.stale !== 'boolean') return null
@@ -44,8 +41,7 @@ export function readFile(value: unknown, path: string): CodeSource | null {
 
 export function isChanged(file: CodeFile) { return file.changed === true || !['unchanged', 'clean', ' '].includes(file.status) }
 export function isComplete(review: CodeReview | null | undefined) { return Boolean(review && ['completed', 'complete'].includes(review.state) && review.complete !== false) }
-export function activeReview(review: CodeReview | null | undefined) { return Boolean(review && ['running', 'reviewing', 'repairing', 'waiting_permission', 'waiting_input', 'pending'].includes(review.state)) }
-export function reviewCanFix(review: CodeReview | null | undefined) { return isComplete(review) && review!.mode === 'worktree' && review!.repairReady !== false && !review!.stale && !['running', 'completed'].includes(review!.repair?.state ?? '') && review!.findings.some(finding => finding.status === 'open') }
+export function activeReview(review: CodeReview | null | undefined) { return Boolean(review && ['running', 'reviewing', 'waiting_permission', 'waiting_input', 'pending'].includes(review.state)) }
 export const shortHash = (value: unknown) => typeof value === 'string' ? value.slice(0, 8) : '—'
 export const basename = (path: string | null | undefined) => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
 
@@ -137,14 +133,19 @@ export function searchMatches(lines: string[], query: string) {
   return matches
 }
 
-export function reviewRequest(snapshot: CodeSnapshot | null, { paths, runtime, model, previousReviewId }: { paths: string[], runtime: string, model?: string, previousReviewId?: string }) {
+export function reviewRequest(snapshot: CodeSnapshot | null, { paths, runtime = 'dsh', previousReviewId }: { paths: string[], runtime?: string, previousReviewId?: string }) {
   if (!snapshot?.workspace || !Array.isArray(paths) || paths.length === 0) throw new Error('selectFiles')
   const allowed = snapshot.files.filter(file => file.selectable).map(file => file.path)
   if (paths.some(path => !allowed.includes(path)) || paths.length > (snapshot.limits?.maxSelectedFiles ?? 20)) throw new Error('selectionChanged')
-  return { scope: snapshot.scope, workspaceId: snapshot.workspace.id, mode: snapshot.workspace.mode, ...(snapshot.workspace.mode === 'range' ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}), paths, runtime, ...(model ? { model } : {}), ...(previousReviewId ? { previousReviewId } : {}) }
+  return { scope: snapshot.scope, workspaceId: snapshot.workspace.id, mode: snapshot.workspace.mode, ...(snapshot.workspace.mode === 'range' ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}), paths, runtime, ...(previousReviewId ? { previousReviewId } : {}) }
 }
 
-export function repairRequest(snapshot: CodeSnapshot | null, { findingIds, runtime, model }: { findingIds: string[], runtime: string, model?: string }) {
-  if (!snapshot?.review || !reviewCanFix(snapshot.review) || !findingIds.length || findingIds.some(id => !snapshot.review!.findings.some(finding => finding.id === id && finding.status === 'open'))) throw new Error('staleFix')
-  return { scope: snapshot.scope, reviewId: snapshot.review.id, findingIds, runtime, ...(model ? { model } : {}) }
+/** Insert a prepared request into the current composer without overwriting the draft. */
+export function insertRequest(inputActions: any, text: any) {
+  if (!inputActions?.captureInsertion || !inputActions?.insertText) return false
+  const span = inputActions.captureInsertion()
+  const safeSpan = { ...span, start: span.end }
+  const inserted = inputActions.insertText(`\n\n${text}\n`, safeSpan)
+  if (inserted) { try { inputActions.persistDraft?.() } catch { /* The current editor still contains the inserted request. */ } }
+  return inserted
 }

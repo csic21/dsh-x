@@ -1,5 +1,5 @@
 // Shared package builder. Run it from a package directory (the package
-// scripts do) or pass one: `node scripts/build-package.mjs packages/dsh-x-chat`.
+// scripts do) or pass one: `node scripts/build-package.mjs packages/dsh-x-stock`.
 //
 //   1. Remove lib/ so renamed or deleted sources never linger as stale output.
 //   2. Emit host JavaScript and declarations with tsc when the package has

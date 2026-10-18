@@ -22,33 +22,25 @@ error: profile "desktop" is managed exclusively by the Electron application
 ## 安装步骤
 
 1. 启动一次桌面应用，让它初始化 `desktop` profile，然后**完全退出**（不是最小化）。
-2. 下载 Release 资产到同一个目录。
-3. 用官方入口安装：优先用应用的 **Plugins 页面**选择本地 tgz；需要命令行时，使用**应用自带**的那份 `dsh`（在应用的资源目录里，路径随安装方式和版本变化），不要用 npm 全局安装的 `dsh` 去改 `desktop` profile。
+2. 打开桌面版的 **Plugins → Discover → Index sources**，添加
+   `https://csic21.github.io/dsh-x/market-index.json`。
+3. 在 Discover 里安装目标插件；桌面版会走自己的兼容检查与重启提示。
+4. 按提示重启，确认 Plugins 页面里的 bundle 已启用。
 
-```sh
-# 确认你调用的是哪一份 dsh；桌面版安装必须走应用自带的那份
-dsh --version
-```
+需要命令行时，使用**应用自带**的那份 `dsh`（在应用的资源目录里，路径随安装方式和版本变化），不要用 npm 全局安装的 `dsh` 去改 `desktop` profile。
 
 ::: tip 最稳的路径
-桌面版直接用它自己的 **Plugins 页面**安装本地 tgz。页面会走同样的官方兼容检查，也会提示需要重启。
+桌面版直接用它自己的 Plugins 页面和 Discover 索引。
 :::
 
-4. 安装完成后按提示重启应用，确认 Plugins 页面里的 bundle 已启用。
+## AI Browser
 
-## 已有独立 Code / Agents 怎么办
-
-如果你先装了独立插件、后来又装套件，同一个组件会有两个来源：
-
-- 同版本时官方 Loader 按 entry id 复用，不会双启。
-- 但重复来源会让管理页面把组件行标为 `unaddressable`（不可单独管理）。
-
-处理方式是**只保留一个来源**：先在 Plugins 页面停用独立的 Code / Agents，再启用套件；或者反过来。不要指望两个来源同时开启还能单独切换。
+`dsh-x-browser` 只面向 Desktop，且是实验性的。它需要 Electron 的 `dshDesktop.browser` 能力；Web 端只显示不支持提示。安装前请确认你接受“Electron 行为不在本仓库验证”这一边界。
 
 ## 升级
 
 1. 退出应用。
-2. 安装目标版本文件。
+2. 在 Discover 里卸载旧版本，再安装新版本（官方对第三方插件没有一键升级）。
 3. 重启并检查状态。
 
 不承诺失败自动回滚；不同版本不要混装。

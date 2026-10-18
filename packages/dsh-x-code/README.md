@@ -5,13 +5,13 @@ An independently enabled source and review workspace for official DSH `0.2.1-rc.
 ## Workflow
 
 1. Open a conversation for a local committed Git repository, then open Code.
-2. Browse all or changed files, search filenames, and inspect read-only source, before-source, or unified/split diff. This does not run a review, call a provider, or require Agents.
-3. Explicitly select files and prepare a review in the conversation. The default **Current DSH model / DSH 当前模型** uses the session's configured model through the official LLM service. Official approval identifies the provider, model, exact paths, captured bytes, and possible model charges. Only the selected source snapshots and review instructions are sent: no tools, conversation history, implicit repository traversal, or test execution.
-4. Read findings with severity, source lines, literal evidence, and a triggering condition. Findings are checked against the captured file and exact cited lines before they are accepted. A malformed, truncated, oversized, cancelled, or tool-requesting response fails explicitly.
-5. For a fresh worktree review, select findings and choose a native Agent to repair them. This reuses the existing Agents adapters, original host permissions, one-time approvals, event stream, and process cleanup. Enable Agents for this step. It is an approved native coding task, not a selected-path filesystem sandbox; preserve unrelated edits and inspect actual changes.
-6. Re-review the same file scope after repair. Old findings remain open historical evidence. A completed native repair never automatically resolves them, and an empty re-review means only **no findings in the new selected scope**, not verified tests or general safety.
+2. Browse all or changed files, search filenames, and inspect read-only source, before-source, or unified/split diff. This does not run a review or call a provider.
+3. Explicitly select files and choose **Review**. Code prepares an exact, version-bound `dsh_x_code_review` request in the conversation; nothing is sent automatically.
+4. Send the request. The current configured DSH model reviews only the captured source. Official approval identifies the provider, model, exact paths, captured bytes, and possible model charges. No tools, conversation history, implicit repository traversal, or test execution are sent.
+5. Read findings with severity, source lines, literal evidence, and a triggering condition. Findings are checked against the captured file and exact cited lines before they are accepted. A malformed, truncated, oversized, cancelled, or tool-requesting response fails explicitly.
+6. To fix findings, ask the main conversation model to edit the source, then re-review the same file scope. Old findings remain historical evidence; an empty re-review means only **no findings in the new selected scope**, not verified tests or general safety.
 
-A worktree edit invalidates old worktree evidence. Staged and base…HEAD snapshots retain their own versions; repair requires a fresh worktree review so a staged result cannot overwrite different unstaged source. Re-review is bound to the same repository/workspace identity. Stop addresses an exact live Code operation and waits for cancellation to settle; leaving the panel does not stop work. Interrupted work is never automatically replayed.
+A worktree edit invalidates old worktree evidence. Staged and base…HEAD snapshots retain their own versions. Re-review is bound to the same repository/workspace identity and the previous file scope. Stop addresses an exact live Code operation and waits for cancellation to settle; leaving the panel does not stop work. Interrupted work is never automatically replayed.
 
 ## Scope and limits
 
@@ -24,27 +24,21 @@ A worktree edit invalidates old worktree evidence. Staged and base…HEAD snapsh
 - Git reads use fixed argv, disable external diff/textconv/configured clean/process filters, and force deterministic uncolored text diffs. Effective global/system ignore paths are preserved through an allowlisted configuration lookup; other inherited Git routing is discarded. Nothing is staged, committed, pushed, or uploaded by browsing.
 - The credential scanner is conservative, not a comprehensive secret-detection guarantee. Review the selected paths and source before approving transmission.
 
-## Optional native review
+## Retired native execution
 
-Codex, Claude, and Grok may also be selected as native reviewers. These use a per-call **read-only** policy without modifying the standing host policy. Full OS file-effect confinement is required; absent/partial confinement blocks startup. Native permission escalation is denied for this turn. OpenCode's external HTTP execution is not supported for read-only review.
+Code no longer registers native Agent review or repair tools. `dsh_x_code_review` accepts only the current DSH model; a `runtime` other than `dsh` and a model override are refused before dispatch, and `dsh_x_code_repair` does not exist. Fixes happen in the conversation with the user's normal tools and approvals, followed by a fresh Code review.
 
-Strict read-only confinement can block native runtimes that need writable caches/session state. Code does not silently relax the policy or copy credentials to work around it. The default DSH snapshot-only reviewer avoids this startup issue. Native runtime initialization may still read its normal configuration; the OS file-effect policy does not claim network or secret-read isolation. No authenticated live vendor operation was performed in the repository tests.
+This keeps the plugin's trust boundary small: Code reads a bounded local Git snapshot, asks the configured model for one structured review, and stores the evidence. It does not embed Codex, OpenCode, Claude or Grok adapters.
 
 ## Storage and compatibility
 
-Review records are private to the official profile and session, atomically written with bounded history (latest 30 runs, further limited to 4 MB). They retain immutable selected source, Git/base/head/content identity, findings, repairs, and the exact default-review model-visible request before provider dispatch. Model attribution includes the session ID. The pinned LLM API has no `code-review` purpose value, so no unsupported or false purpose is supplied. These auxiliary requests are reconstructable from Code's durable records rather than injected into conversation history.
+Review records are private to the official profile and session, atomically written with bounded history (latest 30 runs, further limited to 4 MB). They retain immutable selected source, Git/base/head/content identity, findings, and the exact model-visible request before provider dispatch. Model attribution includes the session ID. The pinned LLM API has no `code-review` purpose value, so no unsupported or false purpose is supplied. Auxiliary requests are reconstructable from Code's durable records rather than injected into conversation history.
 
-A lock left by a crashed writer is not removed automatically. Close all hosts before explicitly recovering a stale Code storage lock; a live or unverified owner must never be overwritten. Native execution locks additionally retain Agents' existing uncertain-cleanup fencing.
+A lock left by a crashed writer is not removed automatically. Close all hosts before explicitly recovering a stale Code storage lock; a live or unverified owner must never be overwritten.
 
-Client imports use the official shell module table and syntax-highlighting primitive. Source, findings, and native-provider content are rendered as text. All product controls/states use English/Chinese dictionaries and DSH theme tokens. Plugin enable/disable remains independent; Agents is an optional execution dependency, not a required package mount for browsing/default review.
+Client imports use the official shell module table and syntax-highlighting primitive. Source and findings are rendered as text. All product controls/states use English/Chinese dictionaries and DSH theme tokens. Plugin enable/disable remains independent.
 
 ## Test
-
-Run `pnpm run build`, `pnpm test`, or focused `node --test packages/dsh-x-code/test/*.test.js test/code-*.test.js`. See `VALIDATION.md` for what was exercised and what remains unverified.
-
-## TypeScript 开发
-
-宿主入口是 `src/index.ts`，前端入口是 `src/client/index.ts`，测试位于 `test/*.test.ts`。
 
 ```sh
 pnpm --filter dsh-x-code run typecheck
@@ -52,5 +46,8 @@ pnpm --filter dsh-x-code run build
 pnpm --filter dsh-x-code test
 ```
 
-构建统一使用根目录的 `scripts/build-package.mjs`：`tsc` 生成宿主 JS 和声明，esbuild 生成 `lib/client.js`；包入口指向 `lib/index.js`。
-Code 的 `lib/` 随源码交付，根级集成测试从构建入口加载。
+See `VALIDATION.md` for the current validation scope and non-claims.
+
+## TypeScript development
+
+The host entry is `src/index.ts`, the client entry is `src/client/index.ts`, and tests live in `test/*.test.ts`. The shared root `scripts/build-package.mjs` emits host JavaScript/declarations with `tsc` and `lib/client.js` with esbuild. `lib/` ships with the package, and the root integration tests load the built entry.

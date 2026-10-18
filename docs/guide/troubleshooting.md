@@ -8,7 +8,27 @@
 2. `npm view @deepseek-ai/dsh dist-tags` 看最新标签。
 3. 二选一：把运行时升到插件支持的版本，或换一个匹配你运行时的插件版本。
 
-不要手动改 profile 里的 `package.json` 绕过检查，也不要给自己发"版本豁免"来跳过——那只会在加载阶段变成更难查的失败。
+不要手动改 profile 里的 `package.json` 绕过检查，也不要给自己发“版本豁免”来跳过——那只会在加载阶段变成更难查的失败。
+
+## Discover 里看不到插件
+
+1. 确认已经添加索引 `https://csic21.github.io/dsh-x/market-index.json`。
+2. 点 Discover 的刷新按钮；索引有缓存，`plugins-v*` 新 tag 后需要重新读取。
+3. 打开索引 URL 看是否返回 JSON；Pages 部署需要几分钟。
+4. 如果索引能打开但没有任何可安装版本，通常是 `engines.dsh` 与当前运行时不匹配。
+
+索引被重定向或需要登录时，官方会拒绝读取；请使用返回 200 的最终 URL。
+
+## 显示 Update available，但没有升级按钮
+
+官方对**第三方**插件没有一键升级，只显示状态。升级方式是卸载后安装新版本：
+
+```sh
+dsh plugin --profile web remove dsh-x-code
+# 然后在 Discover 里安装新条目
+```
+
+Official 条目才有一键 Update；DSH-X 走自定义索引，因此保持“卸载再装”。
 
 ## 装完了但界面没变化
 
@@ -20,7 +40,7 @@
 
 ## 管理页面显示 `unaddressable`
 
-同一个组件有多个来源（例如既装了独立 `dsh-x-code`，又装了包含它的 `dsh-x-suite`）。同版本不会双启，但不能单独管理。解决：只保留一个来源，另一个停用或移除。
+同一个组件有多个来源（例如手动装了 Git 目标，又保留了一份本地 `link:`）。同版本不会双启，但不能单独管理。解决：只保留一个来源，另一个停用或移除。
 
 ## 桌面版里 `dsh plugin --profile desktop` 报错
 
@@ -32,11 +52,15 @@ error: profile "desktop" is managed exclusively by the Electron application
 
 ## 找不到 pnpm
 
-`dsh plugin` 是 pnpm 的转发器。确保 PATH 上有 pnpm，版本与官方内核要求一致（本仓库当前使用 `11.28.5`）。`dsh` 安装插件时会在 profile 目录里运行 pnpm。
+`dsh plugin` 是 pnpm 的转发器。确保 PATH 上有 pnpm，版本与官方内核要求一致（本仓库使用 `11.28.5`）。`dsh` 安装插件时会在 profile 目录里运行 pnpm。
 
-## 校验失败：`SHA256SUMS` 对不上
+## Git 安装很慢或失败
 
-说明下载不完整或被改动。重新下载对应文件。注意整份清单需要**所有** tgz 都在同一目录；只想要一个包时，单独算它的哈希对照清单里的那一行。
+市场索引的安装源是 `git+https://github.com/csic21/dsh-x.git#<commit>&path:/packages/...`。第一次安装会拉取仓库，速度取决于网络与 GitHub 可达性。
+
+- 确认能访问 GitHub；私有网络需要自行配置 Git 凭据。
+- 不要手改 commit 或包路径；以 Discover 条目显示的参数为准。
+- 安装失败时官方会恢复 profile 的 `package.json` 与 lockfile，并保留 `.plugin-manager/logs` 供排查。
 
 ## 想看安装到底做了什么
 
@@ -50,39 +74,22 @@ error: profile "desktop" is managed exclusively by the Electron application
 
 ## 想彻底重置某个插件的状态
 
-插件只写自己的 profile 级目录，删掉即可回到"从未用过"的状态：
+插件只写自己的 profile 级目录，删掉即可回到“从未用过”的状态：
 
 ```sh
 rm -rf ~/.dsh/profiles/web/.dsh-x-code
-rm -rf ~/.dsh/profiles/web/.dsh-x-agents
 rm -rf ~/.dsh/profiles/web/.dsh-x-stock
 ```
 
 不要删除或改写官方 `sessions/`；那不是插件的数据。
 
-## 计划文件在哪
-
-`dsh-x-plan` 把计划、批准副本与验收结论写在官方 home：
-
-```text
-~/.dsh/plans/<session-id>/
-```
-
-它们不是会话的替代位置，也不参与官方会话索引。
-
-## Windows 上要注意什么
-
-- 用 PowerShell 校验哈希：`Get-FileHash 文件名 -Algorithm SHA256`，与 `SHA256SUMS` 对照。
-- 路径里有空格时加引号；`dsh` 在 Windows 上通常是 `dsh.cmd`。
-- 一键脚本会自行解析 `.cmd` 入口；如果手动调用，注意用 PowerShell 而不是 cmd 的旧式路径写法。
-
 ## 为什么仓库里没有桌面安装包
 
-桌面应用、安装器与 DMG/EXE 发行属于独立应用仓库。本仓库只发插件 tgz，并保证它们能被官方 Desktop 或官方 npm CLI 加载。
+桌面应用、安装器与 DMG/EXE 发行属于独立应用仓库。本仓库只发插件与市场索引，并保证它们能被官方 Desktop 或官方 npm CLI 加载。
 
 ## 升级后行为异常
 
-1. 确认套件与独立组件没有混装不同版本。
+1. 确认没有同时保留两个来源或两个版本。
 2. 确认运行时版本仍被 peer 范围覆盖。
 3. 清理对应插件的 profile 级状态后重试。
 4. 仍复现时，带上 `dsh --version`、插件版本和 `.plugin-manager` 日志提 issue。

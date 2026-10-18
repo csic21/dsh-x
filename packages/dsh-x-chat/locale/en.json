@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Read-only Q&A",
-    "description": "Ask a configured model one question using only the question and explicitly supplied reference material."
-  }
-}

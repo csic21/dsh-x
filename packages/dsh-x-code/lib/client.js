@@ -36,88 +36,17 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// ../dsh-x-agents/src/client/model.ts
-var STATES = ["idle", "running", "waiting_permission", "waiting_input", "completed", "cancelled", "blocked", "failed", "interrupted"];
-var CAPABILITIES = ["nativeSessions", "resume", "streaming", "tools", "plans", "permissions", "input", "usage", "cancel", "models", "authDiscovery"];
-var EVENT_TYPES = ["session", "assistant", "tool", "plan", "permission", "input", "usage", "status", "diagnostic"];
-var ACTIONS = ["request-start", "request-continue", "cancel", "inspect"];
-var MODEL_CATALOG_STATES = ["not-loaded", "fresh", "stale", "failed"];
-var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-var string = (value, max = 12e3) => typeof value === "string" && value.length <= max;
-var id = (value) => string(value, 512) && value.length > 0;
-var revision = (value) => Number.isSafeInteger(value) && value >= 0;
-var timestamp = (value) => value === null || typeof value === "string" && value.length <= 100 && Number.isFinite(Date.parse(value));
-function readSnapshot(value, sessionId) {
-  if (!isRecord(value) || !id(value.scope) || value.sessionId !== sessionId || !revision(value.revision) || !Array.isArray(value.catalog)) return null;
-  const ids = /* @__PURE__ */ new Set();
-  for (const agent of value.catalog) {
-    if (!isRecord(agent) || !id(agent.id) || ids.has(agent.id) || !string(agent.label, 200) || !string(agent.transport, 200) || ![true, false, null].includes(agent.available) || ![true, false, null].includes(agent.authenticated) || !Array.isArray(agent.models) || !isRecord(agent.capabilities)) return null;
-    if (agent.version != null && !string(agent.version, 200)) return null;
-    if (agent.reason != null && !string(agent.reason, 2e3)) return null;
-    if (agent.modelCatalog != null) {
-      const catalog = agent.modelCatalog;
-      if (!isRecord(catalog) || !MODEL_CATALOG_STATES.includes(catalog.status) || !timestamp(catalog.fetchedAt) || !timestamp(catalog.expiresAt) || !string(catalog.source, 200) || typeof catalog.truncated !== "boolean" || catalog.error != null && !string(catalog.error, 2e3)) return null;
-      if (catalog.accessVerified !== void 0 && typeof catalog.accessVerified !== "boolean") return null;
-    }
-    if (CAPABILITIES.some((key) => agent.capabilities[key] !== void 0 && typeof agent.capabilities[key] !== "boolean")) return null;
-    const models = /* @__PURE__ */ new Set();
-    for (const model of agent.models) {
-      if (!isRecord(model) || !id(model.id) || !string(model.label, 200) || models.has(model.id)) return null;
-      models.add(model.id);
-    }
-    ids.add(agent.id);
-  }
-  if (value.operation != null && (!isRecord(value.operation) || value.operation.kind !== "models" || !ids.has(value.operation.runtime) || !["waiting_permission", "discovering", "blocked"].includes(value.operation.state) || value.operation.reason != null && !string(value.operation.reason, 2e3))) return null;
-  const task = value.task;
-  if (task !== null) {
-    if (!isRecord(task) || !id(task.id) || !revision(task.revision) || !string(task.title) || !id(task.runtime) || !STATES.includes(task.state) || !Array.isArray(task.events) || !Array.isArray(task.allowedActions) || task.allowedActions.some((action) => !ACTIONS.includes(action))) return null;
-    if (task.cancellationRequested !== void 0 && typeof task.cancellationRequested !== "boolean") return null;
-    for (const key of ["runId", "model", "cwd", "nativeSessionId", "summary", "reason", "updatedAt"]) if (task[key] != null && !string(task[key], key === "summary" ? 1e5 : 12e3)) return null;
-    let previous = -1;
-    for (const event of task.events) {
-      if (!isRecord(event) || !revision(event.seq) || event.seq <= previous || !EVENT_TYPES.includes(event.type) || event.text != null && !string(event.text, 1e5) || event.data != null && !isRecord(event.data) && !string(event.data, 12e3)) return null;
-      previous = event.seq;
-    }
-  }
-  return value;
-}
-function canPrepare(agent) {
-  return Boolean(agent && ["codex", "opencode", "claude", "grok"].includes(agent.id) && agent.reason !== "not-integrated" && agent.available !== false && agent.capabilities?.nativeSessions === true);
-}
-function prepareModels(snapshot, runtime) {
-  const agent = snapshot?.catalog.find((item) => item.id === runtime);
-  if (!canPrepare(agent)) throw new Error("runtime-unavailable");
-  if (snapshot.operation || snapshot.task && !snapshot.task.allowedActions.some((action) => ["request-start", "request-continue"].includes(action))) throw new Error("action-unavailable");
-  return { runtime, scope: snapshot.scope };
-}
-function insertRequest(inputActions, text2) {
-  if (!inputActions?.captureInsertion || !inputActions?.insertText) return false;
-  const span = inputActions.captureInsertion();
-  const safeSpan = { ...span, start: span.end };
-  const inserted = inputActions.insertText(`
-
-${text2}
-`, safeSpan);
-  if (inserted) {
-    try {
-      inputActions.persistDraft?.();
-    } catch {
-    }
-  }
-  return inserted;
-}
-
 // src/client/model.ts
 var MODES = ["worktree", "staged", "range"];
 var SEVERITIES = ["critical", "high", "medium", "low", "info"];
 var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 var text = (value) => typeof value === "string";
 var identifier = (value) => text(value) && value.length > 0 && value.length <= 4096;
-function readSnapshot2(value, sessionId) {
+function readSnapshot(value, sessionId) {
   if (!record(value) || value.sessionId !== sessionId || !identifier(value.scope) || !Number.isSafeInteger(value.revision) || !record(value.workspace) || !identifier(value.workspace.id) || !MODES.includes(value.workspace.mode) || !Array.isArray(value.files) || !record(value.limits)) return null;
   if (!value.files.every((file) => record(file) && identifier(file.path) && text(file.status) && typeof file.selectable === "boolean")) return null;
   if (new Set(value.files.map((file) => file.path)).size !== value.files.length) return null;
-  if (value.operation != null && (!record(value.operation) || !identifier(value.operation.id) || !["review", "repair"].includes(value.operation.kind) || !["preparing", "waiting_permission", "reviewing", "repairing", "verifying", "cancelling"].includes(value.operation.state))) return null;
+  if (value.operation != null && (!record(value.operation) || !identifier(value.operation.id) || value.operation.kind !== "review" || !["preparing", "waiting_permission", "reviewing", "verifying", "cancelling"].includes(value.operation.state))) return null;
   if (value.review != null) {
     const review = value.review;
     if (!record(review) || !identifier(review.id) || !text(review.state) || !Array.isArray(review.paths) || !review.paths.every(identifier) || !Array.isArray(review.findings) || !Array.isArray(review.checks ?? []) || typeof review.stale !== "boolean") return null;
@@ -139,10 +68,7 @@ function isComplete(review) {
   return Boolean(review && ["completed", "complete"].includes(review.state) && review.complete !== false);
 }
 function activeReview(review) {
-  return Boolean(review && ["running", "reviewing", "repairing", "waiting_permission", "waiting_input", "pending"].includes(review.state));
-}
-function reviewCanFix(review) {
-  return isComplete(review) && review.mode === "worktree" && review.repairReady !== false && !review.stale && !["running", "completed"].includes(review.repair?.state ?? "") && review.findings.some((finding) => finding.status === "open");
+  return Boolean(review && ["running", "reviewing", "waiting_permission", "waiting_input", "pending"].includes(review.state));
 }
 var shortHash = (value) => typeof value === "string" ? value.slice(0, 8) : "\u2014";
 var basename = (path) => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
@@ -238,20 +164,32 @@ function searchMatches(lines, query) {
   });
   return matches;
 }
-function reviewRequest(snapshot, { paths, runtime, model, previousReviewId }) {
+function reviewRequest(snapshot, { paths, runtime = "dsh", previousReviewId }) {
   if (!snapshot?.workspace || !Array.isArray(paths) || paths.length === 0) throw new Error("selectFiles");
   const allowed = snapshot.files.filter((file) => file.selectable).map((file) => file.path);
   if (paths.some((path) => !allowed.includes(path)) || paths.length > (snapshot.limits?.maxSelectedFiles ?? 20)) throw new Error("selectionChanged");
-  return { scope: snapshot.scope, workspaceId: snapshot.workspace.id, mode: snapshot.workspace.mode, ...snapshot.workspace.mode === "range" ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}, paths, runtime, ...model ? { model } : {}, ...previousReviewId ? { previousReviewId } : {} };
+  return { scope: snapshot.scope, workspaceId: snapshot.workspace.id, mode: snapshot.workspace.mode, ...snapshot.workspace.mode === "range" ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}, paths, runtime, ...previousReviewId ? { previousReviewId } : {} };
 }
-function repairRequest(snapshot, { findingIds, runtime, model }) {
-  if (!snapshot?.review || !reviewCanFix(snapshot.review) || !findingIds.length || findingIds.some((id2) => !snapshot.review.findings.some((finding) => finding.id === id2 && finding.status === "open"))) throw new Error("staleFix");
-  return { scope: snapshot.scope, reviewId: snapshot.review.id, findingIds, runtime, ...model ? { model } : {} };
+function insertRequest(inputActions, text2) {
+  if (!inputActions?.captureInsertion || !inputActions?.insertText) return false;
+  const span = inputActions.captureInsertion();
+  const safeSpan = { ...span, start: span.end };
+  const inserted = inputActions.insertText(`
+
+${text2}
+`, safeSpan);
+  if (inserted) {
+    try {
+      inputActions.persistDraft?.();
+    } catch {
+    }
+  }
+  return inserted;
 }
 
 // src/client/controller.ts
 var errorInfo = (error) => error && typeof error === "object" ? error : {};
-var empty = () => ({ status: "loading", snapshot: null, agents: null, error: null, file: null, fileStatus: "idle", fileKey: null, fileError: null, inspectedReview: null, historyStatus: "idle", historyError: null, historyId: null, pending: false });
+var empty = () => ({ status: "loading", snapshot: null, error: null, file: null, fileStatus: "idle", fileKey: null, fileError: null, inspectedReview: null, historyStatus: "idle", historyError: null, historyId: null, pending: false });
 var problem = (code, message = "") => ({ code: typeof code === "string" ? code : "code/unavailable", message: typeof message === "string" ? message : "" });
 function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObject = globalThis.document } = {}) {
   const entries = /* @__PURE__ */ new Map();
@@ -302,7 +240,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     try {
       const raw = await call("code/snapshot", { sessionId: entry.sessionId, ...target }, request);
       if (disposed || request.signal.aborted || generation !== epoch || entry.request !== request || target !== entry.target) return;
-      const snapshot = readSnapshot2(raw, entry.sessionId);
+      const snapshot = readSnapshot(raw, entry.sessionId);
       if (!snapshot) throw problem("code/invalid-snapshot");
       const previous = entry.state.snapshot;
       if (previous?.scope === snapshot.scope && snapshot.revision < previous.revision) return;
@@ -323,14 +261,6 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
         ...identityChanged && entry.fileTarget?.reviewId == null ? { file: null, fileStatus: "idle", fileKey: null } : {},
         ...bindingChanged ? { inspectedReview: null, historyId: null, historyStatus: "idle", historyError: null } : {}
       });
-      if (snapshot.agentsAvailable) {
-        try {
-          const agentRaw = await call("agents/snapshot", { sessionId: entry.sessionId }, request);
-          if (!disposed && !request.signal.aborted && generation === epoch && entry.request === request) publish(entry, { agents: readSnapshot(agentRaw, entry.sessionId) });
-        } catch (error) {
-          if (!request.signal.aborted && entry.request === request) publish(entry, { agents: null });
-        }
-      } else if (entry.state.agents) publish(entry, { agents: null });
     } catch (error) {
       if (!disposed && generation === epoch && entry.request === request && !request.signal.aborted) publish(entry, { status: "failed", error: problem(errorInfo(error).code, errorInfo(error).message) });
       else if (!disposed && entry.request === request && generation === epoch && errorInfo(error).code === "code/timeout") publish(entry, { status: "failed", error: problem("code/timeout") });
@@ -379,7 +309,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     stopFile(entry);
     entry.fileTarget = null;
     entry.target = { mode, ...mode === "range" ? { base } : {} };
-    publish(entry, { ...empty(), agents: entry.state.agents });
+    publish(entry, empty());
     void refreshEntry(entry);
   };
   async function loadFile(sessionId, target) {
@@ -423,7 +353,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     try {
       const raw = await call("code/review", { sessionId, scope: snapshot.scope, reviewId }, request);
       if (disposed || epoch !== generation || request.signal.aborted || entry.historyRequest !== request) return;
-      const value = readSnapshot2({ ...snapshot, review: raw }, sessionId);
+      const value = readSnapshot({ ...snapshot, review: raw }, sessionId);
       if (!value || value.review?.id !== reviewId) throw problem("code/invalid-review");
       publish(entry, { inspectedReview: value.review, historyStatus: "ready" });
     } catch (error) {
@@ -441,7 +371,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     try {
       const raw = await call("code/cancel", { sessionId, scope: snapshot.scope, operationId: operation.id }, request);
       if (disposed || generation !== epoch || request.signal.aborted) throw problem("code/cancel-unconfirmed");
-      const value = readSnapshot2(raw, sessionId);
+      const value = readSnapshot(raw, sessionId);
       if (!value || value.scope !== snapshot.scope) throw problem("code/cancel-unconfirmed");
       publish(entry, { snapshot: { ...entry.state.snapshot, operation: value.operation } });
       return { ok: true };
@@ -641,8 +571,8 @@ var en = {
   reviewer: "Reviewer",
   dshReviewer: "Current DSH model",
   sessionModel: "Session model",
-  reviewerMissing: "Configure a session model or enable a supported Agent to review.",
-  worktreeFirst: "Review the current worktree before preparing a fix.",
+  reviewerMissing: "Configure a session model before reviewing.",
+  worktreeFirst: "Switch to the worktree scope to re-review the same files.",
   excluded: "This file is excluded from source preview.",
   title: "Code",
   open: "Open Code",
@@ -653,7 +583,6 @@ var en = {
   close: "Close",
   cancel: "Cancel",
   snapshotBoundary: "Only selected source snapshots are sent; no tools or conversation history.",
-  nativeBoundary: "Native review may read workspace/config and use network. Read-only mode can block startup writes.",
   gitUnavailable: "Git data could not be inspected. Choose a Git-backed workspace and refresh.",
   invalidBase: "This base could not be compared with HEAD. Check the branch, tag or commit.",
   noHead: "Choose a repository with at least one commit.",
@@ -852,8 +781,8 @@ var zh = {
   reviewer: "\u5BA1\u67E5\u8005",
   dshReviewer: "DSH \u5F53\u524D\u6A21\u578B",
   sessionModel: "\u5BF9\u8BDD\u6A21\u578B",
-  reviewerMissing: "\u914D\u7F6E\u5BF9\u8BDD\u6A21\u578B\u6216\u542F\u7528\u53D7\u652F\u6301\u7684 Agent \u540E\u5373\u53EF\u5BA1\u67E5\u3002",
-  worktreeFirst: "\u8BF7\u5148\u5BA1\u67E5\u5F53\u524D\u5DE5\u4F5C\u533A\uFF0C\u518D\u51C6\u5907\u4FEE\u590D\u3002",
+  reviewerMissing: "\u914D\u7F6E\u5BF9\u8BDD\u6A21\u578B\u540E\u5373\u53EF\u5BA1\u67E5\u3002",
+  worktreeFirst: "\u8BF7\u5207\u6362\u5230\u5DE5\u4F5C\u533A\u8303\u56F4\u540E\u518D\u590D\u5BA1\u540C\u4E00\u6279\u6587\u4EF6\u3002",
   excluded: "\u6B64\u6587\u4EF6\u4E0D\u5728\u6E90\u7801\u9884\u89C8\u8303\u56F4\u5185\u3002",
   title: "Code",
   open: "\u6253\u5F00 Code",
@@ -864,7 +793,6 @@ var zh = {
   close: "\u5173\u95ED",
   cancel: "\u53D6\u6D88",
   snapshotBoundary: "\u4EC5\u53D1\u9001\u6240\u9009\u6E90\u7801\u5FEB\u7167\uFF0C\u4E0D\u63D0\u4F9B\u5DE5\u5177\u6216\u5BF9\u8BDD\u5386\u53F2\u3002",
-  nativeBoundary: "\u539F\u751F\u5BA1\u67E5\u53EF\u8BFB\u53D6\u5DE5\u4F5C\u533A\u53CA\u914D\u7F6E\u5E76\u8BBF\u95EE\u7F51\u7EDC\uFF1B\u53EA\u8BFB\u9650\u5236\u53EF\u80FD\u963B\u6B62\u542F\u52A8\u5199\u5165\u3002",
   gitUnavailable: "\u6682\u65F6\u65E0\u6CD5\u8BFB\u53D6 Git \u6570\u636E\uFF0C\u8BF7\u9009\u62E9 Git \u5DE5\u4F5C\u533A\u540E\u5237\u65B0\u3002",
   invalidBase: "\u65E0\u6CD5\u5C06\u6B64\u57FA\u51C6\u4E0E HEAD \u6BD4\u8F83\uFF0C\u8BF7\u68C0\u67E5\u5206\u652F\u3001\u6807\u7B7E\u6216\u63D0\u4EA4\u3002",
   noHead: "\u8BF7\u9009\u62E9\u81F3\u5C11\u6709\u4E00\u6B21\u63D0\u4EA4\u7684 Git \u4ED3\u5E93\u3002",
@@ -1082,35 +1010,14 @@ function FileNavigator({ files, path, selected, select, open, t, limit, snapshot
   const rows = { path, selected, select, open, t, limit, reviewed };
   return /* @__PURE__ */ import_react2.default.createElement("aside", { className: "dxc-files", "aria-label": t("files") }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("files")), /* @__PURE__ */ import_react2.default.createElement("span", null, t("fileCount", { count: files.length }))), !reviewed && /* @__PURE__ */ import_react2.default.createElement(Tabs, { label: t("files"), value: filter, onChange: setFilter, items: [{ value: "changed", label: t("changed") }, { value: "all", label: t("all") }] }), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-file-search" }, /* @__PURE__ */ import_react2.default.createElement("span", { "aria-hidden": "true" }, "\u2315"), /* @__PURE__ */ import_react2.default.createElement("input", { type: "search", value: query, onChange: (event) => setQuery(event.target.value), placeholder: t("searchFiles"), "aria-label": t("fileSearchLabel") })), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-file-list" }, tree.directories.length || tree.files.length ? /* @__PURE__ */ import_react2.default.createElement("ul", { className: "dxc-tree" }, tree.directories.map((node) => /* @__PURE__ */ import_react2.default.createElement(TreeBranch, { key: node.path, node, depth: 0, ...rows })), tree.files.map((file) => /* @__PURE__ */ import_react2.default.createElement(FileRow, { key: file.path, file, depth: 0, ...rows }))) : /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t(filter === "changed" && !query && !reviewed ? "noChanges" : "noFiles"))), /* @__PURE__ */ import_react2.default.createElement("footer", { className: "dxc-file-footer" }, reviewed ? /* @__PURE__ */ import_react2.default.createElement("span", null, t("reviewedOnly")) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("span", null, t("selection", { count: selected.length })), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => select(selected.length ? null : "all") }, t(selected.length ? "clearSelection" : "selectChanged"))), snapshot.truncated && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-inline-warning" }, t("partialFiles"))));
 }
-function FindingCard({ finding, selected, toggle, jump, disabled, t }) {
-  return /* @__PURE__ */ import_react2.default.createElement("article", { className: "dxc-finding", "data-severity": finding.severity }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-finding-top" }, /* @__PURE__ */ import_react2.default.createElement("label", null, /* @__PURE__ */ import_react2.default.createElement("input", { type: "checkbox", checked: selected, disabled, onChange: toggle, "aria-label": t("selectFinding", { title: finding.title }) }), /* @__PURE__ */ import_react2.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`))), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-finding-id" }, finding.id.slice(0, 7))), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-finding-title", onClick: jump }, finding.title), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-location", title: finding.path, "aria-label": t("findingLocation", { path: finding.path, line: finding.startLine }), onClick: jump }, basename(finding.path), /* @__PURE__ */ import_react2.default.createElement("span", null, ":", finding.startLine, finding.endLine !== finding.startLine ? `\u2013${finding.endLine}` : "")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-finding-body" }, finding.body), (finding.evidence || finding.trigger) && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("details")), finding.evidence && /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-detail-label" }, t("evidence")), /* @__PURE__ */ import_react2.default.createElement("pre", null, finding.evidence)), finding.trigger && /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-detail-label" }, t("trigger")), /* @__PURE__ */ import_react2.default.createElement("p", null, finding.trigger))));
+function FindingCard({ finding, jump, t }) {
+  return /* @__PURE__ */ import_react2.default.createElement("article", { className: "dxc-finding", "data-severity": finding.severity }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-finding-top" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-finding-id" }, finding.id.slice(0, 7))), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-finding-title", onClick: jump }, finding.title), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-location", title: finding.path, "aria-label": t("findingLocation", { path: finding.path, line: finding.startLine }), onClick: jump }, basename(finding.path), /* @__PURE__ */ import_react2.default.createElement("span", null, ":", finding.startLine, finding.endLine !== finding.startLine ? `\u2013${finding.endLine}` : "")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-finding-body" }, finding.body), (finding.evidence || finding.trigger) && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("details")), finding.evidence && /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-detail-label" }, t("evidence")), /* @__PURE__ */ import_react2.default.createElement("pre", null, finding.evidence)), finding.trigger && /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-detail-label" }, t("trigger")), /* @__PURE__ */ import_react2.default.createElement("p", null, finding.trigger))));
 }
-function Findings({ review, history, historyId, inspectHistory, historyStatus, selected, toggle, jump, fix, rereview, enabled, repairAvailable, t, formatTime }) {
+function Findings({ review, history, historyId, inspectHistory, historyStatus, jump, rereview, enabled, canRereview, t, formatTime }) {
   const [severity, setSeverity] = (0, import_react2.useState)("all");
   const filtered = review?.findings.filter((finding) => severity === "all" || finding.severity === severity) ?? [];
-  const complete = isComplete(review), repairComplete = review?.repair?.state === "completed";
-  return /* @__PURE__ */ import_react2.default.createElement("aside", { className: "dxc-findings", "aria-label": t("findings") }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("findings")), review && /* @__PURE__ */ import_react2.default.createElement("span", null, review.findings.length)), !review && historyId ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-state", role: historyStatus === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react2.default.createElement("p", null, t(historyStatus === "failed" ? "historyFailed" : "historyLoading")), historyStatus === "failed" && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => inspectHistory(historyId) }, t("retry"))) : !review ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty dxc-findings-empty" }, /* @__PURE__ */ import_react2.default.createElement("span", { "aria-hidden": "true" }, "\u25CE"), /* @__PURE__ */ import_react2.default.createElement("strong", null, t("noReview")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("noReviewHint"))) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-review-summary" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-review-state", role: "status" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: `dxc-state-dot dxc-review-${review.state}` }), /* @__PURE__ */ import_react2.default.createElement("strong", null, t(Object.hasOwn(en, `state.${review.state}`) ? `state.${review.state}` : "incomplete"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-muted" }, t("coverage", { count: review.paths?.length ?? 0 }), " \xB7 ", shortHash(review.snapshotId)), review.createdAt && /* @__PURE__ */ import_react2.default.createElement("time", { className: "dxc-muted" }, formatTime(review.createdAt)), review.summary && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("summary")), /* @__PURE__ */ import_react2.default.createElement("p", null, review.summary))), review.mode !== "worktree" && complete && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice" }, /* @__PURE__ */ import_react2.default.createElement("p", null, t("worktreeFirst"))), review.stale && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("stale")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("staleHint"))), review.repair && !["running", "completed"].includes(review.repair.state) && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice dxc-warning", role: "status" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("repairAttempt"), " \xB7 ", t(Object.hasOwn(en, `state.${review.repair.state}`) ? `state.${review.repair.state}` : "incomplete")), review.repair.reason && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react2.default.createElement("p", null, review.repair.reason))), repairComplete && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("needsReview")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("repairComplete"))), !complete && !activeReview(review) && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("incomplete")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("incompleteHint")), review.reason && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react2.default.createElement("p", null, review.reason))), review.findings.length > 0 && /* @__PURE__ */ import_react2.default.createElement("select", { className: "dxc-severity-filter", value: severity, "aria-label": t("allFindings"), onChange: (event) => setSeverity(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "all" }, t("allFindings")), SEVERITIES.map((item) => /* @__PURE__ */ import_react2.default.createElement("option", { key: item, value: item }, t(`severity.${item}`), " (", review.findings.filter((finding) => finding.severity === item).length, ")"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-findings-list" }, filtered.map((finding) => /* @__PURE__ */ import_react2.default.createElement(FindingCard, { key: finding.id, finding, selected: selected.includes(finding.id), toggle: () => toggle(finding.id), jump: () => jump(finding), disabled: !enabled || !reviewCanFix(review), t })), complete && review.findings.length === 0 && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-no-findings" }, t("noFindings"))), /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-checks" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("checks"))), review.checks?.length ? /* @__PURE__ */ import_react2.default.createElement("ul", null, review.checks.map((check, at) => /* @__PURE__ */ import_react2.default.createElement("li", { key: at }, /* @__PURE__ */ import_react2.default.createElement("span", null, check.name ?? check.command ?? t("checks")), /* @__PURE__ */ import_react2.default.createElement("span", { className: check.status === "failed" ? "dxc-warning" : "dxc-muted" }, t(check.status === "passed" && check.verified !== true ? "check.unknown" : Object.hasOwn(en, `check.${check.status}`) ? `check.${check.status}` : "check.unknown")), check.evidence && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("evidence")), /* @__PURE__ */ import_react2.default.createElement("pre", null, check.evidence))))) : /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("noChecks"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-findings-actions" }, review.findings.length > 0 && !repairAvailable && !historyId && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("agentsMissing")), review.findings.length > 0 && !repairComplete && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-primary", disabled: !enabled || !repairAvailable || !reviewCanFix(review) || !selected.length, onClick: fix }, t("fix", { count: selected.length })), complete && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", disabled: !enabled, onClick: rereview }, t("rereview")))), history?.length > 0 && /* @__PURE__ */ import_react2.default.createElement("details", { className: "dxc-history" }, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("history"), " (", history.length, ")"), /* @__PURE__ */ import_react2.default.createElement("ol", null, [...history].reverse().map((item) => /* @__PURE__ */ import_react2.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-history-item", "aria-pressed": historyId === item.id, onClick: () => inspectHistory(item.id) }, /* @__PURE__ */ import_react2.default.createElement("time", null, formatTime(item.createdAt)), /* @__PURE__ */ import_react2.default.createElement("span", null, t("openFindings", { count: item.findings }), " \xB7 ", shortHash(item.snapshotId))))))));
-}
-function Setup({ kind, agents, snapshot, count, limits, prepare, inspect, models, close, t, enabled }) {
-  const native = agents?.catalog.filter((agent) => canPrepare(agent) && (kind === "repair" || agent.id !== "opencode" && snapshot.nativeReviewAvailable !== false)) ?? [];
-  const candidates = kind !== "repair" && snapshot.dshAvailable ? [{ id: "dsh", label: t("dshReviewer"), models: [] }, ...native] : native;
-  const [runtime, setRuntime] = (0, import_react2.useState)(candidates[0]?.id ?? ""), [model, setModel] = (0, import_react2.useState)("");
-  const selected = candidates.find((agent) => agent.id === runtime);
-  const first = (0, import_react2.useRef)(null);
-  (0, import_react2.useEffect)(() => first.current?.focus(), []);
-  (0, import_react2.useEffect)(() => {
-    if (!runtime && candidates.length) setRuntime(candidates[0].id);
-  }, [runtime, candidates.map((item) => item.id).join(",")]);
-  const validModel = !model || selected?.models.some((item) => item.id === model);
-  const canSubmit = enabled && (runtime === "dsh" || !agents?.task || agents.task.allowedActions.includes("request-start"));
-  return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-setup", "aria-label": t(kind === "repair" ? "repairSetup" : kind === "rereview" ? "rereviewSetup" : "reviewSetup") }, /* @__PURE__ */ import_react2.default.createElement("header", null, /* @__PURE__ */ import_react2.default.createElement("strong", null, t(kind === "repair" ? "repairSetup" : kind === "rereview" ? "rereviewSetup" : "reviewSetup")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: close }, "\xD7")), candidates.length ? /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-fields" }, /* @__PURE__ */ import_react2.default.createElement("label", null, t(kind === "repair" ? "agent" : "reviewer"), /* @__PURE__ */ import_react2.default.createElement("select", { ref: (node) => {
-    first.current = node;
-  }, value: runtime, onChange: (event) => {
-    setRuntime(event.target.value);
-    setModel("");
-  } }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "", disabled: true }, t("chooseAgent")), candidates.map((agent) => /* @__PURE__ */ import_react2.default.createElement("option", { key: agent.id, value: agent.id }, agent.label)))), /* @__PURE__ */ import_react2.default.createElement("label", null, t("model"), runtime === "dsh" ? /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-session-model" }, snapshot.dshModel?.model ?? t("sessionModel")) : /* @__PURE__ */ import_react2.default.createElement("select", { value: model, onChange: (event) => setModel(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "" }, t("nativeDefault")), selected?.models.map((item) => /* @__PURE__ */ import_react2.default.createElement("option", { key: item.id, value: item.id }, item.label))))), runtime !== "dsh" && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-meta" }, /* @__PURE__ */ import_react2.default.createElement("span", null, t(Object.hasOwn(en, `catalog.${selected?.modelCatalog?.status}`) ? `catalog.${selected?.modelCatalog?.status}` : "catalog.not-loaded")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => models(runtime), disabled: !enabled }, t("models")))) : /* @__PURE__ */ import_react2.default.createElement("p", null, t(kind === "repair" ? !snapshot.agentsAvailable ? "agentsMissing" : "noAgent" : "reviewerMissing")), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-footer" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-muted" }, kind === "repair" ? t("openFindings", { count }) : t("selection", { count })), candidates.length ? /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-primary", disabled: !canSubmit || !selected || !validModel || !count, onClick: () => prepare({ runtime, model }) }, t("prepare")) : snapshot.agentsAvailable && (kind === "repair" || snapshot.nativeReviewAvailable !== false) ? /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", ref: (node) => {
-    first.current = node;
-  }, onClick: inspect }, t("agentSetup")) : null), kind !== "repair" && selected && /* @__PURE__ */ import_react2.default.createElement("p", { className: runtime === "dsh" ? "dxc-muted" : "dxc-warning" }, t(runtime === "dsh" ? "snapshotBoundary" : "nativeBoundary")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("prepareHint")), kind !== "repair" && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("reviewBudget", { count: limits.maxSelectedFiles ?? 20, bytes: limits.maxReviewBytes ?? 8e3 })));
+  const complete = isComplete(review);
+  return /* @__PURE__ */ import_react2.default.createElement("aside", { className: "dxc-findings", "aria-label": t("findings") }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("findings")), review && /* @__PURE__ */ import_react2.default.createElement("span", null, review.findings.length)), !review && historyId ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-state", role: historyStatus === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react2.default.createElement("p", null, t(historyStatus === "failed" ? "historyFailed" : "historyLoading")), historyStatus === "failed" && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => inspectHistory(historyId) }, t("retry"))) : !review ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty dxc-findings-empty" }, /* @__PURE__ */ import_react2.default.createElement("span", { "aria-hidden": "true" }, "\u25CE"), /* @__PURE__ */ import_react2.default.createElement("strong", null, t("noReview")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("noReviewHint"))) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-review-summary" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-review-state", role: "status" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: `dxc-state-dot dxc-review-${review.state}` }), /* @__PURE__ */ import_react2.default.createElement("strong", null, t(Object.hasOwn(en, `state.${review.state}`) ? `state.${review.state}` : "incomplete"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-muted" }, t("coverage", { count: review.paths?.length ?? 0 }), " \xB7 ", shortHash(review.snapshotId)), review.createdAt && /* @__PURE__ */ import_react2.default.createElement("time", { className: "dxc-muted" }, formatTime(review.createdAt)), review.summary && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("summary")), /* @__PURE__ */ import_react2.default.createElement("p", null, review.summary))), review.stale && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("stale")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("staleHint"))), !complete && !activeReview(review) && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("incomplete")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("incompleteHint")), review.reason && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react2.default.createElement("p", null, review.reason))), review.findings.length > 0 && /* @__PURE__ */ import_react2.default.createElement("select", { className: "dxc-severity-filter", value: severity, "aria-label": t("allFindings"), onChange: (event) => setSeverity(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "all" }, t("allFindings")), SEVERITIES.map((item) => /* @__PURE__ */ import_react2.default.createElement("option", { key: item, value: item }, t(`severity.${item}`), " (", review.findings.filter((finding) => finding.severity === item).length, ")"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-findings-list" }, filtered.map((finding) => /* @__PURE__ */ import_react2.default.createElement(FindingCard, { key: finding.id, finding, jump: () => jump(finding), t })), complete && review.findings.length === 0 && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-no-findings" }, t("noFindings"))), /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-checks" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("checks"))), review.checks?.length ? /* @__PURE__ */ import_react2.default.createElement("ul", null, review.checks.map((check, at) => /* @__PURE__ */ import_react2.default.createElement("li", { key: at }, /* @__PURE__ */ import_react2.default.createElement("span", null, check.name ?? check.command ?? t("checks")), /* @__PURE__ */ import_react2.default.createElement("span", { className: check.status === "failed" ? "dxc-warning" : "dxc-muted" }, t(check.status === "passed" && check.verified !== true ? "check.unknown" : Object.hasOwn(en, `check.${check.status}`) ? `check.${check.status}` : "check.unknown")), check.evidence && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("evidence")), /* @__PURE__ */ import_react2.default.createElement("pre", null, check.evidence))))) : /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("noChecks"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-findings-actions" }, complete && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", disabled: !enabled || !canRereview, onClick: rereview }, t("rereview"))), !canRereview && complete && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("worktreeFirst"))), history?.length > 0 && /* @__PURE__ */ import_react2.default.createElement("details", { className: "dxc-history" }, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("history"), " (", history.length, ")"), /* @__PURE__ */ import_react2.default.createElement("ol", null, [...history].reverse().map((item) => /* @__PURE__ */ import_react2.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-history-item", "aria-pressed": historyId === item.id, onClick: () => inspectHistory(item.id) }, /* @__PURE__ */ import_react2.default.createElement("time", null, formatTime(item.createdAt)), /* @__PURE__ */ import_react2.default.createElement("span", null, t("openFindings", { count: item.findings }), " \xB7 ", shortHash(item.snapshotId))))))));
 }
 function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, cancel, back, t, formatTime }) {
   const state = useCode((value) => value), snapshot = state.snapshot;
@@ -1124,11 +1031,11 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
     observer.observe(page.current);
     return () => observer.disconnect();
   }, []);
-  const [path, setPath] = (0, import_react2.useState)(null), [selected, setSelected] = (0, import_react2.useState)([]), [issues, setIssues] = (0, import_react2.useState)([]);
-  const [context, setContext] = (0, import_react2.useState)("current"), [pane, setPane] = (0, import_react2.useState)("files"), [setup, setSetup] = (0, import_react2.useState)(null), [notice, setNotice] = (0, import_react2.useState)(null), [focus, setFocus] = (0, import_react2.useState)(null);
+  const [path, setPath] = (0, import_react2.useState)(null), [selected, setSelected] = (0, import_react2.useState)([]);
+  const [context, setContext] = (0, import_react2.useState)("current"), [pane, setPane] = (0, import_react2.useState)("files"), [notice, setNotice] = (0, import_react2.useState)(null), [focus, setFocus] = (0, import_react2.useState)(null);
   const [base, setBase] = (0, import_react2.useState)(snapshot?.workspace.baseRef ?? "main"), [mode, setMode] = (0, import_react2.useState)(snapshot?.workspace.mode ?? "worktree");
-  const scrollPositions = (0, import_react2.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react2.useRef)(null), previousReview = (0, import_react2.useRef)(void 0), rereviewId = (0, import_react2.useRef)(null), setupReviewId = (0, import_react2.useRef)(null);
-  const live = state.status === "live", historyId = state.historyId, review = historyId ? state.inspectedReview : snapshot?.review, agents = state.agents;
+  const scrollPositions = (0, import_react2.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react2.useRef)(null), previousReview = (0, import_react2.useRef)(void 0), rereviewId = (0, import_react2.useRef)(null);
+  const live = state.status === "live", historyId = state.historyId, review = historyId ? state.inspectedReview : snapshot?.review;
   const maxFiles = snapshot?.limits.maxSelectedFiles ?? 20;
   const files = context === "review" && review && snapshot ? snapshot.files.filter((file) => review.paths.includes(file.path)).concat(review.paths.filter((item) => !snapshot.files.some((file) => file.path === item)).map((path2) => ({ path: path2, status: "modified", changed: true, selectable: false }))) : snapshot?.files ?? [];
   const currentFile = files.find((file) => file.path === path);
@@ -1137,10 +1044,10 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
   const fileKey = request ? JSON.stringify(request) : null;
   const fileMatches = fileKey && state.fileKey === fileKey;
   const identity = `${snapshot?.scope}:${context === "review" ? review?.snapshotId : snapshot?.workspace.id}:${effectivePath}`;
-  const reviewAvailable = Boolean(snapshot?.dshAvailable || snapshot?.agentsAvailable && snapshot?.nativeReviewAvailable !== false);
+  const reviewAvailable = Boolean(snapshot?.dshAvailable);
   const operation = snapshot?.operation;
   const canStop = Boolean(operation?.id);
-  const running = Boolean(operation) || activeReview(snapshot?.review) || snapshot?.review?.repair?.state === "running";
+  const running = Boolean(operation) || activeReview(snapshot?.review);
   (0, import_react2.useEffect)(() => {
     if (!request) {
       clearFile();
@@ -1158,13 +1065,8 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
     }
     previousWorkspace.current = snapshot.workspace.id;
     if (previousReview.current !== review?.id) {
-      setIssues([]);
       setFocus(null);
       previousReview.current = review?.id;
-    }
-    if (setup && setup !== "review" && setupReviewId.current && snapshot.review?.id !== setupReviewId.current) {
-      setSetup(null);
-      setNotice("selectionChanged");
     }
   }, [snapshot?.workspace.id, review?.id]);
   const changeScope = (value, baseValue = base) => {
@@ -1173,26 +1075,22 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
     setSelected([]);
     setFocus(null);
     setContext("current");
-    setSetup(null);
     setNotice(null);
     clearFile();
     loadReview(null);
     selectTarget(value, value === "range" ? baseValue : void 0);
   };
-  const inspectHistory = (id2) => {
+  const inspectHistory = (id) => {
     setContext("review");
     setPath(null);
     setFocus(null);
-    setIssues([]);
-    setSetup(null);
     setPane("findings");
     clearFile();
-    loadReview(id2);
+    loadReview(id);
   };
   const latest = () => {
     setPath(null);
     setFocus(null);
-    setIssues([]);
     loadReview(null);
   };
   const openFile = (next) => {
@@ -1206,34 +1104,32 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
         setNotice("draftChanged");
         return;
       }
-      setSetup(null);
       setNotice(null);
       back();
     } catch {
       setNotice("insertionUnconfirmed");
     }
   };
-  const prepare = ({ runtime, model }) => {
+  const prepare = (kind) => {
     try {
-      if (runtime === "dsh") model = "";
-      const args = setup === "repair" ? repairRequest(snapshot, { findingIds: issues, runtime, model }) : reviewRequest(snapshot, { paths: setup === "rereview" ? review.paths : selected, runtime, model, ...setup === "rereview" ? { previousReviewId: rereviewId.current ?? review.id } : {} });
-      put(`${t(setup === "repair" ? "repairRequest" : "reviewRequest")}
+      if (!snapshot) throw new Error("unavailable");
+      if (kind === "rereview" && (review?.mode !== "worktree" || snapshot.workspace.mode !== "worktree")) throw new Error("worktreeFirst");
+      const paths = kind === "rereview" ? review.paths : selected;
+      const args = reviewRequest(snapshot, { paths, ...kind === "rereview" ? { previousReviewId: rereviewId.current ?? review.id } : {} });
+      put(`${t("reviewRequest")}
 ${JSON.stringify(args, null, 2)}`);
     } catch (error) {
       setNotice(error instanceof Error && Object.hasOwn(en, error.message) ? error.message : "unavailable");
     }
   };
   const beginReview = (kind) => {
-    setupReviewId.current = kind === "review" ? null : review.id;
     if (kind === "rereview") {
       rereviewId.current = review.id;
       setContext("current");
-      setMode("worktree");
       setSelected([...review.paths]);
-      setSetup("rereview");
       setFocus(null);
-      selectTarget("worktree");
-    } else setSetup(kind);
+    }
+    prepare(kind);
   };
   const toggleFile = (next) => {
     if (next === null) {
@@ -1268,20 +1164,13 @@ ${JSON.stringify(args, null, 2)}`);
     setContext(event.target.value);
     setFocus(null);
     clearFile();
-  } }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "current" }, t("current")), /* @__PURE__ */ import_react2.default.createElement("option", { value: "review" }, t("reviewed"), " \xB7 ", shortHash(review.snapshotId)))), historyId && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-banner dxc-history-banner" }, /* @__PURE__ */ import_react2.default.createElement("span", null, t("viewingHistory"), " \xB7 ", shortHash(review?.snapshotId)), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: latest }, t("latestReview"))), !live && snapshot && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t("disconnected")), notice && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t(notice, { count: maxFiles }), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: () => setNotice(null) }, "\xD7")), running && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-banner dxc-running", role: "status" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-state-dot" }), /* @__PURE__ */ import_react2.default.createElement("span", null, t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : review?.repair?.state === "running" ? "state.repairing" : "state.running")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: back }, t("openConversation")), canStop && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", disabled: !live || state.pending || operation?.state === "cancelling", onClick: async () => {
+  } }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "current" }, t("current")), /* @__PURE__ */ import_react2.default.createElement("option", { value: "review" }, t("reviewed"), " \xB7 ", shortHash(review.snapshotId)))), historyId && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-banner dxc-history-banner" }, /* @__PURE__ */ import_react2.default.createElement("span", null, t("viewingHistory"), " \xB7 ", shortHash(review?.snapshotId)), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: latest }, t("latestReview"))), !live && snapshot && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t("disconnected")), notice && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t(notice, { count: maxFiles }), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: () => setNotice(null) }, "\xD7")), running && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-banner dxc-running", role: "status" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-state-dot" }), /* @__PURE__ */ import_react2.default.createElement("span", null, t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : "state.running")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: back }, t("openConversation")), canStop && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", disabled: !live || state.pending || operation?.state === "cancelling", onClick: async () => {
     const result = await cancel();
     if (!result.ok) setNotice("cancelUnconfirmed");
-  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), setup && snapshot && /* @__PURE__ */ import_react2.default.createElement(Setup, { key: setup, kind: setup, agents, snapshot, count: setup === "repair" ? issues.length : selected.length, limits: snapshot.limits, prepare, close: () => setSetup(null), inspect: () => put(t("inspectRequest")), models: (runtime) => {
-    try {
-      put(`${t("modelsRequest")}
-${JSON.stringify(prepareModels(agents, runtime), null, 2)}`);
-    } catch {
-      setNotice("unavailable");
-    }
-  }, t, enabled: live && !running && !agents?.operation }), !snapshot ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react2.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: layout === "medium" && pane === "code" ? "files" : pane, onChange: setPane, items: [{ value: "files", label: t("files") }, ...layout === "medium" ? [] : [{ value: "code", label: t("code") }], { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-workbench" }, /* @__PURE__ */ import_react2.default.createElement(FileNavigator, { files, path: effectivePath, selected, select: toggleFile, open: openFile, t, limit: maxFiles, snapshot, reviewed: context === "review" }), /* @__PURE__ */ import_react2.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
+  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react2.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: layout === "medium" && pane === "code" ? "files" : pane, onChange: setPane, items: [{ value: "files", label: t("files") }, ...layout === "medium" ? [] : [{ value: "code", label: t("code") }], { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-workbench" }, /* @__PURE__ */ import_react2.default.createElement(FileNavigator, { files, path: effectivePath, selected, select: toggleFile, open: openFile, t, limit: maxFiles, snapshot, reviewed: context === "review" }), /* @__PURE__ */ import_react2.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
     clearFile();
     if (request) loadFile(request);
-  }, scrollPositions, t }), /* @__PURE__ */ import_react2.default.createElement(Findings, { review, history: snapshot.history, historyId, inspectHistory, historyStatus: state.historyStatus, selected: issues, toggle: (id2) => setIssues((value) => value.includes(id2) ? value.filter((item) => item !== id2) : [...value, id2]), jump, fix: () => beginReview("repair"), rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, repairAvailable: snapshot.agentsAvailable, t, formatTime }))));
+  }, scrollPositions, t }), /* @__PURE__ */ import_react2.default.createElement(Findings, { review, history: snapshot.history, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime }))));
 }
 function CodeToolRow({ phase, block, open, t }) {
   const meta = block?.meta, valid = meta?.kind === "dsh-x-code.result" && meta.version === 1;
@@ -1346,6 +1235,6 @@ function apply(ctx) {
   });
   ctx.slots.inject("sidebar.panellist", () => ctx.slots.register({ name: "sidebar.panellist", id: "dsh-x-code", order: 70, label: () => t("title") }, CodeIcon));
   ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({ name: "conversation.input.dock", id: "dsh-x-code", order: -11, locale: NS, inject: () => ({ open }) }, CodeEntry));
-  for (const key of ["dsh_x_code_inspect", "dsh_x_code_file", "dsh_x_code_review", "dsh_x_code_repair"]) ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({ name: "tool.call.toolview", key, locale: NS, inject: () => ({ open }) }, CodeToolRow));
+  for (const key of ["dsh_x_code_inspect", "dsh_x_code_file", "dsh_x_code_review"]) ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({ name: "tool.call.toolview", key, locale: NS, inject: () => ({ open }) }, CodeToolRow));
 }
 return module.exports; } });

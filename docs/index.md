@@ -4,7 +4,7 @@ layout: home
 hero:
   name: DSH-X
   text: DeepSeek Harness 的可选插件库
-  tagline: 在官方 DSH 上增加代码审查、原生代理、计划审批、行情与问答。不替换内核，不打包桌面应用。
+  tagline: 在官方 DSH 上增加代码审查、A 股行情与内嵌浏览器。不替换内核，不打包桌面应用。
   actions:
     - theme: brand
       text: 快速开始
@@ -15,13 +15,13 @@ hero:
 
 features:
   - title: 只做插件
-    details: 源码、本机链接脚本和插件打包流水线。官方内核、桌面应用、安装器与 DMG/EXE 都不在这个仓库。
+    details: 源码、本机链接脚本和市场索引。官方内核、桌面应用、安装器与 DMG/EXE 都不在这个仓库。
   - title: 走官方安装入口
-    details: 用官方 Plugins 页面或 `dsh plugin` 安装；插件的启用、审批、凭据与语言都复用官方能力。
+    details: 在 Plugins → Discover 添加一个索引地址，或用官方 `dsh plugin` 安装；审批、凭据与语言都复用官方能力。
   - title: 可核对的版本口径
-    details: 加载准入由 peer 范围决定，完整验证绑定精确运行时。两个 npm 基线分别提供不同强度的证据。
-  - title: 随包附带安装器
-    details: 每个 Release 都带 `install-plugins.mjs`，一条命令装齐常用组合，并被 `SHA256SUMS` 覆盖。
+    details: 加载准入由 peer 范围决定，市场索引按 engines.dsh 计算兼容性，完整验证绑定精确运行时。
+  - title: 一个索引，三个插件
+    details: GitHub Pages 生成格式 1 的市场索引；每个版本钉在发布 commit 上，不依赖 npm 发布。
 ---
 
 ## 这是什么
@@ -37,7 +37,7 @@ DSH-X 是运行在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-ha
 | 我想…… | 看这里 |
 | --- | --- |
 | 装上插件并用起来 | [快速开始](/guide/install) |
-| 知道有哪些插件、默认装哪些 | [插件一览](/guide/plugins) |
+| 知道有哪些插件 | [插件一览](/guide/plugins) |
 | 在桌面版里安装 | [桌面版](/guide/desktop) |
 | 搞清版本、peer 范围与验证边界 | [版本与兼容](/guide/compatibility) |
 | 安装被拒、装完没反应 | [常见问题](/guide/troubleshooting) |

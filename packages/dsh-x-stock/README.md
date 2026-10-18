@@ -4,7 +4,7 @@
 
 ## 配置与使用
 
-与 `dsh-x-plan` 一样，通过包内 `dsh.bundle.patch` 和 `cordis.patch.yml` 注册 Cordis 插件；需要宿主提供 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`。本实现按官方内核 `v0.2.1-rc.2` 的 `defineTool` 接口编写，运行时 Node.js 22 或更新版本。
+通过包内 `dsh.bundle.patch` 和 `cordis.patch.yml` 注册 Cordis 插件；需要宿主提供 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`。本实现按官方内核 `v0.2.1-rc.2` 的 `defineTool` 接口编写，运行时 Node.js 22 或更新版本。
 
 在启动宿主的环境中设置 `FINNHUB_API_KEY`。请通过自己的密钥管理方式设置，不要向模型发送密钥、放进工具参数、提交到仓库或写入打包产物。插件不会创建账户、保存密钥或购买订阅。没有密钥时直接返回配置提示，不发请求。
 
@@ -81,7 +81,7 @@ Host 的 `createWatchlistHandler({ provider })` 为可替换适配器保留边�
 
 Finnhub 工具通过官方 `HarnessError` 传播错误身份，通过 `output.presentationMeta` 保存结构化展示数据。工具卡本地化标签、错误和数据限制提示，模型收到的结果协议保持稳定。没有展示 metadata 的历史成功记录以原文回放，不猜测并改写旧文本。
 
-本地测试直接加载正式构建产物及已发布官方 `LocaleRuntime`，覆盖中文/英文即时切换、区域语言和英文 fallback、数字/日期/百分比、切换时仍在显示的错误、证券名不变、工具 metadata 和错误身份。真实浏览器集成记录见根目录 `TEST_REPORT.md`。
+本地测试直接加载正式构建产物及已发布官方 `LocaleRuntime`，覆盖中文/英文即时切换、区域语言和英文 fallback、数字/日期/百分比、切换时仍在显示的错误、证券名不变、工具 metadata 和错误身份。真实行情与浏览器集成需要在你自己的环境中单独验证。
 
 ## 日 K 图表工作台（第一版）
 

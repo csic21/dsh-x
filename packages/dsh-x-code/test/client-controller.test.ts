@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createCodeController } from '../src/client/controller.ts'
 const deferred=()=>{let resolve!: (value: any) => void;const promise=new Promise<any>(value=>resolve=value);return {promise,resolve}}
 const tick=()=>new Promise<any>(resolve=>setTimeout(resolve,0))
-const snap=(mode='worktree',id='v1')=>({scope:'scope',sessionId:'session',revision:1,workspace:{id,mode,baseRef:'main'},files:[{path:'a.js',status:'modified',selectable:true}],limits:{maxSelectedFiles:20},agentsAvailable:false,review:null})
+const snap=(mode='worktree',id='v1')=>({scope:'scope',sessionId:'session',revision:1,workspace:{id,mode,baseRef:'main'},files:[{path:'a.js',status:'modified',selectable:true}],limits:{maxSelectedFiles:20},review:null})
 const ok=(value: any)=>({ok:true,value})
 
 test('late scope read never replaces a newer target or leaks prior file content',async()=>{

@@ -4,7 +4,7 @@ import { readFile, access } from 'node:fs/promises'
 
 // Unit tests import TypeScript source. Verify the entries that actually ship,
 // including declarations and the lazy client factory consumed by the host.
-for (const name of ['dsh-x-agents', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-chat', 'dsh-x-code', 'dsh-x-browser', 'dsh-x-update', 'dsh-x-suite']) {
+for (const name of ['dsh-x-code', 'dsh-x-stock', 'dsh-x-browser']) {
   test(`${name} publishes its built host entry and declarations`, async () => {
     const root = new URL(`../packages/${name}/`, import.meta.url)
     const manifest = JSON.parse(await readFile(new URL('package.json', root), 'utf8'))
@@ -12,8 +12,7 @@ for (const name of ['dsh-x-agents', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-chat', '
     assert.equal(manifest.exports['.'], './lib/index.js')
     const plugin = await import(new URL(manifest.main, root).href)
     assert.equal(plugin.name, name)
-    if (name === 'dsh-x-suite') assert.deepEqual([...plugin.components].sort(), Object.keys(manifest.dependencies).sort())
-    else { assert.ok(Array.isArray(plugin.inject)); assert.equal(typeof plugin.apply, 'function') }
+    assert.ok(Array.isArray(plugin.inject)); assert.equal(typeof plugin.apply, 'function')
     await access(new URL('lib/index.d.ts', root))
     if (manifest.dsh?.client) {
       const client = await readFile(new URL(manifest.exports['./client'], root), 'utf8')

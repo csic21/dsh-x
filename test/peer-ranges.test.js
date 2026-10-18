@@ -25,7 +25,7 @@ test('the policy declares one shared supported peer range instead of an exact pi
 })
 
 test('every plugin declares the shared supported peer range on official DSH packages', () => {
-  assert.ok(packageDirs.length >= 8, 'expected every package directory')
+  assert.ok(packageDirs.length >= 3, 'expected every package directory')
   for (const name of packageDirs) {
     const manifest = readJson(path.join(root, 'packages', name, 'package.json'))
     const peers = dshPeers(manifest)

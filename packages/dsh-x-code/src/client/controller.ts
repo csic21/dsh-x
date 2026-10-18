@@ -1,12 +1,7 @@
 import type { CodeSnapshot, CodeReview, CodeSource } from './model.ts'
 export interface CodeProblem { code: string, message: string }
-export interface AgentsView {
-  catalog: { id: string, label: string, models: { id: string, label: string }[], modelCatalog?: { status: string }, capabilities?: Record<string, boolean> }[]
-  task?: { allowedActions: string[] } | null
-  operation?: unknown
-}
 export interface CodeState {
-  status: string, snapshot: CodeSnapshot | null, agents: AgentsView | null, error: CodeProblem | null
+  status: string, snapshot: CodeSnapshot | null, error: CodeProblem | null
   file: CodeSource | null, fileStatus: string, fileKey: string | null, fileError: CodeProblem | null
   inspectedReview: CodeReview | null, historyStatus: string, historyError: CodeProblem | null, historyId: string | null, pending: boolean
 }
@@ -19,9 +14,9 @@ interface Entry {
 }
 export interface CodeRpc { call(base: string, endpoint: string, args: Record<string, unknown>, signal: AbortSignal): Promise<{ ok: boolean, value?: unknown, error?: CodeProblem }> }
 const errorInfo = (error: unknown): Partial<CodeProblem> => error && typeof error === 'object' ? error : {}
-import { readSnapshot, readFile, readAgentsSnapshot } from './model.ts'
+import { readSnapshot, readFile } from './model.ts'
 
-export const empty = (): CodeState => ({ status: 'loading', snapshot: null, agents: null, error: null, file: null, fileStatus: 'idle', fileKey: null, fileError: null, inspectedReview: null, historyStatus: 'idle', historyError: null, historyId: null, pending: false })
+export const empty = (): CodeState => ({ status: 'loading', snapshot: null, error: null, file: null, fileStatus: 'idle', fileKey: null, fileError: null, inspectedReview: null, historyStatus: 'idle', historyError: null, historyId: null, pending: false })
 const problem = (code: unknown, message: unknown = '') => ({ code: typeof code === 'string' ? code : 'code/unavailable', message: typeof message === 'string' ? message : '' })
 
 /** Own all reads per session; late responses cannot cross target or connection generations. */
@@ -65,12 +60,6 @@ export function createCodeController(rpc: CodeRpc, { timeoutMs = 12000, pollMs =
         ...(identityChanged && entry.fileTarget?.reviewId == null ? { file: null, fileStatus: 'idle', fileKey: null } : {}),
         ...(bindingChanged ? { inspectedReview: null, historyId: null, historyStatus: 'idle', historyError: null } : {}),
       })
-      if (snapshot.agentsAvailable) {
-        try {
-          const agentRaw = await call('agents/snapshot', { sessionId: entry.sessionId }, request)
-          if (!disposed && !request.signal.aborted && generation === epoch && entry.request === request) publish(entry, { agents: readAgentsSnapshot(agentRaw, entry.sessionId) })
-        } catch (error) { if (!request.signal.aborted && entry.request === request) publish(entry, { agents: null }) }
-      } else if (entry.state.agents) publish(entry, { agents: null })
     } catch (error) {
       if (!disposed && generation === epoch && entry.request === request && !request.signal.aborted) publish(entry, { status: 'failed', error: problem(errorInfo(error).code, errorInfo(error).message) })
       else if (!disposed && entry.request === request && generation === epoch && errorInfo(error).code === 'code/timeout') publish(entry, { status: 'failed', error: problem('code/timeout') })
@@ -97,7 +86,7 @@ export function createCodeController(rpc: CodeRpc, { timeoutMs = 12000, pollMs =
     if (entry.target.mode === mode && entry.target.base === base) return
     stopRead(entry); stopFile(entry); entry.fileTarget = null
     entry.target = { mode, ...(mode === 'range' ? { base } : {}) }
-    publish(entry, { ...empty(), agents: entry.state.agents })
+    publish(entry, empty())
     void refreshEntry(entry)
   }
   async function loadFile(sessionId: string, target: FileTarget) {

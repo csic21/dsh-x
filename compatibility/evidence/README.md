@@ -1,7 +1,11 @@
-# 已完成的本地基线证据
+# 历史证据
 
-`suite-baseline.json` 是 2026-10-17 在隔离临时 home 上真正执行官方 DSH CLI、pnpm 与 Web Host 的结果。它记录实际运行版本、检查结果和真实打包产物 SHA-512；`fixture: true` 的套件版本只用于升级与拒绝测试，未发布。
+这里的 JSON 均来自 Code + Agents 套件时代，保留用于追溯当时的官方 CLI、pnpm 与 Web Host 行为：
 
-证据范围为 Code + Agents 的套件安装与管理，不包含 Browser / Electron、真实模型、原生供应商账号或用户数据迁移。它不是尚未执行的 GitHub 候选容器作业或定时监控结果。包没有发布到公共 registry，本地测试 registry 仅用于提供待发布的精确依赖。
+- `suite-baseline.json`：2026-10-17 在隔离临时 home 上执行套件安装与管理的真实结果；`fixture: true` 的版本只用于升级与拒绝测试。
+- `typescript-migration-suite-2026-10-18.json`：TypeScript 迁移后的套件复核（官方 DSH `0.2.1-alpha.5`）。
+- `rc2-suite-2026-10-18.json`：`0.2.1-rc.2` 基线的套件矩阵。
 
-`typescript-migration-suite-2026-10-18.json` 记录本次 TypeScript 迁移后的真实套件复核：官方 DSH `0.2.1-alpha.5`、pnpm `11.28.5`，十项安装/启停/组合/版本替换/拒绝/卸载检查均通过。CLI 和包管理器仅安装到临时目录，所有 profile/home/cache 隔离，检查结束后测试目录已清理。报告中的升级版本仍仅为本地 fixture。此报告不扩大到 Electron、供应商登录、真实模型或用户数据迁移。
+当前仓库已移除套件、Agents、Plan、Chat 与 Update，这些报告不再描述现行包形状；不要用它们证明当前三个插件的安装或更新。
+
+现行证据由 `docs/dev/release.md` 与 `compatibility/README.md` 描述的检查产生。

@@ -5,39 +5,6 @@ import type { Spawn } from './git.ts';
 import type { Finding, ReviewCheck } from './review.ts';
 import type { ModelRoute, ReviewRequestRecord } from './llm-review.ts';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
-/** One native Agents task summary as reported through delegation. */
-export interface NativeTaskView {
-    id?: string;
-    runId?: string;
-    state?: string;
-    summary?: string;
-    reason?: string;
-}
-/** One native Agents outcome handed back by delegation. */
-export interface NativeOutcome {
-    task?: NativeTaskView | null;
-    scope?: unknown;
-}
-/** The native task identity recorded on a review or repair. */
-export interface NativeTaskRecord {
-    id?: string;
-    runId?: string;
-    scope?: unknown;
-}
-/** One repair attempt attached to a review. */
-export interface RepairRecord {
-    state: string;
-    findingIds: string[];
-    verification: string;
-    hostId?: string;
-    runtime?: string;
-    model?: string | null;
-    startedAt?: string;
-    finishedAt?: string;
-    reason?: string;
-    summary?: string;
-    nativeTask?: NativeTaskRecord | null;
-}
 /** The verification stamp recorded with a completed review. */
 export interface VerificationView {
     previousReviewId: string;
@@ -67,9 +34,7 @@ export interface ReviewRecord {
     stale: boolean;
     staleReason: string | null;
     previousReviewId: string | null;
-    repair: RepairRecord | null;
     reason?: string;
-    nativeTask?: NativeTaskRecord | null;
     verification?: VerificationView | null;
     request?: ReviewRequestRecord | null;
 }
@@ -94,11 +59,8 @@ export interface PublicReview {
     stale: boolean;
     staleReason: string | null;
     previousReviewId: string | null;
-    repair: RepairRecord | null;
     reason?: string;
-    nativeTask?: NativeTaskRecord | null;
     verification?: VerificationView | null;
-    repairReady?: boolean;
 }
 /** One review detail answer with its current freshness stamp. */
 export type ReviewDetailView = PublicReview & {
@@ -127,8 +89,6 @@ export interface OperationView {
 export interface ReviewerInfo {
     dshAvailable: boolean;
     dshModel: ModelRoute | null;
-    nativeReviewAvailable: boolean;
-    nativeReviewReason?: string;
 }
 /** One bounded repository snapshot plus the current review state. */
 export interface SnapshotView {
@@ -140,11 +100,8 @@ export interface SnapshotView {
     limits: typeof LIMITS;
     complete: boolean;
     truncated: boolean;
-    agentsAvailable: boolean;
     dshAvailable: boolean;
     dshModel: ModelRoute | null;
-    nativeReviewAvailable: boolean;
-    nativeReviewReason?: string;
     operation: OperationView | null;
     review: PublicReview | null;
     history: HistoryView[];
@@ -177,36 +134,21 @@ export interface ReviewDetailArgs extends SnapshotArgs {
     scope?: string;
     reviewId?: string;
 }
-/** One review request. */
+/** One review request. Runtime and model remain accepted only for explicit refusal. */
 export interface ReviewArgs extends InventoryArgs {
     sessionId?: string;
     scope?: string;
     workspaceId?: string;
-    runtime: string;
+    runtime?: string;
     model?: string;
     paths: string[];
     previousReviewId?: string;
-}
-/** One repair request. */
-export interface RepairArgs extends SnapshotArgs {
-    scope?: string;
-    reviewId?: string;
-    findingIds: string[];
-    runtime: string;
-    model?: string;
 }
 /** One cancellation request. */
 export interface CancelArgs {
     sessionId?: string;
     scope?: string;
     operationId?: string;
-}
-/** One native Agents delegation request. */
-export interface DelegateArgs {
-    runtime: string;
-    prompt: string;
-    readOnly?: boolean;
-    model?: string;
 }
 /** Arguments the controller hands to the official model call. */
 export interface DshReviewArgs {
@@ -224,20 +166,15 @@ export interface CodeControllerDeps {
         cwd: string;
         policy: HostPolicy | undefined;
     }>;
-    delegate: (args: DelegateArgs, exec: ToolRunContext, options: {
-        beforeDispatch?: () => Promise<void>;
-    }) => Promise<NativeOutcome>;
-    agentsAvailable: () => boolean;
     reviewerInfo?: (id: string, exec?: ToolRunContext) => ReviewerInfo;
     dshReview?: (args: DshReviewArgs, exec: ToolRunContext) => Promise<string>;
     now?: () => string;
 }
-export declare function createCodeController({ store, spawn, contextOf, delegate, agentsAvailable, reviewerInfo, dshReview, now }: CodeControllerDeps): {
+export declare function createCodeController({ store, spawn, contextOf, reviewerInfo, dshReview, now }: CodeControllerDeps): {
     snapshot: (args: SnapshotArgs, exec?: ToolRunContext) => Promise<SnapshotView>;
     source: (args: SourceArgs, exec?: ToolRunContext) => Promise<SourceView>;
     reviewDetail: (args: ReviewDetailArgs, exec?: ToolRunContext) => Promise<ReviewDetailView>;
     review: (args: ReviewArgs, exec: ToolRunContext) => Promise<SnapshotView>;
-    repair: (args: RepairArgs, exec: ToolRunContext) => Promise<SnapshotView>;
     cancel: (args: CancelArgs) => Promise<SnapshotView>;
     dispose(): Promise<void>;
 };

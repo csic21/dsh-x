@@ -48,5 +48,5 @@ export function apply(ctx: CodeClientContext) {
   })
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'dsh-x-code', order: 70, label: () => t('title') }, CodeIcon))
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'dsh-x-code', order: -11, locale: NS, inject: () => ({ open }) }, CodeEntry))
-  for (const key of ['dsh_x_code_inspect', 'dsh_x_code_file', 'dsh_x_code_review', 'dsh_x_code_repair']) ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key, locale: NS, inject: () => ({ open }) }, CodeToolRow))
+  for (const key of ['dsh_x_code_inspect', 'dsh_x_code_file', 'dsh_x_code_review']) ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key, locale: NS, inject: () => ({ open }) }, CodeToolRow))
 }

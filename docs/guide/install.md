@@ -1,6 +1,6 @@
 # 快速开始
 
-把 DSH-X 插件装进一个官方 DSH 运行时，分三步：确认内核版本、准备安装资产、用官方入口安装。
+把 DSH-X 插件装进一个官方 DSH 运行时，分三步：确认内核版本、添加市场索引、用官方入口安装。
 
 ## 1. 确认官方内核
 
@@ -25,89 +25,55 @@ npm install --prefix ~/.local/dsh-runtime @deepseek-ai/dsh@next
 ```
 
 ::: warning 版本决定成败
-本仓库的完整验证跑在 **0.2.1-rc.2** 上；`0.2.0-rc.2` 只验证到"安装 + 启动"。两个版本都能装，但证据强度不同，见[版本与兼容](/guide/compatibility)。
+本仓库的完整验证跑在 **0.2.1-rc.2** 上；`0.2.0-rc.2` 只做过安装与启动冒烟。两个版本都能装，但证据强度不同，见[版本与兼容](/guide/compatibility)。
 :::
 
-`dsh plugin` 会把参数转发给 **pnpm**，所以 PATH 上要有 pnpm（本仓库当前使用 `11.28.5`）。
+`dsh plugin` 会把参数转发给 **pnpm**，所以 PATH 上要有 pnpm（本仓库使用 `11.28.5`）。
 
-## 2. 准备插件资产
+## 2. 添加市场索引
 
-从 [Releases](https://github.com/csic21/dsh-x/releases) 下载整份资产到同一个目录。不要只下某一个 tgz 就去跑一键脚本——脚本需要目录里的 `build-manifest.json` 和多个 tgz。
-
-Release 里通常有：
+打开 **Plugins → Discover → Index sources**，添加：
 
 ```text
-dsh-x-suite-0.1.3.tgz          # 默认组合：Code + Agents
-dsh-x-code-0.1.3.tgz
-dsh-x-agents-0.1.3.tgz
-dsh-x-plan-0.1.3.tgz
-dsh-x-stock-0.1.3.tgz
-dsh-x-chat-0.1.3.tgz
-dsh-x-update-0.1.3.tgz
-dsh-x-browser-0.1.3.tgz        # 实验性，默认不装
-install-plugins.mjs            # 随包附带的安装脚本
-SHA256SUMS / build-manifest.json / INSTALL.md
+https://csic21.github.io/dsh-x/market-index.json
 ```
 
-先校验完整性，再安装：
-
-```sh
-cd ~/Downloads/dsh-x-0.1.3
-shasum -a 256 -c SHA256SUMS          # Windows: Get-FileHash 对照 SHA256SUMS
-```
+Discover 会读取索引、按 `engines.dsh` 计算兼容性，并把可安装的版本列出来。索引来自 GitHub Pages；刷新页面或点 Discover 的刷新按钮即可重新读取。
 
 ## 3. 安装
 
-### 方式 A：一键脚本（推荐）
+在 Discover 里选择 Code、Stocks 或 AI Browser，按官方确认流程安装。安装源是 commit 钉死的 Git 目录，不需要 npm 发布。
+
+也可以手动调用官方 CLI。commit 与包路径直接复制 Discover 条目里的安装参数，不要自己猜：
 
 ```sh
-cd ~/Downloads/dsh-x-0.1.3
-dsh --version                        # 先看一眼运行时
-node install-plugins.mjs             # 默认 suite + plan + stock + chat + update
+dsh --version
+dsh plugin --profile web add \
+  "git+https://github.com/csic21/dsh-x.git#<40位commit>&path:/packages/dsh-x-code" \
+  --config.auto-install-peers=false
 ```
 
-常用参数：
-
-| 参数 | 作用 |
-| --- | --- |
-| `--dry-run` | 只打印将要执行的官方命令 |
-| `--plugins dsh-x-suite,dsh-x-plan` | 指定安装集合（browser 需显式加入） |
-| `--profile web` | 目标 profile，默认 `web` |
-| `--home /path/to/dsh-home` | 官方 home，默认 `$DSH_HOME` 或 `~/.dsh` |
-| `--dsh /path/to/dsh` | 官方 CLI 路径 |
-
-脚本只做三件事：解析 tgz、调用官方 `dsh plugin add`、确认这些包确实被选中为 bundle。运行时是否兼容**由官方 CLI 判定**，脚本不自己放宽。
-
-### 方式 B：手动 CLI
-
-```sh
-dsh plugin --profile web add ./dsh-x-suite-0.1.3.tgz --config.auto-install-peers=false
-```
-
-需要其他插件时继续追加，或一次给多个：
-
-```sh
-dsh plugin --profile web add ./dsh-x-plan-0.1.3.tgz ./dsh-x-stock-0.1.3.tgz --config.auto-install-peers=false
-```
-
-### 方式 C：官方 Plugins 页面
-
-在 DSH 的 Plugins 页面里选择本地 tgz 安装。GUI 同样会走官方的兼容检查，被拒绝时页面会给出原因。
+Desktop 的 `desktop` profile 由 Electron 独占：先启动一次 Desktop，完全退出，再用 Desktop 自带的 Plugins 页面或其 CLI 安装；详见[桌面版](/guide/desktop)。
 
 ## 4. 验证
 
-- 安装脚本成功时会打印 `Installed and selected: ...`，并对每个包检查是否被选为 bundle。
-- GUI：打开 Plugins 页面，确认对应 bundle 处于启用状态。
+- Discover 或 Installed 页面显示对应 bundle 已安装并启用。
 - 需要重启时按官方提示重启；插件 Host 代码只有在重启或重载后才生效。
+- Code 打开后会先显示当前会话的工作区；Stocks 需要先配置行情源；AI Browser 只在 Desktop 出现。
 
-## 升级与卸载
+## 更新与卸载
 
-升级：先退出应用，下载目标版本资产，按上面的方式重新安装，然后重启。不同版本不要混装（尤其套件与独立 Code/Agents）。
-
-卸载：
+发布新 `plugins-v*` tag 后，Pages 会重新生成索引。Discover 显示 **Update available** 时，官方对第三方插件的升级方式是**卸载后安装新版本**：
 
 ```sh
-dsh plugin --profile web remove dsh-x-suite
+dsh plugin --profile web remove dsh-x-code
+# 然后在 Discover 里安装新版本
 ```
 
-套件和独立组件的启用状态要分别检查——停用套件不会自动清理你另外单独启用的 Code / Agents。
+不同版本不要混装。卸载：
+
+```sh
+dsh plugin --profile web remove dsh-x-code
+```
+
+Code 与 Stocks 的 profile 级状态分别在 `.dsh-x-code`、`.dsh-x-stock`，卸载不会自动删除；需要重置时见[常见问题](/guide/troubleshooting)。

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, readSnapshot, reviewRequest, repairRequest, reviewCanFix } from '../src/client/model.ts'
+import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, readSnapshot, reviewRequest } from '../src/client/model.ts'
 import { en, zh, messageKey } from '../src/client/locales.ts'
 const snapshot = (): any => ({ scope:'profile',sessionId:'session',revision:1,workspace:{id:'version',mode:'worktree',base:'abc',baseRef:'main'},files:[{path:'src/b.js',status:'modified',selectable:true,changed:true},{path:'README.md',status:'unchanged',selectable:true,changed:false}],limits:{maxSelectedFiles:20},review:null })
 
@@ -34,10 +34,7 @@ test('wire validation rejects duplicate files and unknown review severity',()=>{
  const malformed=snapshot();malformed.review={id:'r',state:'completed',stale:false,findings:[{id:'f',path:'a',severity:'okay',title:'Title',body:'Body'}],checks:[]};assert.equal(readSnapshot(malformed,'session'),null)
 })
 test('review requests preserve user base reference and explicit selected paths',()=>{
- const value=snapshot();value.workspace.mode='range';assert.deepEqual(reviewRequest(value,{paths:['src/b.js'],runtime:'codex'}),{scope:'profile',workspaceId:'version',mode:'range',base:'main',paths:['src/b.js'],runtime:'codex'});assert.throws(()=>reviewRequest(value,{paths:['unknown'],runtime:'codex'}),/selectionChanged/);assert.throws(()=>reviewRequest(value,{paths:[],runtime:'codex'}),/selectFiles/)
-})
-test('repairs require current completed worktree evidence and selected open findings',()=>{
- const value=snapshot();value.review={id:'r',state:'completed',mode:'worktree',stale:false,repairReady:true,findings:[{id:'f',status:'open'}]};assert.equal(reviewCanFix(value.review),true);assert.equal(reviewCanFix({...value.review,repair:{state:'failed'}}),true);assert.deepEqual(repairRequest(value,{findingIds:['f'],runtime:'codex'}),{scope:'profile',reviewId:'r',findingIds:['f'],runtime:'codex'});for(const patch of [{stale:true},{mode:'staged'},{state:'failed'},{repairReady:false},{repair:{state:'completed'}}])assert.equal(reviewCanFix({...value.review,...patch}),false);assert.throws(()=>repairRequest(value,{findingIds:['other'],runtime:'codex'}),/staleFix/)
+ const value=snapshot();value.workspace.mode='range';assert.deepEqual(reviewRequest(value,{paths:['src/b.js']}),{scope:'profile',workspaceId:'version',mode:'range',base:'main',paths:['src/b.js'],runtime:'dsh'});assert.throws(()=>reviewRequest(value,{paths:['unknown']}),/selectionChanged/);assert.throws(()=>reviewRequest(value,{paths:[]}),/selectFiles/)
 })
 
 test('host error codes produce localized actionable states',()=>{for(const [code,key]of Object.entries({CODE_GIT:'gitUnavailable',CODE_BASE:'invalidBase',CODE_HEAD:'noHead',CODE_POLICY:'policyUnavailable',CODE_BOUNDARY:'boundaryBlocked',CODE_INCOMPLETE:'incompleteManifest',CODE_STALE:'fileChanged','code/invalid-snapshot':'invalidState'})){assert.equal(messageKey(code),key);assert.ok(en[key as keyof typeof en]);assert.ok(zh[key as keyof typeof zh])}})

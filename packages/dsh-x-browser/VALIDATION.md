@@ -67,21 +67,13 @@ The dedicated Windows Desktop smoke previously lived in this repository's packag
 4. Guest permissions/popups/download restrictions remain in force.
 5. Screenshot and runtime identity evidence from the packaged application, not a web preview.
 
-Current status: **experimental, current bounded Windows native lifecycle smoke passed; real OpenCode/provider interaction and broader restriction/platform matrix pending**. AI-requested navigation, multiple tabs, download/popup/permission behavior and macOS are not established by this smoke. Codex/Claude/Grok browser bridges and a default-suite promotion remain deferred.
+Current status: **experimental, Web-side unit and integration evidence only**. No Codex, Claude, Grok or OpenCode bridge ships in this repository, and no packaged Desktop run is recorded here. AI-requested navigation, multiple tabs, download/popup/permission behavior, native guest lifecycle and macOS are not established by this repository's automation.
 
-## TypeScript migration — 2026-10-18
+## Current validation
 
-- Host and client sources and package tests now use TypeScript under the shared strict configuration. Published entry: `lib/index.js`; the shared builder emits host JavaScript/declarations and the client bundle.
-- `pnpm run typecheck` and `pnpm run build` pass. Browser + Code focused tests pass **65/65**. Root integration tests pass **189**, with **2 skipped** and no failures.
-- Full regression with `TMPDIR=/private/tmp` and local loopback listeners allowed: **756 total, 753 passed, 2 skipped, 1 failed**. The failure is the unchanged Plan ACP input-closure fixture (`packages/dsh-x-plan/test/acp.test.js:23`): expected `EPIPE`, received `DSH_X_PLAN_ACP_CLOSED`. No Plan runtime or tests were changed by this migration.
-- `npm pack --dry-run` includes the built host entry, declarations, client bundle, patch and documentation, without source/test files. `git diff --check` passes. No live Desktop/provider validation was repeated for this source migration.
+- Host and client sources and package tests use the shared strict TypeScript configuration. `pnpm run typecheck` and `pnpm run build` pass.
+- Browser unit and integration tests cover the broker, ownership, runtime, grant/approval, takeover and synthetic guest paths.
+- Root tests load the built `lib/` entries and check the three-package artifacts, peer ranges and the generated market index.
+- No Electron UI, packaged application, provider login, real model call or paid market-data request is claimed.
 
-## Completed TypeScript migration — 2026-10-18
-
-- All seven workspace packages use the shared TypeScript builder. Strict type checking includes source and package tests; the temporary Code `allowJs` bridge is removed. Host entries load from `lib/index.js`, with declarations and lazy client factories included in package checks.
-- `pnpm run typecheck` and `pnpm run build` pass. Full regression (`TMPDIR=/private/tmp pnpm test`, with local loopback listeners allowed): **762 tests, 760 passed, 0 failed, 2 skipped**. Skips are the unavailable upstream ApprovalPanel source fixture and a platform-specific non-macOS CLI check.
-- Plan's ACP input-closure fixture now reads its handshake synchronously before closing fd 0, preserving open stdout and the exact `EPIPE` assertion. Closing a descriptor behind an active Node stdin stream could terminate the fixture before the host write. The test passes within the complete regression.
-- Stock's compiled Workbench fixture intercepts the migrated `.tsx` chart module; its twelve cases pass with the intended chart seam. Numeric indicator and dataset validation behavior is retained.
-- Package dry runs verify built entries, declarations, client bundles, chart license notices and Agents protocol notes; TypeScript source/tests are excluded from delivery. `git diff --check` is clean.
-
-No provider authentication, real model calls, Electron UI, or paid/network market-data calls are claimed by these synthetic tests.
+See the repository's current test run for counts; historical suite-era numbers are intentionally not repeated here.

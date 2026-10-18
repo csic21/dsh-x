@@ -29,12 +29,5 @@ export interface ParsedReview {
     findings: Finding[];
     checks: ReviewCheck[];
 }
-/** The stored review fields a repair prompt reads. */
-export interface RepairReview {
-    id: string;
-    snapshotId: string;
-    findings: Finding[];
-}
 export declare function reviewPrompt(snapshot: CapturedSnapshot): string;
 export declare function parseReview(raw: unknown, snapshot: CapturedSnapshot): ParsedReview;
-export declare function repairPrompt(review: RepairReview, ids: string[]): string;

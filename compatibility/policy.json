@@ -24,14 +24,9 @@
   "prereleases": "explicit-opt-in",
   "admission": "exact-engines-and-human-qualification",
   "pluginDirectories": [
-    "packages/dsh-x-stock",
-    "packages/dsh-x-chat",
-    "packages/dsh-x-plan",
-    "packages/dsh-x-agents",
     "packages/dsh-x-code",
-    "packages/dsh-x-browser",
-    "packages/dsh-x-update",
-    "packages/dsh-x-suite"
+    "packages/dsh-x-stock",
+    "packages/dsh-x-browser"
   ],
   "packageManager": {
     "name": "pnpm",

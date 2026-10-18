@@ -1,5 +1,5 @@
 import type { CodeFile, CodeSnapshot, CodeReview, FileTreeDirectory } from './model.ts'
-import type { CodeState, FileTarget, AgentsView } from './controller.ts'
+import type { CodeState, FileTarget } from './controller.ts'
 import type { Finding } from '../review.ts'
 import type { Translate, CodeFocus } from './CodeViewer.tsx'
 export interface EntryProps { open: () => void, t: Translate }
@@ -7,16 +7,13 @@ export interface PanelProps { renderSlot(name: string, props: Record<string, unk
 interface NavigatorProps { files: CodeFile[], path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, snapshot: CodeSnapshot, reviewed: boolean }
 interface FileRowProps { file: CodeFile, path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, reviewed: boolean, depth: number }
 interface BranchProps extends Omit<FileRowProps, 'file'> { node: FileTreeDirectory }
-interface FindingProps { finding: Finding, selected: boolean, toggle: () => void, jump: () => void, disabled: boolean, t: Translate }
-interface FindingsProps { review: CodeReview | null | undefined, history: CodeSnapshot['history'], historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, selected: string[], toggle: (id: string) => void, jump: (finding: Finding) => void, fix: () => void, rereview: () => void, enabled: boolean, repairAvailable: boolean, t: Translate, formatTime: (value: string) => string }
-type SetupKind = 'review' | 'repair' | 'rereview'
-interface Selection { runtime: string, model: string }
-interface SetupProps { kind: SetupKind, agents: AgentsView | null, snapshot: CodeSnapshot, count: number, limits: CodeSnapshot['limits'], prepare: (selection: Selection) => void, inspect: () => void, models: (runtime: string) => void, close: () => void, t: Translate, enabled: boolean }
+interface FindingProps { finding: Finding, jump: () => void, t: Translate }
+interface FindingsProps { review: CodeReview | null | undefined, history: CodeSnapshot['history'], historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, jump: (finding: Finding) => void, rereview: () => void, enabled: boolean, canRereview: boolean, t: Translate, formatTime: (value: string) => string }
 export interface WorkspaceProps { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
 export interface ToolRowProps extends EntryProps { phase: string, block?: { isError?: boolean, meta?: { kind?: string, version?: number, review?: CodeReview } } }
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { CodeViewer, Tabs } from './CodeViewer.tsx'
-import { activeReview, basename, canPrepare, fileTree, insertRequest, isChanged, isComplete, prepareModels, repairRequest, reviewCanFix, reviewRequest, SEVERITIES, shortHash } from './model.ts'
+import { activeReview, basename, fileTree, insertRequest, isChanged, isComplete, reviewRequest, SEVERITIES, shortHash } from './model.ts'
 import { en, messageKey } from './locales.ts'
 
 export function CodeIcon() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18" strokeLinecap="round" strokeLinejoin="round" /></svg> }
@@ -66,9 +63,9 @@ function FileNavigator({ files, path, selected, select, open, t, limit, snapshot
   </aside>
 }
 
-function FindingCard({ finding, selected, toggle, jump, disabled, t }: FindingProps) {
+function FindingCard({ finding, jump, t }: FindingProps) {
   return <article className="dxc-finding" data-severity={finding.severity}>
-    <div className="dxc-finding-top"><label><input type="checkbox" checked={selected} disabled={disabled} onChange={toggle} aria-label={t('selectFinding', { title: finding.title })} /><span className={`dxc-severity dxc-severity-${finding.severity}`}>{t(`severity.${finding.severity}`)}</span></label><span className="dxc-finding-id">{finding.id.slice(0, 7)}</span></div>
+    <div className="dxc-finding-top"><span className={`dxc-severity dxc-severity-${finding.severity}`}>{t(`severity.${finding.severity}`)}</span><span className="dxc-finding-id">{finding.id.slice(0, 7)}</span></div>
     <button type="button" className="dxc-finding-title" onClick={jump}>{finding.title}</button>
     <button type="button" className="dxc-location" title={finding.path} aria-label={t('findingLocation', { path: finding.path, line: finding.startLine })} onClick={jump}>{basename(finding.path)}<span>:{finding.startLine}{finding.endLine !== finding.startLine ? `–${finding.endLine}` : ''}</span></button>
     <p className="dxc-finding-body">{finding.body}</p>
@@ -76,47 +73,26 @@ function FindingCard({ finding, selected, toggle, jump, disabled, t }: FindingPr
   </article>
 }
 
-function Findings({ review, history, historyId, inspectHistory, historyStatus, selected, toggle, jump, fix, rereview, enabled, repairAvailable, t, formatTime }: FindingsProps) {
+function Findings({ review, history, historyId, inspectHistory, historyStatus, jump, rereview, enabled, canRereview, t, formatTime }: FindingsProps) {
   const [severity, setSeverity] = useState('all')
   const filtered = review?.findings.filter(finding => severity === 'all' || finding.severity === severity) ?? []
-  const complete = isComplete(review), repairComplete = review?.repair?.state === 'completed'
+  const complete = isComplete(review)
   return <aside className="dxc-findings" aria-label={t('findings')}>
     <div className="dxc-section-title"><strong>{t('findings')}</strong>{review && <span>{review.findings.length}</span>}</div>
     {!review && historyId ? <div className="dxc-state" role={historyStatus === 'failed' ? 'alert' : 'status'}><p>{t(historyStatus === 'failed' ? 'historyFailed' : 'historyLoading')}</p>{historyStatus === 'failed' && <button type="button" onClick={() => inspectHistory(historyId)}>{t('retry')}</button>}</div> : !review ? <div className="dxc-empty dxc-findings-empty"><span aria-hidden="true">◎</span><strong>{t('noReview')}</strong><p>{t('noReviewHint')}</p></div> : <>
       <div className="dxc-review-summary"><div className="dxc-review-state" role="status"><span className={`dxc-state-dot dxc-review-${review.state}`} /><strong>{t(Object.hasOwn(en, `state.${review.state}`) ? `state.${review.state}` : 'incomplete')}</strong></div><div className="dxc-muted">{t('coverage', { count: review.paths?.length ?? 0 })} · {shortHash(review.snapshotId)}</div>{review.createdAt && <time className="dxc-muted">{formatTime(review.createdAt)}</time>}
         {review.summary && <details><summary>{t('summary')}</summary><p>{review.summary}</p></details>}
       </div>
-      {review.mode !== 'worktree' && complete && <div className="dxc-notice"><p>{t('worktreeFirst')}</p></div>}
       {review.stale && <div className="dxc-notice dxc-warning"><strong>{t('stale')}</strong><p>{t('staleHint')}</p></div>}
-      {review.repair && !['running', 'completed'].includes(review.repair.state) && <div className="dxc-notice dxc-warning" role="status"><strong>{t('repairAttempt')} · {t(Object.hasOwn(en, `state.${review.repair.state}`) ? `state.${review.repair.state}` : 'incomplete')}</strong>{review.repair.reason && <details><summary>{t('details')}</summary><p>{review.repair.reason}</p></details>}</div>}
-      {repairComplete && <div className="dxc-notice"><strong>{t('needsReview')}</strong><p>{t('repairComplete')}</p></div>}
       {!complete && !activeReview(review) && <div className="dxc-notice dxc-warning"><strong>{t('incomplete')}</strong><p>{t('incompleteHint')}</p>{review.reason && <details><summary>{t('details')}</summary><p>{review.reason}</p></details>}</div>}
       {review.findings.length > 0 && <select className="dxc-severity-filter" value={severity} aria-label={t('allFindings')} onChange={event => setSeverity(event.target.value)}><option value="all">{t('allFindings')}</option>{SEVERITIES.map(item => <option key={item} value={item}>{t(`severity.${item}`)} ({review.findings.filter(finding => finding.severity === item).length})</option>)}</select>}
-      <div className="dxc-findings-list">{filtered.map(finding => <FindingCard key={finding.id} finding={finding} selected={selected.includes(finding.id)} toggle={() => toggle(finding.id)} jump={() => jump(finding)} disabled={!enabled || !reviewCanFix(review)} t={t} />)}{complete && review.findings.length === 0 && <p className="dxc-no-findings">{t('noFindings')}</p>}</div>
+      <div className="dxc-findings-list">{filtered.map(finding => <FindingCard key={finding.id} finding={finding} jump={() => jump(finding)} t={t} />)}{complete && review.findings.length === 0 && <p className="dxc-no-findings">{t('noFindings')}</p>}</div>
       <section className="dxc-checks"><div className="dxc-section-title"><strong>{t('checks')}</strong></div>{review.checks?.length ? <ul>{review.checks.map((check, at) => <li key={at}><span>{check.name ?? check.command ?? t('checks')}</span><span className={check.status === 'failed' ? 'dxc-warning' : 'dxc-muted'}>{t(check.status === 'passed' && check.verified !== true ? 'check.unknown' : Object.hasOwn(en, `check.${check.status}`) ? `check.${check.status}` : 'check.unknown')}</span>{check.evidence && <details><summary>{t('evidence')}</summary><pre>{check.evidence}</pre></details>}</li>)}</ul> : <p className="dxc-muted">{t('noChecks')}</p>}</section>
-      <div className="dxc-findings-actions">{review.findings.length > 0 && !repairAvailable && !historyId && <p className="dxc-muted">{t('agentsMissing')}</p>}{review.findings.length > 0 && !repairComplete && <button type="button" className="dxc-primary" disabled={!enabled || !repairAvailable || !reviewCanFix(review) || !selected.length} onClick={fix}>{t('fix', { count: selected.length })}</button>}{complete && <button type="button" disabled={!enabled} onClick={rereview}>{t('rereview')}</button>}</div>
+      <div className="dxc-findings-actions">{complete && <button type="button" disabled={!enabled || !canRereview} onClick={rereview}>{t('rereview')}</button>}</div>
+      {!canRereview && complete && <p className="dxc-muted">{t('worktreeFirst')}</p>}
     </>}
     {history?.length > 0 && <details className="dxc-history"><summary>{t('history')} ({history.length})</summary><ol>{[...history].reverse().map(item => <li key={item.id}><button type="button" className="dxc-history-item" aria-pressed={historyId === item.id} onClick={() => inspectHistory(item.id)}><time>{formatTime(item.createdAt)}</time><span>{t('openFindings', { count: item.findings })} · {shortHash(item.snapshotId)}</span></button></li>)}</ol></details>}
   </aside>
-}
-
-function Setup({ kind, agents, snapshot, count, limits, prepare, inspect, models, close, t, enabled }: SetupProps) {
-  const native = agents?.catalog.filter(agent => canPrepare(agent) && (kind === 'repair' || agent.id !== 'opencode' && snapshot.nativeReviewAvailable !== false)) ?? []
-  const candidates = kind !== 'repair' && snapshot.dshAvailable ? [{ id: 'dsh', label: t('dshReviewer'), models: [] }, ...native] : native
-  const [runtime, setRuntime] = useState(candidates[0]?.id ?? ''), [model, setModel] = useState('')
-  const selected = candidates.find(agent => agent.id === runtime)
-  const first = useRef<HTMLSelectElement | HTMLButtonElement | null>(null)
-  useEffect(() => first.current?.focus(), [])
-  useEffect(() => { if (!runtime && candidates.length) setRuntime(candidates[0].id) }, [runtime, candidates.map(item => item.id).join(',')])
-  const validModel = !model || selected?.models.some(item => item.id === model)
-  const canSubmit = enabled && (runtime === 'dsh' || !agents?.task || agents.task.allowedActions.includes('request-start'))
-  return <section className="dxc-setup" aria-label={t(kind === 'repair' ? 'repairSetup' : kind === 'rereview' ? 'rereviewSetup' : 'reviewSetup')}>
-    <header><strong>{t(kind === 'repair' ? 'repairSetup' : kind === 'rereview' ? 'rereviewSetup' : 'reviewSetup')}</strong><button type="button" aria-label={t('close')} onClick={close}>×</button></header>
-    {candidates.length ? <><div className="dxc-setup-fields"><label>{t(kind === 'repair' ? 'agent' : 'reviewer')}<select ref={node => { first.current = node }} value={runtime} onChange={event => { setRuntime(event.target.value); setModel('') }}><option value="" disabled>{t('chooseAgent')}</option>{candidates.map(agent => <option key={agent.id} value={agent.id}>{agent.label}</option>)}</select></label><label>{t('model')}{runtime === 'dsh' ? <span className="dxc-session-model">{snapshot.dshModel?.model ?? t('sessionModel')}</span> : <select value={model} onChange={event => setModel(event.target.value)}><option value="">{t('nativeDefault')}</option>{selected?.models.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select>}</label></div>{runtime !== 'dsh' && <div className="dxc-setup-meta"><span>{t(Object.hasOwn(en, `catalog.${selected?.modelCatalog?.status}`) ? `catalog.${selected?.modelCatalog?.status}` : 'catalog.not-loaded')}</span><button type="button" onClick={() => models(runtime)} disabled={!enabled}>{t('models')}</button></div>}</> : <p>{t(kind === 'repair' ? !snapshot.agentsAvailable ? 'agentsMissing' : 'noAgent' : 'reviewerMissing')}</p>}
-    <div className="dxc-setup-footer"><span className="dxc-muted">{kind === 'repair' ? t('openFindings', { count }) : t('selection', { count })}</span>{candidates.length ? <button type="button" className="dxc-primary" disabled={!canSubmit || !selected || !validModel || !count} onClick={() => prepare({ runtime, model })}>{t('prepare')}</button> : snapshot.agentsAvailable && (kind === 'repair' || snapshot.nativeReviewAvailable !== false) ? <button type="button" ref={node => { first.current = node }} onClick={inspect}>{t('agentSetup')}</button> : null}</div>
-    {kind !== 'repair' && selected && <p className={runtime === 'dsh' ? 'dxc-muted' : 'dxc-warning'}>{t(runtime === 'dsh' ? 'snapshotBoundary' : 'nativeBoundary')}</p>}
-    <p className="dxc-muted">{t('prepareHint')}</p>{kind !== 'repair' && <p className="dxc-muted">{t('reviewBudget', { count: limits.maxSelectedFiles ?? 20, bytes: limits.maxReviewBytes ?? 8000 })}</p>}
-  </section>
 }
 
 export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, cancel, back, t, formatTime }: WorkspaceProps) {
@@ -128,11 +104,11 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
     observer.observe(page.current)
     return () => observer.disconnect()
   }, [])
-  const [path, setPath] = useState<string | null>(null), [selected, setSelected] = useState<string[]>([]), [issues, setIssues] = useState<string[]>([])
-  const [context, setContext] = useState('current'), [pane, setPane] = useState('files'), [setup, setSetup] = useState<SetupKind | null>(null), [notice, setNotice] = useState<string | null>(null), [focus, setFocus] = useState<CodeFocus | null>(null)
+  const [path, setPath] = useState<string | null>(null), [selected, setSelected] = useState<string[]>([])
+  const [context, setContext] = useState('current'), [pane, setPane] = useState('files'), [notice, setNotice] = useState<string | null>(null), [focus, setFocus] = useState<CodeFocus | null>(null)
   const [base, setBase] = useState(snapshot?.workspace.baseRef ?? 'main'), [mode, setMode] = useState<string>(snapshot?.workspace.mode ?? 'worktree')
-  const scrollPositions = useRef(new Map<string, { top: number, left: number }>()), previousWorkspace = useRef<string | null>(null), previousReview = useRef<string | undefined>(undefined), rereviewId = useRef<string | null>(null), setupReviewId = useRef<string | null>(null)
-  const live = state.status === 'live', historyId = state.historyId, review = historyId ? state.inspectedReview : snapshot?.review, agents = state.agents
+  const scrollPositions = useRef(new Map<string, { top: number, left: number }>()), previousWorkspace = useRef<string | null>(null), previousReview = useRef<string | undefined>(undefined), rereviewId = useRef<string | null>(null)
+  const live = state.status === 'live', historyId = state.historyId, review = historyId ? state.inspectedReview : snapshot?.review
   const maxFiles = snapshot?.limits.maxSelectedFiles ?? 20
   const files = context === 'review' && review && snapshot ? snapshot.files.filter(file => review.paths.includes(file.path)).concat(review.paths.filter(item => !snapshot.files.some(file => file.path === item)).map(path => ({ path, status: 'modified', changed: true, selectable: false }))) : snapshot?.files ?? []
   const currentFile = files.find(file => file.path === path)
@@ -141,10 +117,10 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
   const fileKey = request ? JSON.stringify(request) : null
   const fileMatches = fileKey && state.fileKey === fileKey
   const identity = `${snapshot?.scope}:${context === 'review' ? review?.snapshotId : snapshot?.workspace.id}:${effectivePath}`
-  const reviewAvailable = Boolean(snapshot?.dshAvailable || snapshot?.agentsAvailable && snapshot?.nativeReviewAvailable !== false)
+  const reviewAvailable = Boolean(snapshot?.dshAvailable)
   const operation = snapshot?.operation
   const canStop = Boolean(operation?.id)
-  const running = Boolean(operation) || activeReview(snapshot?.review) || snapshot?.review?.repair?.state === 'running'
+  const running = Boolean(operation) || activeReview(snapshot?.review)
   useEffect(() => {
     if (!request) { clearFile(); return }
     loadFile(request)
@@ -158,35 +134,33 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
       setNotice(null)
     }
     previousWorkspace.current = snapshot.workspace.id
-    if (previousReview.current !== review?.id) { setIssues([]); setFocus(null); previousReview.current = review?.id }
-    if (setup && setup !== 'review' && setupReviewId.current && snapshot.review?.id !== setupReviewId.current) { setSetup(null); setNotice('selectionChanged') }
+    if (previousReview.current !== review?.id) { setFocus(null); previousReview.current = review?.id }
   }, [snapshot?.workspace.id, review?.id])
   const changeScope = (value: string, baseValue = base) => {
-    setMode(value); setPath(null); setSelected([]); setFocus(null); setContext('current'); setSetup(null); setNotice(null); clearFile()
+    setMode(value); setPath(null); setSelected([]); setFocus(null); setContext('current'); setNotice(null); clearFile()
     loadReview(null); selectTarget(value, value === 'range' ? baseValue : undefined)
   }
-  const inspectHistory = (id: string) => { setContext('review'); setPath(null); setFocus(null); setIssues([]); setSetup(null); setPane('findings'); clearFile(); loadReview(id) }
-  const latest = () => { setPath(null); setFocus(null); setIssues([]); loadReview(null) }
+  const inspectHistory = (id: string) => { setContext('review'); setPath(null); setFocus(null); setPane('findings'); clearFile(); loadReview(id) }
+  const latest = () => { setPath(null); setFocus(null); loadReview(null) }
   const openFile = (next: string) => { setPath(next); setPane('code'); setFocus(null) }
   const put = (text: string) => {
     try {
       if (!insertRequest(inputActions, text)) { setNotice('draftChanged'); return }
-      setSetup(null); setNotice(null); back()
+      setNotice(null); back()
     } catch { setNotice('insertionUnconfirmed') }
   }
-  const prepare = ({ runtime, model }: Selection) => {
+  const prepare = (kind: 'review' | 'rereview') => {
     try {
-      if (runtime === 'dsh') model = ''
-      const args = setup === 'repair' ? repairRequest(snapshot, { findingIds: issues, runtime, model }) : reviewRequest(snapshot, { paths: setup === 'rereview' ? review!.paths : selected, runtime, model, ...(setup === 'rereview' ? { previousReviewId: rereviewId.current ?? review!.id } : {}) })
-      put(`${t(setup === 'repair' ? 'repairRequest' : 'reviewRequest')}\n${JSON.stringify(args, null, 2)}`)
+      if (!snapshot) throw new Error('unavailable')
+      if (kind === 'rereview' && (review?.mode !== 'worktree' || snapshot.workspace.mode !== 'worktree')) throw new Error('worktreeFirst')
+      const paths = kind === 'rereview' ? review!.paths : selected
+      const args = reviewRequest(snapshot, { paths, ...(kind === 'rereview' ? { previousReviewId: rereviewId.current ?? review!.id } : {}) })
+      put(`${t('reviewRequest')}\n${JSON.stringify(args, null, 2)}`)
     } catch (error) { setNotice(error instanceof Error && Object.hasOwn(en, error.message) ? error.message : 'unavailable') }
   }
-  const beginReview = (kind: SetupKind) => {
-    setupReviewId.current = kind === 'review' ? null : review!.id
-    if (kind === 'rereview') {
-      rereviewId.current = review!.id; setContext('current'); setMode('worktree'); setSelected([...review!.paths]); setSetup('rereview'); setFocus(null)
-      selectTarget('worktree')
-    } else setSetup(kind)
+  const beginReview = (kind: 'review' | 'rereview') => {
+    if (kind === 'rereview') { rereviewId.current = review!.id; setContext('current'); setSelected([...review!.paths]); setFocus(null) }
+    prepare(kind)
   }
   const toggleFile = (next: string | null) => {
     if (next === null) { setSelected([]); return }
@@ -205,14 +179,13 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
     {historyId && <div className="dxc-banner dxc-history-banner"><span>{t('viewingHistory')} · {shortHash(review?.snapshotId)}</span><button type="button" onClick={latest}>{t('latestReview')}</button></div>}
     {!live && snapshot && <p className="dxc-banner dxc-warning" role="alert">{t('disconnected')}</p>}
     {notice && <p className="dxc-banner dxc-warning" role="alert">{t(notice, { count: maxFiles })}<button type="button" aria-label={t('close')} onClick={() => setNotice(null)}>×</button></p>}
-    {running && <div className="dxc-banner dxc-running" role="status"><span className="dxc-state-dot" /><span>{t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : review?.repair?.state === 'running' ? 'state.repairing' : 'state.running')}</span><button type="button" onClick={back}>{t('openConversation')}</button>{canStop && <button type="button" disabled={!live || state.pending || operation?.state === 'cancelling'} onClick={async () => { const result = await cancel(); if (!result.ok) setNotice('cancelUnconfirmed') }}>{t(state.pending || operation?.state === 'cancelling' ? 'stopping' : 'stop')}</button>}</div>}
+    {running && <div className="dxc-banner dxc-running" role="status"><span className="dxc-state-dot" /><span>{t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : 'state.running')}</span><button type="button" onClick={back}>{t('openConversation')}</button>{canStop && <button type="button" disabled={!live || state.pending || operation?.state === 'cancelling'} onClick={async () => { const result = await cancel(); if (!result.ok) setNotice('cancelUnconfirmed') }}>{t(state.pending || operation?.state === 'cancelling' ? 'stopping' : 'stop')}</button>}</div>}
     {snapshot && !reviewAvailable && <p className="dxc-banner">{t('reviewerMissing')}</p>}
-    {setup && snapshot && <Setup key={setup} kind={setup} agents={agents} snapshot={snapshot} count={setup === 'repair' ? issues.length : selected.length} limits={snapshot.limits} prepare={prepare} close={() => setSetup(null)} inspect={() => put(t('inspectRequest'))} models={runtime => { try { put(`${t('modelsRequest')}\n${JSON.stringify(prepareModels(agents, runtime), null, 2)}`) } catch { setNotice('unavailable') } }} t={t} enabled={live && !running && !agents?.operation} />}
     {!snapshot ? <div className="dxc-empty" role={state.status === 'failed' ? 'alert' : 'status'}><CodeIcon /><p>{t(state.status === 'failed' ? messageKey(state.error?.code) : 'loading')}</p>{state.status === 'failed' && <button type="button" onClick={refresh}>{t('retry')}</button>}</div> : <>
       <Tabs className="dxc-mobile-tabs" label={t('title')} value={layout === 'medium' && pane === 'code' ? 'files' : pane} onChange={setPane} items={[{ value: 'files', label: t('files') }, ...(layout === 'medium' ? [] : [{ value: 'code', label: t('code') }]), { value: 'findings', label: `${t('findings')}${review?.findings.length ? ` · ${review.findings.length}` : ''}` }]} />
       <div className="dxc-workbench"><FileNavigator files={files} path={effectivePath} selected={selected} select={toggleFile} open={openFile} t={t} limit={maxFiles} snapshot={snapshot} reviewed={context === 'review'} />
         <CodeViewer file={fileMatches ? state.file : null} status={fileMatches ? state.fileStatus : effectivePath ? 'loading' : 'idle'} error={fileMatches ? state.fileError : null} path={effectivePath} identity={identity} mode={snapshot.workspace.mode} context={context} focus={focus} retry={() => { clearFile(); if (request) loadFile(request) }} scrollPositions={scrollPositions} t={t} />
-        <Findings review={review} history={snapshot.history} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} selected={issues} toggle={id => setIssues(value => value.includes(id) ? value.filter(item => item !== id) : [...value, id])} jump={jump} fix={() => beginReview('repair')} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} repairAvailable={snapshot.agentsAvailable} t={t} formatTime={formatTime} />
+        <Findings review={review} history={snapshot.history} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} />
       </div>
     </>}
   </main>

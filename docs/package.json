@@ -6,7 +6,9 @@
   "homepage": "https://csic21.github.io/dsh-x/",
   "scripts": {
     "dev": "vitepress dev",
+    "predev": "node ../scripts/generate-market-index.mjs --output docs/public/market-index.json",
     "build": "vitepress build",
+    "prebuild": "node ../scripts/generate-market-index.mjs --output docs/public/market-index.json",
     "preview": "vitepress preview"
   },
   "devDependencies": {
