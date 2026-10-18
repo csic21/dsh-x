@@ -17,6 +17,9 @@ await mkdir(output, { recursive: false })
 const temporary = await mkdtemp(path.join(tmpdir(), 'dsh-plugin-release-'))
 const names = [...components, 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser']
 const artifacts = []
+// Git Bash's GNU tar treats D:\\ paths as remote hosts. Windows' bundled
+// bsdtar accepts native drive paths and supports the same extraction flags.
+const tar = process.platform === 'win32' ? path.join(process.env.SystemRoot, 'System32', 'tar.exe') : 'tar'
 function run(command, args, cwd = root) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', env: { ...process.env, npm_config_cache: path.join(temporary, 'cache') } })
   if (result.error || result.status !== 0) throw new Error(result.error?.message ?? result.stderr ?? `${command} failed`)
@@ -50,14 +53,14 @@ try {
   const stage = path.join(temporary, 'suite')
   await mkdir(stage)
   const original = pack(path.join(root, 'packages', suiteName))
-  run('tar', ['-xzf', path.join(output, original.filename), '--strip-components=1', '-C', stage])
+  run(tar, ['-xzf', path.join(output, original.filename), '--strip-components=1', '-C', stage])
   const manifest = readJson(path.join(stage, 'package.json'))
   manifest.bundledDependencies = [...components]
   for (const name of components) {
     const target = path.join(stage, 'node_modules', name)
     await mkdir(target, { recursive: true })
     const component = artifacts.find(item => item.name === name)
-    run('tar', ['-xzf', path.join(output, component.file), '--strip-components=1', '-C', target])
+    run(tar, ['-xzf', path.join(output, component.file), '--strip-components=1', '-C', target])
     const dependency = readJson(path.join(target, 'package.json'))
     for (const [key, version] of Object.entries(dependency.dependencies ?? {})) {
       if (manifest.dependencies[key] && manifest.dependencies[key] !== version) throw new Error(`Conflicting dependency ${key}`)
