@@ -15,12 +15,8 @@ export const en = {
   'severity.critical': 'Critical', 'severity.high': 'High', 'severity.medium': 'Medium', 'severity.low': 'Low', 'severity.info': 'Info',
   fix: 'Fix selected ({count})', rereview: 'Re-review', needsReview: 'Needs re-review', repairComplete: 'The fix run ended. Review the updated worktree.', stale: 'Files changed since this review.', staleHint: 'These findings refer to the captured snapshot. Start a fresh review before fixing.', stop: 'Stop', stopping: 'Stopping…', cancelUnconfirmed: 'The stop result is unconfirmed. Check the native task before retrying.', openConversation: 'Open conversation', continueTask: 'Prepare continuation', continuePrompt: 'Continue this Code operation from its current state. Do not treat prior incomplete checks as passing. Keep its snapshot binding and return the required structured result.',
   'state.running': 'Reviewing', 'state.reviewing': 'Reviewing', 'state.repairing': 'Fixing', 'state.pending': 'Preparing', 'state.waiting_permission': 'Awaiting permission', 'state.waiting_input': 'Awaiting your answer', 'state.completed': 'Review complete', 'state.complete': 'Review complete', 'state.cancelled': 'Stopped', 'state.failed': 'Failed', 'state.blocked': 'Blocked', 'state.interrupted': 'Interrupted', 'state.idle': 'Ready', 'state.incomplete': 'Incomplete', 'state.invalid': 'Incomplete',
-  history: 'Review history', summary: 'Summary', coverage: 'Files in scope: {count}', reviewBudget: 'Up to {count} files; {bytes} bytes of source per review.', reviewedOnly: 'Only captured files are available in this snapshot.', currentSelection: 'Current file', oldSide: 'Old lines', newSide: 'New lines', noSelectedIssues: 'Select findings to prepare a fix.',
+  history: 'Review history', summary: 'Summary', coverage: 'Files in scope: {count}', reviewBudget: 'Up to {count} files; {bytes} bytes of source per review.', reviewedOnly: 'Only captured files are available in this snapshot.', currentSelection: 'Current file', oldSide: 'Old lines', newSide: 'New lines',
   reviewRequest: 'Please call dsh_x_code_review with these exact arguments. Use the official approval flow and return a complete structured review:',
-  repairRequest: 'Please call dsh_x_code_repair with these exact arguments. Fix only the selected findings, retain native permission checks, and report verification honestly:',
-  inspectRequest: 'Please call dsh_x_agents_inspect with {} to check the configured Agents. Do not install software or change authentication.',
-  modelsRequest: 'Please call dsh_x_agents_models with these exact arguments using the official approval flow:',
-  continueRequest: 'Please call dsh_x_agents_run with these exact arguments using the official approval flow:',
   historical: 'Recorded result', viewWorkbench: 'Open Code', toolRunning: 'Code operation in progress', toolFailed: 'Code operation did not complete', toolUnknown: 'This record has no supported structured result.',
 }
 export const zh = {
@@ -39,12 +35,8 @@ export const zh = {
   'severity.critical': '严重', 'severity.high': '高', 'severity.medium': '中', 'severity.low': '低', 'severity.info': '提示',
   fix: '修复所选问题（{count}）', rereview: '复审', needsReview: '需要复审', repairComplete: '修复本轮已结束，请审查更新后的工作区。', stale: '文件在审查后发生了变化。', staleHint: '这些问题仍对应已保存的快照。请先重新审查，再进行修复。', stop: '停止', stopping: '正在停止…', cancelUnconfirmed: '暂未确认停止结果，请检查原生任务后再操作。', openConversation: '打开对话', continueTask: '准备继续', continuePrompt: '从当前状态继续此 Code 操作。不要把未完成的验证当作通过。保留快照绑定，并返回要求的结构化结果。',
   'state.running': '正在审查', 'state.reviewing': '正在审查', 'state.repairing': '正在修复', 'state.pending': '正在准备', 'state.waiting_permission': '等待授权', 'state.waiting_input': '等待你回答', 'state.completed': '审查完成', 'state.complete': '审查完成', 'state.cancelled': '已停止', 'state.failed': '失败', 'state.blocked': '受阻', 'state.interrupted': '已中断', 'state.idle': '就绪', 'state.incomplete': '未完成', 'state.invalid': '未完成',
-  history: '审查历史', summary: '摘要', coverage: '范围内文件：{count}', reviewBudget: '最多 {count} 个文件，源码共 {bytes} 字节。', reviewedOnly: '此快照仅包含已捕获的文件。', currentSelection: '当前文件', oldSide: '旧行号', newSide: '新行号', noSelectedIssues: '选择问题后即可准备修复。',
+  history: '审查历史', summary: '摘要', coverage: '范围内文件：{count}', reviewBudget: '最多 {count} 个文件，源码共 {bytes} 字节。', reviewedOnly: '此快照仅包含已捕获的文件。', currentSelection: '当前文件', oldSide: '旧行号', newSide: '新行号',
   reviewRequest: '请使用以下精确参数调用 dsh_x_code_review，保留官方授权流程，并返回完整的结构化审查结果：',
-  repairRequest: '请使用以下精确参数调用 dsh_x_code_repair，仅修复所选问题，保留原生授权检查，并如实报告验证结果：',
-  inspectRequest: '请使用 {} 调用 dsh_x_agents_inspect 检查已配置的 Agent，不要安装软件或更改认证设置。',
-  modelsRequest: '请使用以下精确参数调用 dsh_x_agents_models，并保留官方授权流程：',
-  continueRequest: '请使用以下精确参数调用 dsh_x_agents_run，并保留官方授权流程：',
   historical: '已记录的结果', viewWorkbench: '打开 Code', toolRunning: 'Code 操作进行中', toolFailed: 'Code 操作未完成', toolUnknown: '此记录没有受支持的结构化结果。',
 }
 

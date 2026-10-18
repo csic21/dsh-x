@@ -10,9 +10,12 @@ export function createCodeController({ store, spawn, contextOf, reviewerInfo = (
     const repository = createRepository(spawn), running = new Map(), host = randomUUID();
     let disposed = false;
     const publicReview = (review) => { if (!review)
-        return null; const { snapshot, hostId, request, ...value } = structuredClone(review); if (active.has(value.state) && hostId !== host) {
+        return null; const cloned = structuredClone(review); const { snapshot, hostId, request, repair: _repair, nativeTask: _nativeTask, ...value } = cloned; if (active.has(value.state) && hostId !== host) {
         value.state = 'interrupted';
         value.reason = 'Previous host execution ended without a verified result. No automatic replay.';
+    } if (value.state === 'repairing') {
+        value.state = 'interrupted';
+        value.reason = 'Native repair was retired. Review the current source again.';
     } return value; };
     const inventory = async (id, options = {}, exec) => { const context = await contextOf(id, exec); return repository.inventory({ ...context, mode: options.mode ?? 'worktree', base: options.base, signal: exec?.signal ?? options.signal }); };
     async function freshness(id, review, exec, signal) {

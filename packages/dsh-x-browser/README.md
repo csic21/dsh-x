@@ -9,7 +9,7 @@ This package is **opt-in and never installed by default**; install it explicitly
 - Adds its own **AI Browser** tab type to the official right sidebar, keeping the conversation on the left. The official sidebar supplies multiple tabs, close controls, docking and narrow-window behavior.
 - Acquires an official `dshDesktop.browser` reservation and creates one actual Electron `webview` per plugin tab, with the exact issued lease and partition. It never takes over the built-in browser's private tabs.
 - Keeps manual browsing independent of model control. The web application shows an explicit unsupported message; there is no iframe, external-browser or headless screenshot substitute.
-- Provides `dsh_x_browser_tabs` and `dsh_x_browser_action` through the official DSH ToolRuntime. An explicitly configured isolated OpenCode bridge can delegate those same tools under its approved live parent execution. Real OpenCode/provider validation remains pending; Codex, Claude and Grok browser bridges are not enabled.
+- Provides `dsh_x_browser_tabs` and `dsh_x_browser_action` through the official DSH ToolRuntime. No native Codex, Claude, Grok or OpenCode browser bridge ships in this repository; an external bridge would have to call the same host tools under the same approvals.
 
 ## Install and use
 
@@ -17,7 +17,7 @@ Build with `pnpm --filter dsh-x-browser run build`, then install this package ex
 
 Open AI Browser from the conversation dock or sidebar guide. Enter an HTTP(S) address. To let the model access the page, choose **Allow AI on this tab**, review the data disclosure and confirm. Page observations enter conversation history and may be sent to the configured model.
 
-The grant is bound to the currently open DSH turn, or exactly the next turn when enabled while idle. An OpenCode delegation additionally claims the grant for its one genuine parent execution; another native run cannot reuse or inspect it. Ending that native run revokes the grant, even after its last browser action has settled. Every non-observation tool action separately requests official approval. **Take over / Stop AI** revokes local command authority immediately; manual interaction is then yours. It stops browser automation rather than cancelling unrelated conversation work. Already-sent website input cannot be undone.
+The grant is bound to the currently open DSH turn, or exactly the next turn when enabled while idle. A nested owner, when present, claims the grant for its one genuine parent execution; another run cannot reuse or inspect it. Ending that run revokes the grant, even after its last browser action has settled. Every non-observation tool action separately requests official approval. **Take over / Stop AI** revokes local command authority immediately; manual interaction is then yours. It stops browser automation rather than cancelling unrelated conversation work. Already-sent website input cannot be undone.
 
 ## Deliberately bounded protocol
 
@@ -41,7 +41,7 @@ The explicit takeover button is reliable; automatic recognition of every native 
 
 Only a synthetic nested-owner path is exercised in tests. No Codex, Claude, Grok or OpenCode bridge ships in this repository; the browser tools remain callable by the main conversation, and renderer capabilities never reach a native model or guest page.
 
-Direct DSH tool calls and registered isolated OpenCode children are supported. Other nested wrappers, including unregistered PTC calls, fail closed; an unknown or previously closed parent never falls back to direct DSH authority.
+Direct DSH tool calls are supported. Other nested wrappers, including unregistered PTC calls, fail closed; an unknown or previously closed parent never falls back to direct DSH authority.
 
 ## Development checks
 
