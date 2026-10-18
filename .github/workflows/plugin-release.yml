@@ -35,7 +35,11 @@ jobs:
           version: ${{ steps.policy.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
-      - run: pnpm test
+      - name: Build and test with bounded execution
+        timeout-minutes: 15
+        run: |
+          pnpm run build
+          node --test --test-timeout=600000 packages/*/test/*.test.ts test/*.test.js
       - name: Package release assets and bundled suite
         env:
           RELEASE_TAG: ${{ github.ref_name }}
