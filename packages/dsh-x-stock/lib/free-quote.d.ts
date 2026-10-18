@@ -14,6 +14,7 @@ export interface FreeQuote {
     quotedAt: string;
     marketStatus: 'unknown';
 }
+export declare function parseTencentTimestamp(raw: unknown, now: number): string;
 export declare function parseTencentLine(payload: unknown, symbol: unknown, now?: number): FreeQuote;
 /**
  * Creates the opt-in adapter expected by `createWatchlistHandler({ provider })`.

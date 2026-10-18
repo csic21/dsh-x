@@ -58,7 +58,7 @@ export function createScopeRoute(readScope) {
         }
     });
 }
-function createRpcRoute(endpoint, handle) {
+export function createRpcRoute(endpoint, handle) {
     return {
         path: `/api/${endpoint}`, methods: ['POST'], requestBody: 'buffered',
         async fetch(request) {

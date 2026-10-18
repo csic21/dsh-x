@@ -8,8 +8,13 @@ export function createFormatters(getLocale: any) {
   const number = (value: any, options: any) => new Intl.NumberFormat(formatLocale(getLocale()), options).format(value)
   return {
     count: (value: any) => number(value, { maximumFractionDigits: 0 }),
+    compact: (value: any) => Number.isFinite(value)
+      ? new Intl.NumberFormat(formatLocale(getLocale()), { notation: 'compact', compactDisplay: 'short', maximumFractionDigits: 2 }).format(value)
+      : '—',
     price: (value: any) => Number.isFinite(value) ? number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—',
     change: (value: any) => Number.isFinite(value) ? number(value / 100, { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' }) : '—',
+    percent: (value: any) => Number.isFinite(value) ? number(value / 100, { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—',
+    signed: (value: any) => Number.isFinite(value) ? number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' }) : '—',
     time(value: any, t: any) {
       const date = value ? new Date(value) : null
       if (!date || !Number.isFinite(date.getTime())) return t('time.missing')

@@ -1,10 +1,11 @@
 import { chartZh, chartEn } from './chart/locales.ts'
 import { workbenchZh, workbenchEn } from './workbench-locales.ts'
+import { marketZh, marketEn } from './market-locales.ts'
 import { quoteZh, quoteEn } from '../quote-messages.ts'
 // Dictionary keys and placeholders are checked in the locale contract tests.
 export const NS = 'dsh-x-stock'
 export const zh = {
-  ...quoteZh, ...chartZh, ...workbenchZh,
+  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh,
   'title': '股票',
   'watchlist': '自选 {count}',
   'watchlist.aria': '固定股票',
@@ -92,7 +93,7 @@ export const zh = {
 }
 /** @type {Record<keyof typeof zh, string>} */
 export const en = {
-  ...quoteEn, ...chartEn, ...workbenchEn,
+  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn,
   'title': 'Stocks',
   'watchlist': 'Watchlist {count}',
   'watchlist.aria': 'Pinned stocks',

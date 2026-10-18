@@ -45,7 +45,7 @@ export function apply(ctx: any) {
   }, 'stock: styles')
   ctx.effect(() => ctx.resources.register(quoteResource(ctx.connection.rpc)), 'stock: quote resources')
   const face = () => ({
-    format, getLocale: () => ctx.locale.getLocale().active,
+    format, rpc: ctx.connection.rpc, getLocale: () => ctx.locale.getLocale().active,
     hooks: { watchlist: controller.source },
     retryScope: () => { void loadScope() },
     add: (pin: any) => { controller.add(pin); controller.select(pin.symbol) },

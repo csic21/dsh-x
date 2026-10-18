@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StockWorkbench } from './workbench.tsx'
+import { MarketView } from './market/MarketView.tsx'
 import { normalizeAShare, MAX_PINS, quoteStatus } from '../watchlist.ts'
 import { addressFor } from './resource.ts'
 import { errorKey } from './locales.ts'
@@ -63,23 +64,39 @@ function Detail({ pin, useResource, t, format, scope, locale }: any) {
     <details className="dxs-section"><summary>{t('detail.analysis')}</summary><p>{t('detail.no-analysis')}</p><p className="dxs-muted">{t('detail.analysis-notice')}</p></details>
   </article>
 }
-export function StockPage({ useWatchlist, useResource, add, remove, move, select, back, retryScope, t, format, getLocale = () => 'en' }: any) {
+export function StockPage({ useWatchlist, useResource, add, remove, move, select, back, retryScope, t, format, getLocale = () => 'en', rpc }: any) {
   const state = useWatchlist((value: any) => value)
   const pin = state.pins.find((item: any) => item.symbol === state.selectedSymbol) ?? state.pins[0]
+  const [view, setView] = useState<'watchlist' | 'market'>('watchlist')
+  const previousSelection = useRef(state.selectedSymbol)
+  useEffect(() => {
+    if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView('watchlist')
+    previousSelection.current = state.selectedSymbol
+  }, [state.selectedSymbol])
   return <main className="dxs dxs-page">
-    <header className="dxs-heading"><div><h1>{t('title')}</h1><p className="dxs-muted">{t('page.subtitle')}</p></div><button onClick={back}>{t('page.back')}</button></header>
-    <div className="dxs-notice">{t('page.notice')}</div>
-    {state.placement === 'occupied' && <p role="status" className="dxs-notice">{t('page.occupied')}</p>}
-    {state.scopeStatus === 'loading' && <p role="status">{t('page.scope-loading')}</p>}
-    {state.scopeStatus === 'failed' && <button onClick={retryScope}>{t('page.scope-retry')}</button>}
-    {state.storageError && <p role="alert" className="dxs-error">{t(errorKey(state.storageError), { max: format.count(MAX_PINS) })}</p>}
-    <div className="dxs-layout"><aside aria-label={t('page.manage')}><h2>{t('page.my-watchlist')}</h2>
-      {!state.pins.length && <p className="dxs-muted">{t('page.empty')}</p>}
-      <ol className="dxs-list">{state.pins.map((item: any, index: any) => <li key={item.symbol}>
-        <button className="dxs-select" aria-pressed={pin?.symbol === item.symbol} onClick={() => select(item.symbol)}><strong>{item.alias || item.symbol}</strong>{item.alias && <span className="dxs-muted"> · {item.symbol}</span>}</button>
-        <div className="dxs-controls"><button disabled={index === 0} aria-label={t('page.move-up', { symbol: item.symbol })} onClick={() => move(item.symbol, -1)}>↑</button><button disabled={index === state.pins.length - 1} aria-label={t('page.move-down', { symbol: item.symbol })} onClick={() => move(item.symbol, 1)}>↓</button><button aria-label={t('page.remove-aria', { symbol: item.symbol })} onClick={() => remove(item.symbol)}>{t('page.remove')}</button></div>
-      </li>)}</ol><AddStock add={add} count={state.pins.length} ready={state.scopeStatus === 'ready'} t={t} format={format} /></aside>
-      {state.scopeStatus === 'ready' && (pin ? <Detail key={`${state.scopeId}:${pin.symbol}`} pin={pin} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} /> : <StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} />)}
-    </div>
+    <header className="dxs-heading">
+      <div><h1>{t('title')}</h1><p className="dxs-muted">{view === 'market' ? t('market.subtitle') : t('page.subtitle')}</p></div>
+      <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
+        <button type="button" aria-pressed={view === 'watchlist'} onClick={() => setView('watchlist')}>{t('page.view.watchlist')}</button>
+        <button type="button" aria-pressed={view === 'market'} onClick={() => setView('market')}>{t('page.view.market')}</button>
+      </nav>
+      <button onClick={back}>{t('page.back')}</button>
+    </header>
+    {view === 'market' ? <MarketView rpc={rpc} t={t} format={format} locale={getLocale()} /> : <>
+      <div className="dxs-notice">{t('page.notice')}</div>
+      {state.placement === 'occupied' && <p role="status" className="dxs-notice">{t('page.occupied')}</p>}
+      {state.scopeStatus === 'loading' && <p role="status">{t('page.scope-loading')}</p>}
+      {state.scopeStatus === 'failed' && <button onClick={retryScope}>{t('page.scope-retry')}</button>}
+      {state.storageError && <p role="alert" className="dxs-error">{t(errorKey(state.storageError), { max: format.count(MAX_PINS) })}</p>}
+      <div className="dxs-layout"><aside aria-label={t('page.manage')}><h2>{t('page.my-watchlist')}</h2>
+        {!state.pins.length && <p className="dxs-muted">{t('page.empty')}</p>}
+        {!state.pins.length && <button type="button" onClick={() => setView('market')}>{t('page.view.market-hint')}</button>}
+        <ol className="dxs-list">{state.pins.map((item: any, index: any) => <li key={item.symbol}>
+          <button className="dxs-select" aria-pressed={pin?.symbol === item.symbol} onClick={() => select(item.symbol)}><strong>{item.alias || item.symbol}</strong>{item.alias && <span className="dxs-muted"> · {item.symbol}</span>}</button>
+          <div className="dxs-controls"><button disabled={index === 0} aria-label={t('page.move-up', { symbol: item.symbol })} onClick={() => move(item.symbol, -1)}>↑</button><button disabled={index === state.pins.length - 1} aria-label={t('page.move-down', { symbol: item.symbol })} onClick={() => move(item.symbol, 1)}>↓</button><button aria-label={t('page.remove-aria', { symbol: item.symbol })} onClick={() => remove(item.symbol)}>{t('page.remove')}</button></div>
+        </li>)}</ol><AddStock add={add} count={state.pins.length} ready={state.scopeStatus === 'ready'} t={t} format={format} /></aside>
+        {state.scopeStatus === 'ready' && (pin ? <Detail key={`${state.scopeId}:${pin.symbol}`} pin={pin} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} /> : <StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} />)}
+      </div>
+    </>}
   </main>
 }

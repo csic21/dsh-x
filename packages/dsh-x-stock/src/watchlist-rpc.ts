@@ -41,7 +41,7 @@ export function createScopeRoute(readScope: any) {
     catch { return failure('stock/scope-unavailable', '无法打开此 profile 的自选存储，请检查宿主目录权限后重试。') }
   })
 }
-function createRpcRoute(endpoint: any, handle: any) {
+export function createRpcRoute(endpoint: any, handle: any) {
   return {
     path: `/api/${endpoint}`, methods: ['POST'], requestBody: 'buffered',
     async fetch(request: any) {

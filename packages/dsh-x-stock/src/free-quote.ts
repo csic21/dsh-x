@@ -37,7 +37,7 @@ function fail(message: string): never {
   throw new Error(message)
 }
 
-function quoteTimestamp(raw: unknown, now: number): string {
+export function parseTencentTimestamp(raw: unknown, now: number): string {
   const match = typeof raw === 'string' ? STAMP.exec(raw) : null
   if (!match) fail('invalid quote timestamp')
   const year = Number(match[1])
@@ -86,7 +86,7 @@ export function parseTencentLine(payload: unknown, symbol: unknown, now = Date.n
     name,
     price,
     changePercent,
-    quotedAt: quoteTimestamp(fields[30], now),
+    quotedAt: parseTencentTimestamp(fields[30], now),
     marketStatus: 'unknown',
   }
 }

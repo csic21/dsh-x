@@ -7,7 +7,7 @@ DSH-X 是运行在官方 [DeepSeek Harness](https://github.com/deepseek-ai/deeps
 | 包 | 作用 | 状态 |
 | --- | --- | --- |
 | `dsh-x-code` | 只读源码审查：文件树、源码/差异、快照审查与 findings；审查使用当前配置的 DSH 模型，不执行工具或测试 | 可用 |
-| `dsh-x-stock` | A 股自选、独立详情页、底部自选条；另含只读 Finnhub 报价工具 | 可用，行情源需自行配置 |
+| `dsh-x-stock` | A 股自选、市场全景、独立详情页、底部自选条；另含只读 Finnhub 报价工具 | 可用，行情源与市场源需显式配置 |
 | `dsh-x-browser` | 实验性 Desktop 内嵌浏览器：受控导航、观察与操作，按轮授权与接管 | 实验性，默认不装 |
 
 Code 不再包含原生 Agent 审查或修复。需要修改源码时，直接在对话里让主模型修改，然后回来复审同一批文件；重新审查会建立新的证据，旧 findings 保留为历史。

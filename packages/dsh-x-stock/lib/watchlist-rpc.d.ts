@@ -30,3 +30,9 @@ export declare function createScopeRoute(readScope: any): {
     requestBody: string;
     fetch(request: any): Promise<Response>;
 };
+export declare function createRpcRoute(endpoint: any, handle: any): {
+    path: string;
+    methods: string[];
+    requestBody: string;
+    fetch(request: any): Promise<Response>;
+};

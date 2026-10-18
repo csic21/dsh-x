@@ -19,7 +19,7 @@ const CONTROL = /[\u0000-\u001f\u007f]/g;
 function fail(message) {
     throw new Error(message);
 }
-function quoteTimestamp(raw, now) {
+export function parseTencentTimestamp(raw, now) {
     const match = typeof raw === 'string' ? STAMP.exec(raw) : null;
     if (!match)
         fail('invalid quote timestamp');
@@ -83,7 +83,7 @@ export function parseTencentLine(payload, symbol, now = Date.now()) {
         name,
         price,
         changePercent,
-        quotedAt: quoteTimestamp(fields[30], now),
+        quotedAt: parseTencentTimestamp(fields[30], now),
         marketStatus: 'unknown',
     };
 }
