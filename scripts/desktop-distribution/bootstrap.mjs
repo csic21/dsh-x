@@ -29,7 +29,7 @@ export async function readDistribution(root) {
   const manifest = JSON.parse(await readFile(path.join(root, 'distribution.json'), 'utf8'))
   assert.equal(manifest.schema, 1)
   assert.match(manifest.id, /^[a-zA-Z0-9.-]+$/)
-  assert.equal(manifest.plugins.length, 5)
+  assert.equal(manifest.plugins.length, 6)
   for (const item of manifest.plugins) {
     assert.match(item.sha256, /^[0-9a-f]{64}$/)
     assert.equal(await digest(localPath(root, item.file)), item.sha256, `Damaged plugin: ${item.name}`)

@@ -62,7 +62,7 @@ try {
   assert.equal(initialized.changed, true)
   report.assertions.push('official application creates its Desktop profile; bundled official CLI installs all plugin tarballs')
   await bootstrap.installedVersions(home, manifest)
-  report.assertions.push('suite, bundled Code and Agents, and four optional plugins resolve to the packaged exact versions')
+  report.assertions.push('six independent plugin packages resolve to the packaged exact versions')
   await bootstrap.desktopCli(root, manifest, home, ['plugin', '--profile', 'desktop', 'add', `link:${path.join(repository, 'scripts/fixtures/desktop-distribution-probe')}`, '--ignore-scripts', '--config.auto-install-peers=false', '--config.minimum-release-age=0'])
   application = await launch()
   report.runtime = await application.evaluate(({ app }) => ({ packaged: app.isPackaged, version: app.getVersion(), userData: app.getPath('userData'), home: process.env.DSH_HOME }))

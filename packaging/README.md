@@ -22,7 +22,7 @@ macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`
 
 用户从 DMG 将 `DSH-X.app` 拖到 Applications，或运行 EXE。始终使用 **DSH-X** 入口启动。
 
-首次运行会打开官方应用初始化独立 profile。窗口出现后，用户必须完全退出（macOS：Command+Q；Windows：托盘菜单退出）。安装器随后调用内嵌官方 Desktop CLI 安装 suite、Chat、Plan、Stocks、Browser，再重新打开应用；suite 已携带 Code、Agents。初次安装仍需联网下载第三方依赖，不需要用户手动安装 tgz。
+首次运行会打开官方应用初始化独立 profile。窗口出现后，用户必须完全退出（macOS：Command+Q；Windows：托盘菜单退出）。安装器随后调用内嵌官方 Desktop CLI 分别安装 Code、Agents、Chat、Plan、Stocks、Browser，再重新打开应用。桌面版直接选择六个独立 bundle，不使用嵌套 suite；Web 插件套件仍保留独立发行路径。初次安装仍需联网下载第三方依赖，不需要用户手动安装 tgz。
 
 用户数据根为 `~/.dsh-x/desktop-preview`，不导入原有官方账号、profile 或凭据。插件 tarball 在该目录内按发行身份保留，避免替换应用目录后破坏 profile 锁文件的本地安装来源。安装后仍由官方 Plugins 页面管理插件；同一发行版再次启动不会重新启用用户停用或移除的组件。失败不会写成功标记，不承诺失败自动回滚；诊断记录在该独立目录的 `distribution-install.log`。
 

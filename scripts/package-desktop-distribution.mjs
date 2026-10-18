@@ -71,7 +71,10 @@ for (const file of [executable, archive, node]) await access(path.join(distribut
 await copyFile(path.join(source, 'bootstrap.mjs'), path.join(distributionRoot, 'bootstrap.mjs'))
 for (const file of ['dialog.ps1', 'check-running.ps1']) await copyFile(path.join(source, file), path.join(distributionRoot, file))
 await mkdir(path.join(distributionRoot, 'packs'))
-const selected = ['dsh-x-suite', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser']
+// Desktop carries every tarball already, so install independent bundles. This
+// avoids the nested suite's extra loader lifecycle and keeps each row owned by
+// one directly selected bundle on both platforms.
+const selected = ['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser']
 const bundled = []
 for (const name of selected) {
   const artifact = packages.artifacts.find(item => item.name === name)

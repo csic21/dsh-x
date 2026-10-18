@@ -12,7 +12,7 @@ async function fixture(t) {
   await mkdir(root); await mkdir(home)
   await writeFile(path.join(root, 'app.asar'), 'inert official archive fixture')
   const plugins = []
-  for (const name of ['dsh-x-suite', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser']) {
+  for (const name of ['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser']) {
     const file = name + '.tgz'; await writeFile(path.join(root, file), 'inert fixture ' + name)
     plugins.push({ name, version: '0.1.1', file, sha256: await digest(path.join(root, file)) })
   }
@@ -22,7 +22,7 @@ async function fixture(t) {
 }
 test('corrupt plugin bytes refuse initialization before executing any application', async t => {
   const { root, home } = await fixture(t)
-  await writeFile(path.join(root, 'dsh-x-suite.tgz'), 'corrupted')
+  await writeFile(path.join(root, 'dsh-x-code.tgz'), 'corrupted')
   let initialized = false
   await assert.rejects(installDistribution({ root, home, initialize: async () => { initialized = true } }), /Damaged plugin/)
   assert.equal(initialized, false)
