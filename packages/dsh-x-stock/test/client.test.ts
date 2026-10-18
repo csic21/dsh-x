@@ -21,7 +21,15 @@ test('built client registers safe slots and supports add/order/remove/navigation
   }
   const scope='11111111-1111-4111-8111-111111111111'
   const locale = await createOfficialLocale()
-  const ctx: any={locale,slots,on(){return()=>{}},effect(fn: any){const dispose=fn();effects.push(dispose);return dispose},resources:{register(provider: any){resources.push(provider);return()=>{}}},connection:{rpc:{call:async(channel: any,endpoint: any)=>{assert.equal(endpoint,'dsh-x-stock.scope');return {ok:true,value:{scope}}}}},layout:{selectPanel(value: any){selectedPanel=value;calls.push(value)}}}
+  const rpcCalls: any[]=[]
+  const ctx: any={locale,slots,on(){return()=>{}},effect(fn: any){const dispose=fn();effects.push(dispose);return dispose},resources:{register(provider: any){resources.push(provider);return()=>{}}},connection:{rpc:{call:async(channel: any,endpoint: any,payload: any)=>{
+    rpcCalls.push(JSON.parse(JSON.stringify({endpoint,payload})))
+    if(endpoint==='dsh-x-stock.scope')return {ok:true,value:{scope}}
+    // Offline fixtures only: the directory never receives a live security here.
+    if(endpoint==='dsh-x-stock.search')return {ok:true,value:payload?.action==='status'?{status:'ready',enabled:true,source:'test-directory',results:[]}:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'SZ.002594',name:'比亚迪',kind:'stock'},{symbol:'SH.510300',name:'沪深300ETF华泰柏瑞',kind:'etf'}]}}
+    if(endpoint==='dsh-x-stock.market-preference')return {ok:true,value:{enabled:true,forced:false}}
+    throw new Error(`unexpected endpoint ${endpoint}`)
+  }}},layout:{selectPanel(value: any){selectedPanel=value;calls.push(value)}}}
   vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value: any){assert.equal(value.id,'dsh-x-stock');exported=value.factory((name: any)=>{assert.equal(name,'react');return React})}}},globalThis,navigator:dom.window.navigator,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
   const { createRoot } = await import('react-dom/client')
   const root=createRoot(dom.window.document.getElementById('app')!)
@@ -51,11 +59,11 @@ test('built client registers safe slots and supports add/order/remove/navigation
     })
     const submit=async()=>act(async()=>(document.querySelector<HTMLElement & HTMLInputElement>('form'))!.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})))
     await input(document.querySelector<HTMLElement & HTMLInputElement>('input[inputmode="numeric"]'),'600519')
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[maxlength="24"]'),'贵州茅台')
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="alias"]'),'贵州茅台')
     await submit()
     await input(document.querySelector<HTMLElement & HTMLInputElement>('select'),'SZ')
     await input(document.querySelector<HTMLElement & HTMLInputElement>('input[inputmode="numeric"]'),'000001')
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[maxlength="24"]'),'平安银行')
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="alias"]'),'平安银行')
     await submit()
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.getAttribute('aria-label'),'SZ.000001 股票详情')
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="上移 SZ.000001"]'))
@@ -73,6 +81,22 @@ test('built client registers safe slots and supports add/order/remove/navigation
     assert.equal(selectedPanel,null);assert.deepEqual(calls,['dsh-x-stock',null])
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 SH.600519"]'))
     assert.equal(JSON.parse(localStorage.getItem(`dsh-x-stock:watchlist:v1:${scope}`)!).pins.length,1)
+    // Name search: an explicit query, a debounce, then a pick that fills the manual fields.
+    assert.match(document.body.textContent!, /搜索使用本机免费源/)
+    assert.deepEqual(rpcCalls.filter((call: any)=>call.endpoint==='dsh-x-stock.search')[0],{endpoint:'dsh-x-stock.search',payload:{action:'status'}})
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[type="search"]'),'比亚')
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
+    assert.deepEqual(rpcCalls.filter((call: any)=>call.payload?.action==='search'),[{endpoint:'dsh-x-stock.search',payload:{action:'search',query:'比亚'}}])
+    assert.match(document.body.textContent!, /比亚迪/)
+    await click([...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option=>option.textContent!.includes('比亚迪')))
+    assert.equal(document.querySelector<HTMLInputElement>('input[name="code"]')!.value,'002594')
+    assert.equal(document.querySelector<HTMLSelectElement>('select[name="exchange"]')!.value,'SZ')
+    assert.equal(document.querySelector<HTMLInputElement>('input[name="alias"]')!.value,'比亚迪')
+    assert.match(document.body.textContent!, /已选择 比亚迪 · SZ.002594 · 股票/)
+    await submit()
+    assert.deepEqual(JSON.parse(localStorage.getItem(`dsh-x-stock:watchlist:v1:${scope}`)!).pins.at(-1),{symbol:'SZ.002594',alias:'比亚迪'})
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 SZ.002594"]'))
+    assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.getAttribute('aria-label'),'SZ.000001 股票详情')
     const form=document.querySelector<HTMLElement & HTMLInputElement>('form')
     await act(async()=>(form)!.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})))
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('[role="alert"]'))!.textContent,/六位/)

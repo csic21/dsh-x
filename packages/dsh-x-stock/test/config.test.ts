@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { apply } from '../src/index.ts'
+import { SEARCH_RPC_ENDPOINT } from '../src/instrument-search.ts'
+import { MARKET_PREFERENCE_ENDPOINT } from '../src/market.ts'
 
 const NAME = '贵州茅台'
 function payload() {
@@ -21,19 +26,33 @@ function gbk(text: string) {
   ])
 }
 
-function harness() {
+function harness(dir = '/tmp') {
   const routes: any[] = []
   const ctx: any = {
     tools: { register() {} },
     inject(_deps: any, callback: any) {
       callback({
         connection: { fetch: { register: (route: any) => routes.push(route) } },
-        profileContext: { dir: '/tmp' },
+        profileContext: { dir },
       })
     },
   }
   return { ctx, routes }
 }
+
+async function callEndpoint(routes: any[], endpoint: string, payload: any) {
+  const route = routes.find(item => item.path === `/api/${endpoint}`)
+  const request = new Request(`http://localhost/api/${endpoint}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'client-request', rpcId: 'r1', method: endpoint, payload }),
+  })
+  return (await (await route.fetch(request)).json()) as any
+}
+
+const escapeHintName = (text: string) => [...text]
+  .map(character => character.codePointAt(0)! > 127 ? `\\u${character.codePointAt(0)!.toString(16).padStart(4, '0')}` : character)
+  .join('')
 
 async function call(routes: any[]) {
   const route = routes.find(item => item.path === '/api/dsh-x-stock.quotes')
@@ -86,5 +105,70 @@ test('freeSource config wires the opt-in adapter through the owner-only RPC', as
     })
   } finally {
     globalThis.fetch = original
+  }
+})
+
+test('name search stays disabled and never fetches without a free-source opt-in', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dsh-x-stock-search-'))
+  const original = globalThis.fetch
+  globalThis.fetch = () => assert.fail('must not fetch without opt-in')
+  try {
+    const { ctx, routes } = harness(dir)
+    apply(ctx)
+    const status = await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'status' })
+    assert.deepEqual(status.result.value, { status: 'disabled', enabled: false, available: false, source: null, results: [] })
+    const search = await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'search', query: '比亚' })
+    assert.equal(search.result.value.status, 'disabled')
+    assert.deepEqual(search.result.value.results, [])
+  } finally {
+    globalThis.fetch = original
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('freeSource alone enables the directory and projects A-share and ETF matches', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dsh-x-stock-search-'))
+  const original = globalThis.fetch
+  const names = ['比亚迪', '沪深300ETF华泰柏瑞']
+  globalThis.fetch = async (url: any) => {
+    assert.equal(String(url), `https://smartbox.gtimg.cn/s3/?q=${encodeURIComponent('比亚')}&t=all`)
+    return new Response(`v_hint="sz~002594~${escapeHintName(names[0]!)}~byd~GP-A^sh~510300~${escapeHintName(names[1]!)}~hs300etf~ETF^hk~01211~${escapeHintName('比亚迪股份')}~bydgf~GP"`, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+  }
+  try {
+    const { ctx, routes } = harness(dir)
+    apply(ctx, { freeSource: true })
+    const status = await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'status' })
+    assert.deepEqual(status.result.value, { status: 'ready', enabled: true, available: true, source: 'smartbox.gtimg.cn (unofficial)', results: [] })
+    const search = await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'search', query: '比亚' })
+    assert.deepEqual(search.result.value.results, [
+      { symbol: 'SZ.002594', name: names[0], kind: 'stock' },
+      { symbol: 'SH.510300', name: names[1], kind: 'etf' },
+    ])
+  } finally {
+    globalThis.fetch = original
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('the market free-source switch also gates the directory and stops requests when off', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dsh-x-stock-search-'))
+  const original = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return new Response('v_hint="N";', { headers: { 'content-type': 'text/html' } }) }
+  try {
+    const { ctx, routes } = harness(dir)
+    apply(ctx)
+    assert.equal((await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'status' })).result.value.status, 'disabled')
+    const enabling = await callEndpoint(routes, MARKET_PREFERENCE_ENDPOINT, { action: 'set', enabled: true })
+    assert.equal(enabling.result.value.enabled, true)
+    assert.equal((await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'status' })).result.value.status, 'ready')
+    assert.equal((await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'search', query: 'xx' })).result.value.status, 'ready')
+    assert.equal(calls, 1)
+    await callEndpoint(routes, MARKET_PREFERENCE_ENDPOINT, { action: 'set', enabled: false })
+    assert.equal((await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'search', query: 'xx' })).result.value.status, 'disabled')
+    assert.equal(calls, 1, 'a disabled directory must not keep fetching')
+  } finally {
+    globalThis.fetch = original
+    await rm(dir, { recursive: true, force: true })
   }
 })

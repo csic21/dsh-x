@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StockWorkbench } from './workbench.tsx'
 import { MarketView } from './market/MarketView.tsx'
+import { InstrumentSearch } from './SearchBox.tsx'
 import { normalizeAShare, MAX_PINS, quoteStatus } from '../watchlist.ts'
 import { addressFor } from './resource.ts'
 import { errorKey } from './locales.ts'
@@ -33,18 +34,27 @@ export function StockBar({ useWatchlist, useResource, collapse, open, t, format 
 export function StockIcon({ size = 20 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4v16h16M7 15l4-5 4 3 5-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
 }
-function AddStock({ add, count, ready, t, format }: any) {
+function AddStock({ add, count, ready, rpc, t, format }: any) {
   const [exchange, setExchange] = useState('SH'), [code, setCode] = useState(''), [alias, setAlias] = useState(''), [error, setError] = useState('')
+  const [picked, setPicked] = useState<any>(null)
   const submit = (event: any) => {
     event.preventDefault()
-    try { add({ symbol: normalizeAShare(exchange, code), alias }); setCode(''); setAlias(''); setError('') }
+    try { add({ symbol: normalizeAShare(exchange, code), alias }); setCode(''); setAlias(''); setError(''); setPicked(null) }
     catch (failure: any) { setError(errorKey(failure.code)) }
+  }
+  const pick = (match: any) => {
+    const [market, digits] = String(match.symbol).split('.')
+    setExchange(market); setCode(digits)
+    setAlias(current => current.trim() ? current : match.name)
+    setPicked(match); setError('')
   }
   return <form className="dxs-form" onSubmit={submit} noValidate>
     <h2>{t('add.title')}</h2>
-    <label>{t('add.exchange')}<select value={exchange} onChange={event => setExchange(event.target.value)}>{['SH', 'SZ', 'BJ'].map(value => <option key={value} value={value}>{t(`exchange.${value}`)}</option>)}</select></label>
-    <label>{t('add.code')}<input value={code} onChange={event => setCode(event.target.value)} inputMode="numeric" maxLength={6} placeholder="600519" required pattern="[0-9]{6}" /></label>
-    <label>{t('add.alias')}<input value={alias} onChange={event => setAlias(event.target.value)} maxLength={24} placeholder={t('add.alias.placeholder')} /></label>
+    <InstrumentSearch rpc={rpc} onPick={pick} t={t} />
+    {picked && <p className="dxs-muted" role="status">{t('add.selected', { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })}</p>}
+    <label>{t('add.exchange')}<select name="exchange" value={exchange} onChange={event => { setExchange(event.target.value); setPicked(null) }}>{['SH', 'SZ', 'BJ'].map(value => <option key={value} value={value}>{t(`exchange.${value}`)}</option>)}</select></label>
+    <label>{t('add.code')}<input name="code" value={code} onChange={event => { setCode(event.target.value); setPicked(null) }} inputMode="numeric" maxLength={6} placeholder="600519" required pattern="[0-9]{6}" /></label>
+    <label>{t('add.alias')}<input name="alias" value={alias} onChange={event => setAlias(event.target.value)} maxLength={24} placeholder={t('add.alias.placeholder')} /></label>
     <button type="submit" disabled={!ready || count >= MAX_PINS}>{t('add.submit', { count: format.count(count), max: format.count(MAX_PINS) })}</button>
     {error && <p role="alert" className="dxs-error">{t(error, { max: format.count(MAX_PINS) })}</p>}
     <p className="dxs-muted">{t('add.notice')}</p>
@@ -94,7 +104,7 @@ export function StockPage({ useWatchlist, useResource, add, remove, move, select
         <ol className="dxs-list">{state.pins.map((item: any, index: any) => <li key={item.symbol}>
           <button className="dxs-select" aria-pressed={pin?.symbol === item.symbol} onClick={() => select(item.symbol)}><strong>{item.alias || item.symbol}</strong>{item.alias && <span className="dxs-muted"> · {item.symbol}</span>}</button>
           <div className="dxs-controls"><button disabled={index === 0} aria-label={t('page.move-up', { symbol: item.symbol })} onClick={() => move(item.symbol, -1)}>↑</button><button disabled={index === state.pins.length - 1} aria-label={t('page.move-down', { symbol: item.symbol })} onClick={() => move(item.symbol, 1)}>↓</button><button aria-label={t('page.remove-aria', { symbol: item.symbol })} onClick={() => remove(item.symbol)}>{t('page.remove')}</button></div>
-        </li>)}</ol><AddStock add={add} count={state.pins.length} ready={state.scopeStatus === 'ready'} t={t} format={format} /></aside>
+        </li>)}</ol><AddStock add={add} count={state.pins.length} ready={state.scopeStatus === 'ready'} rpc={rpc} t={t} format={format} /></aside>
         {state.scopeStatus === 'ready' && (pin ? <Detail key={`${state.scopeId}:${pin.symbol}`} pin={pin} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} /> : <StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} />)}
       </div>
     </>}

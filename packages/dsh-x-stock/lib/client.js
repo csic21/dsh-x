@@ -243,7 +243,7 @@ function quoteResource(rpc, documentObject = globalThis.document, navigatorObjec
 }
 
 // src/client/components.tsx
-var import_react5 = __toESM(require("react"), 1);
+var import_react6 = __toESM(require("react"), 1);
 
 // src/client/workbench.tsx
 var import_react2 = __toESM(require("react"), 1);
@@ -9166,11 +9166,11 @@ function StockWorkbench({ symbol, scope, t, format, locale }) {
     generation.current++;
   }, []);
   const changeConfig = (next) => {
-    const valid = normalizeChartConfig(next);
-    setConfig(valid);
+    const valid2 = normalizeChartConfig(next);
+    setConfig(valid2);
     try {
       if (!globalThis.localStorage) throw new Error();
-      globalThis.localStorage.setItem(chartSettingsKey(scope), JSON.stringify(valid));
+      globalThis.localStorage.setItem(chartSettingsKey(scope), JSON.stringify(valid2));
       setSaveError(false);
     } catch {
       setSaveError(true);
@@ -9849,6 +9849,13 @@ function MarketView({ rpc, t, format, now = () => /* @__PURE__ */ new Date() }) 
   }, disabled: overview.refreshing }, overview.refreshing ? t("market.refreshing") : t("market.refresh")))), overview.error ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, breadth.error ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-kpis" }, /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.sentiment"), value: sentiment ? `${format.count(sentiment.score)} \xB7 ${t(`market.sentiment.label.${sentiment.label}`)}` : "\u2014", note: t("market.sentiment.subtitle"), tone: sentiment ? sentiment.score >= 56 ? "dxs-up" : sentiment.score <= 44 ? "dxs-down" : "" : "" }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.breadth"), value: breadthValue ? /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-up" }, format.count(breadthValue.up)), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-slash" }, "/"), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-down" }, format.count(breadthValue.down))) : "\u2014", note: breadthValue ? t("market.kpi.flat-suspended", { flat: format.count(breadthValue.flat), suspended: format.count(breadthValue.suspended) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.amount"), value: breadthValue ? format.compact(breadthValue.amount) : "\u2014", note: breadthValue ? t("market.breadth.subtitle", { covered: format.count(breadthValue.covered), expected: format.count(breadthValue.expected) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.sectors"), value: sectorChanges.length ? `${format.count(positiveSectors)}/${format.count(sectorChanges.length)}` : "\u2014", note: sectorChanges.length ? t("market.kpi.sector-note", { avg: sectorAverage !== null ? format.change(sectorAverage) : "\u2014" }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.strongest"), value: strongest ? strongest.name : t("market.kpi.strongest-empty"), note: strongest ? format.change(strongest.changePercent) : void 0, tone: strongest ? textTone(strongest.changePercent) : "" }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi dxs-mkt-kpi-status" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi-label" }, t("market.kpi.status")), /* @__PURE__ */ import_react4.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format, showTime: false }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi-note" }, t("market.status.hint")))), /* @__PURE__ */ import_react4.default.createElement(SentimentPanel, { data, breadth: breadthValue, t, format }), /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react4.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react4.default.createElement("div", null, /* @__PURE__ */ import_react4.default.createElement("h3", null, t("market.indices.title")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.indices.subtitle")))), data.indices.length ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-index-grid" }, data.indices.map((index) => /* @__PURE__ */ import_react4.default.createElement(IndexCard, { key: index.code, index, t, format }))) : /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.empty"))), /* @__PURE__ */ import_react4.default.createElement(Heatmap, { data, selected, onSelect: setSelected, t, format }), selected ? /* @__PURE__ */ import_react4.default.createElement(SectorDetail, { key: selected.code, rpc, selection: selected, onClose: () => setSelected(null), t, format }) : null, breadthValue ? /* @__PURE__ */ import_react4.default.createElement(DistributionBar, { breadth: breadthValue, t, format }) : /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-loading", role: "status" }, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-dot is-live" }), breadth.status === "error" ? t("market.error") : t("market.breadth.waiting"), breadth.status === "error" ? /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: breadth.refresh }, t("market.retry")) : null), breadthValue ? /* @__PURE__ */ import_react4.default.createElement(Movers, { breadth: breadthValue, t, format }) : null, /* @__PURE__ */ import_react4.default.createElement("footer", { className: "dxs-mkt-footer" }, /* @__PURE__ */ import_react4.default.createElement("details", null, /* @__PURE__ */ import_react4.default.createElement("summary", null, t("market.source.details")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.limits")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.model")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.no-persist")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.persist"))), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.not-advice"))));
 }
 
+// src/client/SearchBox.tsx
+var import_react5 = __toESM(require("react"), 1);
+
+// src/instrument-search.ts
+var SEARCH_RPC_ENDPOINT = "dsh-x-stock.search";
+var SEARCH_MAX_QUERY = 24;
+
 // src/client/chart/locales.ts
 var chartZh = {
   "chart.title": "\u65E5 K \xB7 \u6210\u4EA4\u91CF \xB7 MACD",
@@ -10426,6 +10433,23 @@ var zh = {
   "status.closed": "\u4F11\u5E02 \xB7 \u6700\u8FD1\u62A5\u4EF7",
   "status.recent": "\u6700\u8FD1\u62A5\u4EF7 \xB7 \u53EF\u80FD\u5EF6\u8FDF",
   "add.title": "\u56FA\u5B9A\u80A1\u7968",
+  "add.search": "\u6309\u540D\u79F0\u641C\u7D22\uFF08\u542B ETF\uFF09",
+  "add.search.placeholder": "\u6BD4\u4E9A\u8FEA / 300ETF / 600519",
+  "add.search.checking": "\u6B63\u5728\u68C0\u67E5\u540D\u79F0\u641C\u7D22\u2026",
+  "add.search.notice": "\u641C\u7D22\u4F7F\u7528\u672C\u673A\u514D\u8D39\u6E90\uFF08\u817E\u8BAF\u516C\u5F00\u63A5\u53E3\uFF0C\u975E\u5B98\u65B9\uFF09\uFF1B\u5173\u952E\u8BCD\u53EA\u53D1\u5F80\u8BE5\u63A5\u53E3\uFF0C\u4E0D\u7ECF\u8FC7\u6A21\u578B\uFF0C\u4E5F\u4E0D\u4F1A\u5199\u5165\u81EA\u9009\u6216\u78C1\u76D8\u3002",
+  "add.search.disabled": "\u540D\u79F0\u641C\u7D22\u672A\u5F00\u542F\uFF1A\u5B83\u548C\u5E02\u573A\u5168\u666F\u5171\u7528\u540C\u4E00\u4E2A\u672C\u673A\u514D\u8D39\u6E90\u5F00\u5173\u3002",
+  "add.search.enable": "\u5F00\u542F\u514D\u8D39\u6E90",
+  "add.search.enabling": "\u6B63\u5728\u5F00\u542F\u2026",
+  "add.search.enable-error": "\u65E0\u6CD5\u5F00\u542F\u514D\u8D39\u6E90\uFF0C\u8BF7\u68C0\u67E5 profile \u76EE\u5F55\u6743\u9650\uFF0C\u6216\u624B\u52A8\u914D\u7F6E marketSource\u3002",
+  "add.search.unavailable": "\u540D\u79F0\u641C\u7D22\u4E0D\u53EF\u7528\uFF1B\u4ECD\u53EF\u624B\u52A8\u586B\u5199\u4EA4\u6613\u6240\u548C\u4EE3\u7801\u3002",
+  "add.search.loading": "\u641C\u7D22\u4E2D\u2026",
+  "add.search.empty": "\u6CA1\u6709\u5339\u914D\u7684 A \u80A1\u3001ETF\u3001LOF \u6216 REIT\u3002",
+  "add.search.results": "\u540D\u79F0\u641C\u7D22\u7ED3\u679C",
+  "add.selected": "\u5DF2\u9009\u62E9 {name} \xB7 {symbol} \xB7 {kind}\uFF0C\u53EF\u586B\u5199\u522B\u540D\u540E\u6DFB\u52A0\u3002",
+  "add.kind.stock": "\u80A1\u7968",
+  "add.kind.etf": "ETF",
+  "add.kind.fund": "LOF",
+  "add.kind.reit": "REIT",
   "add.exchange": "\u4EA4\u6613\u6240",
   "exchange.SH": "\u4E0A\u6D77 \xB7 SH",
   "exchange.SZ": "\u6DF1\u5733 \xB7 SZ",
@@ -10434,7 +10458,7 @@ var zh = {
   "add.alias": "\u663E\u793A\u522B\u540D\uFF08\u9009\u586B\uFF09",
   "add.alias.placeholder": "\u81EA\u5DF1\u719F\u6089\u7684\u540D\u79F0",
   "add.submit": "\u6DFB\u52A0\u5230\u81EA\u9009 \xB7 {count}/{max}",
-  "add.notice": "\u4EE3\u7801\u4EC5\u505A\u683C\u5F0F\u6821\u9A8C\uFF1B\u5F53\u524D\u672A\u9A8C\u8BC1\u8BC1\u5238\u540D\u79F0\u6216\u4E0A\u5E02\u72B6\u6001\u3002\u6E05\u5355\u4EC5\u4FDD\u5B58\u5728\u6B64\u6D4F\u89C8\u5668\uFF0C\u4E0D\u8DE8\u8BBE\u5907\u540C\u6B65\u3002",
+  "add.notice": "\u4EE3\u7801\u4EC5\u505A\u683C\u5F0F\u6821\u9A8C\uFF1B\u641C\u7D22\u7ED3\u679C\u6765\u81EA\u516C\u5F00\u76EE\u5F55\uFF0C\u672A\u4E0E\u4EA4\u6613\u6240\u6838\u5BF9\u540D\u79F0\u6216\u4E0A\u5E02\u72B6\u6001\u3002\u6E05\u5355\u4EC5\u4FDD\u5B58\u5728\u6B64\u6D4F\u89C8\u5668\uFF0C\u4E0D\u8DE8\u8BBE\u5907\u540C\u6B65\u3002",
   "detail.aria": "{symbol} \u80A1\u7968\u8BE6\u60C5",
   "detail.alias": " \xB7 \u81EA\u5B9A\u4E49\u522B\u540D",
   "detail.source": "\u6570\u636E\u6765\u6E90",
@@ -10488,6 +10512,8 @@ var zh = {
   "error.forbidden": "\u53EA\u5141\u8BB8\u5BBF\u4E3B\u6240\u6709\u8005\u8BFB\u53D6\u81EA\u9009\u884C\u60C5\u3002",
   "error.not-found": "\u672A\u77E5\u80A1\u7968\u63A5\u53E3\u3002",
   "error.invalid-input": "\u8BF7\u8F93\u5165\u6700\u591A {max} \u4E2A\u4E0D\u91CD\u590D\u7684 A \u80A1\u4EE3\u7801\u3002",
+  "error.invalid-query": "\u8BF7\u8F93\u5165 1\u201324 \u4E2A\u5B57\u7B26\u7684\u540D\u79F0\u3001\u62FC\u97F3\u6216\u4EE3\u7801\u3002",
+  "error.search-unavailable": "\u540D\u79F0\u641C\u7D22\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   "error.cancelled": "\u884C\u60C5\u8BF7\u6C42\u5DF2\u53D6\u6D88\u3002",
   "error.unavailable": "\u884C\u60C5\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   "error.unknown": "\u64CD\u4F5C\u672A\u5B8C\u6210\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002"
@@ -10516,6 +10542,23 @@ var en2 = {
   "status.closed": "Market closed \xB7 Latest quote",
   "status.recent": "Latest quote \xB7 Possibly delayed",
   "add.title": "Pin a stock",
+  "add.search": "Search by name (incl. ETFs)",
+  "add.search.placeholder": "BYD / 300ETF / 600519",
+  "add.search.checking": "Checking name search\u2026",
+  "add.search.notice": "Search uses the local free source (Tencent public endpoint, unofficial). Keywords go only to that endpoint: never to the model, the watchlist or disk.",
+  "add.search.disabled": "Name search is off: it shares the local free-source switch with the market panorama.",
+  "add.search.enable": "Turn on free source",
+  "add.search.enabling": "Turning on\u2026",
+  "add.search.enable-error": "Could not turn on the free source. Check profile directory permissions or configure marketSource manually.",
+  "add.search.unavailable": "Name search is unavailable; you can still enter the exchange and code manually.",
+  "add.search.loading": "Searching\u2026",
+  "add.search.empty": "No matching A-share, ETF, LOF or REIT.",
+  "add.search.results": "Name search results",
+  "add.selected": "Selected {name} \xB7 {symbol} \xB7 {kind}. Add an alias or pin it directly.",
+  "add.kind.stock": "Stock",
+  "add.kind.etf": "ETF",
+  "add.kind.fund": "LOF",
+  "add.kind.reit": "REIT",
   "add.exchange": "Exchange",
   "exchange.SH": "Shanghai \xB7 SH",
   "exchange.SZ": "Shenzhen \xB7 SZ",
@@ -10524,7 +10567,7 @@ var en2 = {
   "add.alias": "Display alias (optional)",
   "add.alias.placeholder": "A name you recognize",
   "add.submit": "Add to watchlist \xB7 {count}/{max}",
-  "add.notice": "Only the code format is checked; security names and listing status have not been verified. This list is saved in this browser only and does not sync across devices.",
+  "add.notice": "Only the code format is checked; search results come from a public directory and are not verified against an exchange. This list is saved in this browser only and does not sync across devices.",
   "detail.aria": "{symbol} stock details",
   "detail.alias": " \xB7 Custom alias",
   "detail.source": "Data source",
@@ -10578,6 +10621,8 @@ var en2 = {
   "error.forbidden": "Only the host owner can read watchlist quotes.",
   "error.not-found": "Unknown stock endpoint.",
   "error.invalid-input": "Enter up to {max} unique A-share codes.",
+  "error.invalid-query": "Enter 1\u201324 characters: a name fragment, pinyin initials or a code.",
+  "error.search-unavailable": "Name search is temporarily unavailable. Please try again later.",
   "error.cancelled": "Quote request cancelled.",
   "error.unavailable": "Quotes are temporarily unavailable. Please try again later.",
   "error.unknown": "The action could not be completed. Please try again."
@@ -10587,28 +10632,196 @@ function errorKey(code) {
   return Object.hasOwn(en2, key) ? key : "error.unknown";
 }
 
+// src/client/SearchBox.tsx
+var KINDS = ["stock", "etf", "fund", "reit"];
+var valid = (match) => match && typeof match.symbol === "string" && typeof match.name === "string" && KINDS.includes(match.kind);
+function InstrumentSearch({ rpc, onPick, t, delay = 250 }) {
+  const [query, setQuery] = (0, import_react5.useState)("");
+  const [availability, setAvailability] = (0, import_react5.useState)("checking");
+  const [checkTick, setCheckTick] = (0, import_react5.useState)(0);
+  const [state, setState] = (0, import_react5.useState)("idle");
+  const [error, setError] = (0, import_react5.useState)("");
+  const [results, setResults] = (0, import_react5.useState)([]);
+  const [open, setOpen] = (0, import_react5.useState)(false);
+  const [active, setActive] = (0, import_react5.useState)(-1);
+  const [enabling, setEnabling] = (0, import_react5.useState)(false);
+  const [enableError, setEnableError] = (0, import_react5.useState)("");
+  const request = (0, import_react5.useRef)(0);
+  const listId = (0, import_react5.useId)();
+  const optionId = (index) => `${listId}-option-${index}`;
+  (0, import_react5.useEffect)(() => {
+    let disposed = false;
+    const controller = new AbortController();
+    const read = async () => {
+      setAvailability("checking");
+      try {
+        if (!rpc?.call) throw new Error();
+        const result = await rpc.call("/api", SEARCH_RPC_ENDPOINT, { action: "status" }, controller.signal);
+        if (disposed || controller.signal.aborted) return;
+        if (!result?.ok) throw new Error();
+        setAvailability(result.value?.enabled !== true ? "disabled" : result.value?.available === false ? "unavailable" : "enabled");
+      } catch {
+        if (!disposed && !controller.signal.aborted) setAvailability("unavailable");
+      }
+    };
+    void read();
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
+  }, [rpc, checkTick]);
+  (0, import_react5.useEffect)(() => {
+    const text2 = query.trim();
+    if (availability !== "enabled" || !text2) {
+      request.current++;
+      setResults([]);
+      setOpen(false);
+      setActive(-1);
+      setState("idle");
+      return;
+    }
+    const id = ++request.current;
+    const local = new AbortController();
+    const timer = setTimeout(async () => {
+      if (id !== request.current) return;
+      setState("loading");
+      setError("");
+      try {
+        const result = await rpc.call("/api", SEARCH_RPC_ENDPOINT, { action: "search", query: text2 }, local.signal);
+        if (id !== request.current || local.signal.aborted) return;
+        if (!result?.ok) {
+          setState("error");
+          setError(errorKey(result?.error?.code));
+          return;
+        }
+        if (result.value?.status === "disabled") {
+          setAvailability("disabled");
+          setState("idle");
+          return;
+        }
+        const list = (Array.isArray(result.value?.results) ? result.value.results : []).filter(valid);
+        setResults(list);
+        setState("ready");
+        setOpen(true);
+        setActive(list.length ? 0 : -1);
+      } catch {
+        if (id !== request.current || local.signal.aborted) return;
+        setState("error");
+        setError("error.search-unavailable");
+      }
+    }, delay);
+    return () => {
+      clearTimeout(timer);
+      local.abort();
+    };
+  }, [query, availability, delay, rpc]);
+  const choose = (match) => {
+    onPick?.(match);
+    setQuery("");
+    setResults([]);
+    setOpen(false);
+    setActive(-1);
+    setState("idle");
+  };
+  const keyDown = (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (!results.length) return;
+      event.preventDefault();
+      if (!open) {
+        setOpen(true);
+        setActive(event.key === "ArrowDown" ? 0 : results.length - 1);
+        return;
+      }
+      setActive((previous) => {
+        const current = previous < 0 ? 0 : previous;
+        return event.key === "ArrowDown" ? (current + 1) % results.length : (current - 1 + results.length) % results.length;
+      });
+      return;
+    }
+    if (event.key === "Enter" && open && active >= 0 && results[active]) {
+      event.preventDefault();
+      choose(results[active]);
+      return;
+    }
+    if (event.key === "Escape") setOpen(false);
+  };
+  const enable = async () => {
+    setEnabling(true);
+    setEnableError("");
+    try {
+      if (!rpc?.call) throw new Error();
+      const result = await rpc.call("/api", MARKET_PREFERENCE_ENDPOINT, { action: "set", enabled: true });
+      if (!result?.ok) throw new Error();
+      setCheckTick((value) => value + 1);
+    } catch {
+      setEnableError("add.search.enable-error");
+    } finally {
+      setEnabling(false);
+    }
+  };
+  return /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-search" }, /* @__PURE__ */ import_react5.default.createElement("label", { htmlFor: `${listId}-input` }, t("add.search")), /* @__PURE__ */ import_react5.default.createElement(
+    "input",
+    {
+      id: `${listId}-input`,
+      type: "search",
+      name: "instrument-search",
+      autoComplete: "off",
+      spellCheck: false,
+      role: "combobox",
+      "aria-expanded": open && results.length > 0,
+      "aria-controls": listId,
+      "aria-autocomplete": "list",
+      "aria-activedescendant": open && active >= 0 && results[active] ? optionId(active) : void 0,
+      placeholder: t("add.search.placeholder"),
+      maxLength: SEARCH_MAX_QUERY,
+      value: query,
+      disabled: availability === "unavailable",
+      onChange: (event) => {
+        setQuery(event.target.value);
+        setEnableError("");
+      },
+      onKeyDown: keyDown
+    }
+  ), availability === "checking" && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted", role: "status" }, t("add.search.checking")), availability === "enabled" && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("add.search.notice")), availability === "unavailable" && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("add.search.unavailable")), availability === "disabled" && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("add.search.disabled"), " ", /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", disabled: enabling, onClick: enable }, t(enabling ? "add.search.enabling" : "add.search.enable"))), enableError && /* @__PURE__ */ import_react5.default.createElement("p", { role: "alert", className: "dxs-error" }, t(enableError)), state === "loading" && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted", role: "status" }, t("add.search.loading")), state === "error" && /* @__PURE__ */ import_react5.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error)), open && results.length > 0 && /* @__PURE__ */ import_react5.default.createElement("ul", { id: listId, className: "dxs-search-results", role: "listbox", "aria-label": t("add.search.results") }, results.map((match, index) => /* @__PURE__ */ import_react5.default.createElement(
+    "li",
+    {
+      key: match.symbol,
+      id: optionId(index),
+      role: "option",
+      "aria-selected": index === active,
+      onMouseDown: (event) => event.preventDefault(),
+      onClick: () => choose(match),
+      onMouseEnter: () => setActive(index)
+    },
+    /* @__PURE__ */ import_react5.default.createElement("strong", null, match.name),
+    /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-search-symbol" }, match.symbol),
+    /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-search-kind" }, t(`add.kind.${match.kind}`))
+  ))), state === "ready" && results.length === 0 && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted", role: "status" }, t("add.search.empty")));
+}
+
 // src/client/components.tsx
 var tone = (value) => value > 0 ? "dxs-up" : value < 0 ? "dxs-down" : "";
 function Status({ snapshot, t, format }) {
-  if (snapshot.status === "loading") return /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
-  if (snapshot.status === "failed") return /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_PINS) }) : t("status.failed"));
-  return /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(snapshot.value)}`));
+  if (snapshot.status === "loading") return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
+  if (snapshot.status === "failed") return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_PINS) }) : t("status.failed"));
+  return /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(snapshot.value)}`));
 }
 function StockChip({ pin, useResource, open, t, format }) {
   const snapshot = useResource(addressFor(pin.symbol)), quote = snapshot.value;
   const status = quoteStatus(quote);
-  return /* @__PURE__ */ import_react5.default.createElement("button", { className: "dxs-chip", onClick: () => open(pin.symbol), title: t("chip.title", { symbol: pin.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react5.default.createElement("strong", null, pin.alias || quote?.name || pin.symbol), /* @__PURE__ */ import_react5.default.createElement("span", null, format.price(quote?.price)), quote?.price != null ? /* @__PURE__ */ import_react5.default.createElement("span", { className: tone(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react5.default.createElement(Status, { snapshot, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
+  return /* @__PURE__ */ import_react6.default.createElement("button", { className: "dxs-chip", onClick: () => open(pin.symbol), title: t("chip.title", { symbol: pin.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react6.default.createElement("strong", null, pin.alias || quote?.name || pin.symbol), /* @__PURE__ */ import_react6.default.createElement("span", null, format.price(quote?.price)), quote?.price != null ? /* @__PURE__ */ import_react6.default.createElement("span", { className: tone(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react6.default.createElement(Status, { snapshot, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
 }
 function StockBar({ useWatchlist, useResource, collapse, open, t, format }) {
   const state = useWatchlist((value) => value);
   if (!state.pins.length) return null;
-  return /* @__PURE__ */ import_react5.default.createElement("section", { className: "dxs dxs-bar", "aria-label": t("watchlist.aria") }, /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "watchlist.expand" : "watchlist.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("watchlist", { count: format.count(state.pins.length) })), !state.collapsed && /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-strip", "aria-label": t("watchlist.order") }, state.pins.map((pin) => /* @__PURE__ */ import_react5.default.createElement(StockChip, { key: pin.symbol, pin, useResource, open, t, format }))), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t("title")));
+  return /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxs dxs-bar", "aria-label": t("watchlist.aria") }, /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "watchlist.expand" : "watchlist.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("watchlist", { count: format.count(state.pins.length) })), !state.collapsed && /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-strip", "aria-label": t("watchlist.order") }, state.pins.map((pin) => /* @__PURE__ */ import_react6.default.createElement(StockChip, { key: pin.symbol, pin, useResource, open, t, format }))), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t("title")));
 }
 function StockIcon({ size: size2 = 20 }) {
-  return /* @__PURE__ */ import_react5.default.createElement("svg", { width: size2, height: size2, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react5.default.createElement("path", { d: "M4 4v16h16M7 15l4-5 4 3 5-7", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }));
+  return /* @__PURE__ */ import_react6.default.createElement("svg", { width: size2, height: size2, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react6.default.createElement("path", { d: "M4 4v16h16M7 15l4-5 4 3 5-7", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
-function AddStock({ add, count, ready, t, format }) {
-  const [exchange, setExchange] = (0, import_react5.useState)("SH"), [code, setCode] = (0, import_react5.useState)(""), [alias, setAlias] = (0, import_react5.useState)(""), [error, setError] = (0, import_react5.useState)("");
+function AddStock({ add, count, ready, rpc, t, format }) {
+  const [exchange, setExchange] = (0, import_react6.useState)("SH"), [code, setCode] = (0, import_react6.useState)(""), [alias, setAlias] = (0, import_react6.useState)(""), [error, setError] = (0, import_react6.useState)("");
+  const [picked, setPicked] = (0, import_react6.useState)(null);
   const submit = (event) => {
     event.preventDefault();
     try {
@@ -10616,26 +10829,41 @@ function AddStock({ add, count, ready, t, format }) {
       setCode("");
       setAlias("");
       setError("");
+      setPicked(null);
     } catch (failure) {
       setError(errorKey(failure.code));
     }
   };
-  return /* @__PURE__ */ import_react5.default.createElement("form", { className: "dxs-form", onSubmit: submit, noValidate: true }, /* @__PURE__ */ import_react5.default.createElement("h2", null, t("add.title")), /* @__PURE__ */ import_react5.default.createElement("label", null, t("add.exchange"), /* @__PURE__ */ import_react5.default.createElement("select", { value: exchange, onChange: (event) => setExchange(event.target.value) }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react5.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react5.default.createElement("label", null, t("add.code"), /* @__PURE__ */ import_react5.default.createElement("input", { value: code, onChange: (event) => setCode(event.target.value), inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" })), /* @__PURE__ */ import_react5.default.createElement("label", null, t("add.alias"), /* @__PURE__ */ import_react5.default.createElement("input", { value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react5.default.createElement("button", { type: "submit", disabled: !ready || count >= MAX_PINS }, t("add.submit", { count: format.count(count), max: format.count(MAX_PINS) })), error && /* @__PURE__ */ import_react5.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(MAX_PINS) })), /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("add.notice")));
+  const pick = (match) => {
+    const [market, digits] = String(match.symbol).split(".");
+    setExchange(market);
+    setCode(digits);
+    setAlias((current) => current.trim() ? current : match.name);
+    setPicked(match);
+    setError("");
+  };
+  return /* @__PURE__ */ import_react6.default.createElement("form", { className: "dxs-form", onSubmit: submit, noValidate: true }, /* @__PURE__ */ import_react6.default.createElement("h2", null, t("add.title")), /* @__PURE__ */ import_react6.default.createElement(InstrumentSearch, { rpc, onPick: pick, t }), picked && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted", role: "status" }, t("add.selected", { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })), /* @__PURE__ */ import_react6.default.createElement("label", null, t("add.exchange"), /* @__PURE__ */ import_react6.default.createElement("select", { name: "exchange", value: exchange, onChange: (event) => {
+    setExchange(event.target.value);
+    setPicked(null);
+  } }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react6.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react6.default.createElement("label", null, t("add.code"), /* @__PURE__ */ import_react6.default.createElement("input", { name: "code", value: code, onChange: (event) => {
+    setCode(event.target.value);
+    setPicked(null);
+  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" })), /* @__PURE__ */ import_react6.default.createElement("label", null, t("add.alias"), /* @__PURE__ */ import_react6.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react6.default.createElement("button", { type: "submit", disabled: !ready || count >= MAX_PINS }, t("add.submit", { count: format.count(count), max: format.count(MAX_PINS) })), error && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(MAX_PINS) })), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("add.notice")));
 }
 function Detail({ pin, useResource, t, format, scope, locale }) {
   const snapshot = useResource(addressFor(pin.symbol)), quote = snapshot.value;
-  return /* @__PURE__ */ import_react5.default.createElement("article", { "aria-label": t("detail.aria", { symbol: pin.symbol }) }, /* @__PURE__ */ import_react5.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react5.default.createElement("h2", null, pin.alias || quote?.name || pin.symbol), /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, pin.symbol, pin.alias ? t("detail.alias") : ""), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-price" }, format.price(quote?.price), " ", /* @__PURE__ */ import_react5.default.createElement("span", { className: tone(quote?.changePercent), style: { fontSize: 18 } }, format.change(quote?.changePercent))), /* @__PURE__ */ import_react5.default.createElement("p", null, /* @__PURE__ */ import_react5.default.createElement(Status, { snapshot, t, format })), /* @__PURE__ */ import_react5.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react5.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react5.default.createElement("dl", null, /* @__PURE__ */ import_react5.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react5.default.createElement("dd", null, quote?.source || t("detail.no-source")), /* @__PURE__ */ import_react5.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react5.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react5.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react5.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react5.default.createElement(StockWorkbench, { key: `${scope}:${pin.symbol}`, symbol: pin.symbol, scope, t, format, locale }), /* @__PURE__ */ import_react5.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react5.default.createElement("summary", null, t("detail.fundamentals")), /* @__PURE__ */ import_react5.default.createElement("p", null, t("detail.no-fundamentals")), /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("detail.fundamentals-notice"))), /* @__PURE__ */ import_react5.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react5.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react5.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice"))));
+  return /* @__PURE__ */ import_react6.default.createElement("article", { "aria-label": t("detail.aria", { symbol: pin.symbol }) }, /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react6.default.createElement("h2", null, pin.alias || quote?.name || pin.symbol), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, pin.symbol, pin.alias ? t("detail.alias") : ""), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-price" }, format.price(quote?.price), " ", /* @__PURE__ */ import_react6.default.createElement("span", { className: tone(quote?.changePercent), style: { fontSize: 18 } }, format.change(quote?.changePercent))), /* @__PURE__ */ import_react6.default.createElement("p", null, /* @__PURE__ */ import_react6.default.createElement(Status, { snapshot, t, format })), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react6.default.createElement("dl", null, /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react6.default.createElement("dd", null, quote?.source || t("detail.no-source")), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react6.default.createElement(StockWorkbench, { key: `${scope}:${pin.symbol}`, symbol: pin.symbol, scope, t, format, locale }), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.fundamentals")), /* @__PURE__ */ import_react6.default.createElement("p", null, t("detail.no-fundamentals")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.fundamentals-notice"))), /* @__PURE__ */ import_react6.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react6.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react6.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice"))));
 }
 function StockPage({ useWatchlist, useResource, add, remove, move, select, back, retryScope, t, format, getLocale = () => "en", rpc }) {
   const state = useWatchlist((value) => value);
   const pin = state.pins.find((item) => item.symbol === state.selectedSymbol) ?? state.pins[0];
-  const [view, setView] = (0, import_react5.useState)("watchlist");
-  const previousSelection = (0, import_react5.useRef)(state.selectedSymbol);
-  (0, import_react5.useEffect)(() => {
+  const [view, setView] = (0, import_react6.useState)("watchlist");
+  const previousSelection = (0, import_react6.useRef)(state.selectedSymbol);
+  (0, import_react6.useEffect)(() => {
     if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView("watchlist");
     previousSelection.current = state.selectedSymbol;
   }, [state.selectedSymbol]);
-  return /* @__PURE__ */ import_react5.default.createElement("main", { className: "dxs dxs-page" }, /* @__PURE__ */ import_react5.default.createElement("header", { className: "dxs-heading" }, /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("h1", null, t("title")), /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, view === "market" ? t("market.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react5.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist", onClick: () => setView("watchlist") }, t("page.view.watchlist")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", "aria-pressed": view === "market", onClick: () => setView("market") }, t("page.view.market"))), /* @__PURE__ */ import_react5.default.createElement("button", { onClick: back }, t("page.back"))), view === "market" ? /* @__PURE__ */ import_react5.default.createElement(MarketView, { rpc, t, format, locale: getLocale() }) : /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-notice" }, t("page.notice")), state.placement === "occupied" && /* @__PURE__ */ import_react5.default.createElement("p", { role: "status", className: "dxs-notice" }, t("page.occupied")), state.scopeStatus === "loading" && /* @__PURE__ */ import_react5.default.createElement("p", { role: "status" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react5.default.createElement("button", { onClick: retryScope }, t("page.scope-retry")), state.storageError && /* @__PURE__ */ import_react5.default.createElement("p", { role: "alert", className: "dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_PINS) })), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react5.default.createElement("aside", { "aria-label": t("page.manage") }, /* @__PURE__ */ import_react5.default.createElement("h2", null, t("page.my-watchlist")), !state.pins.length && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), !state.pins.length && /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint")), /* @__PURE__ */ import_react5.default.createElement("ol", { className: "dxs-list" }, state.pins.map((item, index) => /* @__PURE__ */ import_react5.default.createElement("li", { key: item.symbol }, /* @__PURE__ */ import_react5.default.createElement("button", { className: "dxs-select", "aria-pressed": pin?.symbol === item.symbol, onClick: () => select(item.symbol) }, /* @__PURE__ */ import_react5.default.createElement("strong", null, item.alias || item.symbol), item.alias && /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-muted" }, " \xB7 ", item.symbol)), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react5.default.createElement("button", { disabled: index === 0, "aria-label": t("page.move-up", { symbol: item.symbol }), onClick: () => move(item.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react5.default.createElement("button", { disabled: index === state.pins.length - 1, "aria-label": t("page.move-down", { symbol: item.symbol }), onClick: () => move(item.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react5.default.createElement("button", { "aria-label": t("page.remove-aria", { symbol: item.symbol }), onClick: () => remove(item.symbol) }, t("page.remove")))))), /* @__PURE__ */ import_react5.default.createElement(AddStock, { add, count: state.pins.length, ready: state.scopeStatus === "ready", t, format })), state.scopeStatus === "ready" && (pin ? /* @__PURE__ */ import_react5.default.createElement(Detail, { key: `${state.scopeId}:${pin.symbol}`, pin, useResource, t, format, scope: state.scopeId, locale: getLocale() }) : /* @__PURE__ */ import_react5.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale() })))));
+  return /* @__PURE__ */ import_react6.default.createElement("main", { className: "dxs dxs-page" }, /* @__PURE__ */ import_react6.default.createElement("header", { className: "dxs-heading" }, /* @__PURE__ */ import_react6.default.createElement("div", null, /* @__PURE__ */ import_react6.default.createElement("h1", null, t("title")), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, view === "market" ? t("market.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react6.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist", onClick: () => setView("watchlist") }, t("page.view.watchlist")), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-pressed": view === "market", onClick: () => setView("market") }, t("page.view.market"))), /* @__PURE__ */ import_react6.default.createElement("button", { onClick: back }, t("page.back"))), view === "market" ? /* @__PURE__ */ import_react6.default.createElement(MarketView, { rpc, t, format, locale: getLocale() }) : /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-notice" }, t("page.notice")), state.placement === "occupied" && /* @__PURE__ */ import_react6.default.createElement("p", { role: "status", className: "dxs-notice" }, t("page.occupied")), state.scopeStatus === "loading" && /* @__PURE__ */ import_react6.default.createElement("p", { role: "status" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react6.default.createElement("button", { onClick: retryScope }, t("page.scope-retry")), state.storageError && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert", className: "dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_PINS) })), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react6.default.createElement("aside", { "aria-label": t("page.manage") }, /* @__PURE__ */ import_react6.default.createElement("h2", null, t("page.my-watchlist")), !state.pins.length && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), !state.pins.length && /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint")), /* @__PURE__ */ import_react6.default.createElement("ol", { className: "dxs-list" }, state.pins.map((item, index) => /* @__PURE__ */ import_react6.default.createElement("li", { key: item.symbol }, /* @__PURE__ */ import_react6.default.createElement("button", { className: "dxs-select", "aria-pressed": pin?.symbol === item.symbol, onClick: () => select(item.symbol) }, /* @__PURE__ */ import_react6.default.createElement("strong", null, item.alias || item.symbol), item.alias && /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxs-muted" }, " \xB7 ", item.symbol)), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react6.default.createElement("button", { disabled: index === 0, "aria-label": t("page.move-up", { symbol: item.symbol }), onClick: () => move(item.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react6.default.createElement("button", { disabled: index === state.pins.length - 1, "aria-label": t("page.move-down", { symbol: item.symbol }), onClick: () => move(item.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react6.default.createElement("button", { "aria-label": t("page.remove-aria", { symbol: item.symbol }), onClick: () => remove(item.symbol) }, t("page.remove")))))), /* @__PURE__ */ import_react6.default.createElement(AddStock, { add, count: state.pins.length, ready: state.scopeStatus === "ready", rpc, t, format })), state.scopeStatus === "ready" && (pin ? /* @__PURE__ */ import_react6.default.createElement(Detail, { key: `${state.scopeId}:${pin.symbol}`, pin, useResource, t, format, scope: state.scopeId, locale: getLocale() }) : /* @__PURE__ */ import_react6.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale() })))));
 }
 
 // src/client/chart/styles.ts
@@ -10840,12 +11068,12 @@ var MARKET_CSS = `
 // src/client/styles.ts
 var CSS = `
 .dxs{color:var(--dsw-alias-label-primary,#202124);font:13px/1.5 system-ui,sans-serif;box-sizing:border-box}.dxs *{box-sizing:border-box}.dxs button,.dxs input,.dxs select{font:inherit;color:inherit}.dxs button{cursor:pointer;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:7px;background:var(--dsw-alias-bg-layer-1,#fff);padding:5px 9px;white-space:nowrap}.dxs button:hover{background:var(--dsw-alias-bg-layer-2,#eee)}.dxs button:focus-visible,.dxs input:focus-visible,.dxs select:focus-visible{outline:2px solid var(--dsw-alias-primary,#4169e1);outline-offset:2px}.dxs button:disabled{opacity:.4;cursor:default}.dxs-bar{display:flex;align-items:center;gap:8px;width:100%;max-width:100vw;padding:5px 12px;border-top:1px solid var(--dsw-alias-border-main,#ddd);background:var(--dsw-alias-bg-layer-1,#fff);min-height:40px}.dxs-strip{display:flex;align-items:center;gap:8px;min-width:0;flex:1;overflow-x:auto;padding:2px}.dxs-chip{display:flex;align-items:center;gap:8px;flex:none}.dxs-muted{color:var(--dsw-alias-label-secondary,#666);font-size:12px}.dxs-up{color:var(--dsw-alias-error,#bc2737)}.dxs-down{color:var(--dsw-alias-success,#16784e)}.dxs-page{height:100%;overflow:auto;padding:28px;max-width:1200px;margin:auto}.dxs-heading{display:flex;justify-content:space-between;gap:12px;align-items:start}.dxs h1{font-size:23px;margin:0}.dxs h2{font-size:16px;margin:0 0 12px}.dxs p{margin:8px 0}.dxs-notice{padding:10px 12px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);border-radius:8px;margin:12px 0}.dxs-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:22px;margin-top:20px}.dxs-list{padding:0;list-style:none}.dxs-list li{margin:8px 0}.dxs-list .dxs-select{width:100%;text-align:left;white-space:normal}.dxs-controls{display:flex;gap:5px;margin-top:4px}.dxs-form{display:grid;gap:8px;margin-top:16px}.dxs input,.dxs select{min-width:0;width:100%;padding:7px 9px;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:6px}.dxs-section{padding:18px;border:1px solid var(--dsw-alias-border-main,#ddd);border-radius:10px;margin-bottom:16px}.dxs-price{font-size:30px;font-variant-numeric:tabular-nums}.dxs dl{display:grid;grid-template-columns:auto 1fr;gap:5px 16px}.dxs dd{margin:0;overflow-wrap:anywhere}.dxs-error{color:var(--dsw-alias-error,#bc2737)}@media(max-width:650px){.dxs-page{padding:16px}.dxs-layout{grid-template-columns:1fr}.dxs-bar{padding:4px 6px;gap:4px}.dxs-heading{flex-wrap:wrap}}` + CHART_CSS + `
-.dxs-file-label{position:relative;cursor:pointer}.dxs-file-label input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.dxs-file-label:focus-within{outline:2px solid Highlight;outline-offset:2px}.dxs-instrument-summary{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.dxs-instrument-summary h2,.dxs-instrument-summary p{margin:0!important}.dxs-instrument-summary .dxs-price{font-size:22px;margin-left:auto}.dxs-quote-metadata{width:100%;font-size:12px}.dxs-page{max-width:none;padding:20px}.dxs-layout{grid-template-columns:200px minmax(0,1fr);gap:16px}.dxs-layout>article{min-width:0}.dxs-workbench{min-width:0;margin-bottom:16px}.dxs-data-actions{display:flex;gap:8px;flex-wrap:wrap}.dxs-file-label{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:7px;padding:5px 9px}.dxs-file-label input{max-width:220px;padding:0}.dxs-data-banner{border:1px solid var(--dsw-alias-primary,#4169e1);padding:10px;margin:12px 0;font-weight:600}.dxs-dataset-heading{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}.dxs-chart-empty{padding:48px 20px;text-align:center;border:1px dashed var(--dsw-alias-border-main,#bbb);border-radius:10px;margin:16px 0}.dxs-attribution{font-size:11px;color:var(--dsw-alias-label-secondary,#666)}.dxs-attribution a{color:inherit}.dxs-instrument-summary{padding:12px}.dxs-instrument-summary .dxs-price{font-size:25px}.dxs-instrument-summary dl{font-size:12px;margin:8px 0}.dxs-instrument-summary p{margin:4px 0}@media(max-width:850px){.dxs-layout{grid-template-columns:1fr}.dxs-layout>aside{max-height:230px;overflow:auto}.dxs-page{padding:12px}}
+.dxs-file-label{position:relative;cursor:pointer}.dxs-file-label input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.dxs-file-label:focus-within{outline:2px solid Highlight;outline-offset:2px}.dxs-instrument-summary{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.dxs-instrument-summary h2,.dxs-instrument-summary p{margin:0!important}.dxs-instrument-summary .dxs-price{font-size:22px;margin-left:auto}.dxs-quote-metadata{width:100%;font-size:12px}.dxs-page{max-width:none;padding:20px}.dxs-layout{grid-template-columns:200px minmax(0,1fr);gap:16px}.dxs-layout>article{min-width:0}.dxs-workbench{min-width:0;margin-bottom:16px}.dxs-data-actions{display:flex;gap:8px;flex-wrap:wrap}.dxs-file-label{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:7px;padding:5px 9px}.dxs-file-label input{max-width:220px;padding:0}.dxs-data-banner{border:1px solid var(--dsw-alias-primary,#4169e1);padding:10px;margin:12px 0;font-weight:600}.dxs-dataset-heading{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}.dxs-chart-empty{padding:48px 20px;text-align:center;border:1px dashed var(--dsw-alias-border-main,#bbb);border-radius:10px;margin:16px 0}.dxs-attribution{font-size:11px;color:var(--dsw-alias-label-secondary,#666)}.dxs-attribution a{color:inherit}.dxs-instrument-summary{padding:12px}.dxs-instrument-summary .dxs-price{font-size:25px}.dxs-instrument-summary dl{font-size:12px;margin:8px 0}.dxs-instrument-summary p{margin:4px 0}.dxs-search{display:grid;gap:6px}.dxs-search>label{font-size:12px;color:var(--dsw-alias-label-secondary,#666)}.dxs-search input[type=search]{width:100%}.dxs-search-results{margin:0;padding:0;list-style:none;max-height:238px;overflow:auto;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff)}.dxs-search-results li{display:flex;align-items:center;gap:8px;padding:6px 9px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-main,#eee)}.dxs-search-results li:last-child{border-bottom:0}.dxs-search-results li[aria-selected=true],.dxs-search-results li:hover{background:var(--dsw-alias-bg-layer-2,#f4f4f5)}.dxs-search-symbol{color:var(--dsw-alias-label-secondary,#666);font-size:12px;font-variant-numeric:tabular-nums}.dxs-search-kind{margin-left:auto;font-size:11px;padding:1px 6px;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:999px;color:var(--dsw-alias-label-secondary,#666)}@media(max-width:850px){.dxs-layout{grid-template-columns:1fr}.dxs-layout>aside{max-height:230px;overflow:auto}.dxs-page{padding:12px}}
 ${MARKET_CSS}
 `;
 
 // src/client/tool-view.tsx
-var import_react6 = __toESM(require("react"), 1);
+var import_react7 = __toESM(require("react"), 1);
 
 // src/client/quote-presentation.ts
 function readQuotePresentation(meta) {
@@ -10861,7 +11089,7 @@ function StockToolView({ phase, block, t, format, inspect }) {
   const quote = settled ? readQuotePresentation(block.meta) : null;
   const state = !settled ? phase === "preparing" ? "preparing" : "running" : block.isError ? "failed" : "done";
   const symbol = quote?.symbol ?? block.args?.text("symbol");
-  return /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxs dxs-section", "aria-label": t("quote.title") }, /* @__PURE__ */ import_react6.default.createElement("strong", null, t("quote.title"), symbol ? ` \xB7 ${symbol}` : ""), /* @__PURE__ */ import_react6.default.createElement("p", { role: "status" }, t(`quote.${state}`)), settled && block.isError && /* @__PURE__ */ import_react6.default.createElement("p", { role: "alert" }, t(quoteErrorKey(block.error))), quote && !block.isError && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("dl", null, ["price", "open", "high", "low", "previousClose", "change", "changePercent"].map((key) => /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, { key }, /* @__PURE__ */ import_react6.default.createElement("dt", null, t(`quote.${key}`)), /* @__PURE__ */ import_react6.default.createElement("dd", null, key === "changePercent" ? format.change(quote[key]) : format.price(quote[key])))), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react6.default.createElement("dd", null, quote.provider), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote.quotedAt, t)), /* @__PURE__ */ import_react6.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react6.default.createElement("dd", null, format.time(quote.fetchedAt, t))), /* @__PURE__ */ import_react6.default.createElement("p", null, t("quote.notice"))), settled && !block.isError && !quote && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("p", null, t("quote.legacy")), /* @__PURE__ */ import_react6.default.createElement("pre", { style: { whiteSpace: "pre-wrap" } }, (block.content ?? []).filter((item) => item.type === "text").map((item) => item.text).join("\n"))), inspect && /* @__PURE__ */ import_react6.default.createElement("button", { onClick: inspect }, t("quote.inspect")));
+  return /* @__PURE__ */ import_react7.default.createElement("section", { className: "dxs dxs-section", "aria-label": t("quote.title") }, /* @__PURE__ */ import_react7.default.createElement("strong", null, t("quote.title"), symbol ? ` \xB7 ${symbol}` : ""), /* @__PURE__ */ import_react7.default.createElement("p", { role: "status" }, t(`quote.${state}`)), settled && block.isError && /* @__PURE__ */ import_react7.default.createElement("p", { role: "alert" }, t(quoteErrorKey(block.error))), quote && !block.isError && /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, /* @__PURE__ */ import_react7.default.createElement("dl", null, ["price", "open", "high", "low", "previousClose", "change", "changePercent"].map((key) => /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, { key }, /* @__PURE__ */ import_react7.default.createElement("dt", null, t(`quote.${key}`)), /* @__PURE__ */ import_react7.default.createElement("dd", null, key === "changePercent" ? format.change(quote[key]) : format.price(quote[key])))), /* @__PURE__ */ import_react7.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react7.default.createElement("dd", null, quote.provider), /* @__PURE__ */ import_react7.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react7.default.createElement("dd", null, format.time(quote.quotedAt, t)), /* @__PURE__ */ import_react7.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react7.default.createElement("dd", null, format.time(quote.fetchedAt, t))), /* @__PURE__ */ import_react7.default.createElement("p", null, t("quote.notice"))), settled && !block.isError && !quote && /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, /* @__PURE__ */ import_react7.default.createElement("p", null, t("quote.legacy")), /* @__PURE__ */ import_react7.default.createElement("pre", { style: { whiteSpace: "pre-wrap" } }, (block.content ?? []).filter((item) => item.type === "text").map((item) => item.text).join("\n"))), inspect && /* @__PURE__ */ import_react7.default.createElement("button", { onClick: inspect }, t("quote.inspect")));
 }
 
 // src/client/index.ts
