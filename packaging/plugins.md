@@ -1,34 +1,34 @@
 # GitHub 插件发行
 
-插件版通过 `.github/workflows/plugin-release.yml` 发布，与 Desktop 打包分开。推送 `plugins-v<套件版本>` tag 后，流水线安装锁定依赖、检查类型、运行全量测试，构建七个插件包，再用精确版本、SHA-512 校验过的官方 CLI 验证实际套件安装包。所有检查通过才创建 GitHub 预发布版本；失败不会发布，已有 Release 不会被覆盖。
+插件版通过 `.github/workflows/plugin-release.yml` 发布，与 Desktop 打包分开。推送 `plugins-v<套件版本>` tag 后，流水线安装锁定依赖、检查类型、运行全量测试，构建八个包（七个插件包与套件包），再用精确版本、SHA-512 校验过的官方 CLI 验证实际套件安装包。所有检查通过才创建 GitHub 预发布版本；失败不会发布，已有 Release 不会被覆盖。
 
 ## 安装
 
-在仓库 Releases 页面下载 `dsh-x-suite-<版本>.tgz` 和 `INSTALL.md`。私有仓库需要已登录且有权限的 GitHub 账号。套件包含 Code、Agents 的预构建文件，第三方依赖仍需联网下载；不需要这些插件已发布到 npm。其他插件按需单独下载对应 tgz。
+在仓库 Releases 页面下载 `dsh-x-suite-<版本>.tgz` 和 `INSTALL.md`。仓库为公开仓库，Release 无需登录即可下载。套件包含 Code、Agents 的预构建文件，第三方依赖仍需联网下载；不需要这些插件已发布到 npm。其他插件按需单独下载对应 tgz。
 
 安装前确认官方 DSH 版本与 Release 的 `build-manifest.json` 中 `runtime` 一致。通过官方 Plugins 页面安装本地文件，或使用官方 CLI：
 
 ```sh
 dsh --version
-dsh plugin --profile web add /绝对路径/dsh-x-suite-0.1.1.tgz --config.auto-install-peers=false
+dsh plugin --profile web add /绝对路径/dsh-x-suite-0.1.2.tgz --config.auto-install-peers=false
 ```
 
 Desktop 先启动一次以初始化 profile，然后完全退出；使用 Desktop 自带的 dsh，将 profile 改为 `desktop`。npm CLI 不能替换 Desktop 的内核或依赖图。已有独立 Code、Agents 时，先在官方 Plugins 页面停用它们，再启用套件。安装后检查插件状态，并按官方提示重启。
 
 升级前退出应用，安装目标版本文件，再按提示重启；卸载使用 `dsh plugin --profile web remove dsh-x-suite`。检查仍独立启用的组件。不承诺失败自动回滚。
 
-下载后用 `SHA256SUMS` 核对包文件。macOS / Linux 使用 `shasum -a 256 -c SHA256SUMS`；Windows 使用 `Get-FileHash <文件> -Algorithm SHA256` 与清单对照。校验整份清单需要下载全部七个 tgz。
+下载后用 `SHA256SUMS` 核对包文件。macOS / Linux 使用 `shasum -a 256 -c SHA256SUMS`；Windows 使用 `Get-FileHash <文件> -Algorithm SHA256` 与清单对照。校验整份清单需要下载全部八个 tgz。
 
 ## 如何发布
 
 发布前同步工作目录并检查待发源码。所有包版本必须与 suite 版本相同，兼容版本仍须通过现有准入，不得为发布放宽。tag 必须指向包含本流水线及完整源码的提交：
 
 ```sh
-git tag plugins-v0.1.1 <待发布提交>
-git push origin plugins-v0.1.1
+git tag plugins-v0.1.2 <待发布提交>
+git push origin plugins-v0.1.2
 ```
 
-推送 tag 会自动发布，不能用于试跑。Release 始终标记为插件预览版，不成为 Desktop 更新通道的 latest。该仓库当前为私有，发布不会改变仓库可见性。首次发布不需要 npm token。
+推送 tag 会自动发布，不能用于试跑。Release 始终标记为插件预览版，不成为 Desktop 更新通道的 latest。仓库为公开仓库；首次发布不需要 npm token。
 
 本地生成及验证（输出目录必须不存在，PATH 上的 pnpm 须与 `compatibility/policy.json` 一致）：
 
@@ -36,7 +36,7 @@ git push origin plugins-v0.1.1
 pnpm install --frozen-lockfile
 pnpm run typecheck
 pnpm test
-node scripts/package-plugin-release.mjs --output /tmp/dsh-plugin-release --tag plugins-v0.1.1
+node scripts/package-plugin-release.mjs --output /tmp/dsh-plugin-release --tag plugins-v0.1.2
 node scripts/install-release-test-runtime.mjs /tmp/dsh-release-runtime
 node scripts/test-suite-install.mjs \
   --dsh /tmp/dsh-release-runtime/node_modules/.bin/dsh \

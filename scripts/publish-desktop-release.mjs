@@ -18,7 +18,7 @@ const run = JSON.parse(execFileSync('gh', ['api', `repos/${repository}/actions/r
 assert.equal(run.status, 'completed'); assert.equal(run.conclusion, 'success')
 assert.equal(run.path, '.github/workflows/desktop-package.yml')
 const policy = readJson(path.join(root, 'compatibility/policy.json'))
-const names = ['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser'].sort()
+const names = ['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser', 'dsh-x-update'].sort()
 const input = path.resolve(values.input), output = path.join(input, 'assets')
 await mkdir(output, { recursive: false })
 const sums = [], files = []
@@ -55,7 +55,7 @@ for (const [folder, target, extension] of [['macos', 'macos-arm64', '.dmg'], ['w
   }
 }
 await writeFile(path.join(output, 'SHA256SUMS'), sums.join('')); files.push(path.join(output, 'SHA256SUMS'))
-const notes = `DSH-X ${version} 桌面预览版，包含 Code、Agents、Chat、Plan、Stocks、Browser 六个独立插件。\n\n内核由 workflow 从官方源码直接编译：\`${policy.baseline.version}\`，提交 [\`${policy.baseline.inspectedSourceCommit.slice(0, 8)}\`](https://github.com/deepseek-ai/deepseek-harness/commit/${policy.baseline.inspectedSourceCommit})。官方源码、可执行文件和 app.asar 保持原样，插件通过内嵌官方 CLI 安装。\n\n安装：\n\n- macOS Apple Silicon：下载 DMG，将 DSH-X.app 拖到 Applications，从 DSH-X 启动。\n- Windows x64：下载 EXE，安装后从 DSH-X 快捷方式启动。\n- 首次运行会打开官方应用初始化配置；按提示完全退出一次（macOS Command+Q，Windows 托盘退出），安装器会继续安装插件并重新打开。需要联网下载第三方依赖，无需手动安装 tgz。\n\n数据单独存放在 \`~/.dsh-x/desktop-preview\`，不导入原有官方账号或配置。同一版本启动时不会重新安装用户已停用或移除的插件。\n\n这是未签名预览版：macOS 无 Developer ID / 公证，Windows 无发行代码签名，系统可能提示开发者无法验证。自更新尚未启用。内嵌应用仍显示官方品牌，请通过 DSH-X 入口启动；协议唤起和全局命令尚未作为独立入口验收。\n\n[两平台最终安装验证](${run.html_url}) 已通过：实际从最终 DMG / EXE 安装、由官方 CLI 安装插件、真实 Electron Host 中六个插件与六个客户端模块各激活一次。附件包含来源清单、安装验证报告和 SHA256SUMS。真实供应商登录、模型执行和历史数据迁移不属于本次验收。\n\n校验：macOS 用 \`shasum -a 256 <文件>\`，Windows 用 \`Get-FileHash <文件> -Algorithm SHA256\`，与 SHA256SUMS 中对应条目核对。\n`
+const notes = `DSH-X ${version} 桌面预览版，包含 Code、Agents、Chat、Plan、Stocks、Browser、Update 七个独立插件。\n\n内核由 workflow 从官方源码直接编译：\`${policy.baseline.version}\`，提交 [\`${policy.baseline.inspectedSourceCommit.slice(0, 8)}\`](https://github.com/deepseek-ai/deepseek-harness/commit/${policy.baseline.inspectedSourceCommit})。官方源码、可执行文件和 app.asar 保持原样，插件通过内嵌官方 CLI 安装。\n\n安装：\n\n- macOS Apple Silicon：下载 DMG，将 DSH-X.app 拖到 Applications，从 DSH-X 启动。\n- Windows x64：下载 EXE，安装后从 DSH-X 快捷方式启动。\n- 首次运行会打开官方应用初始化配置；按提示完全退出一次（macOS Command+Q，Windows 托盘退出），安装器会继续安装插件并重新打开。需要联网下载第三方依赖，无需手动安装 tgz。\n\n数据单独存放在 \`~/.dsh-x/desktop-preview\`，不导入原有官方账号或配置。同一版本启动时不会重新安装用户已停用或移除的插件。\n\n这是未签名预览版：macOS 无 Developer ID / 公证，Windows 无发行代码签名，系统可能提示开发者无法验证。DSH-X 更新器已随包提供；未签名预览包的自动应用更新只校验 SHA-256，不验证代码签名。内嵌应用仍显示官方品牌，请通过 DSH-X 入口启动；协议唤起和全局命令尚未作为独立入口验收。\n\n[两平台最终安装验证](${run.html_url}) 已通过：实际从最终 DMG / EXE 安装、由官方 CLI 安装插件、真实 Electron Host 中七个插件与七个客户端模块各激活一次。附件包含来源清单、安装验证报告和 SHA256SUMS。真实供应商登录、模型执行和历史数据迁移不属于本次验收。\n\n校验：macOS 用 \`shasum -a 256 <文件>\`，Windows 用 \`Get-FileHash <文件> -Algorithm SHA256\`，与 SHA256SUMS 中对应条目核对。\n`
 await writeFile(path.join(output, 'INSTALL.md'), notes); files.push(path.join(output, 'INSTALL.md'))
 const tag = `desktop-v${version}`
 // A publisher may run after qualification on a later commit. Require an exact

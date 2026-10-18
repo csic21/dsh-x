@@ -16,7 +16,7 @@ if (values.help) {
 }
 if (!values.home) throw new Error('需要 --home；先用 link-plugins.mjs 将插件链接到该 home 的 web profile。')
 const child = spawn(values.dsh, ['web', '--no-open', '--port', '0'], {
-  env: { ...process.env, DSH_HOME: path.resolve(values.home) },
+  env: { ...process.env, DSH_HOME: path.resolve(values.home), DSH_X_UPDATE_DISABLE: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
   shell: false,
 })

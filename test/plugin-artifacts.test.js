@@ -4,7 +4,7 @@ import { readFile, access } from 'node:fs/promises'
 
 // Unit tests import TypeScript source. Verify the entries that actually ship,
 // including declarations and the lazy client factory consumed by the host.
-for (const name of ['dsh-x-agents', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-chat', 'dsh-x-code', 'dsh-x-browser', 'dsh-x-suite']) {
+for (const name of ['dsh-x-agents', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-chat', 'dsh-x-code', 'dsh-x-browser', 'dsh-x-update', 'dsh-x-suite']) {
   test(`${name} publishes its built host entry and declarations`, async () => {
     const root = new URL(`../packages/${name}/`, import.meta.url)
     const manifest = JSON.parse(await readFile(new URL('package.json', root), 'utf8'))

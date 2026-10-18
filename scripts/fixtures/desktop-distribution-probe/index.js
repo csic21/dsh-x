@@ -1,6 +1,6 @@
 // Test-only introspection. Never included in the distributable installer.
 export const inject = ['loader', 'connection', 'pluginManager', 'clientModules']
-const names = new Set(['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser'])
+const names = new Set(['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser', 'dsh-x-update'])
 export function apply(ctx) {
   ctx.effect(() => ctx.connection.fetch.register({
     path: '/api/dsh-x-distribution-proof', methods: ['POST'], requestBody: 'buffered',

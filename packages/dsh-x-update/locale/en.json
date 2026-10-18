@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Updates",
+    "description": "Check plugin and desktop updates, distinguishing plugin updates from app updates that carry a kernel."
+  }
+}

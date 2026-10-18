@@ -42,9 +42,13 @@ try {
   report.assertions.push('final installer extracts a runnable application without editing the official archive')
   const bootstrap = await import(pathToFileURL(path.join(root, 'bootstrap.mjs')).href)
   const manifest = await bootstrap.readDistribution(root)
+  const expectedPlugins = manifest.plugins.length
   report.kernelSha = manifest.kernelSha; report.kernelVersion = manifest.kernelVersion
   assert.equal(await bootstrap.digest(path.join(root, manifest.archive)), manifest.archiveSha256)
   const environment = bootstrap.runtimeEnvironment(home, Object.fromEntries(Object.entries(process.env).filter(([key]) => !/KEY|TOKEN|SECRET|PASSWORD|COOKIE/i.test(key))))
+  // Qualification must not download or replace anything while asserting the
+  // exact artifact under test; the shipped app keeps automatic checks on.
+  environment.DSH_X_UPDATE_DISABLE = '1'
   const launch = async () => {
     const app = await _electron.launch({ executablePath: path.join(root, manifest.executable), args: [`--user-data-dir=${path.join(home, 'electron')}`], cwd: home, env: environment, chromiumSandbox: true, timeout: 120000 })
     const receive = bytes => { runtimeLogs = (runtimeLogs + bytes.toString().replace(/(token=)[A-Za-z0-9_-]+/g, '$1[redacted]')).slice(-24000) }
@@ -62,7 +66,7 @@ try {
   assert.equal(initialized.changed, true)
   report.assertions.push('official application creates its Desktop profile; bundled official CLI installs all plugin tarballs')
   await bootstrap.installedVersions(home, manifest)
-  report.assertions.push('six independent plugin packages resolve to the packaged exact versions')
+  report.assertions.push(`${expectedPlugins} independent plugin packages resolve to the packaged exact versions`)
   await bootstrap.desktopCli(root, manifest, home, ['plugin', '--profile', 'desktop', 'add', `link:${path.join(repository, 'scripts/fixtures/desktop-distribution-probe')}`, '--ignore-scripts', '--config.auto-install-peers=false', '--config.minimum-release-age=0'])
   application = await launch()
   report.runtime = await application.evaluate(({ app }) => ({ packaged: app.isPackaged, version: app.getVersion(), userData: app.getPath('userData'), home: process.env.DSH_HOME }))
@@ -76,22 +80,22 @@ try {
     for (const page of pages) {
       try {
         const result = await page.evaluate(async () => { const response = await fetch('/api/dsh-x-distribution-proof', { method: 'POST' }); if (!response.ok) return null; return response.json() })
-        if (result?.entries?.length === 6) snapshot = result
+        if (result?.entries?.length === expectedPlugins) snapshot = result
       } catch {}
     }
     // Entry registration precedes module evaluation. Windows can expose the
     // rows while the nested suite components are still initializing.
-    if (snapshot?.entries?.every(entry => entry.active) && snapshot.clients?.length === 6 && snapshot.plugins?.every(entry => entry.enabled && entry.phase === 'active')) break
+    if (snapshot?.entries?.every(entry => entry.active) && snapshot.clients?.length === expectedPlugins && snapshot.plugins?.every(entry => entry.enabled && entry.phase === 'active')) break
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
-  assert(snapshot, 'Actual Desktop Host did not expose all six installed plugins')
-  assert.equal(snapshot.entries.length, 6)
+  assert(snapshot, 'Actual Desktop Host did not expose all installed plugins')
+  assert.equal(snapshot.entries.length, expectedPlugins)
   assert(snapshot.entries.every(entry => entry.active), JSON.stringify(snapshot))
-  assert.equal(snapshot.clients.length, 6)
-  assert.equal(snapshot.plugins.length, 6)
+  assert.equal(snapshot.clients.length, expectedPlugins)
+  assert.equal(snapshot.plugins.length, expectedPlugins)
   assert(snapshot.plugins.every(entry => entry.enabled && entry.phase === 'active'), JSON.stringify(snapshot))
   report.snapshot = snapshot
-  report.assertions.push('actual packaged Electron Host activates all six plugins and registers all six client modules once')
+  report.assertions.push(`actual packaged Electron Host activates all ${expectedPlugins} plugins and registers all ${expectedPlugins} client modules once`)
   await application.close(); application = undefined
   const repeated = await bootstrap.installDistribution({ root, home, initialize: () => { throw new Error('Repeated launch must not initialize') } })
   assert.equal(repeated.changed, false)

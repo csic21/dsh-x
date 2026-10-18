@@ -74,7 +74,7 @@ await mkdir(path.join(distributionRoot, 'packs'))
 // Desktop carries every tarball already, so install independent bundles. This
 // avoids the nested suite's extra loader lifecycle and keeps each row owned by
 // one directly selected bundle on both platforms.
-const selected = ['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser']
+const selected = ['dsh-x-code', 'dsh-x-agents', 'dsh-x-chat', 'dsh-x-plan', 'dsh-x-stock', 'dsh-x-browser', 'dsh-x-update']
 const bundled = []
 for (const name of selected) {
   const artifact = packages.artifacts.find(item => item.name === name)
@@ -86,7 +86,7 @@ for (const name of selected) {
 const id = `dsh-x-${version}-${createHash('sha256').update(JSON.stringify(bundled)).digest('hex').slice(0, 12)}`
 const manifest = { schema: 1, id, version, target: official.target, kernelRepository: official.repository, kernelSha: official.kernelSha, kernelVersion: official.version, pluginCommit: packages.commit, officialInstallerSha256: official.sha256, unsigned: true, autoUpdate: false, executable, archive, archiveSha256: await digest(path.join(distributionRoot, archive)), cli: `${applicationResources}/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js`, plugins: bundled }
 await writeFile(path.join(distributionRoot, 'distribution.json'), JSON.stringify(manifest, null, 2) + '\n')
-const instructions = `DSH-X ${version} Desktop Preview\n\nOfficial kernel: ${official.version} (${official.kernelSha})\nPlugins: Code, Agents, Chat, Plan, Stocks, Browser\n\n请始终通过 DSH-X 入口启动。首次运行会打开原样官方应用完成独立配置初始化，请完全退出该窗口；安装器随后通过官方 CLI 安装插件并重新打开。初次安装需要联网下载第三方依赖，无需手动安装 tgz。\n\n独立数据位于 ~/.dsh-x/desktop-preview，安装器不导入官方已有账号或配置。后续可在官方 Plugins 页面停用、移除插件；同一发行版启动时不会重新启用它们。卸载应用会保留用户数据。\n\n这是未签名预览包，macOS 未公证、Windows 未做代码签名；不包含自更新。当前仍显示官方内嵌应用品牌，外部协议和全局 dsh 命令集成尚未作为 DSH-X 入口验收。真实供应商模型与账号认证不属于安装验证。\n`
+const instructions = `DSH-X ${version} Desktop Preview\n\nOfficial kernel: ${official.version} (${official.kernelSha})\nPlugins: Code, Agents, Chat, Plan, Stocks, Browser, Update\n\n请始终通过 DSH-X 入口启动。首次运行会打开原样官方应用完成独立配置初始化，请完全退出该窗口；安装器随后通过官方 CLI 安装插件并重新打开。初次安装需要联网下载第三方依赖，无需手动安装 tgz。\n\n独立数据位于 ~/.dsh-x/desktop-preview，安装器不导入官方已有账号或配置。后续可在官方 Plugins 页面停用、移除插件；同一发行版启动时不会重新启用它们。卸载应用会保留用户数据。\n\n这是未签名预览包，macOS 未公证、Windows 未做代码签名；包含 DSH-X 更新器，但自动应用更新只校验发布清单的 SHA-256，不验证代码签名。当前仍显示官方内嵌应用品牌，外部协议和全局 dsh 命令集成尚未作为 DSH-X 入口验收。真实供应商模型与账号认证不属于安装验证。\n`
 await writeFile(path.join(distributionRoot, 'INSTALL.txt'), instructions)
 let file
 if (mac) {

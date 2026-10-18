@@ -153,11 +153,20 @@ importers:
   packages/dsh-x-suite:
     dependencies:
       dsh-x-agents:
-        specifier: 0.1.1
+        specifier: 0.1.2
         version: link:../dsh-x-agents
       dsh-x-code:
-        specifier: 0.1.1
+        specifier: 0.1.2
         version: link:../dsh-x-code
+
+  packages/dsh-x-update:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: '*'
+        version: 4.0.5
+      '@deepseek-ai/dsh-tools':
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2(53871834bb50b7f532ec7289e680bbda)
 
 packages:
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { access, copyFile, mkdir, open, readFile, rm, writeFile, rename } from 'node:fs/promises'
+import { access, copyFile, mkdir, open, readFile, rm, stat, writeFile, rename } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -29,7 +29,8 @@ export async function readDistribution(root) {
   const manifest = JSON.parse(await readFile(path.join(root, 'distribution.json'), 'utf8'))
   assert.equal(manifest.schema, 1)
   assert.match(manifest.id, /^[a-zA-Z0-9.-]+$/)
-  assert.equal(manifest.plugins.length, 6)
+  assert(Array.isArray(manifest.plugins) && manifest.plugins.length > 0, 'Distribution has no plugins')
+  assert.equal(new Set(manifest.plugins.map(item => item.name)).size, manifest.plugins.length, 'Duplicate plugin names')
   for (const item of manifest.plugins) {
     assert.match(item.sha256, /^[0-9a-f]{64}$/)
     assert.equal(await digest(localPath(root, item.file)), item.sha256, `Damaged plugin: ${item.name}`)
@@ -128,6 +129,116 @@ export async function installDistribution({ root, home = defaultHome(), initiali
     if (owner.nonce === nonce) await rm(lockFile)
   }
 }
+
+export async function appendInstallLog(home, message) {
+  await mkdir(home, { recursive: true, mode: 0o700 })
+  await writeFile(path.join(home, 'distribution-install.log'), `${new Date().toISOString()} ${message}\n`, { flag: 'a', mode: 0o600 })
+}
+
+const UPDATE_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+const UPDATE_TAG = /^[A-Za-z0-9._-]+$/
+
+async function readPendingPluginUpdate(home) {
+  const pending = path.join(home, 'updates', 'pending-plugins.json')
+  let raw
+  try { raw = JSON.parse(await readFile(pending, 'utf8')) } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw new Error(`Pending plugin update is unreadable: ${error.message}`)
+  }
+  assert.equal(raw?.schema, 1, 'Pending plugin update schema mismatch')
+  assert.equal(raw?.kind, 'plugins', 'Pending plugin update kind mismatch')
+  assert.match(raw?.runtime ?? '', UPDATE_VERSION, 'Pending plugin runtime is invalid')
+  assert.match(raw?.tag ?? '', UPDATE_TAG, 'Pending plugin tag is invalid')
+  assert(Array.isArray(raw.files) && raw.files.length > 0 && raw.files.length <= 32, 'Pending plugin update has no files')
+  const updates = path.join(home, 'updates')
+  const files = raw.files.map(file => {
+    assert.match(file?.name ?? '', /^dsh-x-[a-z0-9-]+$/, 'Pending plugin name is invalid')
+    assert.match(file?.version ?? '', UPDATE_VERSION, 'Pending plugin version is invalid')
+    assert.equal(typeof file?.file, 'string', 'Pending plugin file is missing')
+    assert.equal(path.basename(file.file), file.file, 'Pending plugin file must be a basename')
+    assert.match(file?.sha256 ?? '', /^[0-9a-f]{64}$/, 'Pending plugin checksum is invalid')
+    assert.equal(typeof file?.path, 'string', 'Pending plugin path is missing')
+    const resolved = path.resolve(file.path)
+    const relative = path.relative(updates, resolved)
+    assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'Pending plugin path escapes the updates directory')
+    assert.equal(path.basename(resolved), file.file, 'Pending plugin path does not match its file name')
+    return { ...file, path: resolved }
+  })
+  return { ...raw, pending, files }
+}
+
+/**
+ * Apply a plugin-only release staged by dsh-x-update. This runs before the
+ * application starts, when the official CLI can own the profile without a
+ * running Host. A failed update is logged and skipped instead of blocking the
+ * launcher; the bundled distribution remains usable.
+ */
+export async function applyPendingPluginUpdate({ root, manifest, home = defaultHome(), cli = desktopCli }) {
+  let pending
+  try { pending = await readPendingPluginUpdate(home) } catch (error) {
+    await appendInstallLog(home, `pending plugin update rejected: ${error.message}`)
+    await rm(path.join(home, 'updates', 'pending-plugins.json'), { force: true }).catch(() => {})
+    return { applied: false, reason: 'invalid' }
+  }
+  if (!pending) return { applied: false, reason: 'none' }
+  await mkdir(path.join(home, 'updates'), { recursive: true, mode: 0o700 })
+  const applyLock = path.join(home, 'updates', 'apply.lock')
+  const lock = await open(applyLock, 'wx', 0o600).catch(async error => {
+    if (error.code !== 'EEXIST') throw error
+    const info = await stat(applyLock).catch(() => null)
+    if (info && Date.now() - info.mtimeMs > 10 * 60_000) {
+      await rm(applyLock, { force: true })
+      return open(applyLock, 'wx', 0o600)
+    }
+    return null
+  })
+  if (!lock) return { applied: false, reason: 'busy' }
+  try {
+  if (pending.runtime !== manifest.kernelVersion) {
+    await appendInstallLog(home, `pending plugin update ${pending.tag} requires kernel ${pending.runtime}, running ${manifest.kernelVersion}`)
+    await rm(pending.pending, { force: true }).catch(() => {})
+    return { applied: false, reason: 'kernel-mismatch' }
+  }
+  const profile = path.join(home, 'profiles', 'desktop', 'package.json')
+  let dependencies
+  try { dependencies = Object.keys(JSON.parse(await readFile(profile, 'utf8')).dependencies ?? {}) } catch { return { applied: false, reason: 'no-profile' } }
+  const selected = pending.files.filter(file => dependencies.includes(file.name))
+  if (selected.length === 0) {
+    await appendInstallLog(home, `pending plugin update ${pending.tag} has no installed targets`)
+    await rm(pending.pending, { force: true }).catch(() => {})
+    return { applied: false, reason: 'no-targets' }
+  }
+  const cache = path.join(home, 'installer-packages', `update-${pending.tag.replace(/[^A-Za-z0-9._-]/g, '-')}`)
+  const log = await open(path.join(home, 'distribution-install.log'), 'a', 0o600)
+  try {
+    await mkdir(cache, { recursive: true, mode: 0o700 })
+    const specs = []
+    for (const file of selected) {
+      const target = path.join(cache, path.basename(file.file))
+      await copyFile(file.path, target)
+      assert.equal(await digest(target), file.sha256, `Pending plugin checksum mismatch: ${file.name}`)
+      specs.push(target)
+    }
+    await cli(root, manifest, home, ['plugin', '--profile', 'desktop', 'add', ...specs, '--ignore-scripts', '--config.auto-install-peers=false', '--config.minimum-release-age=0'], log)
+    for (const file of selected) {
+      const installed = JSON.parse(await readFile(path.join(home, 'profiles', 'desktop', 'node_modules', file.name, 'package.json'), 'utf8'))
+      assert.equal(installed.version, file.version, `Pending plugin version mismatch: ${file.name}`)
+    }
+    await rm(pending.pending, { force: true })
+    await rm(path.dirname(selected[0].path), { recursive: true, force: true }).catch(() => {})
+    log.write(`DSH-X applied plugin update ${pending.tag}\n`)
+    return { applied: true, tag: pending.tag }
+  } catch (error) {
+    log.write(`DSH-X plugin update failed: ${error.message}\n`)
+    await rename(pending.pending, `${pending.pending}.failed-${Date.now()}`).catch(() => {})
+    return { applied: false, reason: error.message }
+  } finally { await log.close() }
+  } finally {
+    await lock.close().catch(() => {})
+    await rm(applyLock, { force: true }).catch(() => {})
+  }
+}
+
 export async function launchRuntime(root, manifest, home = defaultHome()) {
   const child = spawn(localPath(root, manifest.executable), [`--user-data-dir=${path.join(home, 'electron')}`], { env: runtimeEnvironment(home), detached: true, stdio: 'ignore' })
   await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject) })
@@ -135,6 +246,11 @@ export async function launchRuntime(root, manifest, home = defaultHome()) {
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = path.dirname(fileURLToPath(import.meta.url))
-  try { const { manifest } = await installDistribution({ root }); await launchRuntime(root, manifest) }
+  try {
+    const { manifest } = await installDistribution({ root })
+    try { await applyPendingPluginUpdate({ root, manifest }) }
+    catch (error) { await appendInstallLog(defaultHome(), `pending plugin update skipped: ${error.message}`).catch(() => {}) }
+    await launchRuntime(root, manifest)
+  }
   catch (error) { await dialog(root, `DSH-X 安装或启动失败：${error.message}\n日志：${path.join(defaultHome(), 'distribution-install.log')}`, true).catch(() => {}); process.exitCode = 1 }
 }

@@ -15,14 +15,14 @@ pnpm test # 自动先构建各插件客户端
 
 这里 `pnpm install` 只安装插件开发/测试依赖，官方内核源码不进入本仓库；依赖的 install/postinstall 默认不执行，`pnpm-workspace.yaml` 只放行官方 `@deepseek-ai/dsh-subprocess-local`、esbuild、node-pty、koffi。根不声明 `packageManager`，pnpm 版本跟内核仓库走（当前 `11.28.5`）。
 
-## 将五个插件链接到独立 home
+## 将六个插件链接到独立 home
 
 ```sh
 node scripts/link-plugins.mjs --dsh ../dsh-runtime/node_modules/.bin/dsh --profile web --home /绝对路径/dsh-x-home
 DSH_HOME=/绝对路径/dsh-x-home ../dsh-runtime/node_modules/.bin/dsh web --no-open
 ```
 
-脚本将 `dsh-x-plan`、`dsh-x-stock`、`dsh-x-chat`、`dsh-x-agents`、`dsh-x-code` 通过官方 `dsh plugin add link:` 安装；已有 profile 保持原有组合包并追加这些插件。`link:` 指向当前 checkout，移动目录后需要重新链接。默认 home 是 `~/.dsh-x`，建议测试时明确传入临时目录。缓存目录受限时，可以传 `--store-dir /可写目录 --cache-dir /可写目录`。不要使用该脚本修改 `desktop` profile。
+脚本将 `dsh-x-plan`、`dsh-x-stock`、`dsh-x-chat`、`dsh-x-agents`、`dsh-x-code`、`dsh-x-update` 通过官方 `dsh plugin add link:` 安装；已有 profile 保持原有组合包并追加这些插件。`link:` 指向当前 checkout，移动目录后需要重新链接。默认 home 是 `~/.dsh-x`，建议测试时明确传入临时目录。缓存目录受限时，可以传 `--store-dir /可写目录 --cache-dir /可写目录`。不要使用该脚本修改 `desktop` profile。
 
 ## 无密钥启动冒烟测试
 
@@ -38,7 +38,7 @@ Code (`dsh-x-code`) 已加入 link 脚本。它可独立启用/禁用；只读�
 
 ## 开发者套件与真实包验证
 
-推荐入口是 `dsh-x-suite`，精确依赖 Code + Agents；Chat、Plan、Stocks、Browser 按需单独安装。开发用“五插件链接”脚本不是套件发布方式，默认也不启用 Browser。套件说明见 `packages/dsh-x-suite/README.md`。
+推荐入口是 `dsh-x-suite`，精确依赖 Code + Agents；Chat、Plan、Stocks、Browser、Update 按需单独安装。开发用“六插件链接”脚本不是套件发布方式，默认也不启用 Browser。套件说明见 `packages/dsh-x-suite/README.md`。
 
 ```sh
 pnpm run build
