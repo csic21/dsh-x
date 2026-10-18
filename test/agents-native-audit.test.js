@@ -6,12 +6,12 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
-import { createTaskStore } from '../packages/dsh-x-agents/src/store.js'
-import { createAgentsController } from '../packages/dsh-x-agents/src/controller.js'
-import { ClaudeProcessOwner } from '../packages/dsh-x-agents/src/adapters/claude-process.js'
-import { createClaudeAdapter } from '../packages/dsh-x-agents/src/adapters/claude.js'
+import { createTaskStore } from '../packages/dsh-x-agents/lib/store.js'
+import { createAgentsController } from '../packages/dsh-x-agents/lib/controller.js'
+import { ClaudeProcessOwner } from '../packages/dsh-x-agents/lib/adapters/claude-process.js'
+import { createClaudeAdapter } from '../packages/dsh-x-agents/lib/adapters/claude.js'
 import { createClaudeFixture } from '../packages/dsh-x-agents/test/fixtures/claude-protocol.mjs'
-import { createGrokAdapter } from '../packages/dsh-x-agents/src/adapters/grok.js'
+import { createGrokAdapter } from '../packages/dsh-x-agents/lib/adapters/grok.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }

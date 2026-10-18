@@ -4,7 +4,7 @@ DSH-X 是运行在官方 DeepSeek Harness 上的开发者插件套件。对用�
 
 - 默认开发组合：`dsh-x-suite`，精确依赖 Code + Agents。启用入口不自动初始化原生账号、准备模型目录或执行任务。
 - 可选独立功能：Chat、Plan、Stocks、Browser。Code 浏览和默认 DSH 模型审查不依赖 Agents；原生修复才需要它。Browser 的真实 Electron 验证单独记录，Web 测试不替代 Desktop 验证。
-- 第一条交付路径：预构建插件包 + 官方 Plugins 管理器。当前仓库有源代码和验证脚本，不表示插件已发布到 npm。
+- 第一条交付路径：GitHub Release 的预构建插件包 + 官方 Plugins 管理器。套件随包携带 Code、Agents，不依赖它们已发布到 npm；安装及发布方法见 [插件发行](packaging/plugins.md)。源码存在不表示已有成功发布的 Release。
 - 桌面发行版是后续分发目标。现有打包矩阵仍只生成官方 Desktop，不能把其中的 `dshXSha` 当作插件已经进入安装包的证据。
 
 套件安装、冲突检查及可独立使用边界见 [Developer Suite](packages/dsh-x-suite/README.md)。上游版本检查与尚未激活的调度条件见 [兼容策略](compatibility/README.md)。真实桌面验证流程见 [Desktop Browser proof](docs/desktop-browser-proof.md)。
@@ -24,12 +24,17 @@ DSH-X 是运行在官方 DeepSeek Harness 上的开发者插件套件。对用�
 dsh-x/
   packages/<包名>/              插件源码。一个目录一个包，目录名等于包名
                                  suite、code、agents、plan、stock、chat、browser
+    src/                        TypeScript 源码；src/client/ 是浏览器侧源码
+    lib/                        构建产物（交付包入库）：宿主 JS、.d.ts、client.js
+    test/                       TypeScript 测试，直接跑 src
+    tsconfig.json               类型检查（含测试，不产出）
+    tsconfig.build.json         宿主构建（tsc 产出 lib/，排除 src/client）
   .github/workflows/            打包时检出内核、产出安装包
   packaging/                    平台、签名、插件为什么还不进安装包
   kernel.local.example.json     本机运行时的路径样例
-  scripts/                      本机 link 与 Web 冒烟验证脚本
+  scripts/                      本机 link、验证脚本与共享构建 build-package.mjs
   package.json                  私有根，不声明 packageManager
-  pnpm-workspace.yaml           只收录 packages/*
+  pnpm-workspace.yaml           只收录 packages/*，并声明 workspace 设置
 ```
 
 | 目录 | 什么时候用到内核 |
@@ -92,7 +97,7 @@ Stock、Chat、Plan 跟随 DSH 官方「设置 → 语言」，内置中文与�
 
 实现使用官方 `ctx.locale`、slot 的 `locale`/`t`、`tool.call.toolview`、`output.presentationMeta` 和审批 `displayReason`。新增语言包由官方 fallback 链选择文案，缺省回退英文。Host 的模型指令、工具协议文案、启动诊断和旧历史原始记录不按浏览器语言重写；它们与用户界面文案分开。
 
-根目录 `npm test` 会先构建各客户端包，再跑全部单元、DOM 与官方运行时集成测试；无需真实模型或行情凭据。
+根目录 `pnpm test` 会先构建各客户端包，再跑全部单元、DOM 与官方运行时集成测试；无需真实模型或行情凭据。
 
 ## Agents 原生工作台
 

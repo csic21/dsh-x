@@ -1,4 +1,5 @@
 window.__ModuleLoader__.load({ id: "dsh-x-code", factory: (require) => { var module = { exports: {} }; var exports = module.exports;
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -27,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/client/index.js
+// src/client/index.ts
 var index_exports = {};
 __export(index_exports, {
   apply: () => apply,
@@ -35,7 +36,7 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// ../dsh-x-agents/src/client/model.js
+// ../dsh-x-agents/src/client/model.ts
 var STATES = ["idle", "running", "waiting_permission", "waiting_input", "completed", "cancelled", "blocked", "failed", "interrupted"];
 var CAPABILITIES = ["nativeSessions", "resume", "streaming", "tools", "plans", "permissions", "input", "usage", "cancel", "models", "authDiscovery"];
 var EVENT_TYPES = ["session", "assistant", "tool", "plan", "permission", "input", "usage", "status", "diagnostic"];
@@ -106,7 +107,7 @@ ${text2}
   return inserted;
 }
 
-// src/client/model.js
+// src/client/model.ts
 var MODES = ["worktree", "staged", "range"];
 var SEVERITIES = ["critical", "high", "medium", "low", "info"];
 var record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -141,7 +142,7 @@ function activeReview(review) {
   return Boolean(review && ["running", "reviewing", "repairing", "waiting_permission", "waiting_input", "pending"].includes(review.state));
 }
 function reviewCanFix(review) {
-  return isComplete(review) && review.mode === "worktree" && review.repairReady !== false && !review.stale && !["running", "completed"].includes(review.repair?.state) && review.findings.some((finding) => finding.status === "open");
+  return isComplete(review) && review.mode === "worktree" && review.repairReady !== false && !review.stale && !["running", "completed"].includes(review.repair?.state ?? "") && review.findings.some((finding) => finding.status === "open");
 }
 var shortHash = (value) => typeof value === "string" ? value.slice(0, 8) : "\u2014";
 var basename = (path) => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
@@ -158,7 +159,7 @@ function fileGroups(files, query = "", filter = "changed") {
 }
 function diffHunks(diff) {
   if (Array.isArray(diff)) return diff;
-  if (Array.isArray(diff?.hunks)) return diff.hunks;
+  if (diff && typeof diff === "object" && Array.isArray(diff.hunks)) return diff.hunks;
   if (typeof diff !== "string") return [];
   const hunks = [];
   let current;
@@ -218,11 +219,12 @@ function reviewRequest(snapshot, { paths, runtime, model, previousReviewId }) {
   return { scope: snapshot.scope, workspaceId: snapshot.workspace.id, mode: snapshot.workspace.mode, ...snapshot.workspace.mode === "range" ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}, paths, runtime, ...model ? { model } : {}, ...previousReviewId ? { previousReviewId } : {} };
 }
 function repairRequest(snapshot, { findingIds, runtime, model }) {
-  if (!reviewCanFix(snapshot?.review) || !findingIds.length || findingIds.some((id2) => !snapshot.review.findings.some((finding) => finding.id === id2 && finding.status === "open"))) throw new Error("staleFix");
+  if (!snapshot?.review || !reviewCanFix(snapshot.review) || !findingIds.length || findingIds.some((id2) => !snapshot.review.findings.some((finding) => finding.id === id2 && finding.status === "open"))) throw new Error("staleFix");
   return { scope: snapshot.scope, reviewId: snapshot.review.id, findingIds, runtime, ...model ? { model } : {} };
 }
 
-// src/client/controller.js
+// src/client/controller.ts
+var errorInfo = (error) => error && typeof error === "object" ? error : {};
 var empty = () => ({ status: "loading", snapshot: null, agents: null, error: null, file: null, fileStatus: "idle", fileKey: null, fileError: null, inspectedReview: null, historyStatus: "idle", historyError: null, historyId: null, pending: false });
 var problem = (code, message = "") => ({ code: typeof code === "string" ? code : "code/unavailable", message: typeof message === "string" ? message : "" });
 function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObject = globalThis.document } = {}) {
@@ -233,7 +235,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     for (const listener of [...entry.listeners]) listener();
   };
   const stopRead = (entry) => {
-    clearTimeout(entry.timer);
+    clearTimeout(entry.timer ?? void 0);
     entry.timer = null;
     entry.request?.abort();
     entry.request = null;
@@ -244,7 +246,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
   };
   const schedule = (entry) => {
     if (!disposed && entry.listeners.size) {
-      clearTimeout(entry.timer);
+      clearTimeout(entry.timer ?? void 0);
       entry.timer = setTimeout(() => {
         void refreshEntry(entry);
       }, documentObject?.hidden ? 2e4 : pollMs);
@@ -304,8 +306,8 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
         }
       } else if (entry.state.agents) publish(entry, { agents: null });
     } catch (error) {
-      if (!disposed && generation === epoch && entry.request === request && !request.signal.aborted) publish(entry, { status: "failed", error: problem(error?.code, error?.message) });
-      else if (!disposed && entry.request === request && generation === epoch && error?.code === "code/timeout") publish(entry, { status: "failed", error: problem("code/timeout") });
+      if (!disposed && generation === epoch && entry.request === request && !request.signal.aborted) publish(entry, { status: "failed", error: problem(errorInfo(error).code, errorInfo(error).message) });
+      else if (!disposed && entry.request === request && generation === epoch && errorInfo(error).code === "code/timeout") publish(entry, { status: "failed", error: problem("code/timeout") });
     } finally {
       if (entry.request === request) {
         entry.request = null;
@@ -315,7 +317,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
   }
   const entryFor = (sessionId) => {
     if (!entries.has(sessionId)) {
-      const entry = { sessionId, target: { mode: "worktree" }, state: empty(), listeners: /* @__PURE__ */ new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, action: null };
+      const entry = { source: void 0, sessionId, target: { mode: "worktree" }, state: empty(), listeners: /* @__PURE__ */ new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, action: null };
       entry.source = {
         getSnapshot: () => entry.state,
         subscribe(listener) {
@@ -369,7 +371,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       if (!file) throw problem("code/invalid-file");
       publish(entry, { file, fileStatus: "ready" });
     } catch (error) {
-      if (!disposed && epoch === generation && entry.fileRequest === request) publish(entry, { file: null, fileStatus: "failed", fileError: problem(error?.code, error?.message) });
+      if (!disposed && epoch === generation && entry.fileRequest === request) publish(entry, { file: null, fileStatus: "failed", fileError: problem(errorInfo(error).code, errorInfo(error).message) });
     } finally {
       if (entry.fileRequest === request) entry.fileRequest = null;
     }
@@ -396,17 +398,17 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       const raw = await call("code/review", { sessionId, scope: snapshot.scope, reviewId }, request);
       if (disposed || epoch !== generation || request.signal.aborted || entry.historyRequest !== request) return;
       const value = readSnapshot2({ ...snapshot, review: raw }, sessionId);
-      if (!value || raw.id !== reviewId) throw problem("code/invalid-review");
-      publish(entry, { inspectedReview: raw, historyStatus: "ready" });
+      if (!value || value.review?.id !== reviewId) throw problem("code/invalid-review");
+      publish(entry, { inspectedReview: value.review, historyStatus: "ready" });
     } catch (error) {
-      if (!disposed && epoch === generation && entry.historyRequest === request) publish(entry, { historyStatus: "failed", historyError: problem(error?.code, error?.message) });
+      if (!disposed && epoch === generation && entry.historyRequest === request) publish(entry, { historyStatus: "failed", historyError: problem(errorInfo(error).code, errorInfo(error).message) });
     } finally {
       if (entry.historyRequest === request) entry.historyRequest = null;
     }
   }
   async function cancel(sessionId) {
     const entry = entryFor(sessionId), snapshot = entry.state.snapshot, operation = snapshot?.operation, generation = epoch;
-    if (entry.action || entry.state.status !== "live" || !operation?.id || operation.state === "cancelling") return { ok: false, error: problem("code/stale-action") };
+    if (!snapshot || entry.action || entry.state.status !== "live" || !operation?.id || operation.state === "cancelling") return { ok: false, error: problem("code/stale-action") };
     const request = new AbortController();
     entry.action = request;
     publish(entry, { pending: true });
@@ -418,7 +420,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       publish(entry, { snapshot: { ...entry.state.snapshot, operation: value.operation } });
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: problem("code/cancel-unconfirmed", error?.message) };
+      return { ok: false, error: problem("code/cancel-unconfirmed", errorInfo(error).message) };
     } finally {
       if (entry.action === request) {
         entry.action = null;
@@ -466,10 +468,10 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
   };
 }
 
-// src/client/components.jsx
+// src/client/components.tsx
 var import_react2 = __toESM(require("react"), 1);
 
-// src/client/CodeViewer.jsx
+// src/client/CodeViewer.tsx
 var import_react = __toESM(require("react"), 1);
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 function Tabs({ items, value, onChange, label, className = "" }) {
@@ -479,12 +481,12 @@ function Tabs({ items, value, onChange, label, className = "" }) {
     const at = items.findIndex((item) => item.value === value);
     const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (at + (event.key === "ArrowRight" ? 1 : -1) + items.length) % items.length;
     onChange(items[next].value);
-    event.currentTarget.parentElement.children[next]?.focus();
+    event.currentTarget.parentElement?.children[next]?.focus();
   };
   return /* @__PURE__ */ import_react.default.createElement("div", { className: `dxc-tabs ${className}`, role: "tablist", "aria-label": label }, items.map((item) => /* @__PURE__ */ import_react.default.createElement("button", { key: item.value, type: "button", role: "tab", "aria-selected": value === item.value, tabIndex: value === item.value ? 0 : -1, onKeyDown: onKey, onClick: () => onChange(item.value) }, item.label)));
 }
 function MarkedText({ text: text2, query, spans }) {
-  const chunks = spans?.length ? spans : [{ text: text2 }];
+  const chunks = spans?.length ? spans : [{ text: text2, style: void 0 }];
   let offset = 0;
   const matches = query ? searchMatches([text2], query) : [];
   return /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-text" }, chunks.map((span, token) => {
@@ -507,9 +509,9 @@ function Diff({ hunks, split, wrap, oldHighlights, newHighlights, query, activeL
     const peer = columns.current[side === "left" ? "right" : "left"];
     if (peer && peer.scrollLeft !== event.currentTarget.scrollLeft) peer.scrollLeft = event.currentTarget.scrollLeft;
   };
-  const focused = (side, line) => focus?.side === side && line >= focus.startLine && line <= focus.endLine || void 0;
+  const focused = (side, line) => focus?.side === side && line != null && line >= focus.startLine && line <= focus.endLine || void 0;
   const cell = (row, side, key) => {
-    const no = row?.[side], spans = (side === "old" ? oldHighlights : newHighlights)?.[no - 1];
+    const no = row?.[side], spans = (side === "old" ? oldHighlights : newHighlights)?.[(no ?? 0) - 1];
     return /* @__PURE__ */ import_react.default.createElement("div", { key, className: `dxc-diff-cell dxc-line-${row?.kind ?? "empty"}`, "data-line-target": no ? `${side}:${no}` : void 0, "data-focused": focused(side, no), "data-find-active": activeLine === `${side}:${no}` || void 0 }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-hidden": "true" }, no ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-sign", "aria-hidden": "true" }, row?.kind === "add" ? "+" : row?.kind === "del" ? "\u2212" : ""), /* @__PURE__ */ import_react.default.createElement(MarkedText, { text: row?.text ?? "", spans, query }));
   };
   if (split && !wrap) return /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-split-columns" }, ["left", "right"].map((side) => /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-split-column", key: side, ref: (node) => {
@@ -517,7 +519,7 @@ function Diff({ hunks, split, wrap, oldHighlights, newHighlights, query, activeL
   }, onScroll: follow(side) }, hunks.map((hunk, index) => /* @__PURE__ */ import_react.default.createElement("section", { className: "dxc-hunk", key: index }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-hunk-header" }, `@@ \u2212${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`), pairedRows(hunkRows(hunk)).map((row, at) => cell(row[side], side === "left" ? "old" : "new", at)))))));
   return /* @__PURE__ */ import_react.default.createElement("div", { className: `dxc-diff-lines ${split ? "dxc-split" : "dxc-unified"}` }, hunks.map((hunk, index) => {
     const rows = hunkRows(hunk);
-    return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxc-hunk", key: index }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-hunk-header" }, `@@ \u2212${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`, hunk.heading && ` ${hunk.heading}`), split ? pairedRows(rows).map((row, at) => /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-split-row", key: at }, cell(row.left, "old", "left"), cell(row.right, "new", "right"))) : rows.map((row, at) => /* @__PURE__ */ import_react.default.createElement("div", { className: `dxc-unified-row dxc-line-${row.kind}`, key: at, "data-line-target": `${row.new == null ? "old" : "new"}:${row.new ?? row.old}`, "data-focused": focused("old", row.old) || focused("new", row.new), "data-find-active": activeLine === `${row.new == null ? "old" : "new"}:${row.new ?? row.old}` || void 0 }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-label": t("oldSide") }, row.old ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-label": t("newSide") }, row.new ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-sign", "aria-hidden": "true" }, row.kind === "add" ? "+" : row.kind === "del" ? "\u2212" : ""), /* @__PURE__ */ import_react.default.createElement(MarkedText, { text: row.text, spans: (row.new == null ? oldHighlights : newHighlights)?.[(row.new ?? row.old) - 1], query }))));
+    return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxc-hunk", key: index }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-hunk-header" }, `@@ \u2212${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`, hunk.heading && ` ${hunk.heading}`), split ? pairedRows(rows).map((row, at) => /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-split-row", key: at }, cell(row.left, "old", "left"), cell(row.right, "new", "right"))) : rows.map((row, at) => /* @__PURE__ */ import_react.default.createElement("div", { className: `dxc-unified-row dxc-line-${row.kind}`, key: at, "data-line-target": `${row.new == null ? "old" : "new"}:${row.new ?? row.old}`, "data-focused": focused("old", row.old) || focused("new", row.new), "data-find-active": activeLine === `${row.new == null ? "old" : "new"}:${row.new ?? row.old}` || void 0 }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-label": t("oldSide") }, row.old ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-label": t("newSide") }, row.new ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-sign", "aria-hidden": "true" }, row.kind === "add" ? "+" : row.kind === "del" ? "\u2212" : ""), /* @__PURE__ */ import_react.default.createElement(MarkedText, { text: row.text, spans: (row.new == null ? oldHighlights : newHighlights)?.[(row.new ?? row.old ?? 0) - 1], query }))));
   }));
 }
 function CodeViewer({ file, status, error, path, identity, mode, context, focus, retry, scrollPositions, t }) {
@@ -575,7 +577,7 @@ function CodeViewer({ file, status, error, path, identity, mode, context, focus,
     root.current?.focus();
   };
   const kind = file?.kind ?? file?.status;
-  const nonText = ["binary", "oversized", "symlink", "excluded", "unavailable"].includes(kind);
+  const nonText = ["binary", "oversized", "symlink", "excluded", "unavailable"].includes(kind ?? "");
   const source = side === "old" ? file?.beforeText : file?.text;
   const loadedPath = file?.path === path;
   return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxc-viewer", "aria-label": t("codeView"), ref: root, tabIndex: 0, onKeyDown: (event) => {
@@ -587,15 +589,15 @@ function CodeViewer({ file, status, error, path, identity, mode, context, focus,
       event.preventDefault();
       closeFind();
     }
-  } }, /* @__PURE__ */ import_react.default.createElement("header", { className: "dxc-viewer-heading" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-path", title: path }, path || t("chooseFile")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-readonly" }, t("readOnly"))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-viewer-controls" }, /* @__PURE__ */ import_react.default.createElement(Tabs, { value: tab, onChange: setTab, label: t("code"), items: [{ value: "source", label: t("source") }, { value: "diff", label: t("diff") }] }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-viewer-options" }, tab === "source" ? /* @__PURE__ */ import_react.default.createElement("select", { "aria-label": t("context"), value: side, onChange: (event) => setSide(event.target.value) }, /* @__PURE__ */ import_react.default.createElement("option", { value: "new" }, context === "review" ? t("reviewed") : t(`origin.${mode}`)), /* @__PURE__ */ import_react.default.createElement("option", { value: "old" }, t("before"))) : /* @__PURE__ */ import_react.default.createElement("button", { className: "dxc-split-control", type: "button", disabled: narrow, title: narrow ? t("splitNarrow") : void 0, "aria-pressed": split && !narrow, onClick: () => setSplit((value) => !value) }, t(split && !narrow ? "split" : "unified")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": wrap, "aria-label": t("wrap"), title: t("wrap"), onClick: () => setWrap((value) => !value) }, "\u21B5"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-label": t("find"), title: t("find"), onClick: () => setFindOpen((value) => !value) }, "\u2315"))), findOpen && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-find", role: "search" }, /* @__PURE__ */ import_react.default.createElement("input", { ref: findInput, value: query, placeholder: t("findPlaceholder"), "aria-label": t("find"), onChange: (event) => setQuery(event.target.value), onKeyDown: (event) => {
+  } }, /* @__PURE__ */ import_react.default.createElement("header", { className: "dxc-viewer-heading" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-path", title: path ?? void 0 }, path || t("chooseFile")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-readonly" }, t("readOnly"))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-viewer-controls" }, /* @__PURE__ */ import_react.default.createElement(Tabs, { value: tab, onChange: setTab, label: t("code"), items: [{ value: "source", label: t("source") }, { value: "diff", label: t("diff") }] }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-viewer-options" }, tab === "source" ? /* @__PURE__ */ import_react.default.createElement("select", { "aria-label": t("context"), value: side, onChange: (event) => setSide(event.target.value) }, /* @__PURE__ */ import_react.default.createElement("option", { value: "new" }, context === "review" ? t("reviewed") : t(`origin.${mode}`)), /* @__PURE__ */ import_react.default.createElement("option", { value: "old" }, t("before"))) : /* @__PURE__ */ import_react.default.createElement("button", { className: "dxc-split-control", type: "button", disabled: narrow, title: narrow ? t("splitNarrow") : void 0, "aria-pressed": split && !narrow, onClick: () => setSplit((value) => !value) }, t(split && !narrow ? "split" : "unified")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": wrap, "aria-label": t("wrap"), title: t("wrap"), onClick: () => setWrap((value) => !value) }, "\u21B5"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-label": t("find"), title: t("find"), onClick: () => setFindOpen((value) => !value) }, "\u2315"))), findOpen && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-find", role: "search" }, /* @__PURE__ */ import_react.default.createElement("input", { ref: findInput, value: query, placeholder: t("findPlaceholder"), "aria-label": t("find"), onChange: (event) => setQuery(event.target.value), onKeyDown: (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       nextMatch(event.shiftKey ? -1 : 1);
     }
-  } }), /* @__PURE__ */ import_react.default.createElement("span", { role: "status" }, matches.length ? t("matches", { current: normalizedIndex + 1, count: matches.length }) : t("noMatches")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("previousMatch"), disabled: !matches.length, onClick: () => nextMatch(-1) }, "\u2191"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("nextMatch"), disabled: !matches.length, onClick: () => nextMatch(1) }, "\u2193"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("closeFind"), onClick: closeFind }, "\xD7")), loadedPath && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-version" }, /* @__PURE__ */ import_react.default.createElement("span", null, tab === "source" && side === "old" ? t("beforeVersion", { version: shortHash(file.baseVersion) }) : t("afterVersion", { origin: context === "review" ? t("reviewed") : t(`origin.${mode}`), version: shortHash(["Worktree", "Index"].includes(file.version) ? file.hash : file.version ?? file.hash) })), tab === "diff" && /* @__PURE__ */ import_react.default.createElement("span", null, t("beforeVersion", { version: shortHash(file.baseVersion) }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-code-scroll", ref: scroll, "data-wrap": wrap || void 0, onScroll: (event) => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }) }, !path ? /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-empty dxc-code-empty" }, /* @__PURE__ */ import_react.default.createElement("span", { "aria-hidden": "true" }, "{ }"), /* @__PURE__ */ import_react.default.createElement("p", null, t("chooseFile"))) : status === "loading" || status === "ready" && !loadedPath ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state", role: "status" }, t("fileLoading")) : status === "failed" ? /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-state", role: "alert" }, /* @__PURE__ */ import_react.default.createElement("p", null, t(/stale/i.test(error?.code) ? "fileChanged" : "fileFailed")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: retry }, t("retry"))) : loadedPath ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, (file.truncated || file.diffTruncated) && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-inline-warning" }, t("truncated")), nonText ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t(kind === "unavailable" ? "fileFailed" : kind)) : tab === "source" ? source == null || side === "old" && file.beforeKind === "missing" || side === "new" && (file.afterKind === "missing" || kind === "missing") ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("missing")) : source === "" ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("emptyFile")) : /* @__PURE__ */ import_react.default.createElement(Source, { text: source, highlights: side === "old" ? oldHighlights : newHighlights, query, activeLine, focus, side }) : hunks.length ? /* @__PURE__ */ import_react.default.createElement(Diff, { hunks, split: split && !narrow, wrap, oldHighlights, newHighlights, query, activeLine, focus, t }) : /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("noDiff"))) : null));
+  } }), /* @__PURE__ */ import_react.default.createElement("span", { role: "status" }, matches.length ? t("matches", { current: normalizedIndex + 1, count: matches.length }) : t("noMatches")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("previousMatch"), disabled: !matches.length, onClick: () => nextMatch(-1) }, "\u2191"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("nextMatch"), disabled: !matches.length, onClick: () => nextMatch(1) }, "\u2193"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("closeFind"), onClick: closeFind }, "\xD7")), loadedPath && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-version" }, /* @__PURE__ */ import_react.default.createElement("span", null, tab === "source" && side === "old" ? t("beforeVersion", { version: shortHash(file.baseVersion) }) : t("afterVersion", { origin: context === "review" ? t("reviewed") : t(`origin.${mode}`), version: shortHash(["Worktree", "Index"].includes(file.version ?? "") ? file.hash : file.version ?? file.hash) })), tab === "diff" && /* @__PURE__ */ import_react.default.createElement("span", null, t("beforeVersion", { version: shortHash(file.baseVersion) }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-code-scroll", ref: scroll, "data-wrap": wrap || void 0, onScroll: (event) => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }) }, !path ? /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-empty dxc-code-empty" }, /* @__PURE__ */ import_react.default.createElement("span", { "aria-hidden": "true" }, "{ }"), /* @__PURE__ */ import_react.default.createElement("p", null, t("chooseFile"))) : status === "loading" || status === "ready" && !loadedPath ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state", role: "status" }, t("fileLoading")) : status === "failed" ? /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-state", role: "alert" }, /* @__PURE__ */ import_react.default.createElement("p", null, t(/stale/i.test(error?.code ?? "") ? "fileChanged" : "fileFailed")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: retry }, t("retry"))) : loadedPath ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, (file.truncated || file.diffTruncated) && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-inline-warning" }, t("truncated")), nonText ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t(kind === "unavailable" ? "fileFailed" : kind ?? "unavailable")) : tab === "source" ? source == null || side === "old" && file.beforeKind === "missing" || side === "new" && (file.afterKind === "missing" || kind === "missing") ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("missing")) : source === "" ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("emptyFile")) : /* @__PURE__ */ import_react.default.createElement(Source, { text: source, highlights: side === "old" ? oldHighlights : newHighlights, query, activeLine, focus, side }) : hunks.length ? /* @__PURE__ */ import_react.default.createElement(Diff, { hunks, split: split && !narrow, wrap, oldHighlights, newHighlights, query, activeLine, focus, t }) : /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("noDiff"))) : null));
 }
 
-// src/client/locales.js
+// src/client/locales.ts
 var NS = "dshXCode";
 var en = {
   "stage.preparing": "Capturing source",
@@ -1024,14 +1026,14 @@ var zh = {
 var messageKey = (code) => {
   code = String(code ?? "").toLowerCase();
   const specific = { code_git: "gitUnavailable", code_base: "invalidBase", code_head: "noHead", code_policy: "policyUnavailable", code_boundary: "boundaryBlocked", code_incomplete: "incompleteManifest" };
-  if (specific[code]) return specific[code];
-  if (/not-git|not-repository|repository-not-found/.test(code ?? "")) return "noRepository";
-  if (/stale|workspace-changed/.test(code ?? "")) return "fileChanged";
-  if (/invalid/.test(code ?? "")) return "invalidState";
+  if (specific[String(code)]) return specific[String(code)];
+  if (/not-git|not-repository|repository-not-found/.test(String(code ?? ""))) return "noRepository";
+  if (/stale|workspace-changed/.test(String(code ?? ""))) return "fileChanged";
+  if (/invalid/.test(String(code ?? ""))) return "invalidState";
   return "unavailable";
 };
 
-// src/client/components.jsx
+// src/client/components.tsx
 function CodeIcon() {
   return /* @__PURE__ */ import_react2.default.createElement("svg", { viewBox: "0 0 24 24", width: "20", height: "20", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ import_react2.default.createElement("path", { d: "m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
@@ -1067,10 +1069,14 @@ function Setup({ kind, agents, snapshot, count, limits, prepare, inspect, models
   }, [runtime, candidates.map((item) => item.id).join(",")]);
   const validModel = !model || selected?.models.some((item) => item.id === model);
   const canSubmit = enabled && (runtime === "dsh" || !agents?.task || agents.task.allowedActions.includes("request-start"));
-  return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-setup", "aria-label": t(kind === "repair" ? "repairSetup" : kind === "rereview" ? "rereviewSetup" : "reviewSetup") }, /* @__PURE__ */ import_react2.default.createElement("header", null, /* @__PURE__ */ import_react2.default.createElement("strong", null, t(kind === "repair" ? "repairSetup" : kind === "rereview" ? "rereviewSetup" : "reviewSetup")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: close }, "\xD7")), candidates.length ? /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-fields" }, /* @__PURE__ */ import_react2.default.createElement("label", null, t(kind === "repair" ? "agent" : "reviewer"), /* @__PURE__ */ import_react2.default.createElement("select", { ref: first, value: runtime, onChange: (event) => {
+  return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-setup", "aria-label": t(kind === "repair" ? "repairSetup" : kind === "rereview" ? "rereviewSetup" : "reviewSetup") }, /* @__PURE__ */ import_react2.default.createElement("header", null, /* @__PURE__ */ import_react2.default.createElement("strong", null, t(kind === "repair" ? "repairSetup" : kind === "rereview" ? "rereviewSetup" : "reviewSetup")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: close }, "\xD7")), candidates.length ? /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-fields" }, /* @__PURE__ */ import_react2.default.createElement("label", null, t(kind === "repair" ? "agent" : "reviewer"), /* @__PURE__ */ import_react2.default.createElement("select", { ref: (node) => {
+    first.current = node;
+  }, value: runtime, onChange: (event) => {
     setRuntime(event.target.value);
     setModel("");
-  } }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "", disabled: true }, t("chooseAgent")), candidates.map((agent) => /* @__PURE__ */ import_react2.default.createElement("option", { key: agent.id, value: agent.id }, agent.label)))), /* @__PURE__ */ import_react2.default.createElement("label", null, t("model"), runtime === "dsh" ? /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-session-model" }, snapshot.dshModel?.model ?? t("sessionModel")) : /* @__PURE__ */ import_react2.default.createElement("select", { value: model, onChange: (event) => setModel(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "" }, t("nativeDefault")), selected?.models.map((item) => /* @__PURE__ */ import_react2.default.createElement("option", { key: item.id, value: item.id }, item.label))))), runtime !== "dsh" && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-meta" }, /* @__PURE__ */ import_react2.default.createElement("span", null, t(Object.hasOwn(en, `catalog.${selected?.modelCatalog?.status}`) ? `catalog.${selected.modelCatalog.status}` : "catalog.not-loaded")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => models(runtime), disabled: !enabled }, t("models")))) : /* @__PURE__ */ import_react2.default.createElement("p", null, t(kind === "repair" ? !snapshot.agentsAvailable ? "agentsMissing" : "noAgent" : "reviewerMissing")), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-footer" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-muted" }, kind === "repair" ? t("openFindings", { count }) : t("selection", { count })), candidates.length ? /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-primary", disabled: !canSubmit || !selected || !validModel || !count, onClick: () => prepare({ runtime, model }) }, t("prepare")) : snapshot.agentsAvailable && (kind === "repair" || snapshot.nativeReviewAvailable !== false) ? /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", ref: first, onClick: inspect }, t("agentSetup")) : null), kind !== "repair" && selected && /* @__PURE__ */ import_react2.default.createElement("p", { className: runtime === "dsh" ? "dxc-muted" : "dxc-warning" }, t(runtime === "dsh" ? "snapshotBoundary" : "nativeBoundary")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("prepareHint")), kind !== "repair" && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("reviewBudget", { count: limits.maxSelectedFiles ?? 20, bytes: limits.maxReviewBytes ?? 8e3 })));
+  } }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "", disabled: true }, t("chooseAgent")), candidates.map((agent) => /* @__PURE__ */ import_react2.default.createElement("option", { key: agent.id, value: agent.id }, agent.label)))), /* @__PURE__ */ import_react2.default.createElement("label", null, t("model"), runtime === "dsh" ? /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-session-model" }, snapshot.dshModel?.model ?? t("sessionModel")) : /* @__PURE__ */ import_react2.default.createElement("select", { value: model, onChange: (event) => setModel(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "" }, t("nativeDefault")), selected?.models.map((item) => /* @__PURE__ */ import_react2.default.createElement("option", { key: item.id, value: item.id }, item.label))))), runtime !== "dsh" && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-meta" }, /* @__PURE__ */ import_react2.default.createElement("span", null, t(Object.hasOwn(en, `catalog.${selected?.modelCatalog?.status}`) ? `catalog.${selected?.modelCatalog?.status}` : "catalog.not-loaded")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => models(runtime), disabled: !enabled }, t("models")))) : /* @__PURE__ */ import_react2.default.createElement("p", null, t(kind === "repair" ? !snapshot.agentsAvailable ? "agentsMissing" : "noAgent" : "reviewerMissing")), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-setup-footer" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-muted" }, kind === "repair" ? t("openFindings", { count }) : t("selection", { count })), candidates.length ? /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-primary", disabled: !canSubmit || !selected || !validModel || !count, onClick: () => prepare({ runtime, model }) }, t("prepare")) : snapshot.agentsAvailable && (kind === "repair" || snapshot.nativeReviewAvailable !== false) ? /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", ref: (node) => {
+    first.current = node;
+  }, onClick: inspect }, t("agentSetup")) : null), kind !== "repair" && selected && /* @__PURE__ */ import_react2.default.createElement("p", { className: runtime === "dsh" ? "dxc-muted" : "dxc-warning" }, t(runtime === "dsh" ? "snapshotBoundary" : "nativeBoundary")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("prepareHint")), kind !== "repair" && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("reviewBudget", { count: limits.maxSelectedFiles ?? 20, bytes: limits.maxReviewBytes ?? 8e3 })));
 }
 function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, cancel, back, t, formatTime }) {
   const state = useCode((value) => value), snapshot = state.snapshot;
@@ -1087,10 +1093,10 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
   const [path, setPath] = (0, import_react2.useState)(null), [selected, setSelected] = (0, import_react2.useState)([]), [issues, setIssues] = (0, import_react2.useState)([]);
   const [context, setContext] = (0, import_react2.useState)("current"), [pane, setPane] = (0, import_react2.useState)("files"), [setup, setSetup] = (0, import_react2.useState)(null), [notice, setNotice] = (0, import_react2.useState)(null), [focus, setFocus] = (0, import_react2.useState)(null);
   const [base, setBase] = (0, import_react2.useState)(snapshot?.workspace.baseRef ?? "main"), [mode, setMode] = (0, import_react2.useState)(snapshot?.workspace.mode ?? "worktree");
-  const scrollPositions = (0, import_react2.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react2.useRef)(null), previousReview = (0, import_react2.useRef)(null), rereviewId = (0, import_react2.useRef)(null), setupReviewId = (0, import_react2.useRef)(null);
+  const scrollPositions = (0, import_react2.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react2.useRef)(null), previousReview = (0, import_react2.useRef)(void 0), rereviewId = (0, import_react2.useRef)(null), setupReviewId = (0, import_react2.useRef)(null);
   const live = state.status === "live", historyId = state.historyId, review = historyId ? state.inspectedReview : snapshot?.review, agents = state.agents;
   const maxFiles = snapshot?.limits.maxSelectedFiles ?? 20;
-  const files = context === "review" && review ? snapshot.files.filter((file) => review.paths.includes(file.path)).concat(review.paths.filter((item) => !snapshot.files.some((file) => file.path === item)).map((path2) => ({ path: path2, status: "modified", changed: true, selectable: false }))) : snapshot?.files ?? [];
+  const files = context === "review" && review && snapshot ? snapshot.files.filter((file) => review.paths.includes(file.path)).concat(review.paths.filter((item) => !snapshot.files.some((file) => file.path === item)).map((path2) => ({ path: path2, status: "modified", changed: true, selectable: false }))) : snapshot?.files ?? [];
   const currentFile = files.find((file) => file.path === path);
   const effectivePath = currentFile?.path ?? null;
   const request = (0, import_react2.useMemo)(() => snapshot && effectivePath ? { scope: snapshot.scope, workspaceId: snapshot.workspace.id, path: effectivePath, mode: snapshot.workspace.mode, ...snapshot.workspace.mode === "range" ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}, ...context === "review" && review ? { reviewId: review.id } : {} } : null, [snapshot?.scope, snapshot?.workspace.id, snapshot?.workspace.mode, snapshot?.workspace.baseRef, effectivePath, context, review?.id]);
@@ -1180,7 +1186,7 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
       put(`${t(setup === "repair" ? "repairRequest" : "reviewRequest")}
 ${JSON.stringify(args, null, 2)}`);
     } catch (error) {
-      setNotice(Object.hasOwn(en, error.message) ? error.message : "unavailable");
+      setNotice(error instanceof Error && Object.hasOwn(en, error.message) ? error.message : "unavailable");
     }
   };
   const beginReview = (kind) => {
@@ -1249,7 +1255,7 @@ function CodeToolRow({ phase, block, open, t }) {
   return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc dxc-tool" }, /* @__PURE__ */ import_react2.default.createElement("header", null, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react2.default.createElement("strong", null, t("title")), /* @__PURE__ */ import_react2.default.createElement("span", null, t(phase !== "result" ? "toolRunning" : block?.isError ? "toolFailed" : "historical"))), phase === "result" && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, review ? /* @__PURE__ */ import_react2.default.createElement("p", null, t(isComplete(review) ? "openFindings" : "incomplete", { count: review.findings?.length ?? 0 }), review.stale ? ` \xB7 ${t("stale")}` : "") : /* @__PURE__ */ import_react2.default.createElement("p", null, t(valid ? "historical" : "toolUnknown")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: open }, t("viewWorkbench"))));
 }
 
-// src/client/styles.js
+// src/client/styles.ts
 var CSS = `
 .dxc{--code-bg:var(--dsw-alias-bg-layer-1,#fff);--code-soft:var(--dsw-alias-bg-layer-2,#f5f6f8);--code-line:var(--dsw-alias-border-l2,#e2e5e9);--code-fg:var(--dsw-alias-label-primary,#20252e);--code-muted:var(--dsw-alias-label-secondary,#717885);--code-accent:var(--dsw-alias-brand-primary,#4666d5);--code-warning:var(--dsw-alias-state-warn-primary,#9b6815);color:var(--code-fg);font:13px/1.5 system-ui,sans-serif;box-sizing:border-box}.dxc *{box-sizing:border-box;min-width:0}.dxc-page{height:100%;min-height:0;width:100%;max-width:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--code-bg);container-type:inline-size}.dxc h1,.dxc h2,.dxc p{margin:0}.dxc button,.dxc input,.dxc select{font:inherit;color:inherit}.dxc button,.dxc select,.dxc input[type=search],.dxc input:not([type]){border:1px solid var(--code-line);border-radius:6px;background:var(--code-bg)}.dxc button{cursor:pointer;padding:5px 9px;line-height:1.45;white-space:nowrap}.dxc button:hover:not(:disabled){background:var(--code-soft)}.dxc button:disabled,.dxc input:disabled,.dxc select:disabled{opacity:.45;cursor:not-allowed}.dxc :is(button,input,select,summary,[tabindex]):focus-visible{outline:2px solid var(--code-accent);outline-offset:2px}.dxc input[type=checkbox]{width:14px;height:14px;flex:none;margin:0;accent-color:var(--code-accent)}.dxc input[type=search],.dxc input:not([type]),.dxc select{padding:5px 8px}.dxc select{max-width:100%}.dxc .dxc-primary{background:var(--code-accent);border-color:var(--code-accent);color:var(--dsw-alias-label-primary-foreground,#fff);font-weight:550}.dxc .dxc-primary:hover:not(:disabled){background:color-mix(in srgb,var(--code-accent) 90%,#000)}.dxc-muted{color:var(--code-muted);font-size:11px}.dxc-warning{color:var(--code-warning)}.dxc-inline-warning{background:color-mix(in srgb,var(--code-warning) 8%,var(--code-bg));color:var(--code-warning);padding:8px 12px;font:12px/1.5 system-ui,sans-serif;white-space:normal}.dxc details summary{cursor:pointer;color:var(--code-muted);font-size:11px}.dxc pre{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;margin:6px 0}.dxc details p{font-size:12px;margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .dxc-header{padding:18px 20px 14px;padding-inline-start:max(20px,var(--dsh-frame-leading-clearance,0px));display:flex;gap:14px;align-items:center;justify-content:space-between;flex:none}.dxc-brand{display:flex;align-items:center;gap:9px;min-width:0}.dxc-brand svg{color:var(--code-accent);flex:none}.dxc-brand h1{font-size:18px;font-weight:650;letter-spacing:-.5px}.dxc-repo{color:var(--code-muted);font-size:12px;margin-left:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dxc-header-actions{display:flex;gap:7px;align-items:center;flex:none}.dxc-count{display:inline-block;background:color-mix(in srgb,var(--dsw-alias-label-primary-foreground,#fff) 15%,transparent);border-radius:4px;margin-left:7px;padding:0 5px;font-size:11px}.dxc-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 20px 13px;border-bottom:1px solid var(--code-line);flex-wrap:wrap;flex:none}.dxc-scope{display:flex;gap:7px;align-items:center}.dxc-scope label{color:var(--code-muted);font-size:11px}.dxc-scope form{display:flex;gap:5px}.dxc-scope input{width:145px}.dxc-banner{display:flex;align-items:center;gap:9px;padding:9px 20px;border-bottom:1px solid var(--code-line);background:var(--code-soft);font-size:12px;flex:none;flex-wrap:wrap}.dxc-banner>button:last-child{margin-left:auto}.dxc-banner button{font-size:11px;padding:3px 7px}.dxc-running{color:var(--code-accent)}.dxc-state-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--code-accent);flex:none}.dxc-review-failed,.dxc-review-interrupted,.dxc-review-blocked{background:var(--code-warning)}
@@ -1264,12 +1270,12 @@ var CSS = `
 @media(prefers-reduced-motion:reduce){.dxc *{scroll-behavior:auto!important}}
 `;
 
-// src/client/index.js
+// src/client/index.ts
 var inject = ["slots", "connection", "layout", "locale"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "code: dictionaries");
   const t = ctx.locale.bind(NS), controller = createCodeController(ctx.connection.rpc);
-  const absent = { status: "idle", snapshot: null, agents: null, file: null }, empty2 = { getSnapshot: () => absent, subscribe: () => () => {
+  const absent = { ...empty(), status: "idle" }, empty2 = { getSnapshot: () => absent, subscribe: () => () => {
   } };
   ctx.effect(() => () => controller.dispose(), "code: session state");
   ctx.on("connection/reset", () => controller.reset());

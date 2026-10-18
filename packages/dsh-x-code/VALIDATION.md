@@ -36,3 +36,20 @@ No real paid or authenticated DSH/Codex/OpenCode/Claude/Grok model call, provide
 Review evidence is deliberately limited to explicitly selected text snapshots, with a 48 KiB before+after source budget and a 64,000-character encoded prompt limit. It cannot establish repository-wide correctness, real test execution, or that all secrets have been detected. Old findings are never automatically resolved by a repair or an empty re-review.
 
 The pinned official LLM API does not support a `code-review` purpose. Auxiliary input is reconstructable from private Code records and attributed to the session; no unsupported session-log event or false purpose is fabricated. A crash-left storage lock fails closed and requires explicit recovery with all hosts closed. Exhaustive screen-reader, operating-system, desktop-install, and production-provider compatibility are not claimed.
+
+## TypeScript migration — 2026-10-18
+
+- Host and client sources and package tests now use TypeScript under the shared strict configuration. Published entry: `lib/index.js`; the shared builder emits host JavaScript/declarations and the client bundle.
+- `pnpm run typecheck` and `pnpm run build` pass. Browser + Code focused tests pass **65/65**. Root integration tests pass **189**, with **2 skipped** and no failures.
+- Full regression with `TMPDIR=/private/tmp` and local loopback listeners allowed: **756 total, 753 passed, 2 skipped, 1 failed**. The failure is the unchanged Plan ACP input-closure fixture (`packages/dsh-x-plan/test/acp.test.js:23`): expected `EPIPE`, received `DSH_X_PLAN_ACP_CLOSED`. No Plan runtime or tests were changed by this migration.
+- `npm pack --dry-run` includes the built host entry, declarations, client bundle, patch and documentation, without source/test files. `git diff --check` passes. No live Desktop/provider validation was repeated for this source migration.
+
+## Completed TypeScript migration — 2026-10-18
+
+- All seven workspace packages use the shared TypeScript builder. Strict type checking includes source and package tests; the temporary Code `allowJs` bridge is removed. Host entries load from `lib/index.js`, with declarations and lazy client factories included in package checks.
+- `pnpm run typecheck` and `pnpm run build` pass. Full regression (`TMPDIR=/private/tmp pnpm test`, with local loopback listeners allowed): **762 tests, 760 passed, 0 failed, 2 skipped**. Skips are the unavailable upstream ApprovalPanel source fixture and a platform-specific non-macOS CLI check.
+- Plan's ACP input-closure fixture now reads its handshake synchronously before closing fd 0, preserving open stdout and the exact `EPIPE` assertion. Closing a descriptor behind an active Node stdin stream could terminate the fixture before the host write. The test passes within the complete regression.
+- Stock's compiled Workbench fixture intercepts the migrated `.tsx` chart module; its twelve cases pass with the intended chart seam. Numeric indicator and dataset validation behavior is retained.
+- Package dry runs verify built entries, declarations, client bundles, chart license notices and Agents protocol notes; TypeScript source/tests are excluded from delivery. `git diff --check` is clean.
+
+No provider authentication, real model calls, Electron UI, or paid/network market-data calls are claimed by these synthetic tests.

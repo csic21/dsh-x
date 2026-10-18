@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { closeOwnedProcess, createOwnedOpenCodeAdapter } from '../packages/dsh-x-agents/src/adapters/opencode-owned.js';
+import { closeOwnedProcess, createOwnedOpenCodeAdapter } from '../packages/dsh-x-agents/lib/adapters/opencode-owned.js';
 
 export const KERNEL_COMMIT = '1517a4dbca0a2789ff1d41ba439600f8547d23fa';
 const CLEANUP_MS = 15000;

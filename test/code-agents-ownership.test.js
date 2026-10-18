@@ -10,9 +10,9 @@ import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
-import * as agents from '../packages/dsh-x-agents/index.js'
-import * as plan from '../packages/dsh-x-plan/index.js'
-import { sessionPlansDir, writeNewPlan, prepareApproval, approvePlan } from '../packages/dsh-x-plan/src/store.js'
+import * as agents from '../packages/dsh-x-agents/lib/index.js'
+import * as plan from '../packages/dsh-x-plan/lib/index.js'
+import { sessionPlansDir, writeNewPlan, prepareApproval, approvePlan } from '../packages/dsh-x-plan/lib/store.js'
 
 const deferred = () => {
   let resolve

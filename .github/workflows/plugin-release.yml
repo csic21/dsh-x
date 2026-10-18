@@ -1,0 +1,89 @@
+name: Release prebuilt plugins
+
+on:
+  push:
+    tags: ['plugins-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read qualified pnpm version
+        id: policy
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p = JSON.parse(fs.readFileSync("compatibility/policy.json", "utf8"));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `pnpm=${p.packageManager.version}\nruntime=${p.baseline.version}\n`);
+          '
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.policy.outputs.pnpm }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - name: Build and test with bounded execution
+        timeout-minutes: 15
+        run: |
+          pnpm run build
+          node --test --test-timeout=600000 packages/*/test/*.test.ts test/*.test.js
+      - name: Package release assets and bundled suite
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/package-plugin-release.mjs --output "$RUNNER_TEMP/plugin-release" --tag "$RELEASE_TAG"
+      - name: Install integrity-pinned official test runtime
+        run: node scripts/install-release-test-runtime.mjs "$RUNNER_TEMP/plugin-runtime"
+      - name: Qualify the actual release tarball through the official CLI and Web Host
+        env:
+          DSH_VERSION: ${{ steps.policy.outputs.runtime }}
+        run: |
+          node scripts/test-suite-install.mjs \
+            --dsh "$RUNNER_TEMP/plugin-runtime/node_modules/.bin/dsh" \
+            --dsh-version "$DSH_VERSION" \
+            --release-dir "$RUNNER_TEMP/plugin-release" \
+            --report "$RUNNER_TEMP/plugin-release/suite-install-report.json"
+          cd "$RUNNER_TEMP/plugin-release"
+          sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qualified-plugin-release
+          path: ${{ runner.temp }}/plugin-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: qualified-plugin-release
+          path: release
+      - name: Publish a plugin prerelease after qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum -c SHA256SUMS
+          gh release create "$RELEASE_TAG" ./*.tgz ./SHA256SUMS ./build-manifest.json ./INSTALL.md ./suite-install-report.json \
+            --verify-tag --prerelease --latest=false \
+            --title "DSH-X $RELEASE_TAG 插件预览版" --notes-file INSTALL.md

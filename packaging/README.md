@@ -1,5 +1,7 @@
 # 桌面打包
 
+可下载的插件版使用独立的 [GitHub 插件发行流程](plugins.md)，不需要先生成桌面安装包。本页只说明 Desktop 打包。
+
 DSH-X 的第一条交付路径是独立插件与 `dsh-x-suite` 组合包，通过官方 Plugins 管理器安装。本页的原有 Desktop 打包矩阵不是已集成 DSH-X 的桌面发行版。新增的 Windows Browser proof job 是隔离验证，不是发布安装包，见 [验证说明](../docs/desktop-browser-proof.md)。
 
 安装包由官方内核的 Desktop 打包命令产生。本仓库不另写一套 Electron 壳，也不包含内核源码。GitHub Actions 在运行时检出 `kernel_ref`，在那份临时目录里打包，产物留成 artifact。要跟最新内核，改这次运行的 ref。

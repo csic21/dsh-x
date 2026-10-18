@@ -1,5 +1,6 @@
 /*! TradingView Lightweight Charts™; Copyright (с) 2025 TradingView, Inc. https://www.tradingview.com/; see bundled licenses/lightweight-charts.NOTICE and LICENSE. */
 window.__ModuleLoader__.load({ id: "dsh-x-stock", factory: (require) => { var module = { exports: {} }; var exports = module.exports;
+"use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -28,7 +29,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/client/index.js
+// src/client/index.ts
 var index_exports = {};
 __export(index_exports, {
   apply: () => apply,
@@ -36,7 +37,7 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// src/watchlist.js
+// src/watchlist.ts
 var watchlistError = (code) => Object.assign(new Error(code), { code });
 var MAX_PINS = 8;
 var STORAGE_KEY = "dsh-x-stock:watchlist:v1";
@@ -52,7 +53,8 @@ function validateSymbol(symbol) {
   if (typeof symbol !== "string" || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) throw watchlistError("invalid-symbol");
   return symbol;
 }
-function normalizePin(pin) {
+function normalizePin(raw) {
+  const pin = raw;
   if (!pin || typeof pin !== "object") throw watchlistError("invalid-pin");
   const symbol = validateSymbol(pin.symbol);
   const alias = typeof pin.alias === "string" ? pin.alias.trim().slice(0, 24) : "";
@@ -80,7 +82,7 @@ function validateScope(scope) {
 }
 var scopedStorageKey = (scope) => `${STORAGE_KEY}:${validateScope(scope)}`;
 
-// src/client/controller.js
+// src/client/controller.ts
 function createWatchlistController(storage, eventTarget) {
   const listeners = /* @__PURE__ */ new Set();
   let storageKey = null;
@@ -162,7 +164,7 @@ function createWatchlistController(storage, eventTarget) {
   };
 }
 
-// src/client/placement.js
+// src/client/placement.ts
 function mountWhenVacant(slots, options, Component, onPlacement) {
   return slots.inject("shell.bottom", () => {
     let disposeEntry, stopped = false;
@@ -190,7 +192,7 @@ function mountWhenVacant(slots, options, Component, onPlacement) {
   });
 }
 
-// src/client/resource.js
+// src/client/resource.ts
 var PROTOCOL = "dsh-x-stock";
 var addressFor = (symbol) => `dsh-resource://${PROTOCOL}/${symbol}`;
 function wait(ms2, signal, target) {
@@ -240,13 +242,13 @@ function quoteResource(rpc, documentObject = globalThis.document, navigatorObjec
   };
 }
 
-// src/client/components.jsx
+// src/client/components.tsx
 var import_react3 = __toESM(require("react"), 1);
 
-// src/client/workbench.jsx
+// src/client/workbench.tsx
 var import_react2 = __toESM(require("react"), 1);
 
-// src/chart-data.js
+// src/chart-data.ts
 var CHART_SCHEMA_VERSION = 1;
 var MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 var MAX_BARS = 5e3;
@@ -330,7 +332,8 @@ function fingerprint(input) {
   }
   return `${(a2 >>> 0).toString(16).padStart(8, "0")}${(b2 >>> 0).toString(16).padStart(8, "0")}`;
 }
-function validateChartDataset(input) {
+function validateChartDataset(raw) {
+  const input = raw;
   record(input, "dataset");
   knownFields(input, ROOT_FIELDS, "dataset");
   if (input.schemaVersion !== CHART_SCHEMA_VERSION) fail("SCHEMA_VERSION", "schemaVersion", "expected 1");
@@ -509,16 +512,16 @@ function createDemoDataset({ count = 260 } = {}) {
   });
 }
 
-// src/client/chart/StockChart.jsx
+// src/client/chart/StockChart.tsx
 var import_react = __toESM(require("react"), 1);
 
-// src/indicators.js
+// src/indicators.ts
 var INDICATOR_ALGORITHM_VERSION = "dsh-independent-sma-ema-v1";
 var MAX_INDICATOR_PERIOD = 500;
 var DEFAULT_MA_PERIODS = Object.freeze([5, 10, 20]);
 var DEFAULT_MACD = Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 });
 function period(value, label = "period") {
-  if (!Number.isInteger(value) || value < 1 || value > MAX_INDICATOR_PERIOD) throw new RangeError(`${label} must be an integer from 1 to ${MAX_INDICATOR_PERIOD}`);
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > MAX_INDICATOR_PERIOD) throw new RangeError(`${label} must be an integer from 1 to ${MAX_INDICATOR_PERIOD}`);
   return value;
 }
 function valuesInput(values) {
@@ -543,7 +546,8 @@ function mean(values) {
   for (const value of values) result += value / values.length;
   return number(result);
 }
-function validateMacdParams(input = {}) {
+function validateMacdParams(raw = {}) {
+  const input = raw;
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("MACD parameters must be an object");
   for (const key of Object.keys(input)) if (!["fast", "slow", "signal", "histScale"].includes(key)) throw new TypeError("Unknown MACD parameter");
   const result = { ...DEFAULT_MACD, ...input };
@@ -554,7 +558,8 @@ function validateMacdParams(input = {}) {
   if (![1, 2].includes(result.histScale)) throw new RangeError("MACD histScale must be 1 or 2");
   return result;
 }
-function validateIndicatorConfig(input = {}) {
+function validateIndicatorConfig(raw = {}) {
+  const input = raw;
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("Indicator configuration must be an object");
   for (const key of Object.keys(input)) if (!["maPeriods", "macd", "historyAnchor"].includes(key)) throw new TypeError("Unknown indicator configuration");
   const maPeriods = input.maPeriods === void 0 ? [...DEFAULT_MA_PERIODS] : input.maPeriods;
@@ -566,7 +571,7 @@ function validateIndicatorConfig(input = {}) {
 }
 function sma(values, size2) {
   valuesInput(values);
-  period(size2);
+  const windowSize = period(size2);
   const output = [];
   const window2 = [];
   for (const value of values) {
@@ -576,17 +581,17 @@ function sma(values, size2) {
       continue;
     }
     window2.push(value);
-    if (window2.length > size2) window2.shift();
-    output.push(window2.length === size2 ? mean(window2) : null);
+    if (window2.length > windowSize) window2.shift();
+    output.push(window2.length === windowSize ? mean(window2) : null);
   }
   return output;
 }
 function ema(values, size2) {
   valuesInput(values);
-  period(size2);
+  const windowSize = period(size2);
   const output = [];
   const seed = [];
-  const alpha = 2 / (size2 + 1);
+  const alpha = 2 / (windowSize + 1);
   let previous = null;
   for (const value of values) {
     if (value === null) {
@@ -597,7 +602,7 @@ function ema(values, size2) {
     }
     if (previous === null) {
       seed.push(value);
-      if (seed.length === size2) previous = mean(seed);
+      if (seed.length === windowSize) previous = mean(seed);
     } else {
       previous = value === previous ? previous : number(alpha * value + (1 - alpha) * previous);
     }
@@ -661,7 +666,7 @@ function computeIndicators(bars, input = {}) {
   };
 }
 
-// src/client/format.js
+// src/client/format.ts
 function formatLocale(locale) {
   const tag = locale === "zh" ? "zh-CN" : locale;
   try {
@@ -684,7 +689,7 @@ function createFormatters(getLocale) {
   };
 }
 
-// ../../node_modules/lightweight-charts/dist/lightweight-charts.production.mjs
+// ../../node_modules/.pnpm/lightweight-charts@5.2.1/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs
 var lightweight_charts_production_exports = {};
 __export(lightweight_charts_production_exports, {
   AreaSeries: () => qe,
@@ -718,7 +723,7 @@ __export(lightweight_charts_production_exports, {
   version: () => Zr
 });
 
-// ../../node_modules/fancy-canvas/size.mjs
+// ../../node_modules/.pnpm/fancy-canvas@2.1.0/node_modules/fancy-canvas/size.mjs
 function size(_a) {
   var width = _a.width, height = _a.height;
   if (width < 0) {
@@ -736,7 +741,7 @@ function equalSizes(first, second) {
   return first.width === second.width && first.height === second.height;
 }
 
-// ../../node_modules/fancy-canvas/device-pixel-ratio.mjs
+// ../../node_modules/.pnpm/fancy-canvas@2.1.0/node_modules/fancy-canvas/device-pixel-ratio.mjs
 var Observable = (
   /** @class */
   (function() {
@@ -805,7 +810,7 @@ function createObservable(win) {
   return new Observable(win);
 }
 
-// ../../node_modules/fancy-canvas/canvas-element-bitmap-size.mjs
+// ../../node_modules/.pnpm/fancy-canvas@2.1.0/node_modules/fancy-canvas/canvas-element-bitmap-size.mjs
 var DevicePixelContentBoxBinding = (
   /** @class */
   (function() {
@@ -1038,7 +1043,7 @@ function predictedBitmapSize(canvasRect, ratio) {
   });
 }
 
-// ../../node_modules/fancy-canvas/canvas-rendering-target.mjs
+// ../../node_modules/.pnpm/fancy-canvas@2.1.0/node_modules/fancy-canvas/canvas-rendering-target.mjs
 var CanvasRenderingTarget2D = (
   /** @class */
   (function() {
@@ -1114,7 +1119,7 @@ function tryCreateCanvasRenderingTarget2D(binding, contextOptions) {
   return new CanvasRenderingTarget2D(context, mediaSize, bitmapSize);
 }
 
-// ../../node_modules/lightweight-charts/dist/lightweight-charts.production.mjs
+// ../../node_modules/.pnpm/lightweight-charts@5.2.1/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs
 /*!
  * @license
  * TradingView Lightweight Charts™ v5.2.1
@@ -8673,7 +8678,7 @@ function Zr() {
   return "5.2.1";
 }
 
-// src/client/chart/model.js
+// src/client/chart/model.ts
 function businessDay(sessionDate) {
   const [year, month, day] = sessionDate.split("-").map(Number);
   return { year, month, day };
@@ -8747,7 +8752,7 @@ function preserveLogicalRange(range, previousBars, nextBars) {
   return mapped < 0 ? range : { from: range.from + mapped - anchor, to: range.to + mapped - anchor };
 }
 
-// src/client/chart/theme.js
+// src/client/chart/theme.ts
 var PALETTES = {
   light: { background: "#ffffff", text: "#26334a", grid: "#edf0f5", border: "#d9dfea", crosshair: "#78879b" },
   dark: { background: "#151c2a", text: "#d6dfef", grid: "#253044", border: "#38465e", crosshair: "#8e9cb5" }
@@ -8792,7 +8797,7 @@ function observeChartTheme(element, requested, callback) {
   };
 }
 
-// src/client/chart/adapter.js
+// src/client/chart/adapter.ts
 var samePoint = (a2, b2) => JSON.stringify(a2) === JSON.stringify(b2);
 var identity = (dataset) => [dataset.kind, dataset.id, dataset.symbol, dataset.interval, dataset.adjustment, dataset.adjustmentRevision].join("|");
 function createStockChartAdapter(element, {
@@ -8981,14 +8986,15 @@ function createStockChartAdapter(element, {
   };
 }
 
-// src/client/chart/config.js
+// src/client/chart/config.ts
 var DEFAULT_CHART_CONFIG = Object.freeze({
   maVisible: Object.freeze({ 5: true, 10: true, 20: true }),
   macd: Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 }),
   difVisible: true,
   deaVisible: true
 });
-function normalizeChartConfig(value = {}) {
+function normalizeChartConfig(raw = {}) {
+  const value = raw;
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("chart.parameters-invalid");
   if (value.macd !== void 0 && (!value.macd || typeof value.macd !== "object" || Array.isArray(value.macd))) throw new Error("chart.parameters-invalid");
   const macd2 = Object.fromEntries(Object.entries(DEFAULT_CHART_CONFIG.macd).map(([key, fallback]) => [key, Object.hasOwn(value.macd ?? {}, key) ? value.macd[key] : fallback]));
@@ -9001,7 +9007,7 @@ function normalizeChartConfig(value = {}) {
   };
 }
 
-// src/client/chart/StockChart.jsx
+// src/client/chart/StockChart.tsx
 function chartFormatters(locale, precision, format) {
   const tag = formatLocale(locale || "en");
   const price = new Intl.NumberFormat(tag, { minimumFractionDigits: precision, maximumFractionDigits: precision });
@@ -9140,7 +9146,7 @@ function StockChart({ dataset, t, format, locale = "en", theme = "auto", config:
   } }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-watermark", "data-kind": dataset.kind }, t(dataset.kind === "demo" ? "chart.demo-watermark" : "chart.local-watermark"))), renderError && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-error", role: "alert" }, t("chart.render-error")), indicators.failed && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-error", role: "alert" }, t("chart.indicator-error")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-help", id: helpId }, t("chart.help")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning" }, t("chart.warmup", { required: numbers.count(indicators.warmup.macdBars), available: numbers.count(dataset.bars.length) })), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-method" }, t("chart.method", { scale: histScale })), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-table-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { "aria-expanded": showTable || renderError, "aria-controls": tableId, onClick: () => setShowTable(!showTable) }, t(showTable || renderError ? "chart.table-hide" : "chart.table-show"))), (showTable || renderError) && /* @__PURE__ */ import_react.default.createElement("div", { id: tableId }, /* @__PURE__ */ import_react.default.createElement(DataTable, { dataset, indicators, config, selection, t, format: numbers, onSelect: selectDate })), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-credit" }, /* @__PURE__ */ import_react.default.createElement("a", { href: "https://www.tradingview.com/", target: "_blank", rel: "noopener noreferrer" }, t("chart.attribution"))));
 }
 
-// src/client/workbench.jsx
+// src/client/workbench.tsx
 var chartSettingsKey = (scope) => `dsh-x-stock:chart:v1:${validateScope(scope)}`;
 function StockWorkbench({ symbol, scope, t, format, locale }) {
   const [dataset, setDataset] = (0, import_react2.useState)(null), [error, setError] = (0, import_react2.useState)(""), [busy, setBusy] = (0, import_react2.useState)(false);
@@ -9214,7 +9220,7 @@ function StockWorkbench({ symbol, scope, t, format, locale }) {
   return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxs-workbench", "aria-label": t("workbench.title") }, /* @__PURE__ */ import_react2.default.createElement("header", null, /* @__PURE__ */ import_react2.default.createElement("h2", null, t("workbench.title")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxs-muted" }, t("workbench.daily"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxs-data-actions" }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: demo }, t("workbench.demo")), /* @__PURE__ */ import_react2.default.createElement("label", { className: "dxs-file-label" }, t("workbench.import"), /* @__PURE__ */ import_react2.default.createElement("input", { type: "file", accept: ".json,application/json", onChange: read })), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: example }, t("workbench.example")), dataset && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: clear }, t("workbench.clear"))), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxs-muted" }, t("workbench.private")), /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("workbench.format")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("workbench.format-help"))), busy && /* @__PURE__ */ import_react2.default.createElement("p", { role: "status" }, t("workbench.loading")), error && /* @__PURE__ */ import_react2.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error)), saveError && /* @__PURE__ */ import_react2.default.createElement("p", { role: "status" }, t("workbench.save-error")), !dataset ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxs-chart-empty" }, /* @__PURE__ */ import_react2.default.createElement("h3", null, t("workbench.empty")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("workbench.hint")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxs-muted" }, t("workbench.no-realtime"))) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxs-data-banner", role: "status" }, t(dataset.kind === "demo" ? "workbench.demo-notice" : "workbench.local-notice")), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxs-dataset-heading" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, dataset.name || dataset.symbol, " \xB7 ", dataset.symbol), /* @__PURE__ */ import_react2.default.createElement("span", null, t("workbench.historical-close"), ": ", new Intl.NumberFormat(formatLocale(locale), { minimumFractionDigits: dataset.pricePrecision, maximumFractionDigits: dataset.pricePrecision }).format(last.close), " ", dataset.currency, " \xB7 ", last.sessionDate)), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxs-muted" }, t("workbench.source"), ": ", dataset.source.label, " \xB7 ", t("workbench.adjustment"), ": ", t(`workbench.adjustment.${dataset.adjustment}`)), /* @__PURE__ */ import_react2.default.createElement(StockChart, { dataset, t, format, locale, config, onConfigChange: changeConfig })), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxs-attribution" }, /* @__PURE__ */ import_react2.default.createElement("a", { href: "https://www.tradingview.com/", target: "_blank", rel: "noreferrer" }, "TradingView"), " \xB7 ", t("workbench.attribution")));
 }
 
-// src/client/chart/locales.js
+// src/client/chart/locales.ts
 var chartZh = {
   "chart.title": "\u65E5 K \xB7 \u6210\u4EA4\u91CF \xB7 MACD",
   "chart.canvas": "\u65E5 K \u56FE\uFF0C\u6210\u4EA4\u91CF\u4E0E MACD \u5171\u7528\u65E5\u671F\u8F74",
@@ -9324,7 +9330,7 @@ var chartEn = {
   "chart.attribution": "Charts by TradingView Lightweight Charts"
 };
 
-// src/client/workbench-locales.js
+// src/client/workbench-locales.ts
 var workbenchZh = {
   "workbench.title": "\u56FE\u8868\u5DE5\u4F5C\u53F0",
   "workbench.empty": "\u6682\u65E0\u5386\u53F2\u884C\u60C5",
@@ -9380,7 +9386,7 @@ var workbenchEn = {
   "workbench.format-help": "schemaVersion 1; interval 1d; bars contain sessionDate/open/high/low/close/volume/isFinal. Declare pricePrecision, currency, exchange timezone, and price/volume/amount adjustment conventions. Absolute prices are capped at 1e12; volume/amount at Number.MAX_SAFE_INTEGER. Dates must be unique and ascending; missing volume is null, not zero. Download the complete example. Example values are synthetic, not market data."
 };
 
-// src/quote-messages.js
+// src/quote-messages.ts
 var quoteZh = {
   "quote.title": "\u67E5\u8BE2\u80A1\u7968\u62A5\u4EF7",
   "quote.preparing": "\u6B63\u5728\u51C6\u5907\u67E5\u8BE2",
@@ -9463,7 +9469,7 @@ function quoteErrorKey(error) {
   return Object.hasOwn(quoteEn, key) ? key : "quote.error.UNKNOWN";
 }
 
-// src/client/locales.js
+// src/client/locales.ts
 var NS = "dsh-x-stock";
 var zh = {
   ...quoteZh,
@@ -9648,7 +9654,7 @@ function errorKey(code) {
   return Object.hasOwn(en2, key) ? key : "error.unknown";
 }
 
-// src/client/components.jsx
+// src/client/components.tsx
 var tone = (value) => value > 0 ? "dxs-up" : value < 0 ? "dxs-down" : "";
 function Status({ snapshot, t, format }) {
   if (snapshot.status === "loading") return /* @__PURE__ */ import_react3.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
@@ -9693,7 +9699,7 @@ function StockPage({ useWatchlist, useResource, add, remove, move, select, back,
   return /* @__PURE__ */ import_react3.default.createElement("main", { className: "dxs dxs-page" }, /* @__PURE__ */ import_react3.default.createElement("header", { className: "dxs-heading" }, /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement("h1", null, t("title")), /* @__PURE__ */ import_react3.default.createElement("p", { className: "dxs-muted" }, t("page.subtitle"))), /* @__PURE__ */ import_react3.default.createElement("button", { onClick: back }, t("page.back"))), /* @__PURE__ */ import_react3.default.createElement("div", { className: "dxs-notice" }, t("page.notice")), state.placement === "occupied" && /* @__PURE__ */ import_react3.default.createElement("p", { role: "status", className: "dxs-notice" }, t("page.occupied")), state.scopeStatus === "loading" && /* @__PURE__ */ import_react3.default.createElement("p", { role: "status" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react3.default.createElement("button", { onClick: retryScope }, t("page.scope-retry")), state.storageError && /* @__PURE__ */ import_react3.default.createElement("p", { role: "alert", className: "dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_PINS) })), /* @__PURE__ */ import_react3.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react3.default.createElement("aside", { "aria-label": t("page.manage") }, /* @__PURE__ */ import_react3.default.createElement("h2", null, t("page.my-watchlist")), !state.pins.length && /* @__PURE__ */ import_react3.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), /* @__PURE__ */ import_react3.default.createElement("ol", { className: "dxs-list" }, state.pins.map((item, index) => /* @__PURE__ */ import_react3.default.createElement("li", { key: item.symbol }, /* @__PURE__ */ import_react3.default.createElement("button", { className: "dxs-select", "aria-pressed": pin?.symbol === item.symbol, onClick: () => select(item.symbol) }, /* @__PURE__ */ import_react3.default.createElement("strong", null, item.alias || item.symbol), item.alias && /* @__PURE__ */ import_react3.default.createElement("span", { className: "dxs-muted" }, " \xB7 ", item.symbol)), /* @__PURE__ */ import_react3.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react3.default.createElement("button", { disabled: index === 0, "aria-label": t("page.move-up", { symbol: item.symbol }), onClick: () => move(item.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react3.default.createElement("button", { disabled: index === state.pins.length - 1, "aria-label": t("page.move-down", { symbol: item.symbol }), onClick: () => move(item.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react3.default.createElement("button", { "aria-label": t("page.remove-aria", { symbol: item.symbol }), onClick: () => remove(item.symbol) }, t("page.remove")))))), /* @__PURE__ */ import_react3.default.createElement(AddStock, { add, count: state.pins.length, ready: state.scopeStatus === "ready", t, format })), state.scopeStatus === "ready" && (pin ? /* @__PURE__ */ import_react3.default.createElement(Detail, { key: `${state.scopeId}:${pin.symbol}`, pin, useResource, t, format, scope: state.scopeId, locale: getLocale() }) : /* @__PURE__ */ import_react3.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale() }))));
 }
 
-// src/client/chart/styles.js
+// src/client/chart/styles.ts
 var CHART_CSS = `
 .dxs-chart{--dxc-bg:#fff;--dxc-fg:#26334a;--dxc-muted:#5d6b80;--dxc-border:#d9dfea;--dxc-soft:#f5f7fb;--dxc-focus:#3768d6;color:var(--dxc-fg);min-width:0;border:1px solid var(--dxc-border);border-radius:12px;overflow:hidden;background:var(--dxc-bg)}
 .dxs-chart[data-chart-theme=dark]{--dxc-bg:#151c2a;--dxc-fg:#d6dfef;--dxc-muted:#a3b2ca;--dxc-border:#38465e;--dxc-soft:#202a3d;--dxc-focus:#88aaff}
@@ -9707,16 +9713,16 @@ var CHART_CSS = `
 @media(max-width:650px){.dxs-chart-canvas{height:500px}.dxs-chart-toolbar{padding:8px}.dxs-chart-toolbar .dxs-chart-actions{margin-left:0}.dxs-chart-readout{padding:8px;min-height:110px}.dxs-chart-settings-grid{grid-template-columns:repeat(2,minmax(90px,1fr))}.dxs-chart-help{font-size:10px}.dxs-chart-pane-labels{gap:6px 12px}}
 `;
 
-// src/client/styles.js
+// src/client/styles.ts
 var CSS = `
 .dxs{color:var(--dsw-alias-label-primary,#202124);font:13px/1.5 system-ui,sans-serif;box-sizing:border-box}.dxs *{box-sizing:border-box}.dxs button,.dxs input,.dxs select{font:inherit;color:inherit}.dxs button{cursor:pointer;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:7px;background:var(--dsw-alias-bg-layer-1,#fff);padding:5px 9px;white-space:nowrap}.dxs button:hover{background:var(--dsw-alias-bg-layer-2,#eee)}.dxs button:focus-visible,.dxs input:focus-visible,.dxs select:focus-visible{outline:2px solid var(--dsw-alias-primary,#4169e1);outline-offset:2px}.dxs button:disabled{opacity:.4;cursor:default}.dxs-bar{display:flex;align-items:center;gap:8px;width:100%;max-width:100vw;padding:5px 12px;border-top:1px solid var(--dsw-alias-border-main,#ddd);background:var(--dsw-alias-bg-layer-1,#fff);min-height:40px}.dxs-strip{display:flex;align-items:center;gap:8px;min-width:0;flex:1;overflow-x:auto;padding:2px}.dxs-chip{display:flex;align-items:center;gap:8px;flex:none}.dxs-muted{color:var(--dsw-alias-label-secondary,#666);font-size:12px}.dxs-up{color:var(--dsw-alias-error,#bc2737)}.dxs-down{color:var(--dsw-alias-success,#16784e)}.dxs-page{height:100%;overflow:auto;padding:28px;max-width:1200px;margin:auto}.dxs-heading{display:flex;justify-content:space-between;gap:12px;align-items:start}.dxs h1{font-size:23px;margin:0}.dxs h2{font-size:16px;margin:0 0 12px}.dxs p{margin:8px 0}.dxs-notice{padding:10px 12px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);border-radius:8px;margin:12px 0}.dxs-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:22px;margin-top:20px}.dxs-list{padding:0;list-style:none}.dxs-list li{margin:8px 0}.dxs-list .dxs-select{width:100%;text-align:left;white-space:normal}.dxs-controls{display:flex;gap:5px;margin-top:4px}.dxs-form{display:grid;gap:8px;margin-top:16px}.dxs input,.dxs select{min-width:0;width:100%;padding:7px 9px;background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:6px}.dxs-section{padding:18px;border:1px solid var(--dsw-alias-border-main,#ddd);border-radius:10px;margin-bottom:16px}.dxs-price{font-size:30px;font-variant-numeric:tabular-nums}.dxs dl{display:grid;grid-template-columns:auto 1fr;gap:5px 16px}.dxs dd{margin:0;overflow-wrap:anywhere}.dxs-error{color:var(--dsw-alias-error,#bc2737)}@media(max-width:650px){.dxs-page{padding:16px}.dxs-layout{grid-template-columns:1fr}.dxs-bar{padding:4px 6px;gap:4px}.dxs-heading{flex-wrap:wrap}}` + CHART_CSS + `
 .dxs-file-label{position:relative;cursor:pointer}.dxs-file-label input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.dxs-file-label:focus-within{outline:2px solid Highlight;outline-offset:2px}.dxs-instrument-summary{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}.dxs-instrument-summary h2,.dxs-instrument-summary p{margin:0!important}.dxs-instrument-summary .dxs-price{font-size:22px;margin-left:auto}.dxs-quote-metadata{width:100%;font-size:12px}.dxs-page{max-width:none;padding:20px}.dxs-layout{grid-template-columns:200px minmax(0,1fr);gap:16px}.dxs-layout>article{min-width:0}.dxs-workbench{min-width:0;margin-bottom:16px}.dxs-data-actions{display:flex;gap:8px;flex-wrap:wrap}.dxs-file-label{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--dsw-alias-border-main,#bbb);border-radius:7px;padding:5px 9px}.dxs-file-label input{max-width:220px;padding:0}.dxs-data-banner{border:1px solid var(--dsw-alias-primary,#4169e1);padding:10px;margin:12px 0;font-weight:600}.dxs-dataset-heading{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}.dxs-chart-empty{padding:48px 20px;text-align:center;border:1px dashed var(--dsw-alias-border-main,#bbb);border-radius:10px;margin:16px 0}.dxs-attribution{font-size:11px;color:var(--dsw-alias-label-secondary,#666)}.dxs-attribution a{color:inherit}.dxs-instrument-summary{padding:12px}.dxs-instrument-summary .dxs-price{font-size:25px}.dxs-instrument-summary dl{font-size:12px;margin:8px 0}.dxs-instrument-summary p{margin:4px 0}@media(max-width:850px){.dxs-layout{grid-template-columns:1fr}.dxs-layout>aside{max-height:230px;overflow:auto}.dxs-page{padding:12px}}
 `;
 
-// src/client/tool-view.jsx
+// src/client/tool-view.tsx
 var import_react4 = __toESM(require("react"), 1);
 
-// src/client/quote-presentation.js
+// src/client/quote-presentation.ts
 function readQuotePresentation(meta) {
   if (!meta || meta.kind !== "dsh-x-stock.quote" || meta.version !== 1) return null;
   const quote = meta.quote;
@@ -9724,7 +9730,7 @@ function readQuotePresentation(meta) {
   return quote;
 }
 
-// src/client/tool-view.jsx
+// src/client/tool-view.tsx
 function StockToolView({ phase, block, t, format, inspect }) {
   const settled = phase === "result";
   const quote = settled ? readQuotePresentation(block.meta) : null;
@@ -9733,7 +9739,7 @@ function StockToolView({ phase, block, t, format, inspect }) {
   return /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs dxs-section", "aria-label": t("quote.title") }, /* @__PURE__ */ import_react4.default.createElement("strong", null, t("quote.title"), symbol ? ` \xB7 ${symbol}` : ""), /* @__PURE__ */ import_react4.default.createElement("p", { role: "status" }, t(`quote.${state}`)), settled && block.isError && /* @__PURE__ */ import_react4.default.createElement("p", { role: "alert" }, t(quoteErrorKey(block.error))), quote && !block.isError && /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, /* @__PURE__ */ import_react4.default.createElement("dl", null, ["price", "open", "high", "low", "previousClose", "change", "changePercent"].map((key) => /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, { key }, /* @__PURE__ */ import_react4.default.createElement("dt", null, t(`quote.${key}`)), /* @__PURE__ */ import_react4.default.createElement("dd", null, key === "changePercent" ? format.change(quote[key]) : format.price(quote[key])))), /* @__PURE__ */ import_react4.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react4.default.createElement("dd", null, quote.provider), /* @__PURE__ */ import_react4.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react4.default.createElement("dd", null, format.time(quote.quotedAt, t)), /* @__PURE__ */ import_react4.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react4.default.createElement("dd", null, format.time(quote.fetchedAt, t))), /* @__PURE__ */ import_react4.default.createElement("p", null, t("quote.notice"))), settled && !block.isError && !quote && /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, /* @__PURE__ */ import_react4.default.createElement("p", null, t("quote.legacy")), /* @__PURE__ */ import_react4.default.createElement("pre", { style: { whiteSpace: "pre-wrap" } }, (block.content ?? []).filter((item) => item.type === "text").map((item) => item.text).join("\n"))), inspect && /* @__PURE__ */ import_react4.default.createElement("button", { onClick: inspect }, t("quote.inspect")));
 }
 
-// src/client/index.js
+// src/client/index.ts
 var inject = ["slots", "connection", "resources", "layout", "locale"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en: en2 }), "stock: dictionaries");

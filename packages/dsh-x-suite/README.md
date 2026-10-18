@@ -14,7 +14,9 @@
 
 `dsh.bundle.patch` 挂载两个真正的插件行。仅有 npm dependencies 并不会自动启用依赖包的 bundle。
 
-套件的两个精确依赖必须在所用 registry 可获取；一个 suite tarball 不包含组件源码，也不是离线单文件安装包。目前未发布这些包，不能把这里的包名当作已经可在公共 npm 安装。集成测试使用临时本地 registry 提供真实打包的三个包，证明的是发布后这条依赖解析与安装路径。
+GitHub Release 使用专门的打包脚本，将精确版本的 Code、Agents 预构建产物随套件携带；下载 Release 的 suite tgz 即可通过官方安装入口安装，第三方依赖仍需联网下载。私有仓库请先登录 GitHub 下载文件，不要将私有附件 URL 直接交给包管理器。安装时可加 `--config.auto-install-peers=false`，由官方 Host 提供共享模块。具体步骤与验证边界见 [插件发行](../../packaging/plugins.md)。
+
+普通源码目录直接 `npm pack` 得到的 suite tgz 仍要求两个精确组件依赖在 registry 可获取，不能代替 GitHub Release 专用产物。目前未发布这些 npm 包，不能把包名当作已经可在公共 npm 安装。发行验证使用实际 Release tarball 和真实官方 CLI / Web Host，并检查套件首次安装不查询未发布组件；普通集成测试仍用临时本地 registry 验证 registry 安装路径。
 
 安装前运行只读检查：`node scripts/check-suite-install.mjs --home /绝对路径/home --profile web --dsh-version 0.2.1-alpha.5`。先用真实 CLI 的 `dsh --version` 核对版本。若已独立启用 Code 或 Agents，先在官方 Plugins 页面停用对应 bundle，再启用套件；不需要删除组件数据。检查不会改用户配置，也不能替代官方安装时的兼容检查。
 

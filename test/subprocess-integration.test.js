@@ -10,10 +10,10 @@ import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SubprocessLocal from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { preflightAcp, runAcpPrompt } from '../packages/dsh-x-plan/src/acp.js'
-import { captureBaseline } from '../packages/dsh-x-plan/src/baseline.js'
-import { assessEvidence, collectEvidence, enforceEvidenceVerdict } from '../packages/dsh-x-plan/src/collect.js'
-import { executeChecks } from '../packages/dsh-x-plan/src/checks.js'
+import { preflightAcp, runAcpPrompt } from '../packages/dsh-x-plan/lib/acp.js'
+import { captureBaseline } from '../packages/dsh-x-plan/lib/baseline.js'
+import { assessEvidence, collectEvidence, enforceEvidenceVerdict } from '../packages/dsh-x-plan/lib/collect.js'
+import { executeChecks } from '../packages/dsh-x-plan/lib/checks.js'
 
 const onlyPosix = { skip: process.platform === 'win32' ? 'Structured bash fixture uses /bin/sh.' : false }
 

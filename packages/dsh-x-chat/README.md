@@ -51,7 +51,7 @@
 在安装了上述官方 peer dependencies 的环境执行：
 
 ```sh
-npm test --prefix packages/dsh-x-chat
+pnpm --filter dsh-x-chat test
 ```
 
 测试使用真实官方 `defineTool` / `BlockAssembler` 与本地假提供方，覆盖注册、路由、输入边界、截断、错误、工具调用拒绝、取消、超时及流大小上限。测试不会发起真实模型请求，不需要密钥，也不会产生模型费用。真实提供方端到端行为仍需在用户已配置的环境中验证。
@@ -64,4 +64,4 @@ Host 使用官方 `HarnessError` 保留 `DshXChatError` 和稳定的 `DSH_X_CHAT
 
 The web client follows the official DSH language preference immediately. It owns bilingual tool titles, progress/result states, details controls, field labels, errors, and truncation warnings. There is no separate language preference. Original model answers, questions, reference material, route IDs, tool descriptions, and the system prompt are never translated by the UI. Missing plugin translations in another installed language use the official locale fallback chain.
 
-The client uses the official dynamic module factory and keyed tool-view slot. Build it with `npm --prefix packages/dsh-x-chat run build`; the repository build includes that step. Tests exercise the published client bundle in a DOM fixture with the installed official `LocaleRuntime`, including switching while an answer is expanded, English fallback, unchanged model text, structured failure identities, metadata, cleanup, and package exports. These checks do not replace an assembled-kernel browser smoke test.
+The client uses the official dynamic module factory and keyed tool-view slot. Build it with `pnpm --filter dsh-x-chat run build`; the repository build includes that step. Tests exercise the published client bundle in a DOM fixture with the installed official `LocaleRuntime`, including switching while an answer is expanded, English fallback, unchanged model text, structured failure identities, metadata, cleanup, and package exports. These checks do not replace an assembled-kernel browser smoke test.

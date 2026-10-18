@@ -28,7 +28,7 @@
 
 ## 测试
 
-在此目录运行 `npm test`，不需要密钥或网络。覆盖格式、请求目标与鉴权方式、来源时间、缺失字段、非法响应、HTTP 错误、响应体上限、密钥脱敏、请求取消与超时、工具声明与参数传递。
+在此目录运行 `pnpm test`，不需要密钥或网络。覆盖格式、请求目标与鉴权方式、来源时间、缺失字段、非法响应、HTTP 错误、响应体上限、密钥脱敏、请求取消与超时、工具声明与参数传递。
 
 ## A 股自选界面（新增）
 
@@ -58,9 +58,9 @@ Host 的 `createWatchlistHandler({ provider })` 为未来获授权适配器保�
 
 ### 构建与验证
 
-在仓库根 `npm ci` 后执行 `npm --prefix packages/dsh-x-stock run build`。`lib/client.js` 是正式 `window.__ModuleLoader__.load({ id, factory(require) })` 客户端产物；React 由宿主共享模块表提供，`package.json` 声明 `./client` 导出及 `dsh.client.inject` 依赖。它不是动态 Cordis 代码片段。已生成的 `lib/client.js` 随包交付，宿主无需在运行时编译 JSX。
+在仓库根 `pnpm install` 后执行 `pnpm --filter dsh-x-stock run build`。`lib/client.js` 是正式 `window.__ModuleLoader__.load({ id, factory(require) })` 客户端产物；React 由宿主共享模块表提供，`package.json` 声明 `./client` 导出及 `dsh.client.inject` 依赖。它不是动态 Cordis 代码片段。已生成的 `lib/client.js` 随包交付，宿主无需在运行时编译 JSX。
 
-`npm --prefix packages/dsh-x-stock test` 验证原有行情工具、A 股身份/清单/存储拒绝、RPC 所有者与输入边界、slot 冲突/恢复/卸载、资源暂停取消，profile 标识原子发布/跨 home 与 profile 隔离/重启稳定/初始化竞态，以及实际构建产物在 jsdom 中的独立页导航、管理和折叠交互。测试行情均为明确的离线 fixture，不是在线证券数据。jsdom 不验证像素布局，也不证明真实桌面浏览器完整流程；生产数据源及真实浏览器视觉验收仍需单独完成。
+`pnpm --filter dsh-x-stock test` 验证原有行情工具、A 股身份/清单/存储拒绝、RPC 所有者与输入边界、slot 冲突/恢复/卸载、资源暂停取消，profile 标识原子发布/跨 home 与 profile 隔离/重启稳定/初始化竞态，以及实际构建产物在 jsdom 中的独立页导航、管理和折叠交互。测试行情均为明确的离线 fixture，不是在线证券数据。jsdom 不验证像素布局，也不证明真实桌面浏览器完整流程；生产数据源及真实浏览器视觉验收仍需单独完成。
 
 ### 国际化
 
@@ -78,8 +78,20 @@ Finnhub 工具通过官方 `HarnessError` 传播错误身份，通过 `output.pr
 
 真实历史源尚未接入，默认不画图。用户可以显式打开 **DEMO:SYNTH 合成数据**，或导入自己有权使用的日 K JSON。两种数据只进入此页面内存，切股、离开/刷新或切换 profile 后清除；不会上传服务器/模型、写入自选、缓存原始文件，或填充底栏的实时报价。图表中的末值标为历史收盘。图表偏好只按宿主 profile 的 scope 保存到本地。来源标签是文件声明，不能据此验证真实性；无基本面/财务数据则继续为空。
 
-导入格式下载按钮提供完整合成示例。上限 2 MiB/5,000 根；schemaVersion=1，必须明确 symbol、currency、exchangeTimezone、interval="1d"、adjustment、adjustmentRevision、datasetRevision、pricePrecision、volumeUnit="shares"、volumeAdjustment、amountAdjustment、source。bars 必须按 sessionDate 升序唯一，含 OHLC、volume（缺失用 null）、isFinal；本地导入支持价格绝对值不超过 1e12，量额不超过 Number.MAX_SAFE_INTEGER，以保证计算和绘图数值安全；这不是金融理论边界。具体字段及校验见 `src/chart-data.js`。日线使用交易所会话日期而非浏览器本地时间，价格未复权时必须正数；已复权价格可以为非正有限值，但必须声明方法且满足 OHLC 顺序，不擅自截零。成交量及成交额口径分别声明，缺失量不补零。文件 symbol 必须匹配当前股票；无已选股票时可独立浏览其他合格文件。
+导入格式下载按钮提供完整合成示例。上限 2 MiB/5,000 根；schemaVersion=1，必须明确 symbol、currency、exchangeTimezone、interval="1d"、adjustment、adjustmentRevision、datasetRevision、pricePrecision、volumeUnit="shares"、volumeAdjustment、amountAdjustment、source。bars 必须按 sessionDate 升序唯一，含 OHLC、volume（缺失用 null）、isFinal；本地导入支持价格绝对值不超过 1e12，量额不超过 Number.MAX_SAFE_INTEGER，以保证计算和绘图数值安全；这不是金融理论边界。具体字段及校验见 `src/chart-data.ts`。日线使用交易所会话日期而非浏览器本地时间，价格未复权时必须正数；已复权价格可以为非正有限值，但必须声明方法且满足 OHLC 顺序，不擅自截零。成交量及成交额口径分别声明，缺失量不补零。文件 symbol 必须匹配当前股票；无已选股票时可独立浏览其他合格文件。
 
 指标算法版本 `dsh-independent-sma-ema-v1`（以源码导出为准）：每条 EMA 独立以其周期 SMA 播种；DIF=快 EMA−慢 EMA，DEA 为 DIF 的 EMA；默认 12/26/9，柱=2×(DIF−DEA)，可显式改 ×1。完整预热前为缺失值，缺口重置连续预热；不按可见窗口重算。这个种子规则与 TA-Lib MACD 内部对齐播种不同，不能宣称逐点一致。修订/末根替换与历史补齐采用最多 5,000 根的有界全量确定性重算，渲染适配器可对新增/末根使用 update，保留历史阅读锚点；目前无历史 provider 分页取数。
 
 Apache-2.0 的 Lightweight Charts 及 MIT 的 fancy-canvas 许可和 NOTICE 随 `licenses/` 打包；保留 TradingView logo 和可见归属链接。没有使用 Advanced Charts，也不包含任何行情授权。当前没有对数坐标、更多指标、交易功能或真实基本面分析。
+
+## TypeScript development
+
+Host sources live in `src/` with entry `src/index.ts`; browser sources are in `src/client/`, and package tests are `test/*.test.ts`. The shared builder emits host JavaScript and declarations into `lib/` and bundles `lib/client.js`. `main` and the root export use `./lib/index.js`; built artifacts ship with the package and remain tracked in this repository.
+
+```sh
+pnpm --filter dsh-x-stock run typecheck
+pnpm --filter dsh-x-stock run build
+pnpm --filter dsh-x-stock test
+```
+
+The root `pnpm test` builds every package before running source unit tests and built-entry integration tests.
