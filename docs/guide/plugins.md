@@ -53,3 +53,23 @@
 | Desktop 浏览器数据 | 官方 Electron userData，插件不重定向 |
 
 不存在 `~/.dsh-x` 之类的第二个 home；本仓库也不会把官方 `sessions/` 搬走或重建索引。
+
+## 用 Codex 规划、DeepSeek 执行
+
+原来的 `dsh-x-plan` 已移除；同样的分工可以用官方组件组合出来：
+
+1. 在 **Plugins** 启用官方 **Codex subagent** bundle。它会全局注册 `subagent_codex`，并把 Codex 作为一次性子任务运行。
+2. 给官方 `plan-mode` 的 `section` 加一段引导，让主模型在 plan mode 里先委派规划：
+
+   ```yaml
+   - id: plan-mode
+     config:
+       section: |
+         In plan mode, delegate repository exploration and plan drafting to
+         subagent_codex. Then present the returned plan through exit_plan_mode.
+         Do not execute the task before the user approves.
+   ```
+
+3. 输入 `/plan`，主会话（DeepSeek）调用 `subagent_codex` 生成计划，再用 `exit_plan_mode` 提交给你审阅；批准后由主会话执行。
+
+注意：Codex provider 是一次性、无人值守的外部运行，只回传最终答案；它不提供 DSH 的只读强制、计划哈希、文件范围绑定或跨家族验收。需要严格只读时，请配置 Codex 自己的 native sandbox，或在执行前用 Git 差异人工核对。不要把它当成 `dsh-x-plan` 的等价治理层。
