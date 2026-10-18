@@ -1,4 +1,4 @@
-import { MARKET_ENDPOINT, parseMarketRequest } from './market.js';
+import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, parseMarketPreferenceRequest, parseMarketRequest } from './market.js';
 import { createRpcRoute } from './watchlist-rpc.js';
 const failure = (code, message) => ({ ok: false, error: { code, message, details: {} } });
 // Exact-route handler behind the official shared Connection admission bridge.
@@ -17,16 +17,17 @@ export function createMarketHandler({ provider } = {}) {
         catch {
             return failure('stock/invalid-input', '市场数据请求参数无效。');
         }
-        if (!provider)
-            return { ok: true, value: { status: 'unconfigured', source: null } };
         if (signal?.aborted)
             return failure('stock/cancelled', '市场数据请求已取消。');
         try {
+            const resolved = typeof provider === 'function' ? await provider() : provider;
+            if (!resolved)
+                return { ok: true, value: { status: 'unconfigured', source: null } };
             if (request.kind === 'overview')
-                return { ok: true, value: { status: 'ready', overview: await provider.overview() } };
+                return { ok: true, value: { status: 'ready', overview: await resolved.overview() } };
             if (request.kind === 'breadth')
-                return { ok: true, value: { status: 'ready', breadth: await provider.breadth() } };
-            return { ok: true, value: { status: 'ready', board: await provider.board(request.board) } };
+                return { ok: true, value: { status: 'ready', breadth: await resolved.breadth() } };
+            return { ok: true, value: { status: 'ready', board: await resolved.board(request.board) } };
         }
         catch {
             return failure('stock/market-unavailable', '市场数据暂不可用，请稍后重试。');
@@ -35,4 +36,35 @@ export function createMarketHandler({ provider } = {}) {
 }
 export function createMarketRoute(options = {}) {
     return createRpcRoute(MARKET_ENDPOINT, createMarketHandler(options));
+}
+export function createMarketPreferenceHandler({ controller } = {}) {
+    return async (endpoint, payload, signal, peer) => {
+        if (peer?.principal?.kind !== 'owner')
+            return failure('stock/forbidden', '只允许宿主所有者修改市场源。');
+        if (endpoint !== MARKET_PREFERENCE_ENDPOINT)
+            return failure('stock/not-found', '未知市场源接口。');
+        let request;
+        try {
+            request = parseMarketPreferenceRequest(payload);
+        }
+        catch {
+            return failure('stock/invalid-input', '市场源请求参数无效。');
+        }
+        if (!controller)
+            return failure('stock/market-preference-unavailable', '当前宿主未提供市场源开关。');
+        if (signal?.aborted)
+            return failure('stock/cancelled', '市场源请求已取消。');
+        try {
+            const value = request.action === 'get'
+                ? await controller.state()
+                : await controller.setEnabled(request.enabled);
+            return { ok: true, value };
+        }
+        catch {
+            return failure('stock/market-preference-unavailable', '无法保存市场源开关，请检查 profile 目录权限。');
+        }
+    };
+}
+export function createMarketPreferenceRoute(options = {}) {
+    return createRpcRoute(MARKET_PREFERENCE_ENDPOINT, createMarketPreferenceHandler(options));
 }

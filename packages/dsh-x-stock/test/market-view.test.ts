@@ -65,16 +65,23 @@ new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(marketM
 const translation = (dictionary: any) => (key: string, params: Record<string, any> = {}) =>
   String(dictionary[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? `{${name}}`)
 
-async function harness(options: { response?: any; dictionary?: any; rpc?: any } = {}) {
+async function harness(options: { response?: any; dictionary?: any; rpc?: any; sourceEnabled?: boolean; sourceForced?: boolean } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
   const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
   ;(globalThis as any).window = dom.window
   globalThis.document = dom.window.document
   ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
   const calls: any[] = []
+  let sourceEnabled = options.sourceEnabled ?? true
+  const sourceForced = options.sourceForced ?? false
   const defaultRpc = {
-    call: async (_channel: string, _endpoint: string, payload: any) => {
+    call: async (_channel: string, endpoint: string, payload: any) => {
       calls.push(payload)
+      if (endpoint === 'dsh-x-stock.market-preference') {
+        if (payload.action === 'set' && !sourceForced) sourceEnabled = payload.enabled === true
+        return { ok: true, value: { enabled: sourceForced || sourceEnabled, forced: sourceForced } }
+      }
+      if (!sourceEnabled && !sourceForced) return { ok: true, value: { status: 'unconfigured' } }
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       return { ok: true, value: { status: 'ready', board: { ...board, code: payload.board } } }
@@ -139,6 +146,38 @@ test('selecting an industry opens its constituent panel and close removes it', a
     assert.ok(h.calls.some(call => call.kind === 'board' && call.board === '801081'))
     await h.click(h.button('收起'))
     assert.doesNotMatch(h.document.body.textContent ?? '', /行业成分/)
+  } finally { await h.close() }
+})
+
+test('source switch enables and disables the market feed without profile edits', async () => {
+  const h = await harness({ sourceEnabled: false })
+  try {
+    assert.match(h.document.body.textContent ?? '', /市场数据未开启/)
+    const setup = h.document.querySelector<HTMLInputElement>('.dxs-mkt-setup-switch input[type="checkbox"]')
+    assert.ok(setup)
+    assert.equal(setup!.checked, false)
+    await act(async () => setup!.click())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)) })
+    assert.match(h.document.body.textContent ?? '', /市场全景/)
+    assert.ok(h.calls.some(call => call.action === 'set' && call.enabled === true))
+    const header = h.document.querySelector<HTMLInputElement>('.dxs-mkt-head .dxs-mkt-source-switch input[type="checkbox"]')
+    assert.ok(header)
+    assert.equal(header!.checked, true)
+    await act(async () => header!.click())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)) })
+    assert.match(h.document.body.textContent ?? '', /市场数据未开启/)
+    assert.ok(h.calls.some(call => call.action === 'set' && call.enabled === false))
+  } finally { await h.close() }
+})
+
+test('forced host configuration keeps the switch on and disabled', async () => {
+  const h = await harness({ sourceEnabled: true, sourceForced: true })
+  try {
+    const header = h.document.querySelector<HTMLInputElement>('.dxs-mkt-head .dxs-mkt-source-switch input[type="checkbox"]')
+    assert.ok(header)
+    assert.equal(header!.checked, true)
+    assert.equal(header!.disabled, true)
+    assert.match(header!.closest('label')!.getAttribute('title') ?? '', /强制开启/)
   } finally { await h.close() }
 })
 

@@ -1,6 +1,8 @@
-import type { MarketProvider } from './market.ts';
+import type { MarketPreference, MarketProvider } from './market.ts';
+import type { MarketController } from './market-preference.ts';
+export type MarketProviderSource = MarketProvider | (() => Promise<MarketProvider | undefined>);
 export declare function createMarketHandler({ provider }?: {
-    provider?: MarketProvider;
+    provider?: MarketProviderSource;
 }): (endpoint: any, payload: any, signal: any, peer: any) => Promise<{
     ok: boolean;
     error: {
@@ -46,7 +48,28 @@ export declare function createMarketHandler({ provider }?: {
     };
 }>;
 export declare function createMarketRoute(options?: {
-    provider?: MarketProvider;
+    provider?: MarketProviderSource;
+}): {
+    path: string;
+    methods: string[];
+    requestBody: string;
+    fetch(request: any): Promise<Response>;
+};
+export declare function createMarketPreferenceHandler({ controller }?: {
+    controller?: MarketController;
+}): (endpoint: any, payload: any, signal: any, peer: any) => Promise<{
+    ok: boolean;
+    error: {
+        code: string;
+        message: string;
+        details: {};
+    };
+} | {
+    ok: boolean;
+    value: MarketPreference;
+}>;
+export declare function createMarketPreferenceRoute(options?: {
+    controller?: MarketController;
 }): {
     path: string;
     methods: string[];

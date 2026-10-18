@@ -2,8 +2,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createFreeQuoteProvider } from './free-quote.ts'
 import { createTencentMarketProvider } from './market-provider.ts'
-import { createMarketRoute } from './market-rpc.ts'
-import type { MarketProvider } from './market.ts'
+import { createMarketPreferenceRoute, createMarketRoute } from './market-rpc.ts'
+import { createMarketController, createProfileMarketPreference } from './market-preference.ts'
 import { createWatchlistRoute, createScopeRoute } from './watchlist-rpc.ts'
 import { loadProfileScope } from './scope.ts'
 import { stockTool } from './tool.ts'
@@ -32,17 +32,28 @@ export function apply(ctx: Context, config: StockConfig = {}) {
   const provider = config.freeSource === true || process.env.DSH_X_STOCK_FREE_SOURCE === '1'
     ? createFreeQuoteProvider()
     : undefined
-  let marketProvider: MarketProvider | undefined
-  if (config.marketSource === true || process.env.DSH_X_STOCK_MARKET_SOURCE === '1') {
-    try { marketProvider = createTencentMarketProvider() } catch { /* Fail closed to the setup state. */ }
-  }
+  const marketForced = config.marketSource === true || process.env.DSH_X_STOCK_MARKET_SOURCE === '1'
   ctx.tools.register(defineTool(stockTool()))
   // Optional UI transport: headless tool-only compositions keep working.
   ctx.inject(['connection'], (host: any) => {
     host.connection.fetch.register(createWatchlistRoute({ provider }))
-    host.connection.fetch.register(createMarketRoute({ provider: marketProvider }))
   })
   ctx.inject(['connection', 'profileContext'], (host: any) => {
+    let marketController
+    try {
+      const store = createProfileMarketPreference(host.profileContext.dir)
+      marketController = createMarketController({
+        forced: marketForced,
+        store,
+        createProvider: () => createTencentMarketProvider(),
+      })
+    } catch { /* No profile directory: keep the data route in its unconfigured state. */ }
+    if (marketController) {
+      host.connection.fetch.register(createMarketRoute({ provider: () => marketController.getProvider() }))
+      host.connection.fetch.register(createMarketPreferenceRoute({ controller: marketController }))
+    } else {
+      host.connection.fetch.register(createMarketRoute())
+    }
     let scopePromise
     const readScope = () => scopePromise ??= loadProfileScope(host.profileContext.dir).catch(error => { scopePromise = undefined; throw error })
     host.connection.fetch.register(createScopeRoute(readScope))

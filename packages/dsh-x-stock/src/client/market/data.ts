@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MARKET_ENDPOINT } from '../../market.ts'
+import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT } from '../../market.ts'
 import type { BoardDetail, MarketBreadth, MarketOverview } from '../../market.ts'
 
 export interface MarketDataState<T> {
@@ -28,10 +28,11 @@ function useMarketResource<T>(
     let disposed = false
     let timer: ReturnType<typeof setTimeout> | undefined
     let controller: AbortController | undefined
+    let delay = pollMs
 
     const schedule = () => {
-      if (disposed || pollMs <= 0) return
-      timer = setTimeout(run, pollMs)
+      if (disposed || delay <= 0) return
+      timer = setTimeout(run, delay)
     }
 
     async function run() {
@@ -39,6 +40,7 @@ function useMarketResource<T>(
       if (typeof document !== 'undefined' && document.hidden) { schedule(); return }
       if (typeof navigator !== 'undefined' && navigator.onLine === false) { schedule(); return }
       clearTimeout(timer)
+      delay = pollMs
       controller?.abort()
       const local = new AbortController()
       controller = local
@@ -61,6 +63,9 @@ function useMarketResource<T>(
         }
         const payload = result.value
         if (payload?.status === 'unconfigured') {
+          // A deliberately disabled source must not be polled. The switch
+          // triggers refresh() when it is turned on again.
+          delay = 0
           setState({ status: 'unconfigured', value: null, error: '', refreshing: false })
           return
         }
@@ -112,4 +117,50 @@ export function useMarketBreadth(rpc: any, options: { pollMs?: number } = {}) {
 
 export function useBoardDetail(rpc: any, code: string, options: { pollMs?: number } = {}) {
   return useMarketResource<BoardDetail>(rpc, 'board', code, { pollMs: 120_000, ...options })
+}
+
+
+export interface MarketPreferenceState {
+  status: 'loading' | 'ready' | 'error'
+  enabled: boolean
+  forced: boolean
+  busy: boolean
+  error: string
+}
+
+export function useMarketPreference(rpc: any) {
+  const [state, setState] = useState<MarketPreferenceState>({ status: 'loading', enabled: false, forced: false, busy: false, error: '' })
+  useEffect(() => {
+    let disposed = false
+    const controller = new AbortController()
+    const read = async () => {
+      try {
+        const result = await rpc?.call('/api', MARKET_PREFERENCE_ENDPOINT, { action: 'get' }, controller.signal)
+        if (disposed || controller.signal.aborted) return
+        if (!result?.ok) throw new Error()
+        setState({ status: 'ready', enabled: result.value?.enabled === true, forced: result.value?.forced === true, busy: false, error: '' })
+      } catch {
+        if (disposed || controller.signal.aborted) return
+        setState({ status: 'error', enabled: false, forced: false, busy: false, error: 'stock/market-preference' })
+      }
+    }
+    void read()
+    return () => { disposed = true; controller.abort() }
+  }, [rpc])
+
+  const setEnabled = async (enabled: boolean) => {
+    setState(previous => ({ ...previous, busy: true, error: '' }))
+    try {
+      const result = await rpc?.call('/api', MARKET_PREFERENCE_ENDPOINT, { action: 'set', enabled })
+      if (!result?.ok) throw new Error()
+      const value = result.value
+      const next = { status: 'ready' as const, enabled: value?.enabled === true, forced: value?.forced === true, busy: false, error: '' }
+      setState(next)
+      return next
+    } catch {
+      setState(previous => ({ ...previous, busy: false, error: 'stock/market-preference' }))
+      throw new Error('market-preference')
+    }
+  }
+  return { ...state, setEnabled }
 }

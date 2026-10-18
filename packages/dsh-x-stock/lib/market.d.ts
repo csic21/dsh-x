@@ -1,4 +1,5 @@
 export declare const MARKET_ENDPOINT = "dsh-x-stock.market";
+export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-stock.market-preference";
 export declare const MARKET_SOURCE_NAME = "\u817E\u8BAF\u884C\u60C5 (unofficial)";
 export declare const MARKET_MAX_BOARD_STOCKS = 200;
 export declare const MARKET_MAX_SECTORS = 200;
@@ -121,6 +122,16 @@ export type MarketRequest = {
 } | {
     kind: 'board';
     board: string;
+};
+export interface MarketPreference {
+    enabled: boolean;
+    forced: boolean;
+}
+export type MarketPreferenceRequest = {
+    action: 'get';
+} | {
+    action: 'set';
+    enabled: boolean;
 };
 export interface MarketProvider {
     name: string;
@@ -270,4 +281,5 @@ export declare const MARKET_DISTRIBUTION: readonly {
     to: number | null;
 }[];
 export declare function distributionBucket(value: number): number;
+export declare function parseMarketPreferenceRequest(payload: unknown): MarketPreferenceRequest;
 export declare function parseMarketRequest(payload: unknown): MarketRequest;

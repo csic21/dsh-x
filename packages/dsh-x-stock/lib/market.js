@@ -2,6 +2,7 @@
 // functions so the Host, the browser bundle and tests can use the same
 // identities, taxonomy and arithmetic. No prices are invented here.
 export const MARKET_ENDPOINT = 'dsh-x-stock.market';
+export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-stock.market-preference';
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)';
 export const MARKET_MAX_BOARD_STOCKS = 200;
 export const MARKET_MAX_SECTORS = 200;
@@ -252,6 +253,23 @@ export function distributionBucket(value) {
     if (value < 7)
         return 9;
     return 10;
+}
+export function parseMarketPreferenceRequest(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.getPrototypeOf(payload) !== Object.prototype)
+        throw stockMarketError('invalid-input');
+    const keys = Object.keys(payload).sort();
+    const action = payload.action;
+    if (action === 'get') {
+        if (keys.join(',') !== 'action')
+            throw stockMarketError('invalid-input');
+        return { action: 'get' };
+    }
+    if (action === 'set') {
+        if (keys.join(',') !== 'action,enabled' || typeof payload.enabled !== 'boolean')
+            throw stockMarketError('invalid-input');
+        return { action: 'set', enabled: payload.enabled };
+    }
+    throw stockMarketError('invalid-input');
 }
 export function parseMarketRequest(payload) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.getPrototypeOf(payload) !== Object.prototype)

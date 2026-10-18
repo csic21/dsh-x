@@ -2,6 +2,7 @@
 // functions so the Host, the browser bundle and tests can use the same
 // identities, taxonomy and arithmetic. No prices are invented here.
 export const MARKET_ENDPOINT = 'dsh-x-stock.market'
+export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-stock.market-preference'
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)'
 export const MARKET_MAX_BOARD_STOCKS = 200
 export const MARKET_MAX_SECTORS = 200
@@ -123,6 +124,15 @@ export type MarketRequest =
   | { kind: 'overview' }
   | { kind: 'breadth' }
   | { kind: 'board'; board: string }
+
+export interface MarketPreference {
+  enabled: boolean
+  forced: boolean
+}
+
+export type MarketPreferenceRequest =
+  | { action: 'get' }
+  | { action: 'set'; enabled: boolean }
 
 export interface MarketProvider {
   name: string
@@ -392,6 +402,21 @@ export function distributionBucket(value: number): number {
   if (value < 5) return 8
   if (value < 7) return 9
   return 10
+}
+
+export function parseMarketPreferenceRequest(payload: unknown): MarketPreferenceRequest {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.getPrototypeOf(payload) !== Object.prototype) throw stockMarketError('invalid-input')
+  const keys = Object.keys(payload).sort()
+  const action = (payload as { action?: unknown }).action
+  if (action === 'get') {
+    if (keys.join(',') !== 'action') throw stockMarketError('invalid-input')
+    return { action: 'get' }
+  }
+  if (action === 'set') {
+    if (keys.join(',') !== 'action,enabled' || typeof (payload as { enabled?: unknown }).enabled !== 'boolean') throw stockMarketError('invalid-input')
+    return { action: 'set', enabled: (payload as { enabled: boolean }).enabled }
+  }
+  throw stockMarketError('invalid-input')
 }
 
 export function parseMarketRequest(payload: unknown): MarketRequest {

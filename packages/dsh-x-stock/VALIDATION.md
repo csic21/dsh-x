@@ -17,3 +17,10 @@ No provider authentication, real model calls, Electron UI, or paid/network marke
 - Manual live smoke (not a committed test): the opt-in provider returned 6 indices, 31 level-1 and 124 level-2 Shenwan boards, 5,577 breadth rows; RPC responses measured about 36 KB for overview, 4 KB for breadth and 27 KB for one board detail.
 - Chrome headless screenshots were used to inspect the dashboard and sector-detail layout in a light theme. This is a visual smoke check, not a Desktop acceptance test.
 - The market source remains unofficial, unlicensed, locally opt-in and disabled by default. No authenticated, real-time, Level-2, historical, fundamental or trading feed is claimed.
+
+## Market source switch — 2026-10-18
+
+- Per-profile preference lives in the official profile's `.dsh-x-stock/market.json`; writes are atomic and 0600, reads fail closed to off, and the file contains only `version` plus a boolean.
+- `dsh-x-stock.market-preference` is an exact owner-only RPC; the market data route resolves a provider function on every request so the switch takes effect without a host restart.
+- Tests cover the preference store, controller lifecycle, forced host configuration, RPC validation/failure mapping, and jsdom enable/disable from both the setup card and the header switch.
+- The disabled source stops polling; toggling the switch refreshes the data hooks on demand.

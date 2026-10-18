@@ -9228,6 +9228,7 @@ var import_react4 = __toESM(require("react"), 1);
 
 // src/market.ts
 var MARKET_ENDPOINT = "dsh-x-stock.market";
+var MARKET_PREFERENCE_ENDPOINT = "dsh-x-stock.market-preference";
 var MARKET_CACHE_TTL_MS = 5 * 6e4;
 var MARKET_BOARD_TTL_MS = 2 * 6e4;
 var MARKET_LEVEL1 = [
@@ -9438,9 +9439,10 @@ function useMarketResource(rpc, kind, board, options = {}) {
     let disposed = false;
     let timer;
     let controller;
+    let delay = pollMs;
     const schedule = () => {
-      if (disposed || pollMs <= 0) return;
-      timer = setTimeout(run, pollMs);
+      if (disposed || delay <= 0) return;
+      timer = setTimeout(run, delay);
     };
     async function run() {
       if (disposed) return;
@@ -9453,6 +9455,7 @@ function useMarketResource(rpc, kind, board, options = {}) {
         return;
       }
       clearTimeout(timer);
+      delay = pollMs;
       controller?.abort();
       const local = new AbortController();
       controller = local;
@@ -9473,6 +9476,7 @@ function useMarketResource(rpc, kind, board, options = {}) {
         }
         const payload = result.value;
         if (payload?.status === "unconfigured") {
+          delay = 0;
           setState({ status: "unconfigured", value: null, error: "", refreshing: false });
           return;
         }
@@ -9521,6 +9525,44 @@ function useMarketBreadth(rpc, options = {}) {
 }
 function useBoardDetail(rpc, code, options = {}) {
   return useMarketResource(rpc, "board", code, { pollMs: 12e4, ...options });
+}
+function useMarketPreference(rpc) {
+  const [state, setState] = (0, import_react3.useState)({ status: "loading", enabled: false, forced: false, busy: false, error: "" });
+  (0, import_react3.useEffect)(() => {
+    let disposed = false;
+    const controller = new AbortController();
+    const read = async () => {
+      try {
+        const result = await rpc?.call("/api", MARKET_PREFERENCE_ENDPOINT, { action: "get" }, controller.signal);
+        if (disposed || controller.signal.aborted) return;
+        if (!result?.ok) throw new Error();
+        setState({ status: "ready", enabled: result.value?.enabled === true, forced: result.value?.forced === true, busy: false, error: "" });
+      } catch {
+        if (disposed || controller.signal.aborted) return;
+        setState({ status: "error", enabled: false, forced: false, busy: false, error: "stock/market-preference" });
+      }
+    };
+    void read();
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
+  }, [rpc]);
+  const setEnabled = async (enabled) => {
+    setState((previous) => ({ ...previous, busy: true, error: "" }));
+    try {
+      const result = await rpc?.call("/api", MARKET_PREFERENCE_ENDPOINT, { action: "set", enabled });
+      if (!result?.ok) throw new Error();
+      const value = result.value;
+      const next = { status: "ready", enabled: value?.enabled === true, forced: value?.forced === true, busy: false, error: "" };
+      setState(next);
+      return next;
+    } catch {
+      setState((previous) => ({ ...previous, busy: false, error: "stock/market-preference" }));
+      throw new Error("market-preference");
+    }
+  };
+  return { ...state, setEnabled };
 }
 
 // src/client/market/MarketView.tsx
@@ -9580,6 +9622,12 @@ function MarketStatus({ quotedAt, now, t, format, showTime = true }) {
   const clock = marketClock(now(), quotedAt);
   const live = clock.quoteToday && clock.phase === "open" && !clock.stale;
   return /* @__PURE__ */ import_react4.default.createElement("div", { className: `dxs-mkt-status ${live ? "is-live" : "is-closed"}`, title: t("market.status.hint") }, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-dot", "aria-hidden": "true" }), /* @__PURE__ */ import_react4.default.createElement("strong", null, t(statusKey(clock))), showTime && quotedAt ? /* @__PURE__ */ import_react4.default.createElement("span", null, t("market.quote-time", { time: format.time(quotedAt, t) })) : null, clock.quoteToday && clock.stale && (clock.phase === "open" || clock.phase === "auction") ? /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-warn" }, t("market.stale")) : null);
+}
+function SourceSwitch({ preference, onChange, t, large = false }) {
+  const ready = preference.status === "ready";
+  const disabled = !ready || preference.busy || preference.forced;
+  const title = preference.status === "error" ? t("market.source.unavailable") : preference.forced ? t("market.source.forced") : t("market.source.switch-aria");
+  return /* @__PURE__ */ import_react4.default.createElement("label", { className: `dxs-mkt-source-switch ${large ? "is-large" : ""}`, title }, /* @__PURE__ */ import_react4.default.createElement("input", { type: "checkbox", role: "switch", checked: preference.enabled, disabled, onChange: (event) => onChange(event.target.checked), "aria-label": t("market.source.switch-aria") }), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-switch-track", "aria-hidden": "true" }, /* @__PURE__ */ import_react4.default.createElement("span", null)), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-switch-label" }, t("market.source.switch")));
 }
 function SentimentPanel({ data, breadth, t, format }) {
   const sentiment = (0, import_react4.useMemo)(() => data ? computeSentiment({
@@ -9758,19 +9806,28 @@ function SectorDetail({ rpc, selection, onClose, t, format }) {
     }
   } }, /* @__PURE__ */ import_react4.default.createElement("td", null, /* @__PURE__ */ import_react4.default.createElement("span", null, stock.name), /* @__PURE__ */ import_react4.default.createElement("small", null, stock.code)), /* @__PURE__ */ import_react4.default.createElement("td", null, format.price(stock.price)), /* @__PURE__ */ import_react4.default.createElement("td", { className: textTone(stock.changePercent) }, format.change(stock.changePercent)), /* @__PURE__ */ import_react4.default.createElement("td", null, format.compact(stock.amount)), /* @__PURE__ */ import_react4.default.createElement("td", null, stock.marketCap !== null ? format.compact(stock.marketCap) : "\u2014")))))), /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.detail.notice"))) : null);
 }
-function Unconfigured({ t, onRetry }) {
-  return /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-setup" }, /* @__PURE__ */ import_react4.default.createElement("h3", null, t("market.unconfigured-title")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.unconfigured-body")), /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.unconfigured-config")), /* @__PURE__ */ import_react4.default.createElement("pre", null, `- id: dsh-x-stock
+function Unconfigured({ t, preference, onChange, onRetry }) {
+  return /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-setup" }, /* @__PURE__ */ import_react4.default.createElement("h3", null, t("market.unconfigured-title")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.unconfigured-body")), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-setup-switch" }, /* @__PURE__ */ import_react4.default.createElement(SourceSwitch, { preference, onChange, t, large: true }), /* @__PURE__ */ import_react4.default.createElement("span", null, preference.enabled ? t("market.source.enabled") : t("market.source.disabled"))), /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.source.persist")), preference.status === "error" ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "alert", className: "dxs-mkt-error" }, t("market.source.unavailable")) : null, preference.error && preference.status === "ready" ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "alert", className: "dxs-mkt-error" }, t("market.source.preference-error")) : null, /* @__PURE__ */ import_react4.default.createElement("details", { className: "dxs-mkt-manual-config" }, /* @__PURE__ */ import_react4.default.createElement("summary", null, t("market.unconfigured-manual")), /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.unconfigured-config")), /* @__PURE__ */ import_react4.default.createElement("pre", null, `- id: dsh-x-stock
   name: dsh-x-stock
   config:
-    marketSource: true`), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: onRetry }, t("market.unconfigured-retry")));
+    marketSource: true`)), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: onRetry }, t("market.unconfigured-retry")));
 }
-function ErrorCard({ t, onRetry }) {
-  return /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-setup", role: "alert" }, /* @__PURE__ */ import_react4.default.createElement("h3", null, t("market.error")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.error-hint")), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: onRetry }, t("market.retry")));
+function ErrorCard({ t, onRetry, preference, onChange }) {
+  return /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-setup", role: "alert" }, /* @__PURE__ */ import_react4.default.createElement("h3", null, t("market.error")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.error-hint")), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-setup-switch" }, /* @__PURE__ */ import_react4.default.createElement(SourceSwitch, { preference, onChange, t, large: true }), /* @__PURE__ */ import_react4.default.createElement("span", null, preference.enabled ? t("market.source.enabled") : t("market.source.disabled"))), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: onRetry }, t("market.retry")));
 }
 function MarketView({ rpc, t, format, now = () => /* @__PURE__ */ new Date() }) {
   const overview = useMarketOverview(rpc);
   const breadth = useMarketBreadth(rpc);
+  const preference = useMarketPreference(rpc);
   const [selected, setSelected] = (0, import_react4.useState)(null);
+  const changeSource = async (enabled) => {
+    try {
+      await preference.setEnabled(enabled);
+      overview.refresh();
+      breadth.refresh();
+    } catch {
+    }
+  };
   const data = overview.value;
   const breadthValue = breadth.value;
   const sectorChanges = data?.sectors.filter((sector) => sector.level === 1).map((sector) => sector.changePercent) ?? [];
@@ -9782,14 +9839,14 @@ function MarketView({ rpc, t, format, now = () => /* @__PURE__ */ new Date() }) 
   }) : null;
   const positiveSectors = sectorChanges.filter((value) => value > 0).length;
   const sectorAverage = sectorChanges.length ? sectorChanges.reduce((sum, value) => sum + value, 0) / sectorChanges.length : null;
-  if (overview.status === "unconfigured") return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement(Unconfigured, { t, onRetry: overview.refresh }));
-  if (overview.status === "error" && !data) return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement(ErrorCard, { t, onRetry: overview.refresh }));
+  if (overview.status === "unconfigured") return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement(Unconfigured, { t, preference, onChange: changeSource, onRetry: overview.refresh }));
+  if (overview.status === "error" && !data) return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement(ErrorCard, { t, onRetry: overview.refresh, preference, onChange: changeSource }));
   if (overview.status === "loading" && !data) return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-card dxs-mkt-loading", role: "status" }, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-dot is-live" }), t("market.loading")));
-  if (!data) return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement(ErrorCard, { t, onRetry: overview.refresh }));
-  return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement("header", { className: "dxs-mkt-head" }, /* @__PURE__ */ import_react4.default.createElement("div", null, /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-eyebrow" }, t("market.source")), /* @__PURE__ */ import_react4.default.createElement("h2", null, t("market.title")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.subtitle"))), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-head-actions" }, /* @__PURE__ */ import_react4.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-updated" }, t("market.updated", { time: format.time(data.fetchedAt, t) })), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: () => {
+  if (!data) return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement(ErrorCard, { t, onRetry: overview.refresh, preference, onChange: changeSource }));
+  return /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react4.default.createElement("header", { className: "dxs-mkt-head" }, /* @__PURE__ */ import_react4.default.createElement("div", null, /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-eyebrow" }, t("market.source")), /* @__PURE__ */ import_react4.default.createElement("h2", null, t("market.title")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.subtitle"))), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-head-actions" }, /* @__PURE__ */ import_react4.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format }), /* @__PURE__ */ import_react4.default.createElement(SourceSwitch, { preference, onChange: changeSource, t }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-updated" }, t("market.updated", { time: format.time(data.fetchedAt, t) })), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: () => {
     overview.refresh();
     breadth.refresh();
-  }, disabled: overview.refreshing }, overview.refreshing ? t("market.refreshing") : t("market.refresh")))), overview.error ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, breadth.error ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-kpis" }, /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.sentiment"), value: sentiment ? `${format.count(sentiment.score)} \xB7 ${t(`market.sentiment.label.${sentiment.label}`)}` : "\u2014", note: t("market.sentiment.subtitle"), tone: sentiment ? sentiment.score >= 56 ? "dxs-up" : sentiment.score <= 44 ? "dxs-down" : "" : "" }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.breadth"), value: breadthValue ? /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-up" }, format.count(breadthValue.up)), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-slash" }, "/"), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-down" }, format.count(breadthValue.down))) : "\u2014", note: breadthValue ? t("market.kpi.flat-suspended", { flat: format.count(breadthValue.flat), suspended: format.count(breadthValue.suspended) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.amount"), value: breadthValue ? format.compact(breadthValue.amount) : "\u2014", note: breadthValue ? t("market.breadth.subtitle", { covered: format.count(breadthValue.covered), expected: format.count(breadthValue.expected) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.sectors"), value: sectorChanges.length ? `${format.count(positiveSectors)}/${format.count(sectorChanges.length)}` : "\u2014", note: sectorChanges.length ? t("market.kpi.sector-note", { avg: sectorAverage !== null ? format.change(sectorAverage) : "\u2014" }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.strongest"), value: strongest ? strongest.name : t("market.kpi.strongest-empty"), note: strongest ? format.change(strongest.changePercent) : void 0, tone: strongest ? textTone(strongest.changePercent) : "" }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi dxs-mkt-kpi-status" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi-label" }, t("market.kpi.status")), /* @__PURE__ */ import_react4.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format, showTime: false }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi-note" }, t("market.status.hint")))), /* @__PURE__ */ import_react4.default.createElement(SentimentPanel, { data, breadth: breadthValue, t, format }), /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react4.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react4.default.createElement("div", null, /* @__PURE__ */ import_react4.default.createElement("h3", null, t("market.indices.title")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.indices.subtitle")))), data.indices.length ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-index-grid" }, data.indices.map((index) => /* @__PURE__ */ import_react4.default.createElement(IndexCard, { key: index.code, index, t, format }))) : /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.empty"))), /* @__PURE__ */ import_react4.default.createElement(Heatmap, { data, selected, onSelect: setSelected, t, format }), selected ? /* @__PURE__ */ import_react4.default.createElement(SectorDetail, { key: selected.code, rpc, selection: selected, onClose: () => setSelected(null), t, format }) : null, breadthValue ? /* @__PURE__ */ import_react4.default.createElement(DistributionBar, { breadth: breadthValue, t, format }) : /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-loading", role: "status" }, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-dot is-live" }), breadth.status === "error" ? t("market.error") : t("market.breadth.waiting"), breadth.status === "error" ? /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: breadth.refresh }, t("market.retry")) : null), breadthValue ? /* @__PURE__ */ import_react4.default.createElement(Movers, { breadth: breadthValue, t, format }) : null, /* @__PURE__ */ import_react4.default.createElement("footer", { className: "dxs-mkt-footer" }, /* @__PURE__ */ import_react4.default.createElement("details", null, /* @__PURE__ */ import_react4.default.createElement("summary", null, t("market.source.details")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.limits")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.model")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.no-persist"))), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.not-advice"))));
+  }, disabled: overview.refreshing }, overview.refreshing ? t("market.refreshing") : t("market.refresh")))), overview.error ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, breadth.error ? /* @__PURE__ */ import_react4.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-kpis" }, /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.sentiment"), value: sentiment ? `${format.count(sentiment.score)} \xB7 ${t(`market.sentiment.label.${sentiment.label}`)}` : "\u2014", note: t("market.sentiment.subtitle"), tone: sentiment ? sentiment.score >= 56 ? "dxs-up" : sentiment.score <= 44 ? "dxs-down" : "" : "" }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.breadth"), value: breadthValue ? /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-up" }, format.count(breadthValue.up)), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-slash" }, "/"), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-down" }, format.count(breadthValue.down))) : "\u2014", note: breadthValue ? t("market.kpi.flat-suspended", { flat: format.count(breadthValue.flat), suspended: format.count(breadthValue.suspended) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.amount"), value: breadthValue ? format.compact(breadthValue.amount) : "\u2014", note: breadthValue ? t("market.breadth.subtitle", { covered: format.count(breadthValue.covered), expected: format.count(breadthValue.expected) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.sectors"), value: sectorChanges.length ? `${format.count(positiveSectors)}/${format.count(sectorChanges.length)}` : "\u2014", note: sectorChanges.length ? t("market.kpi.sector-note", { avg: sectorAverage !== null ? format.change(sectorAverage) : "\u2014" }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react4.default.createElement(Kpi, { label: t("market.kpi.strongest"), value: strongest ? strongest.name : t("market.kpi.strongest-empty"), note: strongest ? format.change(strongest.changePercent) : void 0, tone: strongest ? textTone(strongest.changePercent) : "" }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi dxs-mkt-kpi-status" }, /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi-label" }, t("market.kpi.status")), /* @__PURE__ */ import_react4.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format, showTime: false }), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-kpi-note" }, t("market.status.hint")))), /* @__PURE__ */ import_react4.default.createElement(SentimentPanel, { data, breadth: breadthValue, t, format }), /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react4.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react4.default.createElement("div", null, /* @__PURE__ */ import_react4.default.createElement("h3", null, t("market.indices.title")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.indices.subtitle")))), data.indices.length ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxs-mkt-index-grid" }, data.indices.map((index) => /* @__PURE__ */ import_react4.default.createElement(IndexCard, { key: index.code, index, t, format }))) : /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.empty"))), /* @__PURE__ */ import_react4.default.createElement(Heatmap, { data, selected, onSelect: setSelected, t, format }), selected ? /* @__PURE__ */ import_react4.default.createElement(SectorDetail, { key: selected.code, rpc, selection: selected, onClose: () => setSelected(null), t, format }) : null, breadthValue ? /* @__PURE__ */ import_react4.default.createElement(DistributionBar, { breadth: breadthValue, t, format }) : /* @__PURE__ */ import_react4.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-loading", role: "status" }, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxs-mkt-dot is-live" }), breadth.status === "error" ? t("market.error") : t("market.breadth.waiting"), breadth.status === "error" ? /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: breadth.refresh }, t("market.retry")) : null), breadthValue ? /* @__PURE__ */ import_react4.default.createElement(Movers, { breadth: breadthValue, t, format }) : null, /* @__PURE__ */ import_react4.default.createElement("footer", { className: "dxs-mkt-footer" }, /* @__PURE__ */ import_react4.default.createElement("details", null, /* @__PURE__ */ import_react4.default.createElement("summary", null, t("market.source.details")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.limits")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.model")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.no-persist")), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.source.persist"))), /* @__PURE__ */ import_react4.default.createElement("p", null, t("market.not-advice"))));
 }
 
 // src/client/chart/locales.ts
@@ -9973,13 +10030,22 @@ var marketZh = {
   "market.source": "\u817E\u8BAF\u884C\u60C5 \xB7 \u672C\u673A\u514D\u8D39\u6E90\uFF08\u975E\u5B98\u65B9\uFF09",
   "market.source.short": "\u514D\u8D39\u6E90",
   "market.source.details": "\u6570\u636E\u4E0E\u9650\u5236",
+  "market.source.switch": "\u514D\u8D39\u6E90",
+  "market.source.switch-aria": "\u5E02\u573A\u514D\u8D39\u6E90\u5F00\u5173",
+  "market.source.enabled": "\u5DF2\u5F00\u542F",
+  "market.source.disabled": "\u672A\u5F00\u542F",
+  "market.source.forced": "\u7531\u5BBF\u4E3B\u914D\u7F6E\u5F3A\u5236\u5F00\u542F\uFF1B\u79FB\u9664 profile \u4E2D dsh-x-stock \u7684 marketSource \u540E\u624D\u80FD\u5173\u95ED",
+  "market.source.unavailable": "\u5F53\u524D\u5BBF\u4E3B\u4E0D\u652F\u6301\u5F00\u5173\uFF1B\u8BF7\u4F7F\u7528\u4E0B\u9762\u7684\u624B\u52A8\u914D\u7F6E\u3002",
+  "market.source.preference-error": "\u65E0\u6CD5\u4FDD\u5B58\u5E02\u573A\u6E90\u5F00\u5173\uFF0C\u8BF7\u68C0\u67E5 profile \u76EE\u5F55\u6743\u9650\u3002",
+  "market.source.persist": "\u5F00\u5173\u4FDD\u5B58\u5728\u5F53\u524D profile \u7684 .dsh-x-stock\uFF0C\u4E0D\u8DE8\u8BBE\u5907\u540C\u6B65\uFF1B\u5173\u95ED\u540E\u505C\u6B62\u5E02\u573A\u8BF7\u6C42\u3002",
   "market.source.limits": "\u514D\u8D39\u6E90\u65E0 SLA\uFF0C\u53EF\u80FD\u5EF6\u8FDF\u3001\u9650\u6D41\u6216\u4E2D\u65AD\uFF1B\u4E0D\u662F\u4EA4\u6613\u6240\u6388\u6743\u884C\u60C5\uFF0C\u4E0D\u5F97\u518D\u5206\u53D1\u6216\u7528\u4E8E\u5546\u4E1A\u5C55\u793A\u3002",
   "market.source.model": "\u60C5\u7EEA\u6307\u6570\u7531\u672C\u63D2\u4EF6\u6309\u516C\u5F00\u5FEB\u7167\u8BA1\u7B97\uFF0C\u4E0D\u662F\u4EA4\u6613\u6240\u6216\u4F9B\u5E94\u5546\u5B98\u65B9\u6307\u6807\u3002",
   "market.source.no-persist": "\u5E02\u573A\u5FEB\u7167\u53EA\u5728\u5BBF\u4E3B\u5185\u5B58\u7F13\u5B58\uFF0C\u4E0D\u5199\u5165\u4F1A\u8BDD\u3001\u81EA\u9009\u6216\u78C1\u76D8\uFF1B\u4E0D\u4E0A\u4F20\u6A21\u578B\u3002",
   "market.not-advice": "\u53EA\u8BFB\u5E02\u573A\u6458\u8981\uFF0C\u4E0D\u6784\u6210\u6295\u8D44\u5EFA\u8BAE\uFF0C\u4E5F\u4E0D\u63D0\u4F9B\u4EA4\u6613\u6216\u4E0B\u5355\u3002",
   "market.unconfigured-title": "\u5E02\u573A\u6570\u636E\u672A\u5F00\u542F",
-  "market.unconfigured-body": "\u5E02\u573A\u5168\u666F\u9700\u8981\u672C\u673A\u514D\u8D39\u884C\u60C5\u6E90\uFF08\u817E\u8BAF\uFF0C\u975E\u5B98\u65B9\uFF09\u3002\u5B83\u9ED8\u8BA4\u5173\u95ED\uFF0C\u56E0\u4E3A\u65E0 SLA\u3001\u53EF\u80FD\u9650\u6D41\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u4EA4\u6613\u6240\u6388\u6743\u884C\u60C5\u3002",
-  "market.unconfigured-config": "\u5728\u5F53\u524D profile \u7684 cordis.patch.yml \u4E2D\u4E3A dsh-x-stock \u8BBE\u7F6E marketSource: true\uFF0C\u6216\u542F\u52A8\u5BBF\u4E3B\u524D\u8BBE\u7F6E DSH_X_STOCK_MARKET_SOURCE=1\u3002",
+  "market.unconfigured-body": "\u5E02\u573A\u5168\u666F\u9700\u8981\u672C\u673A\u514D\u8D39\u884C\u60C5\u6E90\uFF08\u817E\u8BAF\uFF0C\u975E\u5B98\u65B9\uFF09\u3002\u5B83\u9ED8\u8BA4\u5173\u95ED\uFF0C\u56E0\u4E3A\u65E0 SLA\u3001\u53EF\u80FD\u9650\u6D41\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u4EA4\u6613\u6240\u6388\u6743\u884C\u60C5\u3002\u6253\u5F00\u4E0B\u9762\u7684\u5F00\u5173\u5373\u53EF\u5728\u672C\u673A\u5F00\u542F\uFF0C\u4E5F\u53EF\u4EE5\u4F7F\u7528\u624B\u52A8\u914D\u7F6E\u3002",
+  "market.unconfigured-config": "\u5728\u5F53\u524D profile \u7684 cordis.patch.yml \u4E2D\u4E3A dsh-x-stock \u8BBE\u7F6E marketSource: true\uFF08\u4F1A\u5F3A\u5236\u5F00\u542F\u5E76\u7981\u7528\u5F00\u5173\uFF09\uFF0C\u6216\u542F\u52A8\u5BBF\u4E3B\u524D\u8BBE\u7F6E DSH_X_STOCK_MARKET_SOURCE=1\u3002",
+  "market.unconfigured-manual": "\u624B\u52A8\u914D\u7F6E\uFF08\u53EF\u9009\uFF0C\u9002\u5408 headless \u6216\u56FA\u5B9A\u5F00\u542F\uFF09",
   "market.unconfigured-retry": "\u91CD\u65B0\u68C0\u6D4B",
   "market.loading": "\u6B63\u5728\u83B7\u53D6\u5E02\u573A\u5FEB\u7167\u2026",
   "market.loading-short": "\u52A0\u8F7D\u4E2D",
@@ -10114,13 +10180,22 @@ var marketEn = {
   "market.source": "Tencent quotes \xB7 local free source (unofficial)",
   "market.source.short": "Free source",
   "market.source.details": "Data and limits",
+  "market.source.switch": "Free source",
+  "market.source.switch-aria": "Market free source switch",
+  "market.source.enabled": "On",
+  "market.source.disabled": "Off",
+  "market.source.forced": "Forced on by host config; remove marketSource from the profile to disable",
+  "market.source.unavailable": "This host does not support the switch; use the manual configuration below.",
+  "market.source.preference-error": "Could not save the market source switch. Check profile directory permissions.",
+  "market.source.persist": "The switch is stored in this profile\u2019s .dsh-x-stock and does not sync across devices; turning it off stops market requests.",
   "market.source.limits": "No SLA. The free source may be delayed, rate-limited or unavailable. It is not an exchange-licensed feed; do not redistribute it or use it in a commercial display.",
   "market.source.model": "The sentiment score is calculated by this plugin from the public snapshot. It is not an official exchange or vendor index.",
   "market.source.no-persist": "Market snapshots are cached in host memory only. They are not written to the session, watchlist or disk, and are not sent to the model.",
   "market.not-advice": "Read-only market summary. Not investment advice, and no trading or order placement.",
   "market.unconfigured-title": "Market data is off",
-  "market.unconfigured-body": "The panorama needs the local free market source (Tencent, unofficial). It is off by default: no SLA, it may be rate-limited, and it is not an exchange-licensed feed.",
-  "market.unconfigured-config": "Set marketSource: true for dsh-x-stock in this profile\u2019s cordis.patch.yml, or start the host with DSH_X_STOCK_MARKET_SOURCE=1.",
+  "market.unconfigured-body": "The panorama needs the local free market source (Tencent, unofficial). It is off by default: no SLA, it may be rate-limited, and it is not an exchange-licensed feed. Turn on the switch below for local use, or use manual configuration.",
+  "market.unconfigured-config": "Set marketSource: true for dsh-x-stock in this profile\u2019s cordis.patch.yml (this forces the source on and disables the switch), or start the host with DSH_X_STOCK_MARKET_SOURCE=1.",
+  "market.unconfigured-manual": "Manual configuration (optional, for headless or forced-on setups)",
   "market.unconfigured-retry": "Check again",
   "market.loading": "Loading the market snapshot\u2026",
   "market.loading-short": "Loading",
@@ -10716,6 +10791,23 @@ var MARKET_CSS = `
 .dxs-mkt-loading{display:flex;align-items:center;gap:8px;min-height:54px;color:var(--dsw-alias-label-secondary,#666);font-size:12px}
 .dxs-mkt-footer{display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--dsw-alias-border-main,#ddd);padding-top:8px;color:var(--dsw-alias-label-secondary,#666);font-size:10px}
 .dxs-mkt-footer p{margin:3px 0;line-height:1.5}
+.dxs-mkt-source-switch{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--dsw-alias-label-secondary,#666);cursor:pointer;user-select:none;white-space:nowrap}
+.dxs-mkt-source-switch input{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.dxs-mkt-switch-track{position:relative;display:block;width:28px;height:16px;flex:none;border-radius:999px;border:1px solid var(--dsw-alias-border-main,#bbb);background:var(--dsw-alias-bg-layer-2,#eee);transition:background .15s ease,border-color .15s ease}
+.dxs-mkt-switch-track span{position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:var(--dsw-alias-label-secondary,#888);transition:transform .15s ease,background .15s ease}
+.dxs-mkt-source-switch input:checked+.dxs-mkt-switch-track{background:var(--dsw-alias-primary,#4169e1);border-color:var(--dsw-alias-primary,#4169e1)}
+.dxs-mkt-source-switch input:checked+.dxs-mkt-switch-track span{transform:translateX(12px);background:#fff}
+.dxs-mkt-source-switch input:focus-visible+.dxs-mkt-switch-track{outline:2px solid var(--dsw-alias-primary,#4169e1);outline-offset:2px}
+.dxs-mkt-source-switch input:disabled+.dxs-mkt-switch-track{opacity:.45}
+.dxs-mkt-source-switch input:disabled~.dxs-mkt-switch-label{opacity:.55}
+.dxs-mkt-source-switch.is-large{font-size:13px;gap:9px;color:var(--dsw-alias-label-primary,#202124)}
+.dxs-mkt-source-switch.is-large .dxs-mkt-switch-track{width:40px;height:22px}
+.dxs-mkt-source-switch.is-large .dxs-mkt-switch-track span{width:18px;height:18px}
+.dxs-mkt-source-switch.is-large input:checked+.dxs-mkt-switch-track span{transform:translateX(18px)}
+.dxs-mkt-setup-switch{display:flex;align-items:center;gap:12px;margin:16px 0 4px;flex-wrap:wrap}
+.dxs-mkt-manual-config{margin:10px 0}
+.dxs-mkt-manual-config summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#666);font-size:10px}
+.dxs-mkt-manual-config pre{margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);font-size:11px;line-height:1.5;overflow:auto}
 @media(max-width:1180px){
 .dxs-mkt-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
 .dxs-mkt-index-grid{grid-template-columns:repeat(3,minmax(0,1fr))}

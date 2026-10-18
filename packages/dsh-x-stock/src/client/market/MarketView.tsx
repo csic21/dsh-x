@@ -3,7 +3,7 @@ import type { BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketSec
 import { computeSentiment, marketClock } from '../../market.ts'
 import type { ChangeTone, NestedGroup, TreemapRect } from './treemap.ts'
 import { changeTone, layoutNested, squarify, tileSize } from './treemap.ts'
-import { useBoardDetail, useMarketBreadth, useMarketOverview } from './data.ts'
+import { useBoardDetail, useMarketBreadth, useMarketOverview, useMarketPreference } from './data.ts'
 
 interface MarketViewProps {
   rpc: any
@@ -100,6 +100,21 @@ function MarketStatus({ quotedAt, now, t, format, showTime = true }: any) {
     {showTime && quotedAt ? <span>{t('market.quote-time', { time: format.time(quotedAt, t) })}</span> : null}
     {clock.quoteToday && clock.stale && (clock.phase === 'open' || clock.phase === 'auction') ? <span className="dxs-mkt-warn">{t('market.stale')}</span> : null}
   </div>
+}
+
+function SourceSwitch({ preference, onChange, t, large = false }: any) {
+  const ready = preference.status === 'ready'
+  const disabled = !ready || preference.busy || preference.forced
+  const title = preference.status === 'error'
+    ? t('market.source.unavailable')
+    : preference.forced
+      ? t('market.source.forced')
+      : t('market.source.switch-aria')
+  return <label className={`dxs-mkt-source-switch ${large ? 'is-large' : ''}`} title={title}>
+    <input type="checkbox" role="switch" checked={preference.enabled} disabled={disabled} onChange={event => onChange(event.target.checked)} aria-label={t('market.source.switch-aria')} />
+    <span className="dxs-mkt-switch-track" aria-hidden="true"><span /></span>
+    <span className="dxs-mkt-switch-label">{t('market.source.switch')}</span>
+  </label>
 }
 
 function SentimentPanel({ data, breadth, t, format }: any) {
@@ -399,20 +414,34 @@ function SectorDetail({ rpc, selection, onClose, t, format }: any) {
   </section>
 }
 
-function Unconfigured({ t, onRetry }: any) {
+function Unconfigured({ t, preference, onChange, onRetry }: any) {
   return <section className="dxs-mkt-card dxs-mkt-setup">
     <h3>{t('market.unconfigured-title')}</h3>
     <p>{t('market.unconfigured-body')}</p>
-    <p className="dxs-mkt-muted">{t('market.unconfigured-config')}</p>
-    <pre>{`- id: dsh-x-stock\n  name: dsh-x-stock\n  config:\n    marketSource: true`}</pre>
+    <div className="dxs-mkt-setup-switch">
+      <SourceSwitch preference={preference} onChange={onChange} t={t} large />
+      <span>{preference.enabled ? t('market.source.enabled') : t('market.source.disabled')}</span>
+    </div>
+    <p className="dxs-mkt-muted">{t('market.source.persist')}</p>
+    {preference.status === 'error' ? <p role="alert" className="dxs-mkt-error">{t('market.source.unavailable')}</p> : null}
+    {preference.error && preference.status === 'ready' ? <p role="alert" className="dxs-mkt-error">{t('market.source.preference-error')}</p> : null}
+    <details className="dxs-mkt-manual-config">
+      <summary>{t('market.unconfigured-manual')}</summary>
+      <p className="dxs-mkt-muted">{t('market.unconfigured-config')}</p>
+      <pre>{`- id: dsh-x-stock\n  name: dsh-x-stock\n  config:\n    marketSource: true`}</pre>
+    </details>
     <button type="button" onClick={onRetry}>{t('market.unconfigured-retry')}</button>
   </section>
 }
 
-function ErrorCard({ t, onRetry }: any) {
+function ErrorCard({ t, onRetry, preference, onChange }: any) {
   return <section className="dxs-mkt-card dxs-mkt-setup" role="alert">
     <h3>{t('market.error')}</h3>
     <p>{t('market.error-hint')}</p>
+    <div className="dxs-mkt-setup-switch">
+      <SourceSwitch preference={preference} onChange={onChange} t={t} large />
+      <span>{preference.enabled ? t('market.source.enabled') : t('market.source.disabled')}</span>
+    </div>
     <button type="button" onClick={onRetry}>{t('market.retry')}</button>
   </section>
 }
@@ -420,7 +449,15 @@ function ErrorCard({ t, onRetry }: any) {
 export function MarketView({ rpc, t, format, now = () => new Date() }: MarketViewProps) {
   const overview = useMarketOverview(rpc)
   const breadth = useMarketBreadth(rpc)
+  const preference = useMarketPreference(rpc)
   const [selected, setSelected] = useState<Selection | null>(null)
+  const changeSource = async (enabled: boolean) => {
+    try {
+      await preference.setEnabled(enabled)
+      overview.refresh()
+      breadth.refresh()
+    } catch { /* the preference hook owns the visible error */ }
+  }
   const data: MarketOverview | null = overview.value
   const breadthValue: MarketBreadth | null = breadth.value
   const sectorChanges = data?.sectors.filter(sector => sector.level === 1).map(sector => sector.changePercent) ?? []
@@ -433,10 +470,10 @@ export function MarketView({ rpc, t, format, now = () => new Date() }: MarketVie
   const positiveSectors = sectorChanges.filter(value => value > 0).length
   const sectorAverage = sectorChanges.length ? sectorChanges.reduce((sum, value) => sum + value, 0) / sectorChanges.length : null
 
-  if (overview.status === 'unconfigured') return <div className="dxs-mkt"><Unconfigured t={t} onRetry={overview.refresh} /></div>
-  if (overview.status === 'error' && !data) return <div className="dxs-mkt"><ErrorCard t={t} onRetry={overview.refresh} /></div>
+  if (overview.status === 'unconfigured') return <div className="dxs-mkt"><Unconfigured t={t} preference={preference} onChange={changeSource} onRetry={overview.refresh} /></div>
+  if (overview.status === 'error' && !data) return <div className="dxs-mkt"><ErrorCard t={t} onRetry={overview.refresh} preference={preference} onChange={changeSource} /></div>
   if (overview.status === 'loading' && !data) return <div className="dxs-mkt"><div className="dxs-mkt-card dxs-mkt-loading" role="status"><span className="dxs-mkt-dot is-live" />{t('market.loading')}</div></div>
-  if (!data) return <div className="dxs-mkt"><ErrorCard t={t} onRetry={overview.refresh} /></div>
+  if (!data) return <div className="dxs-mkt"><ErrorCard t={t} onRetry={overview.refresh} preference={preference} onChange={changeSource} /></div>
 
   return <div className="dxs-mkt">
     <header className="dxs-mkt-head">
@@ -447,6 +484,7 @@ export function MarketView({ rpc, t, format, now = () => new Date() }: MarketVie
       </div>
       <div className="dxs-mkt-head-actions">
         <MarketStatus quotedAt={data.quotedAt} now={now} t={t} format={format} />
+        <SourceSwitch preference={preference} onChange={changeSource} t={t} />
         <div className="dxs-mkt-updated">{t('market.updated', { time: format.time(data.fetchedAt, t) })}</div>
         <button type="button" onClick={() => { overview.refresh(); breadth.refresh() }} disabled={overview.refreshing}>{overview.refreshing ? t('market.refreshing') : t('market.refresh')}</button>
       </div>
@@ -475,7 +513,7 @@ export function MarketView({ rpc, t, format, now = () => new Date() }: MarketVie
     {breadthValue ? <DistributionBar breadth={breadthValue} t={t} format={format} /> : <section className="dxs-mkt-card dxs-mkt-loading" role="status"><span className="dxs-mkt-dot is-live" />{breadth.status === 'error' ? t('market.error') : t('market.breadth.waiting')}{breadth.status === 'error' ? <button type="button" onClick={breadth.refresh}>{t('market.retry')}</button> : null}</section>}
     {breadthValue ? <Movers breadth={breadthValue} t={t} format={format} /> : null}
     <footer className="dxs-mkt-footer">
-      <details><summary>{t('market.source.details')}</summary><p>{t('market.source.limits')}</p><p>{t('market.source.model')}</p><p>{t('market.source.no-persist')}</p></details>
+      <details><summary>{t('market.source.details')}</summary><p>{t('market.source.limits')}</p><p>{t('market.source.model')}</p><p>{t('market.source.no-persist')}</p><p>{t('market.source.persist')}</p></details>
       <p>{t('market.not-advice')}</p>
     </footer>
   </div>
