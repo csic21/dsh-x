@@ -49,17 +49,42 @@ export function reviewCanFix(review: CodeReview | null | undefined) { return isC
 export const shortHash = (value: unknown) => typeof value === 'string' ? value.slice(0, 8) : '—'
 export const basename = (path: string | null | undefined) => path?.split(/[\\/]/).filter(Boolean).at(-1) ?? ''
 
-/** Collapse paths into directory groups without fabricating inaccessible children. */
-export function fileGroups(files: CodeFile[], query = '', filter = 'changed') {
+export interface FileTreeDirectory { name: string, path: string, directories: FileTreeDirectory[], files: CodeFile[] }
+
+/** Nest matching paths into a real directory tree without fabricating inaccessible children. */
+export function fileTree(files: CodeFile[], query = '', filter = 'changed'): FileTreeDirectory {
   const needle = query.trim().toLocaleLowerCase()
-  const groups = new Map<string, CodeFile[]>()
+  const root: FileTreeDirectory = { name: '', path: '', directories: [], files: [] }
+  const byPath = new Map<string, FileTreeDirectory>([['', root]])
   for (const file of files) {
     if (filter === 'changed' && !isChanged(file) || needle && !file.path.toLocaleLowerCase().includes(needle)) continue
-    const at = file.path.lastIndexOf('/'), directory = at < 0 ? '' : file.path.slice(0, at)
-    if (!groups.has(directory)) groups.set(directory, [])
-    groups.get(directory)!.push(file)
+    const segments = file.path.split('/').filter(Boolean)
+    let parent = root, path = ''
+    for (const segment of segments.slice(0, -1)) {
+      path = path ? `${path}/${segment}` : segment
+      let child = byPath.get(path)
+      if (!child) { child = { name: segment, path, directories: [], files: [] }; byPath.set(path, child); parent.directories.push(child) }
+      parent = child
+    }
+    parent.files.push(file)
   }
-  return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([directory, children]) => ({ directory, files: children.sort((a, b) => a.path.localeCompare(b.path)) }))
+  function order(node: FileTreeDirectory) {
+    node.directories.sort((a, b) => a.name.localeCompare(b.name))
+    node.files.sort((a, b) => a.path.localeCompare(b.path))
+    node.directories = node.directories.map(compact)
+  }
+  // Join a lone directory chain into one row (compatibility/evidence) so depth stays readable.
+  function compact(node: FileTreeDirectory): FileTreeDirectory {
+    order(node)
+    while (!node.files.length && node.directories.length === 1) {
+      const only = node.directories[0]
+      node = { name: `${node.name}/${only.name}`, path: only.path, directories: only.directories, files: only.files }
+    }
+    return node
+  }
+  root.directories = root.directories.sort((a, b) => a.name.localeCompare(b.name)).map(compact)
+  root.files.sort((a, b) => a.path.localeCompare(b.path))
+  return root
 }
 
 /** Git supplies edit hunks. This parser only projects its line coordinates. */

@@ -48,7 +48,11 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   await click([...document.querySelectorAll('button')].find(button=>button.textContent==='Review1'))
   assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-setup')!.textContent,/Current DSH model/);assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-session-model')!.textContent,/test-current/)
   await click(byText('Prepare in conversation'));assert.equal(panel,null);assert.equal(sendCount,0);assert.match(draft,/^Existing user text/);assert.match(draft,/"runtime": "dsh"/);assert.doesNotMatch(draft,/"model":/)
-  await click(byText('All'));await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Open README.md"]'));assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-source-lines')!.textContent,/# Example/)
+  await click(byText('All'))
+  const branch=document.querySelector<HTMLDetailsElement>('.dxc-tree>.dxc-branch>details')!
+  assert.equal(branch.open,true);assert.equal(branch.querySelector('.dxc-dir-name')!.textContent,'src');assert.equal(branch.querySelector('summary')!.getAttribute('aria-label'),'src');assert.equal(branch.querySelectorAll('.dxc-children>.dxc-file-row').length,1)
+  assert.equal(document.querySelectorAll('.dxc-tree>.dxc-file-row').length,1);assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-tree>.dxc-file-row .dxc-file-name')!.textContent,'README.md')
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Open README.md"]'));assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-source-lines')!.textContent,/# Example/)
   await act(async()=>locale.setLocale('zh'));assert.match(document.body.textContent,/当前工作区|工作区文件/);assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="在文件中查找"]'))
   await act(async()=>locale.setLocale('en'))
   snapshot.agentsAvailable=true;snapshot.revision=2;snapshot.review={id:'review-1',state:'completed',mode:'worktree',stale:false,repairReady:true,createdAt:'2026-10-17T10:00:00Z',snapshotId:'snapshot-1',paths:['src/calc.js'],findings:[{id:'finding-1',path:'src/calc.js',side:'before',startLine:2,endLine:2,severity:'high',title:'Guard disappeared',body:'Zero denominators no longer have a defined fallback.',evidence:'return b ? a / b : 0',trigger:'b is zero',status:'open'}],checks:[],repair:null}

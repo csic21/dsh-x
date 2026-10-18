@@ -14,7 +14,7 @@ Desktop uses three tracks: a file navigator, a flexible source viewer, and a fin
 
 ## Reading source and changes
 
-- The file navigator has Changed / All filters, a filename/path search, directory groups, Git-status markers and explicit review checkboxes. Opening a file does not select it for review. Checkboxes are bounded by backend selection limits.
+- The file navigator has Changed / All filters, a filename/path search, a nested directory tree, Git-status markers and explicit review checkboxes. Opening a file does not select it for review. Checkboxes are bounded by backend selection limits.
 - The Source tab shows the full target file, read-only. Its label identifies the origin: Working tree, Index, HEAD, or Reviewed snapshot. A separate Before choice shows the comparison's old version. The UI never calls the old version “original source.”
 - The Diff tab offers Unified / Split and Wrap. Both preserve old/new line numbers. New/deleted files remain readable as one-sided comparisons. Hunk positions are backend Git output, not a client-computed edit graph.
 - Syntax coloring uses the official public DSH code highlighter. The official turn-diff component is private to its deliverables plugin and is not imported by source path. Code owns only the thin row presentation required for its repository snapshot and finding navigation.
@@ -60,7 +60,7 @@ A run ending is not a test result. Review completeness, finding count, snapshot 
 
 The design uses DSH theme aliases, subtle surface separation, one restrained accent, clear selected rows and readable monospace code. Severity uses both text and color. There are no giant introductory cards, decorative dashboards or repeated safety paragraphs. Dense details are disclosed on demand. All visible labels, empty/error/loading states, accessible names, tooltips, counts and timestamps are locale-owned in English and Chinese; runtime/model names, file paths and model-generated review evidence remain source data.
 
-Buttons, checkboxes, selects and disclosures use native semantics and visible focus. Source/Diff and narrow-panel tabs expose tab roles, keyboard arrows, Home/End and selected state. File navigation is a grouped native-button list rather than an incomplete ARIA tree. File opening and review selection are independent keyboard targets. Status announcements use polite live regions; failures use alerts without repeatedly announcing source text. Code content scrolls within the viewer and cannot force the workbench wider than its container.
+Buttons, checkboxes, selects and disclosures use native semantics and visible focus. Source/Diff and narrow-panel tabs expose tab roles, keyboard arrows, Home/End and selected state. File navigation is a nested native `<details>`/`<summary>` disclosure list of native buttons, not a hand-built ARIA tree; every directory and file stays reachable by keyboard. File opening and review selection are independent keyboard targets. Status announcements use polite live regions; failures use alerts without repeatedly announcing source text. Code content scrolls within the viewer and cannot force the workbench wider than its container.
 
 ## Acceptance criteria
 

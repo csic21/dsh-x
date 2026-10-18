@@ -2,14 +2,20 @@ import React, { useEffect, useRef, useState } from 'react'
 import { CAPABILITIES, canPrepare, eventDataPreview, insertRequest, parseAddress, prepareModels, prepareRun, presentationEvents, readSnapshot } from './model.ts'
 import { errorKey } from './locales.ts'
 
+export function AgentsIcon() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3.5l1.9 5.1L19 10.5l-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5Z" /><path d="M18.5 17.5v3M17 19h3" /></svg>
+}
+
 export function AgentsEntry({ useAgents, openAgents, t }: any) {
   const state = useAgents((state: any) => state)
   const task = state.snapshot?.task, operation = state.snapshot?.operation
-  return <button type="button" className="dxa-entry" onClick={openAgents} disabled={state.status === 'loading'} title={state.status === 'loading' ? t('loading') : state.status === 'live' ? t('open') : t('retry')}>
-    <span aria-hidden="true" className="dxa-mark">A</span><span>{t('title')}</span>
-    {state.status === 'live' && (operation || task) && <span className="dxa-entry-state">{operation ? t(`modelsOperation.${operation.state}`) : t(`state.${task.cancellationRequested ? 'stopping' : task.state}`)}</span>}
-    {state.status === 'failed' && <span className="dxa-entry-state">{t('retry')}</span>}
-  </button>
+  const meta = state.status === 'failed' ? t('retry') : state.status === 'live' && (operation || task) ? operation ? t(`modelsOperation.${operation.state}`) : t(`state.${task.cancellationRequested ? 'stopping' : task.state}`) : null
+  return <div className="dxa-dock"><button type="button" className="dxa-entry" onClick={openAgents} disabled={state.status === 'loading'} title={state.status === 'loading' ? t('loading') : state.status === 'live' ? t('open') : t('retry')}>
+    <span aria-hidden="true" className="dxa-entry-icon"><AgentsIcon /></span>
+    <span className="dxa-entry-label">{t('title')}</span>
+    {meta && <span className="dxa-entry-state">{meta}</span>}
+    <span aria-hidden="true" className="dxa-entry-go"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+  </button></div>
 }
 
 function Availability({ agent, t }: any) {

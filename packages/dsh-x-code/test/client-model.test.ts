@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileGroups, readSnapshot, reviewRequest, repairRequest, reviewCanFix } from '../src/client/model.ts'
+import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, readSnapshot, reviewRequest, repairRequest, reviewCanFix } from '../src/client/model.ts'
 import { en, zh, messageKey } from '../src/client/locales.ts'
 const snapshot = (): any => ({ scope:'profile',sessionId:'session',revision:1,workspace:{id:'version',mode:'worktree',base:'abc',baseRef:'main'},files:[{path:'src/b.js',status:'modified',selectable:true,changed:true},{path:'README.md',status:'unchanged',selectable:true,changed:false}],limits:{maxSelectedFiles:20},review:null })
 
@@ -15,7 +15,19 @@ test('source terminators and literal search preserve exact offsets',()=>{
  assert.deepEqual(sourceLines(''),[]);assert.deepEqual(sourceLines('a\n\n'),['a','']);assert.deepEqual(searchMatches(['A[a A[a','other'],'a[a'),[{line:1,start:0,end:3},{line:1,start:4,end:7}]);assert.deepEqual(searchMatches(['x'],''),[])
 })
 test('filename filtering does not turn source opening into review selection',()=>{
- const value=snapshot();assert.deepEqual(fileGroups(value.files,'','changed').map(group=>group.directory),['src']);assert.equal(fileGroups(value.files,'read','all')[0].files[0].path,'README.md');assert.equal(fileGroups(value.files,'absent','all').length,0)
+ const value=snapshot();const changed=fileTree(value.files,'','changed');assert.deepEqual(changed.directories.map(node=>node.path),['src']);assert.deepEqual(changed.files,[]);assert.deepEqual(changed.directories[0].files.map(file=>file.path),['src/b.js'])
+ const all=fileTree(value.files,'','all');assert.deepEqual(all.directories.map(node=>node.path),['src']);assert.deepEqual(all.files.map(file=>file.path),['README.md'])
+ const searched=fileTree(value.files,'read','all');assert.deepEqual(searched.directories,[]);assert.deepEqual(searched.files.map(file=>file.path),['README.md'])
+ const absent=fileTree(value.files,'absent','all');assert.deepEqual(absent.directories,[]);assert.deepEqual(absent.files,[])
+})
+test('file tree nests directories and joins lone directory chains',()=>{
+ const files=[{path:'src/a/b/deep.ts',status:'modified',selectable:true,changed:true},{path:'src/a/top.ts',status:'modified',selectable:true,changed:true},{path:'src/other/x.ts',status:'modified',selectable:true,changed:true},{path:'lib/x/y/z.ts',status:'modified',selectable:true,changed:true},{path:'docs/guide.md',status:'unchanged',selectable:true,changed:false},{path:'README.md',status:'unchanged',selectable:true,changed:false}] as any
+ const tree=fileTree(files,'','all');assert.deepEqual(tree.directories.map(node=>node.path),['docs','lib/x/y','src']);assert.deepEqual(tree.files.map(file=>file.path),['README.md'])
+ assert.deepEqual(tree.directories[1].files.map(file=>file.path),['lib/x/y/z.ts'])
+ assert.deepEqual(tree.directories[2].directories.map(node=>node.path),['src/a','src/other']);assert.deepEqual(tree.directories[2].files,[])
+ assert.deepEqual(tree.directories[2].directories[0].directories.map(node=>node.path),['src/a/b'])
+ const changed=fileTree(files,'','changed');assert.deepEqual(changed.directories.map(node=>node.path),['lib/x/y','src']);assert.deepEqual(changed.files,[])
+ const searched=fileTree(files,'top','all');assert.deepEqual(searched.directories.map(node=>node.path),['src/a']);assert.deepEqual(searched.directories[0].files.map(file=>file.path),['src/a/top.ts'])
 })
 test('wire validation rejects duplicate files and unknown review severity',()=>{
  const value=snapshot();assert.equal(readSnapshot(value,'session'),value);assert.equal(readSnapshot(value,'other'),null);value.files.push(value.files[0]);assert.equal(readSnapshot(value,'session'),null)

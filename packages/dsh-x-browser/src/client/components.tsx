@@ -27,7 +27,13 @@ export interface BrowserBodyProps {
 }
 
 export function BrowserIcon() { return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 7h14M5 17h14"/></svg> }
-export function BrowserEntry({ open, t }: BrowserEntryProps) { return <button type="button" className="dxb-entry" data-testid="dxb-entry" title={t('open')} onClick={open}><BrowserIcon/><span>{t('title')}</span></button> }
+export function BrowserEntry({ open, t }: BrowserEntryProps) {
+  return <div className="dxb-dock"><button type="button" className="dxb-entry" data-testid="dxb-entry" title={t('open')} onClick={open}>
+    <span className="dxb-entry-icon" aria-hidden="true"><BrowserIcon /></span>
+    <span className="dxb-entry-label">{t('title')}</span>
+    <span className="dxb-entry-go" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+  </button></div>
+}
 export function BrowserTitle({ useTabInfo }: BrowserTitleProps) { const { tab } = useTabInfo(); return <><BrowserIcon/>{tab.title}</> }
 export function BrowserBody({ sessionId, useTabInfo, createController, t }: BrowserBodyProps) {
   const { tab } = useTabInfo(), host = useRef<HTMLDivElement>(null!), controller = useRef<BrowserController | null>(null)

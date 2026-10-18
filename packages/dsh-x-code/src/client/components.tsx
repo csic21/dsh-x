@@ -1,10 +1,12 @@
-import type { CodeFile, CodeSnapshot, CodeReview } from './model.ts'
+import type { CodeFile, CodeSnapshot, CodeReview, FileTreeDirectory } from './model.ts'
 import type { CodeState, FileTarget, AgentsView } from './controller.ts'
 import type { Finding } from '../review.ts'
 import type { Translate, CodeFocus } from './CodeViewer.tsx'
 export interface EntryProps { open: () => void, t: Translate }
 export interface PanelProps { renderSlot(name: string, props: Record<string, unknown>): React.ReactNode }
 interface NavigatorProps { files: CodeFile[], path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, snapshot: CodeSnapshot, reviewed: boolean }
+interface FileRowProps { file: CodeFile, path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, reviewed: boolean, depth: number }
+interface BranchProps extends Omit<FileRowProps, 'file'> { node: FileTreeDirectory }
 interface FindingProps { finding: Finding, selected: boolean, toggle: () => void, jump: () => void, disabled: boolean, t: Translate }
 interface FindingsProps { review: CodeReview | null | undefined, history: CodeSnapshot['history'], historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, selected: string[], toggle: (id: string) => void, jump: (finding: Finding) => void, fix: () => void, rereview: () => void, enabled: boolean, repairAvailable: boolean, t: Translate, formatTime: (value: string) => string }
 type SetupKind = 'review' | 'repair' | 'rereview'
@@ -14,24 +16,52 @@ export interface WorkspaceProps { sessionId: string | null, useCode: <T>(selecto
 export interface ToolRowProps extends EntryProps { phase: string, block?: { isError?: boolean, meta?: { kind?: string, version?: number, review?: CodeReview } } }
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { CodeViewer, Tabs } from './CodeViewer.tsx'
-import { activeReview, basename, canPrepare, fileGroups, insertRequest, isChanged, isComplete, prepareModels, repairRequest, reviewCanFix, reviewRequest, SEVERITIES, shortHash } from './model.ts'
+import { activeReview, basename, canPrepare, fileTree, insertRequest, isChanged, isComplete, prepareModels, repairRequest, reviewCanFix, reviewRequest, SEVERITIES, shortHash } from './model.ts'
 import { en, messageKey } from './locales.ts'
 
 export function CodeIcon() { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18" strokeLinecap="round" strokeLinejoin="round" /></svg> }
-export function CodeEntry({ open, t }: EntryProps) { return <button type="button" className="dxc-entry" onClick={open} title={t('open')}><CodeIcon /><span>{t('title')}</span></button> }
+export function CodeEntry({ open, t }: EntryProps) {
+  return <div className="dxc-dock"><button type="button" className="dxc-entry" onClick={open} title={t('open')}>
+    <span className="dxc-entry-icon" aria-hidden="true"><CodeIcon /></span>
+    <span className="dxc-entry-label">{t('title')}</span>
+    <span className="dxc-entry-go" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+  </button></div>
+}
 export function CodePanel({ renderSlot }: PanelProps) { return renderSlot('dsh-x-code.workspace', {}) }
+
+const STATUS_MARKS: Record<string, string> = { added: 'A', deleted: 'D', renamed: 'R', untracked: 'U', conflicted: '!' }
+const indent = (depth: number) => ({ paddingInlineStart: 8 + depth * 12 })
+
+function FileRow({ file, path, selected, select, open, t, limit, reviewed, depth }: FileRowProps) {
+  return <li className="dxc-file-row" style={indent(depth)} data-selected={path === file.path || undefined}>
+    {!reviewed && <input type="checkbox" aria-label={t('selectFile', { path: file.path })} checked={selected.includes(file.path)} disabled={!file.selectable || !selected.includes(file.path) && selected.length >= limit} onChange={() => select(file.path)} />}
+    <button type="button" className="dxc-file" aria-current={path === file.path ? 'true' : undefined} aria-label={t('openFile', { path: file.path })} title={file.path} onClick={() => open(file.path)}><span className="dxc-file-name">{basename(file.path)}</span><span className={`dxc-file-status dxc-status-${file.status}`} title={t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : 'file.modified')}>{isChanged(file) ? STATUS_MARKS[file.status] ?? 'M' : ''}</span></button>
+  </li>
+}
+
+function TreeBranch({ node, depth, ...rest }: BranchProps) {
+  if (!node.directories.length && !node.files.length) return null
+  return <li className="dxc-branch"><details className="dxc-directory" open>
+    <summary title={node.path} aria-label={node.path} style={indent(depth)}><span className="dxc-disclosure" aria-hidden="true">▸</span><span className="dxc-dir-name">{node.name}</span></summary>
+    <ul className="dxc-children">
+      {node.directories.map(child => <TreeBranch key={child.path} node={child} depth={depth + 1} {...rest} />)}
+      {node.files.map(file => <FileRow key={file.path} file={file} depth={depth + 1} {...rest} />)}
+    </ul>
+  </details></li>
+}
 
 function FileNavigator({ files, path, selected, select, open, t, limit, snapshot, reviewed }: NavigatorProps) {
   const [filter, setFilter] = useState('changed'), [query, setQuery] = useState('')
-  const groups = useMemo(() => fileGroups(files, query, reviewed ? 'all' : filter), [files, query, filter, reviewed])
+  const tree = useMemo(() => fileTree(files, query, reviewed ? 'all' : filter), [files, query, filter, reviewed])
+  const rows = { path, selected, select, open, t, limit, reviewed }
   return <aside className="dxc-files" aria-label={t('files')}>
     <div className="dxc-section-title"><strong>{t('files')}</strong><span>{t('fileCount', { count: files.length })}</span></div>
     {!reviewed && <Tabs label={t('files')} value={filter} onChange={setFilter} items={[{ value: 'changed', label: t('changed') }, { value: 'all', label: t('all') }]} />}
     <div className="dxc-file-search"><span aria-hidden="true">⌕</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('searchFiles')} aria-label={t('fileSearchLabel')} /></div>
-    <div className="dxc-file-list">{groups.length ? groups.map(group => <details className="dxc-directory" key={group.directory} open><summary title={group.directory}>{group.directory || t('rootFiles')}</summary><ul>{group.files.map(file => <li key={file.path} data-selected={path === file.path || undefined}>
-      {!reviewed && <input type="checkbox" aria-label={t('selectFile', { path: file.path })} checked={selected.includes(file.path)} disabled={!file.selectable || !selected.includes(file.path) && selected.length >= limit} onChange={() => select(file.path)} />}
-      <button type="button" className="dxc-file" aria-current={path === file.path ? 'true' : undefined} aria-label={t('openFile', { path: file.path })} title={file.path} onClick={() => open(file.path)}><span className="dxc-file-name">{basename(file.path)}</span><span className={`dxc-file-status dxc-status-${file.status}`} title={t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : 'file.modified')}>{isChanged(file) ? (({ added: 'A', deleted: 'D', renamed: 'R', untracked: 'U', conflicted: '!' } as Record<string, string>)[file.status] ?? 'M') : ''}</span></button>
-    </li>)}</ul></details>) : <p className="dxc-state">{t(filter === 'changed' && !query && !reviewed ? 'noChanges' : 'noFiles')}</p>}</div>
+    <div className="dxc-file-list">{tree.directories.length || tree.files.length ? <ul className="dxc-tree">
+      {tree.directories.map(node => <TreeBranch key={node.path} node={node} depth={0} {...rows} />)}
+      {tree.files.map(file => <FileRow key={file.path} file={file} depth={0} {...rows} />)}
+    </ul> : <p className="dxc-state">{t(filter === 'changed' && !query && !reviewed ? 'noChanges' : 'noFiles')}</p>}</div>
     <footer className="dxc-file-footer">{reviewed ? <span>{t('reviewedOnly')}</span> : <><span>{t('selection', { count: selected.length })}</span><button type="button" onClick={() => select(selected.length ? null : 'all')}>{t(selected.length ? 'clearSelection' : 'selectChanged')}</button></>}{snapshot.truncated && <p className="dxc-inline-warning">{t('partialFiles')}</p>}</footer>
   </aside>
 }
