@@ -13,7 +13,8 @@ Actions 中手动运行 **Package desktop**，选择待发源码分支：
 - `build_only=true` 只编译官方安装包，保留 `official-macos-arm64`、`official-windows-x64` artifact。
 - `reuse_build` 可填写上述构建的 run ID；组装器核对内核提交、版本和安装包 SHA-256 后复用，避免反复编译内核。
 - `distribution_target` 选择两平台或单独一平台。复用 ID 留空且 `build_only=false` 时，会先编译再组装。
-- `release_from_run` 填写两平台均验收成功的组装 run ID，仅发布该次安装包，不重复编译。发布前再次校验来源、六个插件激活报告与安装包 SHA-256，生成 `desktop-v<版本>` prerelease。
+- 发布前用仓库 Git 写权限创建并推送轻量标签 `desktop-v<版本>`，指向验收 run 的 `head_sha`；Actions 跨提交创建标签可能被 GitHub 权限限制。
+- `release_from_run` 填写两平台均验收成功的组装 run ID，仅发布该次安装包，不重复编译。发布前再次校验标签提交、来源、六个插件激活报告与安装包 SHA-256，生成该标签的 prerelease。
 
 macOS 使用 Apple Silicon runner 与官方 `package:desktop:mac:arm64:unsigned`；Windows 使用 x64 runner 与 `package:desktop:win:x64:unsigned`。Linux 不生成 Desktop 安装包，macOS Intel 尚未加入本矩阵。依赖固定到锁文件及官方 pnpm 版本。
 
