@@ -10,10 +10,10 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const defaultHome = (env = process.env) => {
-  const configured = typeof env.DSH_HOME === 'string' && path.isAbsolute(env.DSH_HOME) ? path.resolve(env.DSH_HOME) : null
-  return configured ?? path.join(homedir(), '.dsh')
-}
+// The packaged launcher must always land in the official native home. Ambient
+// DSH_HOME/DSH_AGENTS_HOME values belong to the process that happened to start
+// DSH-X (a shell, a previous isolated build), not to this installation.
+export const defaultHome = () => path.join(homedir(), '.dsh')
 export async function digest(file) {
   const hash = createHash('sha256')
   for await (const bytes of createReadStream(file)) hash.update(bytes)
@@ -26,9 +26,9 @@ export function localPath(root, relative) {
 }
 export function runtimeEnvironment(home, inherited = process.env) {
   // Native layout: the official home and Electron userData defaults are kept.
-  // Only the Node injection variables are removed so a packaged app cannot be
-  // hijacked by the shell that happened to launch it.
-  const environment = Object.fromEntries(Object.entries(inherited).filter(([key]) => !['NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE', 'DSH_DESKTOP_USER_DATA_DIR'].includes(key)))
+  // Parent DSH_* values and Node injection variables are dropped so a shell or
+  // a previous isolated build cannot drag this launch back to ~/.dsh-x.
+  const environment = Object.fromEntries(Object.entries(inherited).filter(([key]) => !['NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE', 'DSH_HOME', 'DSH_AGENTS_HOME', 'DSH_DESKTOP_USER_DATA_DIR'].includes(key)))
   return { ...environment, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' }
 }
 export async function readDistribution(root) {

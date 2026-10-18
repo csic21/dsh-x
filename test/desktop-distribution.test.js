@@ -52,15 +52,13 @@ test('launching an installed distribution honors user plugin removals without re
   assert.equal(result.changed, false)
   await assert.rejects(access(path.join(home, 'profiles')), { code: 'ENOENT' })
 })
-test('default home is the official native home unless DSH_HOME overrides it', () => {
-  assert.equal(defaultHome({}), path.join(homedir(), '.dsh'))
-  assert.equal(defaultHome({ DSH_HOME: '/custom/home' }), path.resolve('/custom/home'))
-  assert.equal(defaultHome({ DSH_HOME: 'relative' }), path.join(homedir(), '.dsh'))
+test('default home is always the official native home', () => {
+  assert.equal(defaultHome(), path.join(homedir(), '.dsh'))
 })
 test('distribution paths cannot escape and environment keeps the native layout', () => {
   for (const file of ['../secret', 'a/../secret', '/secret']) assert.throws(() => localPath('/application', file))
   const env = runtimeEnvironment('/native-home', { PATH: '/bin', DSH_HOME: '/original', DSH_AGENTS_HOME: '/original/agents', DSH_DESKTOP_USER_DATA_DIR: '/original/electron', NODE_OPTIONS: '--require malicious', ELECTRON_RUN_AS_NODE: '1' })
-  assert.equal(env.DSH_HOME, '/native-home'); assert.equal(env.DSH_AGENTS_HOME, '/original/agents')
+  assert.equal(env.DSH_HOME, '/native-home'); assert.equal(env.DSH_AGENTS_HOME, undefined)
   assert.equal(env.DSH_DESKTOP_USER_DATA_DIR, undefined)
   assert.equal(env.NODE_OPTIONS, undefined); assert.equal(env.ELECTRON_RUN_AS_NODE, undefined)
 })
