@@ -17,9 +17,12 @@ test('generated market index parses as format 1 with commit-pinned Git install t
     const index = parseMarketIndex(JSON.parse(readFileSync(output, 'utf8')), 'https://csic21.github.io/dsh-x/market-index.json')
     assert.equal(index.format, 1)
     const names = index.plugins.map(plugin => plugin.name).sort()
-    // Delegate is omitted until its package directory is committed: the index
-    // refuses a Git install target for a dirty or untracked package.
-    assert.deepEqual(names.filter(name => name !== 'dsh-x-delegate'), ['dsh-x-browser', 'dsh-x-code', 'dsh-x-stock'])
+    // A package that is not committed yet has no Git install target, so the
+    // index leaves it out: every listed package must be a tracked directory.
+    const tracked = execFileSync('git', ['ls-files', 'packages'], { cwd: root, encoding: 'utf8' })
+      .split('\n').map(line => line.split('/')[1]).filter(Boolean)
+    for (const name of names) assert.ok(tracked.includes(name), `${name} must be committed`)
+    assert.deepEqual(names.filter(name => name !== 'dsh-x-delegate' && name !== 'dsh-x-pet'), ['dsh-x-browser', 'dsh-x-code', 'dsh-x-stock'])
     for (const plugin of index.plugins) {
       assert.ok(plugin.versions.length > 0, plugin.name)
       assert.ok(plugin.icon?.startsWith('https://csic21.github.io/dsh-x/icons/'), plugin.name)

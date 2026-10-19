@@ -47,6 +47,12 @@ const packages = {
     category: 'development',
     icon: 'icons/dsh-x-delegate.svg',
   },
+  'dsh-x-pet': {
+    title: { en: 'Desktop Pet', zh: '桌宠' },
+    description: { en: 'A Codex-compatible desktop pet in the frame, reading the same local pets from ~/.codex/pets.', zh: '窗口里的 Codex 兼容桌宠，读取 ~/.codex/pets 里的同一批本机桌宠。' },
+    category: 'fun',
+    icon: 'icons/dsh-x-pet.svg',
+  },
 }
 
 for (const name of PLUGIN_PACKAGES) {
@@ -117,6 +123,7 @@ const index = {
       development: { title: { en: 'Development', zh: '开发' } },
       data: { title: { en: 'Data', zh: '数据' } },
       web: { title: { en: 'Web', zh: 'Web' } },
+      fun: { title: { en: 'Fun', zh: '趣味' } },
     },
     labels: {},
     sortKeys: {},

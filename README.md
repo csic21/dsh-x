@@ -10,6 +10,7 @@ DSH-X 是运行在官方 [DeepSeek Harness](https://github.com/deepseek-ai/deeps
 | `dsh-x-stock` | A 股自选、市场全景、独立详情页、底部固定栏；另含只读 Finnhub 报价工具 | 可用，行情源需显式开启 |
 | `dsh-x-browser` | 实验性 Desktop 内嵌浏览器：受控导航、观察与操作，按轮授权与接管 | 实验性，默认不装 |
 | `dsh-x-delegate` | 把一个任务委派给本机 Codex、Grok 或 OpenCode，并可按次选择模型 | 可用；真实 CLI 回合不在仓库内验证 |
+| `dsh-x-pet` | 窗口里的 Codex 兼容桌宠：同一套精灵表与动画时序，读取 `~/.codex/pets` 里的本机桌宠 | 可用；打包应用表现不在仓库内验证 |
 
 Code 不再包含原生 Agent 审查或修复。需要修改源码时，直接在对话里让主模型修改，然后回来复审同一批文件；重新审查会建立新的证据，旧 findings 保留为历史。
 
@@ -84,7 +85,8 @@ dsh-x/
 - 不创建 `~/.dsh-x` 或其他独立 home。
 - 不设置、不改写 `DSH_HOME` / `DSH_AGENTS_HOME` 来把官方数据引到别处。
 - 不搬动、重写、归档或重新索引官方 `sessions/`；会话位置与格式完全由官方内核决定。
-- Code 的审查记录放在官方 profile 下的 `.dsh-x-code`；Stocks 的自选与配置放在 `.dsh-x-stock`。它们不写官方 `sessions/`，也不含凭据。
+- Code 的审查记录放在官方 profile 下的 `.dsh-x-code`；Stocks 的自选与配置放在 `.dsh-x-stock`；Pet 的桌宠选择与位置放在 `.dsh-x-pet`。它们不写官方 `sessions/`，也不含凭据。
+- Pet 只读 `${CODEX_HOME:-~/.codex}/pets`，以复用用户自己的 Codex 桌宠；它不写 Codex 的目录。
 
 ## 版本口径
 

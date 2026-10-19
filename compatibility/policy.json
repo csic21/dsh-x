@@ -27,7 +27,8 @@
     "packages/dsh-x-code",
     "packages/dsh-x-stock",
     "packages/dsh-x-browser",
-    "packages/dsh-x-delegate"
+    "packages/dsh-x-delegate",
+    "packages/dsh-x-pet"
   ],
   "packageManager": {
     "name": "pnpm",

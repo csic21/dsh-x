@@ -8,6 +8,7 @@
 | `dsh-x-stock` | A 股自选（含名称搜索）、市场全景、独立详情页、底部固定栏；另含只读报价工具 | 按需 | 可用，行情源需显式开启 |
 | `dsh-x-browser` | 受控浏览器操作与权限边界 | 不装（实验性） | 实验性，Electron 行为不在本仓库验证 |
 | `dsh-x-delegate` | 把一个任务委派给本机 Codex、Grok 或 OpenCode | 按需 | 可用；真实 CLI 回合不在仓库内验证 |
+| `dsh-x-pet` | 窗口里的 Codex 兼容桌宠 | 按需 | 可用；打包应用表现不在仓库内验证 |
 
 ## dsh-x-code
 
@@ -51,6 +52,18 @@
 - 提供 `dsh_x_browser_tabs` 和 `dsh_x_browser_action`；模型观察与操作受按轮授权、逐动作审批和接管约束。
 - 不使用模型提供的 JavaScript、CSS 选择器、CDP 或原始 IPC。
 - Web 端只显示不支持提示；仓库内只有 Web 侧单元与集成测试，Electron / 打包应用行为需要单独验证。
+
+## dsh-x-pet
+
+一只与 Codex 同规格的桌宠，浮在窗口右下角：
+
+- **同一套精灵表规格**：1536 宽、192×208 一格；v1 为 1536×1872（9 行），v2 为 1536×2288（11 行，多出 16 个视线方向）。按图片高度自动判断版本，不合规格的文件不显示。
+- **同一批本机桌宠**：只读 `${CODEX_HOME:-~/.codex}/pets/<名字>/`，清单 `pet.json` 的字段与 Codex 相同（`id`、`displayName`、`description`、`spritesheetPath`）。在 Codex 里做出来的桌宠，这里就是同一只。
+- **同一套动作与时序**：idle / running-right / running-left / waving / jumping / failed / waiting / running / review 九行，逐帧时长与 Codex 相同；空闲呼吸放慢 6 倍，一次性动作连播三遍后落回 idle；悬停切到 jumping，v2 精灵表空闲时会用 16 个方向看向指针。
+- **跟随会话状态**：会话在跑 → running；在等审批或提问 → waiting；一轮结束还没看 → review；其余 → idle。
+- **可拖动、可切换、可隐藏**：位置按当前 profile 保存；选择器列出内置桌宠与本机桌宠，缩略图就是它自己的 idle 第一帧。
+- 模型可用 `dsh_x_pet` 工具列出、切换、移动或隐藏桌宠；该工具只改外观。
+- 内置桌宠由 `scripts/pet-atlas.py` 程序化生成，是本仓库的原创美术；不包含任何第三方素材。
 
 ## 状态与语言
 
