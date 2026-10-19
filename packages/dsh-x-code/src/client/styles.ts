@@ -86,6 +86,8 @@ export const CSS = `
 .dxc-disclosure{display:grid;place-items:center;flex:none;color:var(--code-muted);transition:transform .12s}
 .dxc-directory[open]>summary .dxc-disclosure{transform:rotate(90deg)}
 .dxc-dir-name{overflow:hidden;text-overflow:ellipsis;font-size:11px;letter-spacing:.01em}
+.dxc .dxc-type-icon,.dxc .dxc-folder-icon{display:inline-grid;place-items:center;flex:none;width:16px;min-width:16px;height:16px;line-height:0}
+.dxc-type-icon svg,.dxc-folder-icon svg{display:block}
 .dxc-file-row{display:flex;align-items:center;gap:5px;border-radius:5px;margin:1px 0;padding-right:4px}
 .dxc-file-row:hover{background:color-mix(in srgb,var(--code-fg) 5%,transparent)}
 .dxc-file-row[data-selected=true]{background:color-mix(in srgb,var(--code-accent) 12%,transparent)}
@@ -113,7 +115,7 @@ export const CSS = `
 .dxc-tab[data-active=true]::after{content:'';position:absolute;inset-inline:0;top:0;height:1px;background:var(--code-accent)}
 .dxc-tab[data-preview=true] .dxc-tab-name{font-style:italic;color:var(--code-muted)}
 .dxc-tab[role=tablist]{outline:none}
-.dxc-tab button[role=tab]{border:0!important;background:transparent!important;padding:0!important;font-size:12px!important;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--code-muted);border-radius:0}
+.dxc-tab button[role=tab]{display:inline-flex;align-items:center;gap:6px;border:0!important;background:transparent!important;padding:0!important;font-size:12px!important;max-width:180px;min-width:0;overflow:hidden;white-space:nowrap;color:var(--code-muted);border-radius:0}
 .dxc-tab[data-active=true] button[role=tab]{color:var(--code-fg)}
 .dxc-tab button[role=tab]:hover:not(:disabled){background:transparent!important;color:var(--code-fg)}
 .dxc-tab-name{display:block;overflow:hidden;text-overflow:ellipsis}
@@ -128,7 +130,7 @@ export const CSS = `
 .dxc-viewer{display:flex;flex-direction:column;overflow:hidden;min-height:0;flex:1;outline:none}
 .dxc-viewer-heading{display:flex;gap:10px;align-items:center;padding:6px 12px;flex:none;border-bottom:1px solid var(--code-line-soft);min-height:28px}
 .dxc-breadcrumbs{display:flex;align-items:center;gap:1px;overflow:hidden;flex:1;font-size:11px;color:var(--code-muted);white-space:nowrap}
-.dxc-crumb{overflow:hidden;text-overflow:ellipsis}
+.dxc-crumb{display:inline-flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dxc-crumb[data-last]{color:var(--code-fg);flex:none;max-width:none}
 .dxc-crumb-sep{display:grid;place-items:center;opacity:.55;flex:none}
 .dxc-readonly{font-size:9px;letter-spacing:.04em;color:var(--code-muted);border:1px solid var(--code-line);padding:0 5px;border-radius:4px;flex:none;line-height:16px}
@@ -212,6 +214,32 @@ export const CSS = `
 .dxc-panel-tabs button[aria-selected=true]::after{content:'';position:absolute;inset-inline:4px;bottom:0;height:1px;background:var(--code-accent)}
 .dxc-panel-tabs .dxc-count{margin-left:0;background:color-mix(in srgb,var(--code-fg) 12%,transparent);color:var(--code-fg)}
 .dxc-panel-body{flex:1;overflow:auto;min-height:0;padding-bottom:10px}
+.dxc-panel-body:has(.dxc-chat){display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+.dxc-chat{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--code-sunken)}
+.dxc-chat-bar{display:flex;gap:6px;align-items:center;padding:8px;border-bottom:1px solid var(--code-line-soft);background:var(--code-bg);flex:none}
+.dxc-chat-note{margin:0;padding:6px 12px;border-bottom:1px solid var(--code-line-soft);color:var(--code-muted);font-size:11px;line-height:1.45;background:var(--code-bg);flex:none}
+.dxc-chat-bar select{flex:1;min-width:0;height:28px}
+.dxc .dxc-chat-bar button{height:28px;padding:0 8px;font-size:12px;white-space:nowrap}
+.dxc-chat-log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px;padding:16px 14px 12px}
+.dxc-chat-row{display:flex;flex-direction:column;gap:4px;max-width:100%}
+.dxc-chat-user{align-self:flex-end;max-width:88%;padding:8px 12px;border-radius:14px 14px 4px 14px;background:color-mix(in srgb,var(--code-accent) 16%,var(--code-bg));border:1px solid color-mix(in srgb,var(--code-accent) 22%,transparent)}
+.dxc-chat-assistant{align-self:stretch;padding:2px 2px 0}
+.dxc-chat-role{font-size:10px;font-weight:650;letter-spacing:.02em;color:var(--code-muted)}
+.dxc-chat-user .dxc-chat-role{text-align:end}
+.dxc-chat-copy{font:13px/1.55 var(--dsw-font-family,system-ui,sans-serif);color:var(--code-fg)}
+.dxc .dxc-chat-copy :is(h1,h2,h3,h4,p,ul,ol,blockquote){margin:0.45em 0}
+.dxc .dxc-chat-copy h1,.dxc .dxc-chat-copy h2,.dxc .dxc-chat-copy h3,.dxc .dxc-chat-copy h4{font-size:13px;line-height:1.4;font-weight:650}
+.dxc .dxc-chat-copy :is(ul,ol){padding-inline-start:1.15em}
+.dxc .dxc-chat-copy :not(pre)>code{padding:0.05em 0.3em;border-radius:4px;background:var(--code-soft);font:0.92em ui-monospace,SFMono-Regular,Consolas,monospace}
+.dxc .dxc-chat-copy pre{margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--code-bg);border:1px solid var(--code-line-soft);overflow:auto;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+.dxc .dxc-chat-copy a{color:var(--code-accent)}
+.dxc-chat-tools{display:flex;flex-wrap:wrap;gap:4px;align-self:flex-start}
+.dxc-chat-tools span{height:20px;padding:0 7px;border-radius:999px;background:var(--code-bg);border:1px solid var(--code-line-soft);color:var(--code-muted);font:10px/18px ui-monospace,SFMono-Regular,Consolas,monospace}
+.dxc-chat-error{margin:0 12px;padding:6px 8px;border-radius:8px;background:color-mix(in srgb,var(--code-warning) 10%,var(--code-bg));color:var(--code-warning);font-size:11px}
+.dxc-chat-form{display:flex;gap:8px;align-items:flex-end;margin:8px;padding:6px 6px 6px 10px;border:1px solid var(--code-line);border-radius:12px;background:var(--code-bg);box-shadow:0 1px 2px #0000000a;flex:none}
+.dxc-chat-form textarea{flex:1;min-height:22px;max-height:96px;resize:none;border:0;padding:6px 0;background:transparent;color:inherit;font:13px/1.45 var(--dsw-font-family,system-ui,sans-serif);outline:none}
+.dxc .dxc-chat-form button{height:28px;padding:0 12px;border-radius:8px;background:var(--code-accent);border-color:var(--code-accent);color:var(--dsw-alias-label-primary-foreground,#fff);font-size:12px}
+.dxc .dxc-chat-form button:disabled{opacity:.4}
 .dxc-problems{padding:4px 0}
 .dxc-problem-list{list-style:none;margin:0;padding:0}
 .dxc-problem{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:'sev title' 'sev path';gap:1px 8px;width:100%;text-align:left;border:0!important;background:transparent!important;padding:5px 10px!important;border-radius:0}

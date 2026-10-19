@@ -24,7 +24,8 @@ export function apply(context: Context) {
  const store=createReviewStore<ReviewRecord>(ctx.profileContext.dir)
  const sessionFor=(id: string)=>{const sessions=ctx.get('sessions');return sessions?.get(id as Parameters<NonNullable<typeof sessions>['get']>[0])}
  const selectedModel=(id: string,exec?: ToolRunContext)=>{const session=exec?.agent?.session??sessionFor(id);const route=session?.requestHeader?.()?.config??ctx.get('agentDefaultModel')?.currentSelection?.();return typeof route?.provider==='string'&&typeof route?.model==='string'&&route.provider.length<=256&&route.model.length<=256?{provider:route.provider,model:route.model}:null}
- const controller=createCodeController({store,spawn:spec=>ctx.subprocess.spawn(spec),
+ const messagesOf=(id: string)=>{try{const session=sessionFor(id);return typeof session?.deriveMessages==='function'?session.deriveMessages():[]}catch{return []}}
+ const controller=createCodeController({store,spawn:spec=>ctx.subprocess.spawn(spec),messagesOf,
   reviewerInfo:(id,exec)=>{const dshModel=selectedModel(id,exec);return {dshAvailable:Boolean(ctx.get('llm')&&dshModel),dshModel}},
   dshReview:async(args,exec)=>{
    const approval=ctx.get('approval');if(!approval)throw fail('CODE_APPROVAL','Official approval service is unavailable.')
@@ -55,5 +56,6 @@ export function apply(context: Context) {
   host.connection.fetch.register(createCodeRoute('code/review',args=>controller.reviewDetail(args),['sessionId','scope','reviewId']))
   host.connection.fetch.register(createCodeRoute<{sessionId: string, scope: string, operationId: string}>('code/cancel',args=>controller.cancel(args),['sessionId','scope','operationId']))
   host.connection.fetch.register(createCodeRoute<{path: string}>('code/file',args=>controller.source({...args,preview:true}),['sessionId','scope','workspaceId','path','mode','base','reviewId']))
+  host.connection.fetch.register(createCodeRoute('code/transcript',args=>controller.transcript(args),['sessionId']))
  })
 }

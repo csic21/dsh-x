@@ -12,6 +12,7 @@ import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import { basename, defaultViewerTab, diffHunks, hunkRows, pairedRows, previewKind, searchMatches, shortHash, showsSource, sourceLines, viewerTabs } from './model.ts'
 import { mediaOf } from '../formats.ts'
 import { ChevronIcon, CloseIcon, WrapIcon } from './icons.tsx'
+import { FileTypeIcon, FolderIcon } from './FileIcon.tsx'
 import { MediaView } from './MediaPreview.tsx'
 
 /** Native-button tabs support arrows without creating a second selection source. */
@@ -78,7 +79,7 @@ function Breadcrumbs({ path }: { path: string | null }) {
   if (!segments.length) return null
   return <nav className="dxc-breadcrumbs" aria-label="breadcrumbs">{segments.map((segment, at) => <React.Fragment key={at}>
     {at > 0 && <span className="dxc-crumb-sep" aria-hidden="true"><ChevronIcon size={11} /></span>}
-    <span className="dxc-crumb" data-last={at === segments.length - 1 || undefined}>{segment}</span>
+    <span className="dxc-crumb" data-last={at === segments.length - 1 || undefined}>{at === segments.length - 1 ? <FileTypeIcon path={path ?? segment} size={14} /> : <FolderIcon size={14} />}{segment}</span>
   </React.Fragment>)}</nav>
 }
 

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, isMarkdownPath, previewKind, viewerTabs, defaultViewerTab, readFile, readSnapshot, reviewRequest } from '../src/client/model.ts'
+import { fileIconKind } from '../src/client/file-icon.ts'
 import { en, zh, messageKey } from '../src/client/locales.ts'
 const snapshot = (): any => ({ scope:'profile',sessionId:'session',revision:1,workspace:{id:'version',mode:'worktree',base:'abc',baseRef:'main'},files:[{path:'src/b.js',status:'modified',selectable:true,changed:true},{path:'README.md',status:'unchanged',selectable:true,changed:false}],limits:{maxSelectedFiles:20},review:null })
 
@@ -13,6 +14,19 @@ test('Git hunk projection preserves old/new numbers and aligns replacement runs'
 })
 test('markdown preview is limited to md and mdx documents',()=>{
   assert.equal(isMarkdownPath('README.md'),true);assert.equal(isMarkdownPath('docs/guide.MDX'),true);assert.equal(isMarkdownPath('src/readme.md.ts'),false);assert.equal(isMarkdownPath('notes.md.bak'),false);assert.equal(isMarkdownPath(null),false)
+})
+test('file icons follow the type, and special names beat the extension',()=>{
+  assert.equal(fileIconKind('docs/dev/release.md'),'markdown')
+  assert.equal(fileIconKind('docs/public/icons/dsh-x-code.svg'),'svg')
+  assert.equal(fileIconKind('src/client/model.ts'),'typescript')
+  assert.equal(fileIconKind('src/client/view.tsx'),'typescript')
+  assert.equal(fileIconKind('app.js'),'javascript')
+  assert.equal(fileIconKind('tsconfig.json'),'typescript')
+  assert.equal(fileIconKind('package.json'),'package')
+  assert.equal(fileIconKind('.github/workflows/plugin-release.yml'),'yaml')
+  assert.equal(fileIconKind('.gitignore'),'git')
+  assert.equal(fileIconKind('notes.md.bak'),'file')
+  assert.equal(fileIconKind('clip.MP4'),'video')
 })
 test('svg keeps source and image preview, while raster media is preview only',()=>{
   assert.equal(previewKind('icons/logo.SVG'),'svg');assert.deepEqual(viewerTabs('icons/logo.SVG'),['source','preview','diff']);assert.equal(defaultViewerTab('icons/logo.SVG',false),'preview');assert.equal(defaultViewerTab('icons/logo.SVG',true),'source')

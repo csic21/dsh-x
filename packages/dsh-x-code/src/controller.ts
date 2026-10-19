@@ -5,6 +5,7 @@ import { createRepository, LIMITS } from './repository.ts'
 import type { CapturedSnapshot, FileEvidence, HostPolicy, Inventory, ReviewMode } from './repository.ts'
 import type { Spawn } from './git.ts'
 import { reviewPrompt, parseReview } from './review.ts'
+import { projectTranscript } from './transcript.ts'
 import type { Finding, ReviewCheck } from './review.ts'
 import type { ModelRoute, ReviewRequestRecord } from './llm-review.ts'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
@@ -114,6 +115,7 @@ export interface CodeControllerDeps {
   contextOf: (id: string, exec?: ToolRunContext) => Promise<{ cwd: string, policy: HostPolicy | undefined }>
   reviewerInfo?: (id: string, exec?: ToolRunContext) => ReviewerInfo
   dshReview?: (args: DshReviewArgs, exec: ToolRunContext) => Promise<string>
+  messagesOf?: (id: string) => unknown
   now?: () => string
 }
 /** The in-process state of one owned Code operation. */
@@ -122,7 +124,7 @@ interface Operation { controller: AbortController, settlement: Promise<void>, id
 const codeOf=(error: unknown): unknown=>(error as {code?: unknown} | null | undefined)?.code
 const messageOf=(error: unknown): unknown=>(error as {message?: unknown} | null | undefined)?.message
 const active=new Set(['running'])
-export function createCodeController({store,spawn,contextOf,reviewerInfo=()=>({dshAvailable:false,dshModel:null}),dshReview,now=()=>new Date().toISOString()}: CodeControllerDeps) {
+export function createCodeController({store,spawn,contextOf,reviewerInfo=()=>({dshAvailable:false,dshModel:null}),dshReview,messagesOf=()=>[],now=()=>new Date().toISOString()}: CodeControllerDeps) {
  const repository=createRepository(spawn),running=new Map<string, Operation>(),host=randomUUID();let disposed=false
  const publicReview=(review: ReviewRecord | null | undefined): PublicReview | null =>{if(!review)return null;const cloned=structuredClone(review) as ReviewRecord & {repair?: unknown,nativeTask?: unknown};const {snapshot,hostId,request,repair:_repair,nativeTask:_nativeTask,...value}=cloned;if(active.has(value.state)&&hostId!==host){value.state='interrupted';value.reason='Previous host execution ended without a verified result. No automatic replay.'}if(value.state==='repairing'){value.state='interrupted';value.reason='Native repair was retired. Review the current source again.'}return value}
  const inventory=async(id: string,options: InventoryArgs={},exec?: ToolRunContext): Promise<Inventory>=>{const context=await contextOf(id,exec);return repository.inventory({...context,mode:options.mode??'worktree',base:options.base,signal:exec?.signal??options.signal})}
@@ -202,5 +204,9 @@ export function createCodeController({store,spawn,contextOf,reviewerInfo=()=>({d
   })
  }
  async function cancel(args: CancelArgs): Promise<SnapshotView>{const id=sessionId(args.sessionId);scope(args);const operation=running.get(id);if(!operation||operation.id!==args.operationId)throw fail('CODE_STALE','This Code operation is no longer active.');operation.state='cancelling';operation.controller.abort(fail('CODE_CANCELLED','Cancelled by the user.'));return snapshot({sessionId:id,...operation.options})}
- return {snapshot,source,reviewDetail,review,cancel,async dispose(){disposed=true;const operations=[...running.values()];for(const operation of operations)operation.controller.abort(new Error('Code plugin disabled.'));await Promise.all(operations.map(operation=>operation.settlement))}}
+ function transcript(args: { sessionId?: string, signal?: AbortSignal }) {
+  const id = sessionId(args.sessionId)
+  return { messages: projectTranscript(messagesOf(id)) }
+ }
+ return {snapshot,source,reviewDetail,review,cancel,transcript,async dispose(){disposed=true;const operations=[...running.values()];for(const operation of operations)operation.controller.abort(new Error('Code plugin disabled.'));await Promise.all(operations.map(operation=>operation.settlement))}}
 }

@@ -169,13 +169,20 @@ export interface CodeControllerDeps {
     }>;
     reviewerInfo?: (id: string, exec?: ToolRunContext) => ReviewerInfo;
     dshReview?: (args: DshReviewArgs, exec: ToolRunContext) => Promise<string>;
+    messagesOf?: (id: string) => unknown;
     now?: () => string;
 }
-export declare function createCodeController({ store, spawn, contextOf, reviewerInfo, dshReview, now }: CodeControllerDeps): {
+export declare function createCodeController({ store, spawn, contextOf, reviewerInfo, dshReview, messagesOf, now }: CodeControllerDeps): {
     snapshot: (args: SnapshotArgs, exec?: ToolRunContext) => Promise<SnapshotView>;
     source: (args: SourceArgs, exec?: ToolRunContext) => Promise<SourceView>;
     reviewDetail: (args: ReviewDetailArgs, exec?: ToolRunContext) => Promise<ReviewDetailView>;
     review: (args: ReviewArgs, exec: ToolRunContext) => Promise<SnapshotView>;
     cancel: (args: CancelArgs) => Promise<SnapshotView>;
+    transcript: (args: {
+        sessionId?: string;
+        signal?: AbortSignal;
+    }) => {
+        messages: import("./transcript.ts").TranscriptMessage[];
+    };
     dispose(): Promise<void>;
 };

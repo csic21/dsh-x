@@ -8,16 +8,21 @@ import { CodeViewer, Tabs } from './CodeViewer.tsx'
 import { Splitter } from './Splitter.tsx'
 import { PANEL_BOUNDS, SIDEBAR_BOUNDS, addTab, browserStorage, closeTab, moveTab, useWorkbenchLayout } from './layout.ts'
 import { activeReview, basename, fileTree, insertRequest, isChanged, isComplete, reviewRequest, SEVERITIES, shortHash } from './model.ts'
+import { chatRows, chatSessionView, sendConversation } from '../transcript.ts'
+import type { TranscriptMessage } from '../transcript.ts'
+import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import { en, messageKey } from './locales.ts'
 import { ChangesIcon, ChevronIcon, CloseIcon, CodeGlyph, ExplorerIcon, HistoryIcon, PanelIcon, ReviewIcon, SidebarIcon } from './icons.tsx'
+import { FileTypeIcon, FolderIcon } from './FileIcon.tsx'
 
 export interface EntryProps { open: () => void, t: Translate }
 export interface PanelProps { renderSlot(name: string, props: Record<string, unknown>): React.ReactNode }
 interface ActivityBarProps { activity: Activity, onChange: (activity: Activity) => void, counts: Record<Activity, number>, t: Translate }
 interface SidebarProps { files: CodeFile[], path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, snapshot: CodeSnapshot, reviewed: boolean, activity: Activity, history: CodeSnapshot['history'], historyId: string | null, inspectHistory: (id: string) => void, latest: () => void, formatTime: (value: string) => string }
 interface EditorTabsProps { path: string | null, tabs: { path: string, preview: boolean }[], select: (path: string) => void, close: (path: string) => void, reorder: (from: number, to: number) => void, closeOthers: (path: string) => void, closeAll: () => void, t: Translate }
-interface BottomPanelProps { tab: PanelTab, setTab: (tab: PanelTab) => void, review: CodeReview | null | undefined, historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, jump: (finding: Finding) => void, rereview: () => void, enabled: boolean, canRereview: boolean, t: Translate, formatTime: (value: string) => string }
-export interface WorkspaceProps { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
+interface BottomPanelProps { tab: PanelTab, setTab: (tab: PanelTab) => void, review: CodeReview | null | undefined, historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, jump: (finding: Finding) => void, rereview: () => void, enabled: boolean, canRereview: boolean, t: Translate, formatTime: (value: string) => string, transcript: TranscriptMessage[] | null, transcriptStatus: string, onSend: (text: string) => boolean, sessionId: string | null, cwd?: string, sessionList: unknown, workspaceList: unknown, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, renderFactorySlot?: WorkspaceProps['renderFactorySlot'] }
+export interface WorkspaceProps { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, loadTranscript: () => void, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, useSessions?: (selector: (state: any) => any) => any, useWorkspaces?: (selector: (state: any) => any) => any, renderFactorySlot?: (name: string, props: Record<string, unknown>) => React.ReactNode, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
 export interface ToolRowProps extends EntryProps { phase: string, block?: { isError?: boolean, meta?: { kind?: string, version?: number, review?: CodeReview } } }
 
 export function CodeIcon() { return <CodeGlyph size={20} /> }
@@ -49,14 +54,14 @@ function ActivityBar({ activity, onChange, counts, t }: ActivityBarProps) {
 function FileRow({ file, path, selected, select, open, t, limit, reviewed, depth }: { file: CodeFile, path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, reviewed: boolean, depth: number }) {
   return <li className="dxc-file-row" style={indent(depth)} data-selected={path === file.path || undefined}>
     {!reviewed && <input type="checkbox" aria-label={t('selectFile', { path: file.path })} checked={selected.includes(file.path)} disabled={!file.selectable || !selected.includes(file.path) && selected.length >= limit} onChange={() => select(file.path)} />}
-    <button type="button" className="dxc-file" aria-current={path === file.path ? 'true' : undefined} aria-label={t('openFile', { path: file.path })} title={file.path} onClick={() => open(file.path)}><span className="dxc-file-name">{basename(file.path)}</span><span className={`dxc-file-status dxc-status-${file.status}`} title={t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : 'file.modified')}>{mark(file)}</span></button>
+    <button type="button" className="dxc-file" aria-current={path === file.path ? 'true' : undefined} aria-label={t('openFile', { path: file.path })} title={file.path} onClick={() => open(file.path)}><FileTypeIcon path={file.path} /><span className="dxc-file-name">{basename(file.path)}</span><span className={`dxc-file-status dxc-status-${file.status}`} title={t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : 'file.modified')}>{mark(file)}</span></button>
   </li>
 }
 
 function TreeBranch({ node, depth, ...rest }: { node: FileTreeDirectory, depth: number } & Omit<Parameters<typeof FileRow>[0], 'file' | 'depth'>) {
   if (!node.directories.length && !node.files.length) return null
   return <li className="dxc-branch"><details className="dxc-directory" open>
-    <summary title={node.path} aria-label={node.path} style={indent(depth)}><span className="dxc-disclosure" aria-hidden="true"><ChevronIcon size={12} /></span><span className="dxc-dir-name">{node.name}</span></summary>
+    <summary title={node.path} aria-label={node.path} style={indent(depth)}><span className="dxc-disclosure" aria-hidden="true"><ChevronIcon size={12} /></span><FolderIcon /><span className="dxc-dir-name">{node.name}</span></summary>
     <ul className="dxc-children">
       {node.directories.map(child => <TreeBranch key={child.path} node={child} depth={depth + 1} {...rest} />)}
       {node.files.map(file => <FileRow key={file.path} file={file} depth={depth + 1} {...rest} />)}
@@ -103,7 +108,7 @@ function EditorTabs({ path, tabs, select, close, reorder, closeOthers, closeAll,
     {tabs.map((tab, at) => <div key={tab.path} className="dxc-tab" role="presentation" data-active={tab.path === path || undefined} data-preview={tab.preview || undefined}
       draggable onDragStart={() => { dragging.current = at }} onDragOver={event => event.preventDefault()}
       onDrop={event => { event.preventDefault(); if (dragging.current != null) reorder(dragging.current, at); dragging.current = null }} onDragEnd={() => { dragging.current = null }}>
-      <button type="button" role="tab" aria-selected={tab.path === path} title={tab.path} onClick={() => select(tab.path)} onAuxClick={event => { if (event.button === 1) close(tab.path) }}><span className="dxc-tab-name">{basename(tab.path)}</span></button>
+      <button type="button" role="tab" aria-selected={tab.path === path} title={tab.path} onClick={() => select(tab.path)} onAuxClick={event => { if (event.button === 1) close(tab.path) }}><FileTypeIcon path={tab.path} size={14} /><span className="dxc-tab-name">{basename(tab.path)}</span></button>
       <button type="button" className="dxc-tab-close" aria-label={t('closeTab', { name: basename(tab.path) })} onClick={() => close(tab.path)}><CloseIcon size={12} /></button>
     </div>)}
     <div className="dxc-tab-menu-wrap"><button type="button" className="dxc-tab-menu" aria-haspopup="menu" aria-expanded={menu} aria-label={t('tabActions')} onClick={() => setMenu(value => !value)}><ChevronIcon size={13} /></button>
@@ -126,7 +131,7 @@ function FindingCard({ finding, jump, t }: { finding: Finding, jump: () => void,
   </article>
 }
 
-function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }: Omit<BottomPanelProps, 'tab' | 'setTab'>) {
+function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }: Omit<BottomPanelProps, 'tab' | 'setTab' | 'transcript' | 'transcriptStatus' | 'onSend' | 'sessionId' | 'cwd' | 'sessionList' | 'workspaceList' | 'openSession' | 'startSession' | 'renderFactorySlot'>) {
   const [severity, setSeverity] = useState('all')
   const filtered = review?.findings.filter(finding => severity === 'all' || finding.severity === severity) ?? []
   const complete = isComplete(review)
@@ -145,14 +150,52 @@ function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTim
   </>
 }
 
-function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }: BottomPanelProps) {
+function sessionLabel(session: { title: string, blank: boolean }, current: boolean, t: Translate) {
+  const name = session.title || (session.blank ? t('chatBlank') : t('chatUntitled'))
+  return current ? `${name} · ${t('chatCurrent')}` : name
+}
+
+function ChatPane({ messages, status, onSend, t, sessionId, cwd, sessionList, workspaceList, openSession, startSession, renderFactorySlot }: { messages: TranscriptMessage[] | null, status: string, onSend: (text: string) => boolean, t: Translate, sessionId: string | null, cwd?: string, sessionList: unknown, workspaceList: unknown, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, renderFactorySlot?: WorkspaceProps['renderFactorySlot'] }) {
+  const [text, setText] = useState(''), [failed, setFailed] = useState(false), log = useRef<HTMLDivElement>(null)
+  const rows = useMemo(() => chatRows(messages ?? []), [messages])
+  const directory = useMemo(() => chatSessionView(sessionList, workspaceList, sessionId, cwd), [sessionList, workspaceList, sessionId, cwd])
+  const choices = directory.sessions.length ? directory.sessions : sessionId ? [{ id: sessionId, title: '', blank: false, running: false, updatedAt: 0 }] : []
+  const labels = useMemo<MarkdownLabels>(() => ({ code: { copyLabel: t('copyCode'), copiedLabel: t('copiedCode') }, footnotes: t('footnotes') }), [t])
+  useEffect(() => { const node = log.current; if (node) node.scrollTop = node.scrollHeight }, [rows])
+  const send = () => { const ok = onSend(text); setFailed(!ok); if (ok) setText(''); return ok }
+  return <div className="dxc-chat">
+    <div className="dxc-chat-bar">
+      <select aria-label={t('chatSessions')} value={sessionId ?? ''} disabled={!openSession || choices.length === 0} onChange={event => { if (event.target.value && event.target.value !== sessionId) openSession?.(event.target.value) }}>
+        {choices.map(session => <option key={session.id} value={session.id}>{sessionLabel(session, session.id === sessionId, t)}</option>)}
+      </select>
+      <button type="button" disabled={!startSession} onClick={() => startSession?.(directory.workspaceId)}>{t('chatNew')}</button>
+    </div>
+    <p className="dxc-chat-note">{t('chatNote')}</p>
+    <div className="dxc-chat-log" ref={log} role="log" aria-label={t('chat')}>
+      {status === 'loading' && !messages && <p className="dxc-state">{t('chatLoading')}</p>}
+      {status === 'failed' && !messages && <p className="dxc-state" role="alert">{t('chatFailed')}</p>}
+      {messages && rows.length === 0 && <p className="dxc-state">{t('chatEmpty')}</p>}
+      {rows.map(row => row.kind === 'tools'
+        ? <div key={row.id} className="dxc-chat-tools" aria-label={t('chatTools', { names: row.names.join(', ') })}>{row.names.map(name => <span key={name}>{name}</span>)}</div>
+        : <article key={row.id} className={`dxc-chat-row dxc-chat-${row.role}`}><span className="dxc-chat-role">{t(row.role === 'user' ? 'chatYou' : 'chatAssistant')}</span><div className="dxc-chat-copy"><MarkdownText text={row.text} labels={labels} variant="body" /></div></article>)}
+    </div>
+    {failed && <p className="dxc-chat-error" role="alert">{t('chatSendFailed')}</p>}
+    <form className="dxc-chat-form" onSubmit={event => { event.preventDefault(); send() }}>
+      <textarea value={text} rows={1} maxLength={8000} placeholder={t('chatPlaceholder')} aria-label={t('chatPlaceholder')} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
+      <button type="submit" disabled={!text.trim()}>{t('chatSend')}</button>
+    </form>
+  </div>
+}
+
+function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, transcript, transcriptStatus, onSend, sessionId, cwd, sessionList, workspaceList, openSession, startSession, renderFactorySlot }: BottomPanelProps) {
   const problems = review?.findings.length ?? 0
   return <aside className="dxc-panel" aria-label={t('panel')}>
     <div className="dxc-panel-tabs" role="tablist" aria-label={t('panel')}>
       <button type="button" role="tab" aria-selected={tab === 'problems'} onClick={() => setTab('problems')}>{t('problems')}{problems > 0 && <span className="dxc-count">{problems}</span>}</button>
       <button type="button" role="tab" aria-selected={tab === 'review'} onClick={() => setTab('review')}>{t('reviewSummary')}</button>
+      <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>{t('chat')}</button>
     </div>
-    <div className="dxc-panel-body">{tab === 'problems' ? <div className="dxc-problems">
+    <div className="dxc-panel-body">{tab === 'chat' ? <ChatPane messages={transcript} status={transcriptStatus} onSend={onSend} t={t} sessionId={sessionId} cwd={cwd} sessionList={sessionList} workspaceList={workspaceList} openSession={openSession} startSession={startSession} renderFactorySlot={renderFactorySlot} /> : tab === 'problems' ? <div className="dxc-problems">
       {!review ? <p className="dxc-state">{t('noReviewHint')}</p> : review.findings.length === 0 ? <p className="dxc-state">{isComplete(review) ? t('noFindings') : t('incomplete')}</p> : <ul className="dxc-problem-list">{review.findings.map(finding => <li key={finding.id}><button type="button" className="dxc-problem" onClick={() => jump(finding)}>
         <span className={`dxc-severity dxc-severity-${finding.severity}`}>{t(`severity.${finding.severity}`)}</span>
         <span className="dxc-problem-title">{finding.title}</span>
@@ -162,7 +205,18 @@ function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview
   </aside>
 }
 
-export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, cancel, back, t, formatTime }: WorkspaceProps) {
+export function CodeWorkspace(props: WorkspaceProps) {
+  if (typeof props.useSessions === 'function' && typeof props.useWorkspaces === 'function') return <BoundSessions {...props} />
+  return <CodeWorkspaceBody {...props} />
+}
+
+function BoundSessions(props: WorkspaceProps) {
+  const sessionList = props.useSessions!((state: any) => state)
+  const workspaceList = props.useWorkspaces!((state: any) => state)
+  return <CodeWorkspaceBody {...props} sessionList={sessionList} workspaceList={workspaceList} />
+}
+
+function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, loadTranscript, openSession, startSession, renderFactorySlot, cancel, back, t, formatTime, sessionList = null, workspaceList = null }: WorkspaceProps & { sessionList?: unknown, workspaceList?: unknown }) {
   const state = useCode(value => value), snapshot = state.snapshot
   const page = useRef<HTMLElement>(null)
   const workbench = useRef<HTMLDivElement>(null)
@@ -172,6 +226,13 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
   const [selected, setSelected] = useState<string[]>([]), [context, setContext] = useState('current'), [notice, setNotice] = useState<string | null>(null), [focus, setFocus] = useState<CodeFocus | null>(null)
   const [base, setBase] = useState(snapshot?.workspace.baseRef ?? 'main'), [mode, setMode] = useState<string>(snapshot?.workspace.mode ?? 'worktree')
   const scrollPositions = useRef(new Map<string, { top: number, left: number }>()), previousWorkspace = useRef<string | null>(null), previousReview = useRef<string | undefined>(undefined), rereviewId = useRef<string | null>(null)
+  const chatOpen = !layout.panelCollapsed && layout.panelTab === 'chat'
+  useEffect(() => {
+    if (!sessionId || !chatOpen) return
+    loadTranscript()
+    const timer = setInterval(loadTranscript, 1500)
+    return () => clearInterval(timer)
+  }, [sessionId, chatOpen])
   useEffect(() => {
     if (!globalThis.ResizeObserver || !page.current) return
     const observer = new ResizeObserver(entries => { const width = entries[0].contentRect.width; setNarrow(width < 700) })
@@ -262,7 +323,7 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
     <header className="dxc-titlebar">
       <div className="dxc-brand"><CodeIcon /><h1>{t('title')}</h1>{snapshot && <span className="dxc-repo" title={snapshot.workspace.repoRoot}>{basename(snapshot.workspace.repoRoot)}</span>}</div>
       <div className="dxc-header-actions">
-        {!narrow && <><button type="button" className="dxc-icon-button" aria-pressed={showSidebar} aria-label={t('toggleSidebar')} title={t('toggleSidebar')} onClick={() => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed })}><SidebarIcon /></button>
+        {!narrow && <><button type="button" aria-pressed={showPanel && layout.panelTab === 'chat'} onClick={() => setLayout({ panelCollapsed: false, panelTab: 'chat' })}>{t('chat')}</button><button type="button" className="dxc-icon-button" aria-pressed={showSidebar} aria-label={t('toggleSidebar')} title={t('toggleSidebar')} onClick={() => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed })}><SidebarIcon /></button>
           <button type="button" className="dxc-icon-button" aria-pressed={showPanel} aria-label={t('togglePanel')} title={t('togglePanel')} onClick={() => setLayout({ panelCollapsed: !layout.panelCollapsed })}><PanelIcon /></button></>}
         <button type="button" onClick={back}>{t('back')}</button><button type="button" onClick={() => { clearFile(); refresh() }}>{t('refresh')}</button>
         <button type="button" className="dxc-primary" disabled={!live || !selected.length || !reviewAvailable || running || snapshot?.truncated || snapshot?.complete === false} onClick={() => beginReview('review')}>{t('review')}<span className="dxc-count">{selected.length}</span></button>
@@ -285,7 +346,7 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
           <CodeViewer file={fileMatches ? state.file : null} status={fileMatches ? state.fileStatus : effectivePath ? 'loading' : 'idle'} error={fileMatches ? state.fileError : null} path={effectivePath} identity={identity} mode={snapshot.workspace.mode} context={context} focus={focus} retry={() => { clearFile(); if (request) loadFile(request) }} scrollPositions={scrollPositions} t={t} />
         </section>
         {!narrow && showPanel && <Splitter value={layout.panel} bounds={PANEL_BOUNDS} label={t('resizePanel')} orientation="vertical" direction={-1} className="dxc-track-panel-splitter" onResize={value => setLayout({ panel: value })} onPreview={value => paintTrack(layout.sidebar, value)} onToggle={() => setLayout({ panelCollapsed: !layout.panelCollapsed })} />}
-        {(narrow || showPanel) && <BottomPanel tab={layout.panelTab} setTab={tab => setLayout({ panelTab: tab })} review={review} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} />}
+        {(narrow || showPanel) && <BottomPanel tab={layout.panelTab} setTab={tab => setLayout({ panelTab: tab })} review={review} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} transcript={state.transcript} transcriptStatus={state.transcriptStatus} onSend={text => { const sent = sendConversation(inputActions, text); if (sent) loadTranscript(); return sent }} sessionId={sessionId} cwd={snapshot.workspace.cwd ?? snapshot.workspace.repoRoot} sessionList={sessionList} workspaceList={workspaceList} openSession={openSession} startSession={startSession} renderFactorySlot={renderFactorySlot} />}
       </div>
     </>}
   </main>

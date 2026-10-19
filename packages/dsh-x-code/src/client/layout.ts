@@ -6,7 +6,7 @@ export const PANEL_BOUNDS: SizeBounds = { min: 250, max: 560, default: 328 }
 export const COLLAPSE_SNAP = 14
 export const ACTIVITIES = ['files', 'changes', 'history'] as const
 export type Activity = typeof ACTIVITIES[number]
-export const PANEL_TABS = ['problems', 'review'] as const
+export const PANEL_TABS = ['problems', 'review', 'chat'] as const
 export type PanelTab = typeof PANEL_TABS[number]
 export interface WorkbenchLayout {
   sidebar: number
