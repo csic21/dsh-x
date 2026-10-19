@@ -2,7 +2,7 @@
 
 ## Compatibility target
 
-- Plugin: `dsh-x-pet@0.1.0`
+- Plugin: `dsh-x-pet@0.8.0`
 - Official DSH runtime: `0.2.1-rc.2`
 - Codex pet contract: sprite atlas 1536 wide, 192×208 per cell, 9 rows (1536×1872) or 11 rows (1536×2288), transparent background, local pet packages under `${CODEX_HOME:-~/.codex}/pets/<name>/` with `pet.json` and `spritesheet.webp`.
 
