@@ -14,8 +14,14 @@ export const MARKET_BOARD_RANK_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtim
 export const MARKET_STOCK_RANK_ENDPOINT = 'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList';
 /** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
 export const MARKET_HISTORY_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get';
-/** Today's minute line. Same host and the same bounded client as daily history. */
-export const MARKET_MINUTE_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/minute/query?code=';
+/**
+ * Today's 分时. East Money's trends feed, not the Tencent daily host: each row
+ * is already a Beijing wall-clock minute. The `ut` value is the public page
+ * token shipped in that site's script, not a credential.
+ */
+export const MARKET_INTRADAY_ENDPOINT = 'https://push2.eastmoney.com/api/qt/stock/trends2/get';
+export const MARKET_INTRADAY_SOURCE = '东方财富分时 (unofficial)';
+const EASTMONEY_UT = 'fa5fd1943c7b386f172d6893dbfba10b';
 export const MARKET_INTRADAY_TTL_MS = 15_000;
 export const MARKET_INTRADAY_MAX_POINTS = 300;
 export const MARKET_TIMEOUT_MS = 10_000;
@@ -709,13 +715,10 @@ export function createTencentMarketProvider(options = {}) {
      * malformed rows are dropped; nothing is interpolated.
      */
     function loadIntraday(symbol) {
-        const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`;
-        return requestJson(`${MARKET_MINUTE_ENDPOINT}${code}`, MARKET_MAX_BYTES).then(payload => {
+        return requestJson(intradayUrl(symbol), MARKET_MAX_BYTES).then(payload => {
             const unavailable = (message) => Object.assign(new Error(message), { code: 'stock/intraday-unavailable' });
-            if (payload?.code !== 0)
-                throw unavailable('intraday request failed');
             try {
-                return parseMinutePayload(payload, symbol, now());
+                return parseTrendsPayload(payload, symbol, now());
             }
             catch (error) {
                 throw unavailable(error?.message || 'intraday empty');
@@ -826,68 +829,100 @@ export function createTencentMarketProvider(options = {}) {
         },
     };
 }
-const MINUTE_POINT = /^(\d{2})(\d{2}) (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)(?: (\d+(?:\.\d+)?))?$/;
-function sessionDateOf(raw) {
-    if (typeof raw !== 'string' || !/^\d{8}$/.test(raw))
-        throw new Error('intraday date');
-    const year = Number(raw.slice(0, 4)), month = Number(raw.slice(4, 6)), day = Number(raw.slice(6, 8));
-    const calendar = new Date(Date.UTC(year, month - 1, day));
-    if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day)
-        throw new Error('intraday date');
-    return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+/** Shanghai / Shenzhen are market 1 / 0. Beijing shares the Shenzhen market id; the codes do not overlap. */
+export function eastmoneySecId(symbol) {
+    const market = symbol.slice(0, 2);
+    const code = symbol.slice(3);
+    if (market === 'SH')
+        return `1.${code}`;
+    if (market === 'SZ' || market === 'BJ')
+        return `0.${code}`;
+    throw new Error('intraday market');
 }
-/** Projects one minute payload. Exported so tests can pin the row layout. */
-export function parseMinutePayload(payload, symbol, now) {
-    const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`;
-    const entry = payload?.data?.[code];
-    const rows = entry?.data?.data;
-    if (!entry || !Array.isArray(rows))
+export function intradayUrl(symbol) {
+    const params = new URLSearchParams({
+        secid: eastmoneySecId(symbol),
+        fields1: 'f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13',
+        fields2: 'f51,f52,f53,f54,f55,f56,f57,f58',
+        iscr: '0',
+        ndays: '1',
+        ut: EASTMONEY_UT,
+    });
+    return `${MARKET_INTRADAY_ENDPOINT}?${params}`;
+}
+function trendNumber(raw) {
+    if (!raw || raw === '-')
+        return null;
+    if (!/^\d+(?:\.\d+)?$/.test(raw))
+        return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+}
+/**
+ * One trends2 row is `time,open,close,high,low,volume,amount,average`.
+ * The 分时 price is the minute close. Volume stays in lots. Exported for tests.
+ */
+export function parseTrendsPayload(payload, symbol, now) {
+    const data = payload?.data;
+    const rows = data?.trends;
+    if (!data || !Array.isArray(rows))
         throw new Error('intraday missing');
-    const sessionDate = sessionDateOf(entry.data.date);
+    const code = symbol.slice(3);
+    if (String(data.code ?? '') !== code)
+        throw new Error('intraday symbol');
     const today = shanghaiToday(now);
-    if (sessionDate > today)
-        throw new Error('intraday date');
     const points = [];
+    let sessionDate = '';
     let previous = '';
     for (const row of rows) {
-        if (points.length >= MARKET_INTRADAY_MAX_POINTS)
-            break;
-        const match = typeof row === 'string' ? MINUTE_POINT.exec(row) : null;
-        if (!match)
+        if (points.length >= MARKET_INTRADAY_MAX_POINTS || typeof row !== 'string')
             continue;
-        const time = `${match[1]}:${match[2]}`;
-        if (!isAshareMinute(time) || time <= previous)
+        const fields = row.split(',');
+        if (fields.length < 8)
             continue;
-        const price = Number(match[3]);
-        const volume = Number(match[4]);
-        const average = match[5] === undefined ? null : Number(match[5]);
-        if (!Number.isFinite(price) || price <= 0 || price > 1e12)
+        const stamp = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2})$/.exec(fields[0] ?? '');
+        if (!stamp)
             continue;
-        if (!Number.isFinite(volume) || volume < 0 || volume > Number.MAX_SAFE_INTEGER)
+        const date = stamp[1];
+        const time = `${stamp[2]}:${stamp[3]}`;
+        if (date > today || !isAshareMinute(time))
             continue;
-        if (average !== null && (!Number.isFinite(average) || average <= 0 || average > 1e12))
+        if (!sessionDate)
+            sessionDate = date;
+        if (date !== sessionDate) {
+            points.length = 0;
+            sessionDate = date;
+            previous = '';
+        }
+        if (time <= previous)
+            continue;
+        const price = trendNumber(fields[2] ?? '');
+        const volume = trendNumber(fields[5] ?? '');
+        const average = trendNumber(fields[7] ?? '');
+        if (price === null || price <= 0 || price > 1e12)
+            continue;
+        if (volume !== null && (volume < 0 || volume > Number.MAX_SAFE_INTEGER))
+            continue;
+        if (average !== null && (average <= 0 || average > 1e12))
             continue;
         previous = time;
         points.push({ time, price, volume, average });
     }
-    if (!points.length)
+    if (!sessionDate || !points.length)
         throw new Error('intraday empty');
-    const fields = entry.qt?.[code];
-    const quotedName = Array.isArray(fields) ? cleanText(fields[1], 64) : null;
-    const previousClose = Array.isArray(fields) ? positiveOrNull(finiteNumber(fields[4], 0, 1e12)) : null;
+    const quotedName = cleanText(data.name, 64);
+    const previousClose = positiveOrNull(typeof data.preClose === 'number' ? data.preClose : finiteNumber(String(data.preClose ?? ''), 0, 1e12));
     const sample = previousClose ?? points.at(-1).price;
-    const stamp = new Date(now);
     const clock = new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Asia/Shanghai', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).formatToParts(stamp);
+    }).formatToParts(new Date(now));
     const pick = (type) => clock.find(part => part.type === type)?.value ?? '';
     const minutes = Number(pick('hour')) * 60 + Number(pick('minute'));
     const weekend = pick('weekday') === 'Sat' || pick('weekday') === 'Sun';
-    const closed = sessionDate < today || weekend || minutes >= 15 * 60;
     return {
         symbol,
         name: quotedName ?? symbol,
-        source: MARKET_SOURCE_NAME,
+        source: MARKET_INTRADAY_SOURCE,
         fetchedAt: isoNow(now),
         sessionDate,
         previousClose,
@@ -895,7 +930,7 @@ export function parseMinutePayload(payload, symbol, now) {
         volumeBasis: 'lots',
         currency: 'CNY',
         exchangeTimezone: 'Asia/Shanghai',
-        closed,
+        closed: sessionDate < today || weekend || minutes >= 15 * 60,
         points,
     };
 }

@@ -46,7 +46,7 @@ function IntradayPanel({ session, t, locale }: any) {
   const percent = change == null ? null : new Intl.NumberFormat(formatLocale(locale), { style: 'percent', maximumFractionDigits: 2, signDisplay: 'exceptZero' }).format(change)
   return <>
     <div className="dxs-data-banner is-market" role="status">{t('intraday.notice')}</div>
-    <div className="dxs-dataset-heading"><strong>{session.name} · {session.symbol}</strong><span>{session.sessionDate} {last.time} · {price.format(last.price)} {session.currency}</span></div>
+    <div className="dxs-dataset-heading"><strong>{session.name} · {session.symbol}</strong><span>{session.sessionDate} {last.time} 北京时间 · {price.format(last.price)} {session.currency}</span></div>
     <p className="dxs-muted">
       {previous == null ? t('intraday.no-previous') : t('intraday.change', { change: percent })}
       {` · ${t('intraday.previous')}: ${previous == null ? '—' : price.format(previous)}`}

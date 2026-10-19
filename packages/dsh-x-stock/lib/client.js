@@ -9633,9 +9633,52 @@ function QuantReplay({ dataset, macd: macd2, t, locale }) {
 
 // src/client/chart/IntradayChart.tsx
 var import_react5 = __toESM(require("react"), 1);
-function stamp(sessionDate, time) {
-  return Date.parse(`${sessionDate}T${time}:00+08:00`) / 1e3;
+
+// src/client/chart/intraday-scale.ts
+var OPEN = 9 * 60 + 15;
+var MORNING_END = 11 * 60 + 30;
+var AFTERNOON = 13 * 60;
+var MORNING_SPAN = MORNING_END - OPEN;
+function sessionOffset(time) {
+  if (!/^\d{2}:\d{2}$/.test(time)) return null;
+  const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
+  if (minutes >= OPEN && minutes <= MORNING_END) return minutes - OPEN;
+  if (minutes >= AFTERNOON && minutes <= 15 * 60) return MORNING_SPAN + 1 + (minutes - AFTERNOON);
+  return null;
 }
+function clockFromOffset(offset) {
+  const minutes = offset <= MORNING_SPAN ? OPEN + offset : AFTERNOON + (offset - MORNING_SPAN - 1);
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+function exchangeStamp(sessionDate, time) {
+  const offset = sessionOffset(time);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(sessionDate);
+  if (offset === null || !match) return null;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 1e3 + offset * 60;
+}
+function formatExchangeClock(stamp) {
+  const date = new Date(stamp * 1e3);
+  const midnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) / 1e3;
+  return clockFromOffset(Math.round((stamp - midnight) / 60));
+}
+function intradayRange(prices, previousClose) {
+  let furthest = 0;
+  for (const price of prices) furthest = Math.max(furthest, Math.abs(price - previousClose) / previousClose);
+  const percent = Math.max(furthest * 1.08, 2e-3) * 100;
+  return {
+    priceMin: previousClose * (1 - percent / 100),
+    priceMax: previousClose * (1 + percent / 100),
+    percent
+  };
+}
+function formatLots(value) {
+  const abs = Math.abs(value);
+  if (abs >= 1e8) return `${(value / 1e8).toFixed(2)}\u4EBF`;
+  if (abs >= 1e4) return `${(value / 1e4).toFixed(2)}\u4E07`;
+  return String(Math.round(value));
+}
+
+// src/client/chart/IntradayChart.tsx
 function IntradayChart({ session, t }) {
   const element = (0, import_react5.useRef)(null);
   const [failed, setFailed] = (0, import_react5.useState)(false);
@@ -9647,29 +9690,60 @@ function IntradayChart({ session, t }) {
     if (!node) return;
     let chart;
     try {
-      const palette = PALETTES.light;
+      const palette = PALETTES[resolveChartTheme(node)] ?? PALETTES.light;
+      const clock = (time) => typeof time === "number" ? formatExchangeClock(time) : "";
       chart = le(node, {
         width: Math.max(1, node.clientWidth),
         height: 360,
         layout: { background: { type: $i.Solid, color: palette.background }, textColor: palette.text, fontFamily: "system-ui, sans-serif", attributionLogo: true },
         grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
-        rightPriceScale: { borderColor: palette.border },
-        timeScale: { borderColor: palette.border, timeVisible: true, secondsVisible: false },
+        leftPriceScale: { visible: previous != null, borderColor: palette.border },
+        rightPriceScale: { visible: true, borderColor: palette.border },
+        localization: { timeFormatter: clock },
+        timeScale: { borderColor: palette.border, timeVisible: true, secondsVisible: false, tickMarkFormatter: clock },
         handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false }
       });
-      const price = chart.addSeries(ye, { color: up ? UP_COLOR : DOWN_COLOR, lineWidth: 2, priceLineVisible: false }, 0);
-      const average2 = chart.addSeries(ye, { color: "#df9635", lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
-      const volume = chart.addSeries(nr, { priceFormat: { type: "volume" } }, 1);
+      const range = typeof previous === "number" ? intradayRange(session.points.flatMap((point) => point.average == null ? [point.price] : [point.price, point.average]), previous) : null;
+      const price = chart.addSeries(ye, {
+        color: up ? UP_COLOR : DOWN_COLOR,
+        lineWidth: 2,
+        priceLineVisible: false,
+        priceScaleId: range ? "left" : "right",
+        autoscaleInfoProvider: range ? () => ({ priceRange: { minValue: range.priceMin, maxValue: range.priceMax } }) : void 0
+      }, 0);
+      const average2 = chart.addSeries(ye, {
+        color: "#df9635",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceScaleId: range ? "left" : "right",
+        autoscaleInfoProvider: range ? () => ({ priceRange: { minValue: range.priceMin, maxValue: range.priceMax } }) : void 0
+      }, 0);
+      if (range) chart.addSeries(ye, {
+        priceScaleId: "right",
+        color: "transparent",
+        lineVisible: false,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        crosshairMarkerVisible: false,
+        priceFormat: { type: "custom", minMove: 0.01, formatter: (value) => `${value > 0 ? "+" : ""}${value.toFixed(2)}%` },
+        autoscaleInfoProvider: () => ({ priceRange: { minValue: -range.percent, maxValue: range.percent } })
+      }, 0).setData(session.points.map((point) => ({ time: exchangeStamp(session.sessionDate, point.time), value: (point.price - previous) / previous * 100 })));
+      const volume = chart.addSeries(nr, {
+        priceFormat: { type: "custom", formatter: (value) => formatLots(value) }
+      }, 1);
       chart.panes()[0].setStretchFactor(3);
       chart.panes()[1].setStretchFactor(1);
-      price.setData(session.points.map((point) => ({ time: stamp(session.sessionDate, point.time), value: point.price })));
-      average2.setData(session.points.filter((point) => point.average != null).map((point) => ({ time: stamp(session.sessionDate, point.time), value: point.average })));
+      const at2 = (time) => exchangeStamp(session.sessionDate, time);
+      price.setData(session.points.map((point) => ({ time: at2(point.time), value: point.price })));
+      average2.setData(session.points.filter((point) => point.average != null).map((point) => ({ time: at2(point.time), value: point.average })));
       volume.setData(session.points.map((point, index) => {
         const prior = index ? session.points[index - 1].price : previous;
         const rising = prior == null || point.price >= prior;
-        return point.volume == null ? { time: stamp(session.sessionDate, point.time) } : { time: stamp(session.sessionDate, point.time), value: point.volume, color: rising ? UP_COLOR : DOWN_COLOR };
+        const time = at2(point.time);
+        return point.volume == null ? { time } : { time, value: point.volume, color: rising ? UP_COLOR : DOWN_COLOR };
       }));
-      if (previous != null) price.createPriceLine({ price: previous, color: "#717885", lineWidth: 1, lineStyle: 2, title: t("intraday.previous") });
+      if (previous != null) price.createPriceLine({ price: previous, color: palette.crosshair, lineWidth: 1, lineStyle: h.Dashed, title: t("intraday.previous") });
       chart.timeScale().fitContent();
       setFailed(false);
     } catch {
@@ -9682,7 +9756,7 @@ function IntradayChart({ session, t }) {
       }
     };
   }, [session, up, previous]);
-  return /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-intraday" }, failed ? /* @__PURE__ */ import_react5.default.createElement("p", { role: "alert" }, t("intraday.chart-failed")) : /* @__PURE__ */ import_react5.default.createElement("div", { ref: element, className: "dxs-intraday-canvas", role: "img", "aria-label": t("intraday.canvas", { date: session.sessionDate }) }));
+  return /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-intraday" }, /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxs-intraday-legend" }, /* @__PURE__ */ import_react5.default.createElement("span", null, /* @__PURE__ */ import_react5.default.createElement("i", { style: { background: up ? UP_COLOR : DOWN_COLOR } }), t("intraday.price")), /* @__PURE__ */ import_react5.default.createElement("span", null, /* @__PURE__ */ import_react5.default.createElement("i", { style: { background: "#df9635" } }), t("intraday.average")), /* @__PURE__ */ import_react5.default.createElement("span", null, /* @__PURE__ */ import_react5.default.createElement("i", { className: "is-dashed" }), t("intraday.previous")), /* @__PURE__ */ import_react5.default.createElement("span", null, t(previous == null ? "intraday.axis-price" : "intraday.axis"))), failed ? /* @__PURE__ */ import_react5.default.createElement("p", { role: "alert" }, t("intraday.chart-failed")) : /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxs-intraday-plot" }, /* @__PURE__ */ import_react5.default.createElement("div", { ref: element, className: "dxs-intraday-canvas", role: "img", "aria-label": t("intraday.canvas", { date: session.sessionDate }) }), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxs-intraday-volume" }, t("intraday.volume"))));
 }
 
 // src/resample.ts
@@ -9794,7 +9868,7 @@ function IntradayPanel({ session, t, locale }) {
   const previous = session.previousClose;
   const change = typeof previous === "number" ? (last.price - previous) / previous : null;
   const percent = change == null ? null : new Intl.NumberFormat(formatLocale(locale), { style: "percent", maximumFractionDigits: 2, signDisplay: "exceptZero" }).format(change);
-  return /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-data-banner is-market", role: "status" }, t("intraday.notice")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-dataset-heading" }, /* @__PURE__ */ import_react6.default.createElement("strong", null, session.name, " \xB7 ", session.symbol), /* @__PURE__ */ import_react6.default.createElement("span", null, session.sessionDate, " ", last.time, " \xB7 ", price.format(last.price), " ", session.currency)), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, previous == null ? t("intraday.no-previous") : t("intraday.change", { change: percent }), ` \xB7 ${t("intraday.previous")}: ${previous == null ? "\u2014" : price.format(previous)}`, ` \xB7 ${t("intraday.average")}: ${last.average == null ? "\u2014" : price.format(last.average)}`, ` \xB7 ${t("intraday.volume")}: ${last.volume == null ? "\u2014" : quantity.format(last.volume)}`, ` \xB7 ${t(session.closed ? "intraday.closed" : "intraday.open")}`), /* @__PURE__ */ import_react6.default.createElement(IntradayChart, { session, t }));
+  return /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-data-banner is-market", role: "status" }, t("intraday.notice")), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxs-dataset-heading" }, /* @__PURE__ */ import_react6.default.createElement("strong", null, session.name, " \xB7 ", session.symbol), /* @__PURE__ */ import_react6.default.createElement("span", null, session.sessionDate, " ", last.time, " \u5317\u4EAC\u65F6\u95F4 \xB7 ", price.format(last.price), " ", session.currency)), /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxs-muted" }, previous == null ? t("intraday.no-previous") : t("intraday.change", { change: percent }), ` \xB7 ${t("intraday.previous")}: ${previous == null ? "\u2014" : price.format(previous)}`, ` \xB7 ${t("intraday.average")}: ${last.average == null ? "\u2014" : price.format(last.average)}`, ` \xB7 ${t("intraday.volume")}: ${last.volume == null ? "\u2014" : quantity.format(last.volume)}`, ` \xB7 ${t(session.closed ? "intraday.closed" : "intraday.open")}`), /* @__PURE__ */ import_react6.default.createElement(IntradayChart, { session, t }));
 }
 function StockWorkbench({ symbol, scope, t, format, locale, rpc }) {
   const [local, setLocal] = (0, import_react6.useState)(null), [error, setError] = (0, import_react6.useState)(""), [busy, setBusy] = (0, import_react6.useState)(false);
@@ -10622,7 +10696,7 @@ var workbenchZh = {
   "workbench.daily": "K\u7EBF \xB7 \u6210\u4EA4\u91CF \xB7 MA / MACD / KDJ",
   "workbench.no-realtime": "\u5F53\u524D\u6CA1\u6709\u5DF2\u63A5\u5165\u7684\u5B9E\u65F6\u6216\u5206\u949FK\u6570\u636E\u6E90\u3002",
   "workbench.interval.aria": "K\u7EBF\u5468\u671F",
-  "intraday.notice": "\u5206\u65F6 \xB7 \u5F53\u65E5\u5206\u949F\u4EF7\u683C\uFF0C\u975E\u5B9E\u65F6\uFF1B\u6765\u6E90\u4E3A\u817E\u8BAF\u516C\u5F00\u63A5\u53E3\uFF08\u975E\u5B98\u65B9\uFF09\uFF0C\u65E0 SLA\uFF0C\u4E0D\u6784\u6210\u6295\u8D44\u5EFA\u8BAE",
+  "intraday.notice": "\u5206\u65F6\u6765\u81EA\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u63A5\u53E3\uFF08\u975E\u5B98\u65B9\uFF09\uFF0C\u4E0D\u662F\u5B9E\u65F6\uFF0C\u4E5F\u4E0D\u6784\u6210\u6295\u8D44\u5EFA\u8BAE\u3002\u6A2A\u8F74\u662F\u5317\u4EAC\u65F6\u95F4\uFF0C\u5348\u4F11\u4E0D\u5360\u4F4D\u7F6E\u3002",
   "intraday.loading": "\u6B63\u5728\u83B7\u53D6\u5206\u65F6\u2026",
   "intraday.off-title": "\u5206\u65F6\u672A\u5F00\u542F",
   "intraday.off": "\u5206\u65F6\u4E0E\u65E5K\u5171\u7528\u672C\u673A\u514D\u8D39\u6E90\u3002\u5728\u300C\u5E02\u573A\u300D\u9875\u6253\u5F00\u300C\u514D\u8D39\u6E90\u300D\u540E\u5373\u53EF\u52A0\u8F7D\u3002",
@@ -10632,8 +10706,11 @@ var workbenchZh = {
   "intraday.error": "\u5206\u65F6\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF1B\u4E0D\u4F1A\u7528\u65E7\u7EBF\u6216\u731C\u6D4B\u503C\u66FF\u4EE3\u3002",
   "intraday.only-market": "\u5206\u65F6\u53EA\u6765\u81EA\u514D\u8D39\u6E90\u3002\u5408\u6210\u6570\u636E\u548C\u672C\u5730\u5BFC\u5165\u6CA1\u6709\u5206\u65F6\u3002",
   "intraday.previous": "\u6628\u6536",
+  "intraday.price": "\u4EF7\u683C",
   "intraday.average": "\u5747\u4EF7",
-  "intraday.volume": "\u6210\u4EA4\u91CF\uFF08\u624B\uFF0C\u6E90\u53E3\u5F84\uFF09",
+  "intraday.volume": "\u6210\u4EA4\u91CF\uFF08\u624B\uFF09",
+  "intraday.axis": "\u5DE6\u8F74\u4EF7\u683C\uFF0C\u53F3\u8F74\u662F\u8F83\u6628\u6536\u7684\u6DA8\u8DCC\u5E45",
+  "intraday.axis-price": "\u53F3\u8F74\u662F\u4EF7\u683C\uFF08\u6E90\u6CA1\u6709\u6628\u6536\uFF0C\u6240\u4EE5\u6CA1\u6709\u6DA8\u8DCC\u5E45\uFF09",
   "intraday.change": "\u76F8\u5BF9\u6628\u6536 {change}",
   "intraday.no-previous": "\u6E90\u6CA1\u6709\u7ED9\u51FA\u6628\u6536\uFF0C\u4E0D\u8BA1\u7B97\u6DA8\u8DCC\u3002",
   "intraday.canvas": "{date} \u5206\u65F6",
@@ -10705,7 +10782,7 @@ var workbenchEn = {
   "workbench.daily": "Candles \xB7 Volume \xB7 MA / MACD / KDJ",
   "workbench.no-realtime": "No live or intraday bar provider is connected.",
   "workbench.interval.aria": "Candle period",
-  "intraday.notice": "Intraday \xB7 today's minute prices, not live; Tencent public endpoint (unofficial), no SLA, not investment advice",
+  "intraday.notice": "Intraday prices come from East Money's public endpoint (unofficial). Not live and not investment advice. The time axis is Beijing time, with the lunch break removed.",
   "intraday.loading": "Loading the intraday line\u2026",
   "intraday.off-title": "Intraday is off",
   "intraday.off": "The intraday line shares the local free source with daily bars. Turn the free source on from the Market tab.",
@@ -10715,8 +10792,11 @@ var workbenchEn = {
   "intraday.error": "The intraday line is unavailable right now. Nothing is replaced with a stale line or a guessed value.",
   "intraday.only-market": "The intraday line comes only from the free source. Synthetic and imported data have none.",
   "intraday.previous": "Previous close",
+  "intraday.price": "Price",
   "intraday.average": "Average",
-  "intraday.volume": "Volume (lots, as reported)",
+  "intraday.volume": "Volume (lots)",
+  "intraday.axis": "Left axis: price. Right axis: percent versus the previous close",
+  "intraday.axis-price": "Right axis: price. The source gave no previous close, so there is no percent scale",
   "intraday.change": "{change} versus the previous close",
   "intraday.no-previous": "The source did not provide a previous close, so no change is calculated.",
   "intraday.canvas": "Intraday line for {date}",
@@ -11779,7 +11859,7 @@ var CHART_CSS = `
 .dxs-chart-plot{position:relative;min-width:0}.dxs-chart-canvas{height:clamp(460px,calc(100dvh - 420px),720px);width:100%;position:relative;outline:none;touch-action:pan-y}.dxs-chart-canvas:focus-visible{outline:2px solid var(--dxc-focus);outline-offset:-2px}.dxs-chart-watermark{position:absolute;top:20%;left:12%;right:12%;text-align:center;pointer-events:none;z-index:2;color:var(--dxc-muted);opacity:.26;line-height:1.4;font-size:clamp(17px,3vw,34px);font-weight:750;letter-spacing:2px;user-select:none}.dxs-chart-watermark[data-kind=local]{top:10px;left:12px;right:auto;text-align:left;font-size:10px;opacity:.8;letter-spacing:.6px}.dxs-chart-help,.dxs-chart-method,.dxs-chart-warning{font-size:11px;color:var(--dxc-muted);padding:0 12px;margin:8px 0!important}.dxs-chart-warning{font-weight:600}.dxs-chart-error{padding:20px;color:var(--dsw-alias-state-error-primary,#cf3b4c)}
 .dxs-chart-settings{margin:10px 12px;padding:12px;border:1px solid var(--dxc-border);border-radius:8px;background:var(--dxc-soft)}.dxs-chart-settings h4{margin:0 0 10px}.dxs-chart-settings-grid{display:grid;grid-template-columns:repeat(4,minmax(90px,1fr));gap:10px}.dxs-chart-settings-grid label{font-size:12px;display:grid;gap:4px}.dxs-chart-settings footer{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}.dxs-chart-settings footer button:first-child{margin-right:auto}
 .dxs-chart-table-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--dxc-border)}.dxs-chart-table-controls span{font-size:11px;color:var(--dxc-muted)}.dxs-chart-table-scroll{overflow:auto;max-height:380px;border-top:1px solid var(--dxc-border)}.dxs-chart-table{border-collapse:collapse;white-space:nowrap;font-size:11px;min-width:100%;font-variant-numeric:tabular-nums}.dxs-chart-table caption{text-align:left;padding:10px;font-weight:600}.dxs-chart-table th,.dxs-chart-table td{padding:7px 9px;text-align:right;border-bottom:1px solid var(--dxc-border)}.dxs-chart-table thead th{position:sticky;top:0;background:var(--dxc-soft);z-index:1}.dxs-chart-table tbody th{text-align:left}.dxs-chart-table tbody tr[aria-selected=true]{background:var(--dxc-soft)}.dxs-chart-toolbar button,.dxs-chart-settings footer button,.dxs-chart-table-controls button{height:28px;padding:0 10px;font-size:12px;border-radius:6px}.dxs-chart-table button,.dxs-chart-pane-labels button,.dxs-chart-readout button{height:24px;padding:0 8px;font-size:12px;border-radius:6px}.dxs-chart-credit{padding:6px 12px;text-align:right;font-size:10px}.dxs-chart-credit a{color:var(--dxc-muted)}
-.dxs-intraday-canvas{height:360px;width:100%}
+.dxs-intraday-legend{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:0 0 6px;font-size:12px;color:var(--dxs-muted)}.dxs-intraday-legend i{display:inline-block;width:14px;height:2px;margin-right:5px;vertical-align:middle;background:var(--dxs-muted)}.dxs-intraday-legend i.is-dashed{background:linear-gradient(90deg,var(--dxs-muted) 40%,transparent 40% 60%,var(--dxs-muted) 60%)}.dxs-intraday-plot{position:relative}.dxs-intraday-canvas{height:360px;width:100%}.dxs-intraday-volume{position:absolute;left:8px;bottom:28px;font-size:11px;color:var(--dxs-muted);pointer-events:none}
 .dxs-quant{margin-top:12px;padding:12px;border:1px solid var(--dxs-line-soft);border-radius:12px;background:var(--dxs-bg)}.dxs-quant h3,.dxs-quant h4{margin:0 0 4px;font-size:13px}.dxs-quant p{margin:4px 0}.dxs-quant-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.dxs-quant article{padding:10px;border-radius:8px;background:var(--dxs-soft)}
 @media(max-width:650px){.dxs-chart-canvas{height:560px}.dxs-quant-grid{grid-template-columns:1fr}.dxs-chart-toolbar{padding:8px}.dxs-chart-toolbar .dxs-chart-actions{margin-left:0}.dxs-chart-readout{padding:8px;min-height:110px}.dxs-chart-settings-grid{grid-template-columns:repeat(2,minmax(90px,1fr))}.dxs-chart-help{font-size:10px}.dxs-chart-pane-labels{gap:6px 12px}}
 `;

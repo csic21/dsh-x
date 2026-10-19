@@ -135,7 +135,7 @@ Finnhub 工具通过官方 `HarnessError` 传播错误身份，通过 `output.pr
 
 指标算法版本 `dsh-independent-sma-ema-v1`（以源码导出为准）：每条 EMA 独立以其周期 SMA 播种；DIF=快 EMA−慢 EMA，DEA 为 DIF 的 EMA；默认 12/26/9，柱=2×(DIF−DEA)，可显式改 ×1。KDJ 默认 9/3/3：RSV 用 N 根最高最低，K/D 从 50 按 1/3 平滑，J=3K−2D；最高价等于最低价时 RSV 记 50。完整预热前为缺失值，缺口重置连续预热；不按可见窗口重算。这个种子规则与 TA-Lib MACD 内部对齐播种不同，不能宣称逐点一致。量化回放只按当前周期的收盘价记录金叉到下一次死叉的涨跌，不含手续费、滑点、仓位或下单，不是预测。修订/末根替换与历史补齐采用最多 5,000 根的有界全量确定性重算，渲染适配器可对新增/末根使用 update，保留历史阅读锚点；目前无历史 provider 分页取数。
 
-Apache-2.0 的 Lightweight Charts 及 MIT 的 fancy-canvas 许可和 NOTICE 随 `licenses/` 打包；保留 TradingView logo 和可见归属链接。没有使用 Advanced Charts，也不包含任何行情授权。分时是当日分钟价格线，成交量按源返回的手显示，不是 1 分钟 K，也不会在没有分时时用日 K 补一条线。当前没有对数坐标、分钟 K、交易功能或真实基本面分析。
+Apache-2.0 的 Lightweight Charts 及 MIT 的 fancy-canvas 许可和 NOTICE 随 `licenses/` 打包；保留 TradingView logo 和可见归属链接。没有使用 Advanced Charts，也不包含任何行情授权。分时来自东方财富公开走势（与日 K 的腾讯源分开），横轴是北京时间且午休不占位置，左轴是价格，右轴是较昨收涨跌幅，成交量按手显示。它不是 1 分钟 K，也不会在没有分时时用日 K 补一条线。当前没有对数坐标、分钟 K、交易功能或真实基本面分析。
 
 ## TypeScript development
 

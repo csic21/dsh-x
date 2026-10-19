@@ -4,8 +4,13 @@ export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/
 export declare const MARKET_STOCK_RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList";
 /** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
 export declare const MARKET_HISTORY_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get";
-/** Today's minute line. Same host and the same bounded client as daily history. */
-export declare const MARKET_MINUTE_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/minute/query?code=";
+/**
+ * Today's 分时. East Money's trends feed, not the Tencent daily host: each row
+ * is already a Beijing wall-clock minute. The `ut` value is the public page
+ * token shipped in that site's script, not a credential.
+ */
+export declare const MARKET_INTRADAY_ENDPOINT = "https://push2.eastmoney.com/api/qt/stock/trends2/get";
+export declare const MARKET_INTRADAY_SOURCE = "\u4E1C\u65B9\u8D22\u5BCC\u5206\u65F6 (unofficial)";
 export declare const MARKET_INTRADAY_TTL_MS = 15000;
 export declare const MARKET_INTRADAY_MAX_POINTS = 300;
 export declare const MARKET_TIMEOUT_MS = 10000;
@@ -110,6 +115,12 @@ export declare function projectHistory(options: {
     now: number;
 }): MarketHistory;
 export declare function createTencentMarketProvider(options?: MarketProviderOptions): MarketProvider;
-/** Projects one minute payload. Exported so tests can pin the row layout. */
-export declare function parseMinutePayload(payload: any, symbol: string, now: number): MarketIntraday;
+/** Shanghai / Shenzhen are market 1 / 0. Beijing shares the Shenzhen market id; the codes do not overlap. */
+export declare function eastmoneySecId(symbol: string): string;
+export declare function intradayUrl(symbol: string): string;
+/**
+ * One trends2 row is `time,open,close,high,low,volume,amount,average`.
+ * The 分时 price is the minute close. Volume stays in lots. Exported for tests.
+ */
+export declare function parseTrendsPayload(payload: any, symbol: string, now: number): MarketIntraday;
 export { INDEXES as MARKET_INDEXES };
