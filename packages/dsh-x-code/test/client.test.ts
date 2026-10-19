@@ -31,8 +31,18 @@ test('compiled Code client browses, searches, switches locales and prepares exac
  vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value: any){assert.equal(value.id,'dsh-x-code');exported=value.factory((name: any) =>{if(name==='react')return React;if(name==='@deepseek-ai/dsh-client-ui-primitives')return primitives;throw new Error(name)})}}},globalThis,document:dom.window.document,ResizeObserver,URL,Blob,atob,Uint8Array,AbortController,setTimeout,clearTimeout,console,Intl})
  const {createRoot}=await import('react-dom/client');const root=createRoot(document.getElementById('app')!)
  const inputActions={captureInsertion:()=>({start:draft.length,end:draft.length,revision:1}),insertText(text: any,span: any){assert.equal(span.start,span.end);draft+=text;return true},persistDraft(){},send(){sendCount++}}
+ // The official renderer supplies the Factory render share; this fixture records
+ // the occurrence instead of mounting the shipped Conversation.
+ const factories: any[]=[]
+ const renderFactorySlot=(name: any,props: any,options: any)=>{factories.push({name,props,options});return React.createElement('div',{'data-factory':name,'data-variant':props.variant},String(name))}
  let entry: any,face: any
- function Render({sessionId='session'}: {sessionId?: string | null}){useSyncExternalStore(locale.subscribe.bind(locale),locale.getSnapshot.bind(locale),locale.getSnapshot.bind(locale));face=entry.options.inject(sessionId);const source=face.hooks.code;const useCode=(selector: any)=>selector(useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot));return React.createElement(entry.component,{...face,sessionId,inputActions,useCode,t:locale.bind(entry.options.locale)})}
+ // The shell's standard hooks arrive through the slot props; a blank Session
+ // keeps the embedded Conversation in its hero phase.
+ const shell={blank:false}
+ const useSession=(selector: any)=>selector({blank:shell.blank,openState:'open',awaitingFirstTurn:false,running:false,promptAttempted:false})
+ const useConversation=(selector: any)=>selector({activeTargets:new Set()})
+ const useSessions=(selector: any)=>selector({byId:{session:{blank:shell.blank}}})
+ function Render({sessionId='session'}: {sessionId?: string | null}){useSyncExternalStore(locale.subscribe.bind(locale),locale.getSnapshot.bind(locale),locale.getSnapshot.bind(locale));face=entry.options.inject(sessionId);const source=face.hooks.code;const useCode=(selector: any)=>selector(useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot));return React.createElement(entry.component,{...face,sessionId,inputActions,useCode,renderFactorySlot,useSession,useConversation,useSessions,t:locale.bind(entry.options.locale)})}
  const click=async (node: any)=>{assert.ok(node,'expected clickable element');await act(async()=>{node.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));await wait()})}
  const byText=(text: any)=>[...document.querySelectorAll('button')].find(button=>button.textContent===text)
  const change=async(node: any,value: any)=>act(async()=>{const proto=node.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(node,value);node.dispatchEvent(new dom.window.Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));await wait()})
@@ -163,6 +173,29 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   await act(async()=>{root.render(null);await wait()})
   await act(async()=>{root.render(React.createElement(Render));await wait()})
   assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('[id="code-scope-session"]')!.value,'staged')
+  // The Chat tab embeds the official Conversation Factory rather than a second
+  // transcript: images, / commands and @ references therefore come from the shell.
+  assert.equal(factories.length,0,'no Conversation occurrence before the Chat tab is opened')
+  await click([...document.querySelectorAll('.dxc-panel-tabs button')].find(button=>button.textContent==='Chat'))
+  assert.equal(factories.length,1)
+  assert.equal(factories[0].name,'conversation.content')
+  // The client bundle runs in its own realm, so compare fields instead of prototypes.
+  assert.equal(factories[0].props.variant,'embedded')
+  assert.equal(factories[0].props.phase,'active')
+  assert.equal(factories[0].props.hero,false)
+  assert.equal(typeof factories[0].options.slots.views,'function')
+  assert.ok(document.querySelector('[data-factory="conversation.content"]'))
+  assert.equal(document.querySelectorAll('.dxc-chat textarea,.dxc-chat-form').length,0,'no hand-written composer')
+  shell.blank=true
+  await act(async()=>{face.refresh();await wait()})
+  assert.equal(factories.at(-1).props.phase,'hero','a blank Session keeps the centred hero composer')
+  assert.equal(factories.at(-1).props.hero,true)
+  shell.blank=false
+  await act(async()=>{face.refresh();await wait()})
+  assert.equal(factories.at(-1).props.phase,'active')
+  assert.match(draft,/dsh_x_code_review/,'the main composer draft is untouched by the embedded Chat tab')
+  assert.equal(sendCount,0)
+  await click([...document.querySelectorAll('.dxc-panel-tabs button')].find(button=>button.textContent==='Review'))
   await act(async()=>{root.render(React.createElement(Render,{sessionId:null}));await wait()})
   assert.match(document.body.textContent,/Open a conversation to browse/)
  }finally{await act(async()=>root.unmount());disposers.reverse().forEach(fn=>fn?.());effects.reverse().forEach(fn=>fn?.());assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('style[data-plugin="dsh-x-code"]'),null);dom.window.close();for(const[key,value]of Object.entries(originals)){if(value===undefined)delete (globalThis as any)[key];else (globalThis as any)[key]=value}}

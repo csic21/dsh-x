@@ -4,22 +4,19 @@ export interface CodeState {
   status: string, snapshot: CodeSnapshot | null, error: CodeProblem | null
   file: CodeSource | null, fileStatus: string, fileKey: string | null, fileError: CodeProblem | null
   inspectedReview: CodeReview | null, historyStatus: string, historyError: CodeProblem | null, historyId: string | null, pending: boolean
-  transcript: TranscriptMessage[] | null, transcriptStatus: string, transcriptError: CodeProblem | null
 }
 export interface CodeSourceStore { getSnapshot(): CodeState, subscribe(listener: () => void): () => void }
 export interface FileTarget { path: string, scope?: string, workspaceId?: string, mode?: string, base?: string, reviewId?: string }
 interface Entry {
   sessionId: string, target: { mode: string, base?: string }, state: CodeState, listeners: Set<() => void>
   request: AbortController | null, timer: ReturnType<typeof setTimeout> | null, fileRequest: AbortController | null
-  fileTarget: FileTarget | null, historyRequest: AbortController | null, transcriptRequest: AbortController | null, action: AbortController | null, source: CodeSourceStore
+  fileTarget: FileTarget | null, historyRequest: AbortController | null, action: AbortController | null, source: CodeSourceStore
 }
 export interface CodeRpc { call(base: string, endpoint: string, args: Record<string, unknown>, signal: AbortSignal): Promise<{ ok: boolean, value?: unknown, error?: CodeProblem }> }
 const errorInfo = (error: unknown): Partial<CodeProblem> => error && typeof error === 'object' ? error : {}
 import { readSnapshot, readFile } from './model.ts'
-import { readTranscript } from '../transcript.ts'
-import type { TranscriptMessage } from '../transcript.ts'
 
-export const empty = (): CodeState => ({ status: 'loading', snapshot: null, error: null, file: null, fileStatus: 'idle', fileKey: null, fileError: null, inspectedReview: null, historyStatus: 'idle', historyError: null, historyId: null, pending: false, transcript: null, transcriptStatus: 'idle', transcriptError: null })
+export const empty = (): CodeState => ({ status: 'loading', snapshot: null, error: null, file: null, fileStatus: 'idle', fileKey: null, fileError: null, inspectedReview: null, historyStatus: 'idle', historyError: null, historyId: null, pending: false })
 const problem = (code: unknown, message: unknown = '') => ({ code: typeof code === 'string' ? code : 'code/unavailable', message: typeof message === 'string' ? message : '' })
 
 /** Own all reads per session; late responses cannot cross target or connection generations. */
@@ -70,7 +67,7 @@ export function createCodeController(rpc: CodeRpc, { timeoutMs = 12000, pollMs =
   }
   const entryFor = (sessionId: string): Entry => {
     if (!entries.has(sessionId)) {
-      const entry: Entry = { source: undefined!, sessionId, target: { mode: 'worktree' }, state: empty(), listeners: new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, transcriptRequest: null, action: null }
+      const entry: Entry = { source: undefined!, sessionId, target: { mode: 'worktree' }, state: empty(), listeners: new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, action: null }
       entry.source = {
         getSnapshot: () => entry.state,
         subscribe(listener) {
@@ -127,22 +124,6 @@ export function createCodeController(rpc: CodeRpc, { timeoutMs = 12000, pollMs =
       if (!disposed && epoch === generation && entry.historyRequest === request) publish(entry, { historyStatus: 'failed', historyError: problem(errorInfo(error).code, errorInfo(error).message) })
     } finally { if (entry.historyRequest === request) entry.historyRequest = null }
   }
-  async function loadTranscript(sessionId: string) {
-    const entry = entryFor(sessionId)
-    if (entry.transcriptRequest) return
-    const request = new AbortController(), generation = epoch
-    entry.transcriptRequest = request
-    if (entry.state.transcriptStatus !== 'ready') publish(entry, { transcriptStatus: 'loading', transcriptError: null })
-    try {
-      const raw = await call('code/transcript', { sessionId }, request)
-      if (disposed || request.signal.aborted || generation !== epoch || entry.transcriptRequest !== request) return
-      const messages = readTranscript(raw)
-      if (!messages) throw problem('code/invalid-transcript')
-      publish(entry, { transcript: messages, transcriptStatus: 'ready', transcriptError: null })
-    } catch (error) {
-      if (!disposed && generation === epoch && entry.transcriptRequest === request && !request.signal.aborted) publish(entry, { transcriptStatus: 'failed', transcriptError: problem(errorInfo(error).code, errorInfo(error).message) })
-    } finally { if (entry.transcriptRequest === request) entry.transcriptRequest = null }
-  }
   async function cancel(sessionId: string) {
     const entry = entryFor(sessionId), snapshot = entry.state.snapshot, operation = snapshot?.operation, generation = epoch
     if (!snapshot || entry.action || entry.state.status !== 'live' || !operation?.id || operation.state === 'cancelling') return { ok: false, error: problem('code/stale-action') }
@@ -161,10 +142,10 @@ export function createCodeController(rpc: CodeRpc, { timeoutMs = 12000, pollMs =
   }
   function reset() {
     epoch++
-    for (const entry of entries.values()) { stopRead(entry); stopFile(entry); entry.action?.abort(); entry.historyRequest?.abort(); entry.transcriptRequest?.abort(); entry.historyRequest = null; entry.transcriptRequest = null; entry.action = null; entry.fileTarget = null; publish(entry, empty()); if (entry.listeners.size) void refreshEntry(entry) }
+    for (const entry of entries.values()) { stopRead(entry); stopFile(entry); entry.action?.abort(); entry.historyRequest?.abort(); entry.historyRequest = null; entry.action = null; entry.fileTarget = null; publish(entry, empty()); if (entry.listeners.size) void refreshEntry(entry) }
   }
   return {
-    source: (sessionId: string) => entryFor(sessionId).source, refresh, selectTarget, loadFile, clearFile, loadReview, loadTranscript, cancel, reset,
-    dispose() { disposed = true; epoch++; for (const entry of entries.values()) { stopRead(entry); stopFile(entry); entry.action?.abort(); entry.historyRequest?.abort(); entry.transcriptRequest?.abort(); entry.listeners.clear() }; entries.clear() },
+    source: (sessionId: string) => entryFor(sessionId).source, refresh, selectTarget, loadFile, clearFile, loadReview, cancel, reset,
+    dispose() { disposed = true; epoch++; for (const entry of entries.values()) { stopRead(entry); stopFile(entry); entry.action?.abort(); entry.historyRequest?.abort(); entry.listeners.clear() }; entries.clear() },
   }
 }

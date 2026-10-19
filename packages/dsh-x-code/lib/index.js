@@ -10,14 +10,7 @@ export function apply(context) {
     const store = createReviewStore(ctx.profileContext.dir);
     const sessionFor = (id) => { const sessions = ctx.get('sessions'); return sessions?.get(id); };
     const selectedModel = (id, exec) => { const session = exec?.agent?.session ?? sessionFor(id); const route = session?.requestHeader?.()?.config ?? ctx.get('agentDefaultModel')?.currentSelection?.(); return typeof route?.provider === 'string' && typeof route?.model === 'string' && route.provider.length <= 256 && route.model.length <= 256 ? { provider: route.provider, model: route.model } : null; };
-    const messagesOf = (id) => { try {
-        const session = sessionFor(id);
-        return typeof session?.deriveMessages === 'function' ? session.deriveMessages() : [];
-    }
-    catch {
-        return [];
-    } };
-    const controller = createCodeController({ store, spawn: spec => ctx.subprocess.spawn(spec), messagesOf,
+    const controller = createCodeController({ store, spawn: spec => ctx.subprocess.spawn(spec),
         reviewerInfo: (id, exec) => { const dshModel = selectedModel(id, exec); return { dshAvailable: Boolean(ctx.get('llm') && dshModel), dshModel }; },
         dshReview: async (args, exec) => {
             const approval = ctx.get('approval');
@@ -54,6 +47,5 @@ export function apply(context) {
         host.connection.fetch.register(createCodeRoute('code/review', args => controller.reviewDetail(args), ['sessionId', 'scope', 'reviewId']));
         host.connection.fetch.register(createCodeRoute('code/cancel', args => controller.cancel(args), ['sessionId', 'scope', 'operationId']));
         host.connection.fetch.register(createCodeRoute('code/file', args => controller.source({ ...args, preview: true }), ['sessionId', 'scope', 'workspaceId', 'path', 'mode', 'base', 'reviewId']));
-        host.connection.fetch.register(createCodeRoute('code/transcript', args => controller.transcript(args), ['sessionId']));
     });
 }

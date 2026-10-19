@@ -36,6 +36,8 @@ Below 700px the grid becomes a single pane chosen by Files / Code / Findings tab
 4. Findings appear as structured cards: severity, concise title, location, explanation, evidence and trigger. Evidence/details use disclosure controls.
 5. After editing source in the conversation, re-review the same paths. The new snapshot and previous review remain distinct; an empty result is scoped to the new selection and never claims tests passed.
 
+The review panel also carries a Chat tab. It embeds the official Conversation through its `conversation.content` Component Factory with the `embedded` variant and a fixed Chat view, so the panel shows the same transcript, running state and composer as the main conversation: images, `/` commands, `@` references, attachments, busy-Enter behavior and the shared per-Session draft all come from the shell instead of a second implementation. One draft and one submission path mean a message written in either place appears in both, and nothing is sent automatically. Code keeps no transcript copy, no polling read and no `code/transcript` endpoint; when the Factory is absent the tab states that the shared conversation is unavailable rather than falling back to a reduced input.
+
 The UI provides Stop for an exact Code operation ID. Stop first shows Stopping; completion waits for authoritative settlement. Leaving the panel never cancels work. Cancelled, failed and interrupted runs retain readable findings/history and never gain a green pass. Nothing replays silently after reconnection.
 
 ## State and trust model

@@ -250,89 +250,9 @@ ${text2}
   return inserted;
 }
 
-// src/transcript.ts
-var TRANSCRIPT_LIMIT = 40;
-var TRANSCRIPT_TEXT = 4e3;
-function chatSessionView(sessions, workspaces, currentId, cwd) {
-  const byId = sessions && typeof sessions === "object" && sessions.byId && typeof sessions.byId === "object" ? sessions.byId : {};
-  const record2 = workspaces && typeof workspaces === "object" ? workspaces : void 0;
-  const groups = Array.isArray(workspaces) ? workspaces : Array.isArray(record2?.workspaces) ? record2.workspaces : Array.isArray(record2?.items) ? record2.items : [];
-  const archived = new Set(Array.isArray(record2?.archivedSessionIds) ? record2.archivedSessionIds.filter((id) => typeof id === "string") : []);
-  const samePath = (value) => typeof value === "string" && !!cwd && (value === cwd || value.replace(/\/+$/, "") === cwd.replace(/\/+$/, ""));
-  const match = groups.find((group) => Array.isArray(group?.sessionIds) && !!currentId && group.sessionIds.includes(currentId)) ?? groups.find((group) => samePath(group?.cwd) || samePath(group?.path) || samePath(group?.repoRoot));
-  const listed = Array.isArray(match?.sessionIds) ? match.sessionIds : currentId ? [currentId] : Object.keys(byId);
-  const ids = [...new Set(listed.filter((id) => typeof id === "string"))];
-  if (currentId && byId[currentId] && !ids.includes(currentId)) ids.unshift(currentId);
-  const rows = ids.flatMap((id) => {
-    const row = byId[id];
-    if (!row || row.archived === true || archived.has(id) || row.origin === "subagent") return [];
-    if (row.blank === true && id !== currentId) return [];
-    const title = typeof row.title === "string" ? row.title.trim() : "";
-    return [{ id, title, blank: row.blank === true, running: row.running === true, updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : 0 }];
-  }).sort((left, right) => right.updatedAt - left.updatedAt || (left.id < right.id ? -1 : 1));
-  return { sessions: rows, ...typeof match?.workspaceId === "string" ? { workspaceId: match.workspaceId } : {} };
-}
-function chatRows(messages) {
-  const rows = [];
-  let tools = [];
-  let toolId = "";
-  const flush = () => {
-    if (!tools.length) return;
-    rows.push({ kind: "tools", id: `tools:${toolId}`, names: [...new Set(tools)].slice(0, 12) });
-    tools = [];
-    toolId = "";
-  };
-  for (const message of messages) {
-    if (message.role === "assistant" && !message.text && message.tools?.length) {
-      if (!toolId) toolId = message.id;
-      tools.push(...message.tools);
-      continue;
-    }
-    flush();
-    if (message.text) rows.push({ kind: "message", id: message.id, role: message.role, text: message.text });
-    if (message.tools?.length) rows.push({ kind: "tools", id: `tools:${message.id}`, names: [...new Set(message.tools)].slice(0, 12) });
-  }
-  flush();
-  return rows;
-}
-function readTranscript(value) {
-  const messages = value && typeof value === "object" ? value.messages : null;
-  if (!Array.isArray(messages)) return null;
-  const rows = [];
-  for (const message of messages) {
-    if (!message || typeof message !== "object") return null;
-    const role = message.role;
-    const text2 = message.text;
-    const id = message.id;
-    const tools = message.tools;
-    if (role !== "user" && role !== "assistant" || typeof text2 !== "string" || typeof id !== "string" || !id || id.length > 200 || text2.length > TRANSCRIPT_TEXT) return null;
-    if (tools != null && (!Array.isArray(tools) || tools.length > 8 || tools.some((name) => typeof name !== "string" || name.length > 80))) return null;
-    rows.push({ id, role, text: text2, ...Array.isArray(tools) && tools.length ? { tools } : {} });
-  }
-  return rows.length > TRANSCRIPT_LIMIT ? null : rows;
-}
-function sendConversation(inputActions, text2) {
-  const body = text2.trim();
-  if (!body || body.length > 8e3 || !inputActions) return false;
-  if (typeof inputActions.setDraft === "function" && typeof inputActions.submit === "function") {
-    inputActions.setDraft(body);
-    try {
-      inputActions.persistDraft?.();
-    } catch {
-    }
-    inputActions.submit();
-    return true;
-  }
-  if (typeof inputActions.send === "function") {
-    inputActions.send(body);
-    return true;
-  }
-  return false;
-}
-
 // src/client/controller.ts
 var errorInfo = (error) => error && typeof error === "object" ? error : {};
-var empty = () => ({ status: "loading", snapshot: null, error: null, file: null, fileStatus: "idle", fileKey: null, fileError: null, inspectedReview: null, historyStatus: "idle", historyError: null, historyId: null, pending: false, transcript: null, transcriptStatus: "idle", transcriptError: null });
+var empty = () => ({ status: "loading", snapshot: null, error: null, file: null, fileStatus: "idle", fileKey: null, fileError: null, inspectedReview: null, historyStatus: "idle", historyError: null, historyId: null, pending: false });
 var problem = (code, message = "") => ({ code: typeof code === "string" ? code : "code/unavailable", message: typeof message === "string" ? message : "" });
 function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObject = globalThis.document } = {}) {
   const entries = /* @__PURE__ */ new Map();
@@ -416,7 +336,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
   }
   const entryFor = (sessionId) => {
     if (!entries.has(sessionId)) {
-      const entry = { source: void 0, sessionId, target: { mode: "worktree" }, state: empty(), listeners: /* @__PURE__ */ new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, transcriptRequest: null, action: null };
+      const entry = { source: void 0, sessionId, target: { mode: "worktree" }, state: empty(), listeners: /* @__PURE__ */ new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, action: null };
       entry.source = {
         getSnapshot: () => entry.state,
         subscribe(listener) {
@@ -505,24 +425,6 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       if (entry.historyRequest === request) entry.historyRequest = null;
     }
   }
-  async function loadTranscript(sessionId) {
-    const entry = entryFor(sessionId);
-    if (entry.transcriptRequest) return;
-    const request = new AbortController(), generation = epoch;
-    entry.transcriptRequest = request;
-    if (entry.state.transcriptStatus !== "ready") publish(entry, { transcriptStatus: "loading", transcriptError: null });
-    try {
-      const raw = await call("code/transcript", { sessionId }, request);
-      if (disposed || request.signal.aborted || generation !== epoch || entry.transcriptRequest !== request) return;
-      const messages = readTranscript(raw);
-      if (!messages) throw problem("code/invalid-transcript");
-      publish(entry, { transcript: messages, transcriptStatus: "ready", transcriptError: null });
-    } catch (error) {
-      if (!disposed && generation === epoch && entry.transcriptRequest === request && !request.signal.aborted) publish(entry, { transcriptStatus: "failed", transcriptError: problem(errorInfo(error).code, errorInfo(error).message) });
-    } finally {
-      if (entry.transcriptRequest === request) entry.transcriptRequest = null;
-    }
-  }
   async function cancel(sessionId) {
     const entry = entryFor(sessionId), snapshot = entry.state.snapshot, operation = snapshot?.operation, generation = epoch;
     if (!snapshot || entry.action || entry.state.status !== "live" || !operation?.id || operation.state === "cancelling") return { ok: false, error: problem("code/stale-action") };
@@ -553,9 +455,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       stopFile(entry);
       entry.action?.abort();
       entry.historyRequest?.abort();
-      entry.transcriptRequest?.abort();
       entry.historyRequest = null;
-      entry.transcriptRequest = null;
       entry.action = null;
       entry.fileTarget = null;
       publish(entry, empty());
@@ -569,7 +469,6 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     loadFile,
     clearFile,
     loadReview,
-    loadTranscript,
     cancel,
     reset,
     dispose() {
@@ -580,7 +479,6 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
         stopFile(entry);
         entry.action?.abort();
         entry.historyRequest?.abort();
-        entry.transcriptRequest?.abort();
         entry.listeners.clear();
       }
       ;
@@ -1157,9 +1055,6 @@ function Splitter({ value, bounds, label, orientation, direction, className = ""
   );
 }
 
-// src/client/components.tsx
-var import_dsh_client_ui_primitives2 = require("@deepseek-ai/dsh-client-ui-primitives");
-
 // src/client/locales.ts
 var NS = "dshXCode";
 var en = {
@@ -1195,21 +1090,7 @@ var en = {
   reviewSummary: "Review",
   problems: "Problems",
   chat: "Chat",
-  chatYou: "You",
-  chatAssistant: "Assistant",
-  chatEmpty: "No messages in this conversation yet.",
-  chatLoading: "Loading conversation\u2026",
-  chatFailed: "The conversation could not be loaded.",
-  chatPlaceholder: "Message this conversation",
-  chatSend: "Send",
-  chatSendFailed: "The message was not sent. Try again from the conversation input.",
-  chatTools: "Tools: {names}",
-  chatSessions: "Conversations",
-  chatNew: "New chat",
-  chatUntitled: "Untitled",
-  chatBlank: "New chat",
-  chatCurrent: "Current",
-  chatNote: "Chats in this workspace. Switch or start one here; images, / and @ stay in the main composer.",
+  chatUnavailable: "The shared conversation is unavailable here. Open the main conversation instead.",
   noHistory: "No recorded reviews yet.",
   toggleSidebar: "Toggle sidebar",
   togglePanel: "Toggle review panel",
@@ -1444,21 +1325,7 @@ var zh = {
   reviewSummary: "\u5BA1\u67E5",
   problems: "\u95EE\u9898",
   chat: "\u5BF9\u8BDD",
-  chatYou: "\u4F60",
-  chatAssistant: "\u52A9\u624B",
-  chatEmpty: "\u8FD9\u6761\u5BF9\u8BDD\u91CC\u8FD8\u6CA1\u6709\u53EF\u663E\u793A\u7684\u6D88\u606F\u3002",
-  chatLoading: "\u6B63\u5728\u8BFB\u53D6\u5BF9\u8BDD\u2026",
-  chatFailed: "\u6682\u65F6\u65E0\u6CD5\u8BFB\u53D6\u5BF9\u8BDD\u3002",
-  chatPlaceholder: "\u7ED9\u8FD9\u6761\u5BF9\u8BDD\u53D1\u6D88\u606F",
-  chatSend: "\u53D1\u9001",
-  chatSendFailed: "\u8FD9\u6761\u6D88\u606F\u6CA1\u6709\u53D1\u51FA\uFF0C\u8BF7\u56DE\u5230\u5BF9\u8BDD\u8F93\u5165\u6846\u518D\u8BD5\u3002",
-  chatTools: "\u5DE5\u5177\uFF1A{names}",
-  chatSessions: "\u4F1A\u8BDD",
-  chatNew: "\u65B0\u5BF9\u8BDD",
-  chatUntitled: "\u672A\u547D\u540D",
-  chatBlank: "\u65B0\u5BF9\u8BDD",
-  chatCurrent: "\u5F53\u524D",
-  chatNote: "\u8FD9\u91CC\u53EA\u5217\u51FA\u8FD9\u4E2A\u5DE5\u4F5C\u533A\u7684\u5BF9\u8BDD\u3002\u5207\u6362\u6216\u65B0\u5EFA\u540E\uFF0C\u6587\u5B57\u5728\u4E0B\u9762\u53D1\u9001\uFF1B\u56FE\u7247\u3001/ \u548C @ \u4ECD\u7528\u4E3B\u5BF9\u8BDD\u7684\u8F93\u5165\u6846\u3002",
+  chatUnavailable: "\u8FD9\u91CC\u6682\u65F6\u65E0\u6CD5\u5D4C\u5165\u5171\u4EAB\u5BF9\u8BDD\uFF0C\u8BF7\u6539\u7528\u4E3B\u5BF9\u8BDD\u3002",
   noHistory: "\u8FD8\u6CA1\u6709\u5BA1\u67E5\u8BB0\u5F55\u3002",
   toggleSidebar: "\u663E\u793A/\u9690\u85CF\u4FA7\u8FB9\u680F",
   togglePanel: "\u663E\u793A/\u9690\u85CF\u5BA1\u67E5\u9762\u677F",
@@ -1762,52 +1629,28 @@ function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTim
   if (!review) return /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-empty dxc-panel-empty" }, /* @__PURE__ */ import_react7.default.createElement(ReviewIcon, { size: 24 }), /* @__PURE__ */ import_react7.default.createElement("strong", null, t("noReview")), /* @__PURE__ */ import_react7.default.createElement("p", null, t("noReviewHint")));
   return /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-review-summary" }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-review-state", role: "status" }, /* @__PURE__ */ import_react7.default.createElement("span", { className: `dxc-state-dot dxc-review-${review.state}` }), /* @__PURE__ */ import_react7.default.createElement("strong", null, t(Object.hasOwn(en, `state.${review.state}`) ? `state.${review.state}` : "incomplete"))), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-muted" }, t("coverage", { count: review.paths?.length ?? 0 }), " \xB7 ", shortHash(review.snapshotId)), review.createdAt && /* @__PURE__ */ import_react7.default.createElement("time", { className: "dxc-muted" }, formatTime(review.createdAt)), review.summary && /* @__PURE__ */ import_react7.default.createElement("details", null, /* @__PURE__ */ import_react7.default.createElement("summary", null, t("summary")), /* @__PURE__ */ import_react7.default.createElement("p", null, review.summary))), review.stale && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react7.default.createElement("strong", null, t("stale")), /* @__PURE__ */ import_react7.default.createElement("p", null, t("staleHint"))), !complete && !activeReview(review) && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react7.default.createElement("strong", null, t("incomplete")), /* @__PURE__ */ import_react7.default.createElement("p", null, t("incompleteHint")), review.reason && /* @__PURE__ */ import_react7.default.createElement("details", null, /* @__PURE__ */ import_react7.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react7.default.createElement("p", null, review.reason))), review.findings.length > 0 && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-filter" }, /* @__PURE__ */ import_react7.default.createElement("select", { className: "dxc-severity-filter", value: severity, "aria-label": t("allFindings"), onChange: (event) => setSeverity(event.target.value) }, /* @__PURE__ */ import_react7.default.createElement("option", { value: "all" }, t("allFindings")), SEVERITIES.map((item) => /* @__PURE__ */ import_react7.default.createElement("option", { key: item, value: item }, t(`severity.${item}`), " (", review.findings.filter((finding) => finding.severity === item).length, ")")))), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-findings-list" }, filtered.map((finding) => /* @__PURE__ */ import_react7.default.createElement(FindingCard, { key: finding.id, finding, jump: () => jump(finding), t })), complete && review.findings.length === 0 && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-no-findings" }, t("noFindings"))), /* @__PURE__ */ import_react7.default.createElement("section", { className: "dxc-checks" }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react7.default.createElement("strong", null, t("checks"))), review.checks?.length ? /* @__PURE__ */ import_react7.default.createElement("ul", null, review.checks.map((check, at) => /* @__PURE__ */ import_react7.default.createElement("li", { key: at }, /* @__PURE__ */ import_react7.default.createElement("span", null, check.name ?? check.command ?? t("checks")), /* @__PURE__ */ import_react7.default.createElement("span", { className: check.status === "failed" ? "dxc-warning" : "dxc-muted" }, t(check.status === "passed" && check.verified !== true ? "check.unknown" : Object.hasOwn(en, `check.${check.status}`) ? `check.${check.status}` : "check.unknown")), check.evidence && /* @__PURE__ */ import_react7.default.createElement("details", null, /* @__PURE__ */ import_react7.default.createElement("summary", null, t("evidence")), /* @__PURE__ */ import_react7.default.createElement("pre", null, check.evidence))))) : /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-muted" }, t("noChecks"))), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-findings-actions" }, complete && /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", disabled: !enabled || !canRereview, onClick: rereview }, t("rereview")), !canRereview && complete && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-muted" }, t("worktreeFirst"))));
 }
-function sessionLabel(session, current, t) {
-  const name = session.title || (session.blank ? t("chatBlank") : t("chatUntitled"));
-  return current ? `${name} \xB7 ${t("chatCurrent")}` : name;
+function ChatView({ renderSlot }) {
+  return /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, renderSlot("conversation.session", { view: "chat" }));
 }
-function ChatPane({ messages, status, onSend, t, sessionId, cwd, sessionList, workspaceList, openSession, startSession, renderFactorySlot }) {
-  const [text2, setText] = (0, import_react7.useState)(""), [failed, setFailed] = (0, import_react7.useState)(false), log = (0, import_react7.useRef)(null);
-  const rows = (0, import_react7.useMemo)(() => chatRows(messages ?? []), [messages]);
-  const directory = (0, import_react7.useMemo)(() => chatSessionView(sessionList, workspaceList, sessionId, cwd), [sessionList, workspaceList, sessionId, cwd]);
-  const choices = directory.sessions.length ? directory.sessions : sessionId ? [{ id: sessionId, title: "", blank: false, running: false, updatedAt: 0 }] : [];
-  const labels = (0, import_react7.useMemo)(() => ({ code: { copyLabel: t("copyCode"), copiedLabel: t("copiedCode") }, footnotes: t("footnotes") }), [t]);
-  (0, import_react7.useEffect)(() => {
-    const node = log.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [rows]);
-  const send = () => {
-    const ok = onSend(text2);
-    setFailed(!ok);
-    if (ok) setText("");
-    return ok;
-  };
-  return /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-chat" }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-chat-bar" }, /* @__PURE__ */ import_react7.default.createElement("select", { "aria-label": t("chatSessions"), value: sessionId ?? "", disabled: !openSession || choices.length === 0, onChange: (event) => {
-    if (event.target.value && event.target.value !== sessionId) openSession?.(event.target.value);
-  } }, choices.map((session) => /* @__PURE__ */ import_react7.default.createElement("option", { key: session.id, value: session.id }, sessionLabel(session, session.id === sessionId, t)))), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", disabled: !startSession, onClick: () => startSession?.(directory.workspaceId) }, t("chatNew"))), /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-chat-note" }, t("chatNote")), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-chat-log", ref: log, role: "log", "aria-label": t("chat") }, status === "loading" && !messages && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("chatLoading")), status === "failed" && !messages && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state", role: "alert" }, t("chatFailed")), messages && rows.length === 0 && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("chatEmpty")), rows.map((row) => row.kind === "tools" ? /* @__PURE__ */ import_react7.default.createElement("div", { key: row.id, className: "dxc-chat-tools", "aria-label": t("chatTools", { names: row.names.join(", ") }) }, row.names.map((name) => /* @__PURE__ */ import_react7.default.createElement("span", { key: name }, name))) : /* @__PURE__ */ import_react7.default.createElement("article", { key: row.id, className: `dxc-chat-row dxc-chat-${row.role}` }, /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-chat-role" }, t(row.role === "user" ? "chatYou" : "chatAssistant")), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-chat-copy" }, /* @__PURE__ */ import_react7.default.createElement(import_dsh_client_ui_primitives2.MarkdownText, { text: row.text, labels, variant: "body" }))))), failed && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-chat-error", role: "alert" }, t("chatSendFailed")), /* @__PURE__ */ import_react7.default.createElement("form", { className: "dxc-chat-form", onSubmit: (event) => {
-    event.preventDefault();
-    send();
-  } }, /* @__PURE__ */ import_react7.default.createElement("textarea", { value: text2, rows: 1, maxLength: 8e3, placeholder: t("chatPlaceholder"), "aria-label": t("chatPlaceholder"), onChange: (event) => setText(event.target.value), onKeyDown: (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      send();
-    }
-  } }), /* @__PURE__ */ import_react7.default.createElement("button", { type: "submit", disabled: !text2.trim() }, t("chatSend"))));
+function ConversationEmbed({ renderFactorySlot, sessionId, useSession, useConversation, useSessions, t }) {
+  const session = useSession?.((value) => value);
+  const conversation = useConversation?.((value) => value);
+  const summaryBlank = useSessions?.((state) => state?.byId?.[sessionId]?.blank);
+  const shellPhase = session === void 0 ? "active" : conversation?.activeTargets?.size > 0 || !session.blank && !session.awaitingFirstTurn || session.running ? "active" : session.promptAttempted ? "engaging" : "blank";
+  const settling = shellPhase === "blank" && session?.openState === "loading" && summaryBlank !== true;
+  const hero = shellPhase === "blank" && (session?.openState === "open" || summaryBlank === true);
+  const phase = settling ? "settling" : hero ? "hero" : "active";
+  if (typeof renderFactorySlot !== "function") return /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("chatUnavailable"));
+  return /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-chat-embed" }, renderFactorySlot("conversation.content", { variant: "embedded", phase, hero }, { slots: { views: ChatView }, fallback: /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("chatUnavailable")) }));
 }
-function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, transcript, transcriptStatus, onSend, sessionId, cwd, sessionList, workspaceList, openSession, startSession, renderFactorySlot }) {
+function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, renderFactorySlot, sessionId, useSession, useConversation, useSessions }) {
   const problems = review?.findings.length ?? 0;
-  return /* @__PURE__ */ import_react7.default.createElement("aside", { className: "dxc-panel", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-tabs", role: "tablist", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "problems", onClick: () => setTab("problems") }, t("problems"), problems > 0 && /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-count" }, problems)), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "review", onClick: () => setTab("review") }, t("reviewSummary")), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "chat", onClick: () => setTab("chat") }, t("chat"))), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-body" }, tab === "chat" ? /* @__PURE__ */ import_react7.default.createElement(ChatPane, { messages: transcript, status: transcriptStatus, onSend, t, sessionId, cwd, sessionList, workspaceList, openSession, startSession, renderFactorySlot }) : tab === "problems" ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-problems" }, !review ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("noReviewHint")) : review.findings.length === 0 ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, isComplete(review) ? t("noFindings") : t("incomplete")) : /* @__PURE__ */ import_react7.default.createElement("ul", { className: "dxc-problem-list" }, review.findings.map((finding) => /* @__PURE__ */ import_react7.default.createElement("li", { key: finding.id }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-problem", onClick: () => jump(finding) }, /* @__PURE__ */ import_react7.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-title" }, finding.title), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-path", title: finding.path }, basename(finding.path), /* @__PURE__ */ import_react7.default.createElement("span", null, ":", finding.startLine))))))) : /* @__PURE__ */ import_react7.default.createElement(ReviewPane, { review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory })));
+  return /* @__PURE__ */ import_react7.default.createElement("aside", { className: "dxc-panel", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-tabs", role: "tablist", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "problems", onClick: () => setTab("problems") }, t("problems"), problems > 0 && /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-count" }, problems)), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "review", onClick: () => setTab("review") }, t("reviewSummary")), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "chat", onClick: () => setTab("chat") }, t("chat"))), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-body" }, tab === "chat" ? /* @__PURE__ */ import_react7.default.createElement(ConversationEmbed, { renderFactorySlot, sessionId, useSession, useConversation, useSessions, t }) : tab === "problems" ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-problems" }, !review ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("noReviewHint")) : review.findings.length === 0 ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, isComplete(review) ? t("noFindings") : t("incomplete")) : /* @__PURE__ */ import_react7.default.createElement("ul", { className: "dxc-problem-list" }, review.findings.map((finding) => /* @__PURE__ */ import_react7.default.createElement("li", { key: finding.id }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-problem", onClick: () => jump(finding) }, /* @__PURE__ */ import_react7.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-title" }, finding.title), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-path", title: finding.path }, basename(finding.path), /* @__PURE__ */ import_react7.default.createElement("span", null, ":", finding.startLine))))))) : /* @__PURE__ */ import_react7.default.createElement(ReviewPane, { review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory })));
 }
 function CodeWorkspace(props) {
-  if (typeof props.useSessions === "function" && typeof props.useWorkspaces === "function") return /* @__PURE__ */ import_react7.default.createElement(BoundSessions, { ...props });
   return /* @__PURE__ */ import_react7.default.createElement(CodeWorkspaceBody, { ...props });
 }
-function BoundSessions(props) {
-  const sessionList = props.useSessions((state) => state);
-  const workspaceList = props.useWorkspaces((state) => state);
-  return /* @__PURE__ */ import_react7.default.createElement(CodeWorkspaceBody, { ...props, sessionList, workspaceList });
-}
-function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, loadTranscript, openSession, startSession, renderFactorySlot, cancel, back, t, formatTime, sessionList = null, workspaceList = null }) {
+function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, renderFactorySlot, useSession, useConversation, useSessions, cancel, back, t, formatTime }) {
   const state = useCode((value) => value), snapshot = state.snapshot;
   const page = (0, import_react7.useRef)(null);
   const workbench = (0, import_react7.useRef)(null);
@@ -1817,13 +1660,6 @@ function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTa
   const [selected, setSelected] = (0, import_react7.useState)([]), [context, setContext] = (0, import_react7.useState)("current"), [notice, setNotice] = (0, import_react7.useState)(null), [focus, setFocus] = (0, import_react7.useState)(null);
   const [base2, setBase] = (0, import_react7.useState)(snapshot?.workspace.baseRef ?? "main"), [mode, setMode] = (0, import_react7.useState)(snapshot?.workspace.mode ?? "worktree");
   const scrollPositions = (0, import_react7.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react7.useRef)(null), previousReview = (0, import_react7.useRef)(void 0), rereviewId = (0, import_react7.useRef)(null);
-  const chatOpen = !layout.panelCollapsed && layout.panelTab === "chat";
-  (0, import_react7.useEffect)(() => {
-    if (!sessionId || !chatOpen) return;
-    loadTranscript();
-    const timer = setInterval(loadTranscript, 1500);
-    return () => clearInterval(timer);
-  }, [sessionId, chatOpen]);
   (0, import_react7.useEffect)(() => {
     if (!globalThis.ResizeObserver || !page.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -1997,11 +1833,7 @@ ${JSON.stringify(args, null, 2)}`);
   } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react7.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react7.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, narrow && /* @__PURE__ */ import_react7.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: pane, onChange: setPane, items: [{ value: "files", label: t("files") }, { value: "code", label: t("code") }, { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-workbench", ref: workbench, style: narrow ? void 0 : { gridTemplateColumns: columns } }, !narrow && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-track-activity" }, /* @__PURE__ */ import_react7.default.createElement(ActivityBar, { activity: layout.activity, onChange: changeActivity, counts, t })), (narrow || showSidebar) && /* @__PURE__ */ import_react7.default.createElement(Sidebar, { files, path: effectivePath, selected, select: toggleFile, open: (next) => openFile(next), t, limit: maxFiles, snapshot, reviewed: context === "review", activity: layout.activity, history: snapshot.history, historyId, inspectHistory, latest, formatTime }), !narrow && showSidebar && /* @__PURE__ */ import_react7.default.createElement(Splitter, { value: layout.sidebar, bounds: SIDEBAR_BOUNDS, label: t("resizeSidebar"), orientation: "vertical", direction: 1, className: "dxc-track-sidebar-splitter", onResize: (value) => setLayout({ sidebar: value }), onPreview: (value) => paintTrack(value, layout.panel), onToggle: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }), /* @__PURE__ */ import_react7.default.createElement("section", { className: "dxc-editor" }, /* @__PURE__ */ import_react7.default.createElement(EditorTabs, { path: effectivePath, tabs, select: (next) => setPath(next), close: closeTabPath, reorder: (from, to) => setTabs((value) => moveTab(value, from, to)), closeOthers, closeAll, t }), /* @__PURE__ */ import_react7.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
     clearFile();
     if (request) loadFile(request);
-  }, scrollPositions, t })), !narrow && showPanel && /* @__PURE__ */ import_react7.default.createElement(Splitter, { value: layout.panel, bounds: PANEL_BOUNDS, label: t("resizePanel"), orientation: "vertical", direction: -1, className: "dxc-track-panel-splitter", onResize: (value) => setLayout({ panel: value }), onPreview: (value) => paintTrack(layout.sidebar, value), onToggle: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }), (narrow || showPanel) && /* @__PURE__ */ import_react7.default.createElement(BottomPanel, { tab: layout.panelTab, setTab: (tab) => setLayout({ panelTab: tab }), review, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime, transcript: state.transcript, transcriptStatus: state.transcriptStatus, onSend: (text2) => {
-    const sent = sendConversation(inputActions, text2);
-    if (sent) loadTranscript();
-    return sent;
-  }, sessionId, cwd: snapshot.workspace.cwd ?? snapshot.workspace.repoRoot, sessionList, workspaceList, openSession, startSession, renderFactorySlot }))));
+  }, scrollPositions, t })), !narrow && showPanel && /* @__PURE__ */ import_react7.default.createElement(Splitter, { value: layout.panel, bounds: PANEL_BOUNDS, label: t("resizePanel"), orientation: "vertical", direction: -1, className: "dxc-track-panel-splitter", onResize: (value) => setLayout({ panel: value }), onPreview: (value) => paintTrack(layout.sidebar, value), onToggle: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }), (narrow || showPanel) && /* @__PURE__ */ import_react7.default.createElement(BottomPanel, { tab: layout.panelTab, setTab: (tab) => setLayout({ panelTab: tab }), review, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime, renderFactorySlot, sessionId, useSession, useConversation, useSessions }))));
 }
 function CodeToolRow({ phase, block, open, t }) {
   const meta = block?.meta, valid = meta?.kind === "dsh-x-code.result" && meta.version === 1;
@@ -2012,27 +1844,29 @@ function CodeToolRow({ phase, block, open, t }) {
 // src/client/styles.ts
 var CSS = `
 .dxc{--code-bg:var(--dsw-alias-bg-layer-1,#fff);--code-soft:var(--dsw-alias-bg-layer-2,#f5f6f8);--code-sunken:var(--dsw-specific-sidebar-fill,color-mix(in srgb,var(--dsw-alias-bg-layer-2,#f2f3f5) 70%,var(--dsw-alias-bg-layer-1,#fff)));--code-line:var(--dsw-alias-border-l2,#e2e5e9);--code-line-soft:var(--dsw-alias-border-l1,#eceef1);--code-fg:var(--dsw-alias-label-primary,#20252e);--code-muted:var(--dsw-alias-label-secondary,#717885);--code-accent:var(--dsw-alias-brand-primary,#4666d5);--code-warning:var(--dsw-alias-state-warn-primary,#9b6815);--code-success:var(--dsw-alias-state-success-primary,#2b865c);--code-danger:var(--dsw-alias-state-error-primary,#bb5863);--code-tab-h:35px;color:var(--code-fg);font:13px/1.5 var(--dsw-font-family,system-ui,sans-serif);box-sizing:border-box}
-.dxc *{box-sizing:border-box;min-width:0}
+/* Generic element styling stops at the embedded Conversation: the shell owns
+   every control, heading and paragraph inside it. */
+.dxc :not(.dxc-chat-embed *){box-sizing:border-box;min-width:0}
 .dxc-page{height:100%;min-height:0;width:100%;max-width:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--code-bg);container-type:inline-size}
-.dxc h1,.dxc h2,.dxc p{margin:0}
-.dxc button,.dxc input,.dxc select{font:inherit;color:inherit}
-.dxc button,.dxc select,.dxc input[type=search],.dxc input:not([type]){border:1px solid var(--code-line);border-radius:6px;background:var(--code-bg)}
-.dxc button{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 10px;font-size:12px;line-height:1;border-radius:6px;white-space:nowrap}
+.dxc :is(h1,h2,p):not(.dxc-chat-embed *){margin:0}
+.dxc :is(button,input,select):not(.dxc-chat-embed *){font:inherit;color:inherit}
+.dxc :is(button,select,input[type=search],input:not([type])):not(.dxc-chat-embed *){border:1px solid var(--code-line);border-radius:6px;background:var(--code-bg)}
+.dxc button:not(.dxc-chat-embed *){cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 10px;font-size:12px;line-height:1;border-radius:6px;white-space:nowrap}
 .dxc :is(.dxc-file,.dxc-problem,.dxc-finding-title,.dxc-location,.dxc-link,.dxc-history-item,.dxc-tab-popup button,.dxc-file-footer button){height:auto;min-height:0}
-.dxc button:hover:not(:disabled){background:var(--code-soft)}
-.dxc button:disabled,.dxc input:disabled,.dxc select:disabled{opacity:.45;cursor:not-allowed}
-.dxc :is(button,input,select,summary,[tabindex]):focus-visible{outline:2px solid var(--code-accent);outline-offset:2px}
+.dxc button:not(.dxc-chat-embed *):hover:not(:disabled){background:var(--code-soft)}
+.dxc :is(button,input,select):not(.dxc-chat-embed *):disabled{opacity:.45;cursor:not-allowed}
+.dxc :is(button,input,select,summary,[tabindex]):not(.dxc-chat-embed *):focus-visible{outline:2px solid var(--code-accent);outline-offset:2px}
 .dxc input[type=checkbox]{width:13px;height:13px;flex:none;margin:0;accent-color:var(--code-accent)}
-.dxc input[type=search],.dxc input:not([type]),.dxc select{height:28px;padding:0 8px;font-size:12px}
-.dxc select{max-width:100%}
+.dxc :is(input[type=search],input:not([type]),select):not(.dxc-chat-embed *){height:28px;padding:0 8px;font-size:12px}
+.dxc select:not(.dxc-chat-embed *){max-width:100%}
 .dxc .dxc-primary{background:var(--code-accent);border-color:var(--code-accent);color:var(--dsw-alias-label-primary-foreground,#fff);font-weight:550}
 .dxc .dxc-primary:hover:not(:disabled){background:color-mix(in srgb,var(--code-accent) 90%,#000)}
 .dxc-muted{color:var(--code-muted);font-size:11px}
 .dxc-warning{color:var(--code-warning)}
 .dxc-inline-warning{background:color-mix(in srgb,var(--code-warning) 8%,var(--code-bg));color:var(--code-warning);padding:8px 12px;font:12px/1.5 system-ui,sans-serif;white-space:normal}
-.dxc details summary{cursor:pointer;color:var(--code-muted);font-size:11px}
-.dxc pre{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;margin:6px 0}
-.dxc details p{font-size:12px;margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.dxc details:not(.dxc-chat-embed *) summary{cursor:pointer;color:var(--code-muted);font-size:11px}
+.dxc pre:not(.dxc-chat-embed *){white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;margin:6px 0}
+.dxc details:not(.dxc-chat-embed *) p{font-size:12px;margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}
 
 /* Title bar: a compact, editor-like header instead of a page hero. */
 .dxc-titlebar{display:flex;align-items:center;gap:12px;justify-content:space-between;height:44px;padding:0 12px;padding-inline-start:max(12px,var(--dsh-frame-leading-clearance,0px));border-bottom:1px solid var(--code-line-soft);background:var(--code-sunken);flex:none}
@@ -2226,32 +2060,14 @@ var CSS = `
 .dxc-panel-tabs button[aria-selected=true]::after{content:'';position:absolute;inset-inline:4px;bottom:0;height:1px;background:var(--code-accent)}
 .dxc-panel-tabs .dxc-count{margin-left:0;background:color-mix(in srgb,var(--code-fg) 12%,transparent);color:var(--code-fg)}
 .dxc-panel-body{flex:1;overflow:auto;min-height:0;padding-bottom:10px}
-.dxc-panel-body:has(.dxc-chat){display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
-.dxc-chat{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--code-sunken)}
-.dxc-chat-bar{display:flex;gap:6px;align-items:center;padding:8px;border-bottom:1px solid var(--code-line-soft);background:var(--code-bg);flex:none}
-.dxc-chat-note{margin:0;padding:6px 12px;border-bottom:1px solid var(--code-line-soft);color:var(--code-muted);font-size:11px;line-height:1.45;background:var(--code-bg);flex:none}
-.dxc-chat-bar select{flex:1;min-width:0;height:28px}
-.dxc .dxc-chat-bar button{height:28px;padding:0 8px;font-size:12px;white-space:nowrap}
-.dxc-chat-log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px;padding:16px 14px 12px}
-.dxc-chat-row{display:flex;flex-direction:column;gap:4px;max-width:100%}
-.dxc-chat-user{align-self:flex-end;max-width:88%;padding:8px 12px;border-radius:14px 14px 4px 14px;background:color-mix(in srgb,var(--code-accent) 16%,var(--code-bg));border:1px solid color-mix(in srgb,var(--code-accent) 22%,transparent)}
-.dxc-chat-assistant{align-self:stretch;padding:2px 2px 0}
-.dxc-chat-role{font-size:10px;font-weight:650;letter-spacing:.02em;color:var(--code-muted)}
-.dxc-chat-user .dxc-chat-role{text-align:end}
-.dxc-chat-copy{font:13px/1.55 var(--dsw-font-family,system-ui,sans-serif);color:var(--code-fg)}
-.dxc .dxc-chat-copy :is(h1,h2,h3,h4,p,ul,ol,blockquote){margin:0.45em 0}
-.dxc .dxc-chat-copy h1,.dxc .dxc-chat-copy h2,.dxc .dxc-chat-copy h3,.dxc .dxc-chat-copy h4{font-size:13px;line-height:1.4;font-weight:650}
-.dxc .dxc-chat-copy :is(ul,ol){padding-inline-start:1.15em}
-.dxc .dxc-chat-copy :not(pre)>code{padding:0.05em 0.3em;border-radius:4px;background:var(--code-soft);font:0.92em ui-monospace,SFMono-Regular,Consolas,monospace}
-.dxc .dxc-chat-copy pre{margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--code-bg);border:1px solid var(--code-line-soft);overflow:auto;font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
-.dxc .dxc-chat-copy a{color:var(--code-accent)}
-.dxc-chat-tools{display:flex;flex-wrap:wrap;gap:4px;align-self:flex-start}
-.dxc-chat-tools span{height:20px;padding:0 7px;border-radius:999px;background:var(--code-bg);border:1px solid var(--code-line-soft);color:var(--code-muted);font:10px/18px ui-monospace,SFMono-Regular,Consolas,monospace}
-.dxc-chat-error{margin:0 12px;padding:6px 8px;border-radius:8px;background:color-mix(in srgb,var(--code-warning) 10%,var(--code-bg));color:var(--code-warning);font-size:11px}
-.dxc-chat-form{display:flex;gap:8px;align-items:flex-end;margin:8px;padding:6px 6px 6px 10px;border:1px solid var(--code-line);border-radius:12px;background:var(--code-bg);box-shadow:0 1px 2px #0000000a;flex:none}
-.dxc-chat-form textarea{flex:1;min-height:22px;max-height:96px;resize:none;border:0;padding:6px 0;background:transparent;color:inherit;font:13px/1.45 var(--dsw-font-family,system-ui,sans-serif);outline:none}
-.dxc .dxc-chat-form button{height:28px;padding:0 12px;border-radius:8px;background:var(--code-accent);border-color:var(--code-accent);color:var(--dsw-alias-label-primary-foreground,#fff);font-size:12px}
-.dxc .dxc-chat-form button:disabled{opacity:.4}
+.dxc-panel-body:has(.dxc-chat-embed){display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
+/* The embedded official Conversation owns its own scrollport, composer and draft. */
+.dxc-chat-embed{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:var(--code-bg)}
+.dxc-chat-embed>[data-factory-error],.dxc-chat-embed>[data-slot]{display:flex;flex:1;min-height:0;flex-direction:column}
+.dxc-chat-embed :is([data-slot=conversation.session],[data-slot=conversation.view]){display:flex;flex:1;min-height:0;flex-direction:column}
+.dxc-chat-embed .dxc-state{padding:16px 14px}
+/* The Code launcher is meaningless inside Code's own embedded conversation. */
+.dxc-chat-embed [data-slot=conversation.input.dock] .dxc-dock{display:none}
 .dxc-problems{padding:4px 0}
 .dxc-problem-list{list-style:none;margin:0;padding:0}
 .dxc-problem{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:'sev title' 'sev path';gap:1px 8px;width:100%;text-align:left;border:0!important;background:transparent!important;padding:5px 10px!important;border-radius:0}
@@ -2337,7 +2153,7 @@ var CSS = `
 `;
 
 // src/client/index.ts
-var inject = ["slots", "connection", "layout", "locale", "uiWorkspace"];
+var inject = ["slots", "connection", "layout", "locale"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "code: dictionaries");
   const t = ctx.locale.bind(NS), controller = createCodeController(ctx.connection.rpc);
@@ -2367,9 +2183,6 @@ function apply(ctx) {
       refresh: () => sessionId && controller.refresh(sessionId),
       selectTarget: (mode, base2) => sessionId && controller.selectTarget(sessionId, mode, base2),
       loadReview: (reviewId) => sessionId && controller.loadReview(sessionId, reviewId),
-      loadTranscript: () => sessionId && controller.loadTranscript(sessionId),
-      openSession: (id) => ctx.uiWorkspace?.openSession?.(id),
-      startSession: (workspaceId) => ctx.uiWorkspace?.startSession?.(workspaceId),
       loadFile: (target) => sessionId && controller.loadFile(sessionId, target),
       clearFile: () => sessionId && controller.clearFile(sessionId),
       cancel: () => controller.cancel(sessionId)

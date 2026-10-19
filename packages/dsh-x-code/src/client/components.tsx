@@ -8,10 +8,6 @@ import { CodeViewer, Tabs } from './CodeViewer.tsx'
 import { Splitter } from './Splitter.tsx'
 import { PANEL_BOUNDS, SIDEBAR_BOUNDS, addTab, browserStorage, closeTab, moveTab, useWorkbenchLayout } from './layout.ts'
 import { activeReview, basename, fileTree, insertRequest, isChanged, isComplete, reviewRequest, SEVERITIES, shortHash } from './model.ts'
-import { chatRows, chatSessionView, sendConversation } from '../transcript.ts'
-import type { TranscriptMessage } from '../transcript.ts'
-import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import { en, messageKey } from './locales.ts'
 import { ChangesIcon, ChevronIcon, CloseIcon, CodeGlyph, ExplorerIcon, HistoryIcon, PanelIcon, ReviewIcon, SidebarIcon } from './icons.tsx'
 import { FileTypeIcon, FolderIcon } from './FileIcon.tsx'
@@ -21,8 +17,13 @@ export interface PanelProps { renderSlot(name: string, props: Record<string, unk
 interface ActivityBarProps { activity: Activity, onChange: (activity: Activity) => void, counts: Record<Activity, number>, t: Translate }
 interface SidebarProps { files: CodeFile[], path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, snapshot: CodeSnapshot, reviewed: boolean, activity: Activity, history: CodeSnapshot['history'], historyId: string | null, inspectHistory: (id: string) => void, latest: () => void, formatTime: (value: string) => string }
 interface EditorTabsProps { path: string | null, tabs: { path: string, preview: boolean }[], select: (path: string) => void, close: (path: string) => void, reorder: (from: number, to: number) => void, closeOthers: (path: string) => void, closeAll: () => void, t: Translate }
-interface BottomPanelProps { tab: PanelTab, setTab: (tab: PanelTab) => void, review: CodeReview | null | undefined, historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, jump: (finding: Finding) => void, rereview: () => void, enabled: boolean, canRereview: boolean, t: Translate, formatTime: (value: string) => string, transcript: TranscriptMessage[] | null, transcriptStatus: string, onSend: (text: string) => boolean, sessionId: string | null, cwd?: string, sessionList: unknown, workspaceList: unknown, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, renderFactorySlot?: WorkspaceProps['renderFactorySlot'] }
-export interface WorkspaceProps { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, loadTranscript: () => void, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, useSessions?: (selector: (state: any) => any) => any, useWorkspaces?: (selector: (state: any) => any) => any, renderFactorySlot?: (name: string, props: Record<string, unknown>) => React.ReactNode, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
+interface ShellHooks {
+  useSession?: (selector: (value: any) => any) => any
+  useConversation?: (selector: (value: any) => any) => any
+  useSessions?: (selector: (value: any) => any) => any
+}
+interface BottomPanelProps extends ShellHooks { tab: PanelTab, setTab: (tab: PanelTab) => void, review: CodeReview | null | undefined, historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, jump: (finding: Finding) => void, rereview: () => void, enabled: boolean, canRereview: boolean, t: Translate, formatTime: (value: string) => string, renderFactorySlot: WorkspaceProps['renderFactorySlot'], sessionId: string }
+export interface WorkspaceProps extends ShellHooks { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, renderFactorySlot: (name: string, props: Record<string, unknown>, options?: { slots?: Record<string, unknown>, fallback?: React.ReactNode }) => React.ReactNode, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
 export interface ToolRowProps extends EntryProps { phase: string, block?: { isError?: boolean, meta?: { kind?: string, version?: number, review?: CodeReview } } }
 
 export function CodeIcon() { return <CodeGlyph size={20} /> }
@@ -131,7 +132,7 @@ function FindingCard({ finding, jump, t }: { finding: Finding, jump: () => void,
   </article>
 }
 
-function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }: Omit<BottomPanelProps, 'tab' | 'setTab' | 'transcript' | 'transcriptStatus' | 'onSend' | 'sessionId' | 'cwd' | 'sessionList' | 'workspaceList' | 'openSession' | 'startSession' | 'renderFactorySlot'>) {
+function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }: Omit<BottomPanelProps, 'tab' | 'setTab' | 'renderFactorySlot' | 'sessionId' | keyof ShellHooks>) {
   const [severity, setSeverity] = useState('all')
   const filtered = review?.findings.filter(finding => severity === 'all' || finding.severity === severity) ?? []
   const complete = isComplete(review)
@@ -150,44 +151,35 @@ function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTim
   </>
 }
 
-function sessionLabel(session: { title: string, blank: boolean }, current: boolean, t: Translate) {
-  const name = session.title || (session.blank ? t('chatBlank') : t('chatUntitled'))
-  return current ? `${name} · ${t('chatCurrent')}` : name
+function ChatView({ renderSlot }: { renderSlot: (name: string, owner: Record<string, unknown>) => React.ReactNode }) {
+  return <>{renderSlot('conversation.session', { view: 'chat' })}</>
 }
 
-function ChatPane({ messages, status, onSend, t, sessionId, cwd, sessionList, workspaceList, openSession, startSession, renderFactorySlot }: { messages: TranscriptMessage[] | null, status: string, onSend: (text: string) => boolean, t: Translate, sessionId: string | null, cwd?: string, sessionList: unknown, workspaceList: unknown, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, renderFactorySlot?: WorkspaceProps['renderFactorySlot'] }) {
-  const [text, setText] = useState(''), [failed, setFailed] = useState(false), log = useRef<HTMLDivElement>(null)
-  const rows = useMemo(() => chatRows(messages ?? []), [messages])
-  const directory = useMemo(() => chatSessionView(sessionList, workspaceList, sessionId, cwd), [sessionList, workspaceList, sessionId, cwd])
-  const choices = directory.sessions.length ? directory.sessions : sessionId ? [{ id: sessionId, title: '', blank: false, running: false, updatedAt: 0 }] : []
-  const labels = useMemo<MarkdownLabels>(() => ({ code: { copyLabel: t('copyCode'), copiedLabel: t('copiedCode') }, footnotes: t('footnotes') }), [t])
-  useEffect(() => { const node = log.current; if (node) node.scrollTop = node.scrollHeight }, [rows])
-  const send = () => { const ok = onSend(text); setFailed(!ok); if (ok) setText(''); return ok }
-  return <div className="dxc-chat">
-    <div className="dxc-chat-bar">
-      <select aria-label={t('chatSessions')} value={sessionId ?? ''} disabled={!openSession || choices.length === 0} onChange={event => { if (event.target.value && event.target.value !== sessionId) openSession?.(event.target.value) }}>
-        {choices.map(session => <option key={session.id} value={session.id}>{sessionLabel(session, session.id === sessionId, t)}</option>)}
-      </select>
-      <button type="button" disabled={!startSession} onClick={() => startSession?.(directory.workspaceId)}>{t('chatNew')}</button>
-    </div>
-    <p className="dxc-chat-note">{t('chatNote')}</p>
-    <div className="dxc-chat-log" ref={log} role="log" aria-label={t('chat')}>
-      {status === 'loading' && !messages && <p className="dxc-state">{t('chatLoading')}</p>}
-      {status === 'failed' && !messages && <p className="dxc-state" role="alert">{t('chatFailed')}</p>}
-      {messages && rows.length === 0 && <p className="dxc-state">{t('chatEmpty')}</p>}
-      {rows.map(row => row.kind === 'tools'
-        ? <div key={row.id} className="dxc-chat-tools" aria-label={t('chatTools', { names: row.names.join(', ') })}>{row.names.map(name => <span key={name}>{name}</span>)}</div>
-        : <article key={row.id} className={`dxc-chat-row dxc-chat-${row.role}`}><span className="dxc-chat-role">{t(row.role === 'user' ? 'chatYou' : 'chatAssistant')}</span><div className="dxc-chat-copy"><MarkdownText text={row.text} labels={labels} variant="body" /></div></article>)}
-    </div>
-    {failed && <p className="dxc-chat-error" role="alert">{t('chatSendFailed')}</p>}
-    <form className="dxc-chat-form" onSubmit={event => { event.preventDefault(); send() }}>
-      <textarea value={text} rows={1} maxLength={8000} placeholder={t('chatPlaceholder')} aria-label={t('chatPlaceholder')} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
-      <button type="submit" disabled={!text.trim()}>{t('chatSend')}</button>
-    </form>
+/**
+ * The official Conversation, embedded through its Component Factory. It keeps
+ * the Session's own draft, composer, image intake, `@` references, `/` commands,
+ * running state and transcript, so this panel never re-implements them and
+ * never polls a second copy of the history. The phase mirrors the shell's own
+ * calculation so a blank Session still gets its centred composer.
+ */
+function ConversationEmbed({ renderFactorySlot, sessionId, useSession, useConversation, useSessions, t }: {
+  renderFactorySlot: WorkspaceProps['renderFactorySlot'], sessionId: string, t: Translate,
+  useSession?: (selector: (value: any) => any) => any, useConversation?: (selector: (value: any) => any) => any, useSessions?: (selector: (value: any) => any) => any,
+}) {
+  const session = useSession?.(value => value)
+  const conversation = useConversation?.(value => value)
+  const summaryBlank = useSessions?.(state => state?.byId?.[sessionId]?.blank)
+  const shellPhase = session === undefined ? 'active' : conversation?.activeTargets?.size > 0 || (!session.blank && !session.awaitingFirstTurn) || session.running ? 'active' : session.promptAttempted ? 'engaging' : 'blank'
+  const settling = shellPhase === 'blank' && session?.openState === 'loading' && summaryBlank !== true
+  const hero = shellPhase === 'blank' && (session?.openState === 'open' || summaryBlank === true)
+  const phase = settling ? 'settling' : hero ? 'hero' : 'active'
+  if (typeof renderFactorySlot !== 'function') return <p className="dxc-state">{t('chatUnavailable')}</p>
+  return <div className="dxc-chat-embed">
+    {renderFactorySlot('conversation.content', { variant: 'embedded', phase, hero }, { slots: { views: ChatView }, fallback: <p className="dxc-state">{t('chatUnavailable')}</p> })}
   </div>
 }
 
-function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, transcript, transcriptStatus, onSend, sessionId, cwd, sessionList, workspaceList, openSession, startSession, renderFactorySlot }: BottomPanelProps) {
+function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, renderFactorySlot, sessionId, useSession, useConversation, useSessions }: BottomPanelProps) {
   const problems = review?.findings.length ?? 0
   return <aside className="dxc-panel" aria-label={t('panel')}>
     <div className="dxc-panel-tabs" role="tablist" aria-label={t('panel')}>
@@ -195,7 +187,7 @@ function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview
       <button type="button" role="tab" aria-selected={tab === 'review'} onClick={() => setTab('review')}>{t('reviewSummary')}</button>
       <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>{t('chat')}</button>
     </div>
-    <div className="dxc-panel-body">{tab === 'chat' ? <ChatPane messages={transcript} status={transcriptStatus} onSend={onSend} t={t} sessionId={sessionId} cwd={cwd} sessionList={sessionList} workspaceList={workspaceList} openSession={openSession} startSession={startSession} renderFactorySlot={renderFactorySlot} /> : tab === 'problems' ? <div className="dxc-problems">
+    <div className="dxc-panel-body">{tab === 'chat' ? <ConversationEmbed renderFactorySlot={renderFactorySlot} sessionId={sessionId} useSession={useSession} useConversation={useConversation} useSessions={useSessions} t={t} /> : tab === 'problems' ? <div className="dxc-problems">
       {!review ? <p className="dxc-state">{t('noReviewHint')}</p> : review.findings.length === 0 ? <p className="dxc-state">{isComplete(review) ? t('noFindings') : t('incomplete')}</p> : <ul className="dxc-problem-list">{review.findings.map(finding => <li key={finding.id}><button type="button" className="dxc-problem" onClick={() => jump(finding)}>
         <span className={`dxc-severity dxc-severity-${finding.severity}`}>{t(`severity.${finding.severity}`)}</span>
         <span className="dxc-problem-title">{finding.title}</span>
@@ -205,18 +197,9 @@ function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview
   </aside>
 }
 
-export function CodeWorkspace(props: WorkspaceProps) {
-  if (typeof props.useSessions === 'function' && typeof props.useWorkspaces === 'function') return <BoundSessions {...props} />
-  return <CodeWorkspaceBody {...props} />
-}
+export function CodeWorkspace(props: WorkspaceProps) { return <CodeWorkspaceBody {...props} /> }
 
-function BoundSessions(props: WorkspaceProps) {
-  const sessionList = props.useSessions!((state: any) => state)
-  const workspaceList = props.useWorkspaces!((state: any) => state)
-  return <CodeWorkspaceBody {...props} sessionList={sessionList} workspaceList={workspaceList} />
-}
-
-function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, loadTranscript, openSession, startSession, renderFactorySlot, cancel, back, t, formatTime, sessionList = null, workspaceList = null }: WorkspaceProps & { sessionList?: unknown, workspaceList?: unknown }) {
+function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, renderFactorySlot, useSession, useConversation, useSessions, cancel, back, t, formatTime }: WorkspaceProps) {
   const state = useCode(value => value), snapshot = state.snapshot
   const page = useRef<HTMLElement>(null)
   const workbench = useRef<HTMLDivElement>(null)
@@ -226,13 +209,6 @@ function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTa
   const [selected, setSelected] = useState<string[]>([]), [context, setContext] = useState('current'), [notice, setNotice] = useState<string | null>(null), [focus, setFocus] = useState<CodeFocus | null>(null)
   const [base, setBase] = useState(snapshot?.workspace.baseRef ?? 'main'), [mode, setMode] = useState<string>(snapshot?.workspace.mode ?? 'worktree')
   const scrollPositions = useRef(new Map<string, { top: number, left: number }>()), previousWorkspace = useRef<string | null>(null), previousReview = useRef<string | undefined>(undefined), rereviewId = useRef<string | null>(null)
-  const chatOpen = !layout.panelCollapsed && layout.panelTab === 'chat'
-  useEffect(() => {
-    if (!sessionId || !chatOpen) return
-    loadTranscript()
-    const timer = setInterval(loadTranscript, 1500)
-    return () => clearInterval(timer)
-  }, [sessionId, chatOpen])
   useEffect(() => {
     if (!globalThis.ResizeObserver || !page.current) return
     const observer = new ResizeObserver(entries => { const width = entries[0].contentRect.width; setNarrow(width < 700) })
@@ -346,7 +322,7 @@ function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTa
           <CodeViewer file={fileMatches ? state.file : null} status={fileMatches ? state.fileStatus : effectivePath ? 'loading' : 'idle'} error={fileMatches ? state.fileError : null} path={effectivePath} identity={identity} mode={snapshot.workspace.mode} context={context} focus={focus} retry={() => { clearFile(); if (request) loadFile(request) }} scrollPositions={scrollPositions} t={t} />
         </section>
         {!narrow && showPanel && <Splitter value={layout.panel} bounds={PANEL_BOUNDS} label={t('resizePanel')} orientation="vertical" direction={-1} className="dxc-track-panel-splitter" onResize={value => setLayout({ panel: value })} onPreview={value => paintTrack(layout.sidebar, value)} onToggle={() => setLayout({ panelCollapsed: !layout.panelCollapsed })} />}
-        {(narrow || showPanel) && <BottomPanel tab={layout.panelTab} setTab={tab => setLayout({ panelTab: tab })} review={review} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} transcript={state.transcript} transcriptStatus={state.transcriptStatus} onSend={text => { const sent = sendConversation(inputActions, text); if (sent) loadTranscript(); return sent }} sessionId={sessionId} cwd={snapshot.workspace.cwd ?? snapshot.workspace.repoRoot} sessionList={sessionList} workspaceList={workspaceList} openSession={openSession} startSession={startSession} renderFactorySlot={renderFactorySlot} />}
+        {(narrow || showPanel) && <BottomPanel tab={layout.panelTab} setTab={tab => setLayout({ panelTab: tab })} review={review} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} renderFactorySlot={renderFactorySlot} sessionId={sessionId} useSession={useSession} useConversation={useConversation} useSessions={useSessions} />}
       </div>
     </>}
   </main>

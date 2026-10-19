@@ -2,12 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { fail, sessionId } from './store.js';
 import { createRepository, LIMITS } from './repository.js';
 import { reviewPrompt, parseReview } from './review.js';
-import { projectTranscript } from './transcript.js';
 // A thrown value is untrusted; read a code or message only through these guards.
 const codeOf = (error) => error?.code;
 const messageOf = (error) => error?.message;
 const active = new Set(['running']);
-export function createCodeController({ store, spawn, contextOf, reviewerInfo = () => ({ dshAvailable: false, dshModel: null }), dshReview, messagesOf = () => [], now = () => new Date().toISOString() }) {
+export function createCodeController({ store, spawn, contextOf, reviewerInfo = () => ({ dshAvailable: false, dshModel: null }), dshReview, now = () => new Date().toISOString() }) {
     const repository = createRepository(spawn), running = new Map(), host = randomUUID();
     let disposed = false;
     const publicReview = (review) => { if (!review)
@@ -145,10 +144,6 @@ export function createCodeController({ store, spawn, contextOf, reviewerInfo = (
     }
     async function cancel(args) { const id = sessionId(args.sessionId); scope(args); const operation = running.get(id); if (!operation || operation.id !== args.operationId)
         throw fail('CODE_STALE', 'This Code operation is no longer active.'); operation.state = 'cancelling'; operation.controller.abort(fail('CODE_CANCELLED', 'Cancelled by the user.')); return snapshot({ sessionId: id, ...operation.options }); }
-    function transcript(args) {
-        const id = sessionId(args.sessionId);
-        return { messages: projectTranscript(messagesOf(id)) };
-    }
-    return { snapshot, source, reviewDetail, review, cancel, transcript, async dispose() { disposed = true; const operations = [...running.values()]; for (const operation of operations)
+    return { snapshot, source, reviewDetail, review, cancel, async dispose() { disposed = true; const operations = [...running.values()]; for (const operation of operations)
             operation.controller.abort(new Error('Code plugin disabled.')); await Promise.all(operations.map(operation => operation.settlement)); } };
 }
