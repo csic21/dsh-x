@@ -12,11 +12,15 @@ A Code entry in the main navigation opens a full-width workbench. A compact entr
 
 The top bar contains Code, the repository name, target scope, Refresh and the primary Review action. An optional base-ref field appears only for base…HEAD. The visible current context is either Current workspace or Reviewed snapshot. Changing this context never calls a model.
 
-Desktop uses three tracks: a file navigator, a flexible source viewer, and a findings panel. Track widths favor source text. At 650–1100px canvas width, source stays visible beside the file navigator; a Files / Findings switch replaces only the left pane. Below 650px, Files / Code / Findings become single-pane tabs.
+The workbench follows the editor shape users already know. A 40px activity bar selects Explorer, Changes, or Review history. The sidebar and the review panel are real grid tracks whose separators drag with a pointer, step with arrow keys, jump with Home/End, and toggle with Enter or a double click. Both widths persist in `localStorage` under `dsh-x-code:layout:v1`, are clamped to their own bounds, and collapse when dragged to the minimum or when their title-bar toggle is used. A collapsed track removes its separator so the editor takes the freed space.
+
+The editor owns an open-file strip: Explorer clicks open a preview tab that the next click replaces, explicit actions (a finding or a history entry) pin their tab, middle-click and the close control close one, drag reorders, and the tab menu closes one, the others, or all. Closing the active tab activates its right neighbour, then its left one. Breadcrumbs above the source and a status bar with the version and line count complete the editor surface.
+
+Below 700px the grid becomes a single pane chosen by Files / Code / Findings tabs; the activity bar, separators, and status bar are hidden, and drag resizing is unavailable because the tracks no longer share a row.
 
 ## Reading source and changes
 
-- The file navigator has Changed / All filters, a filename/path search, a nested directory tree, Git-status markers and explicit review checkboxes. Opening a file does not select it for review.
+- The Explorer lists the whole snapshot; Changes starts on the changed subset and can widen to All. Both share a filename/path search, a nested directory tree, Git-status markers, and explicit review checkboxes. Opening a file does not select it for review.
 - The Source tab shows the full target file, read-only. Its label identifies the origin: Working tree, Index, HEAD, or Reviewed snapshot. A separate Before choice shows the comparison's old version.
 - The Diff tab offers Unified / Split and Wrap. Both preserve old/new line numbers. Hunk positions are backend Git output, not a client-computed edit graph.
 - Syntax coloring uses the official public DSH code highlighter. Source and diff text never use raw HTML insertion.

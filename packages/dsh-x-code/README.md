@@ -5,7 +5,7 @@ An independently enabled source and review workspace for official DSH `0.2.1-rc.
 ## Workflow
 
 1. Open a conversation for a local committed Git repository, then open Code.
-2. Browse all or changed files, search filenames, and inspect read-only source, before-source, or unified/split diff. This does not run a review or call a provider.
+2. Browse all or changed files in the Explorer, search filenames, and inspect read-only source, before-source, or unified/split diff. The sidebar and review panel resize by drag, arrow keys, or their title-bar toggles, and the layout persists per profile. This does not run a review or call a provider.
 3. Explicitly select files and choose **Review**. Code prepares an exact, version-bound `dsh_x_code_review` request in the conversation; nothing is sent automatically.
 4. Send the request. The current configured DSH model reviews only the captured source. Official approval identifies the provider, model, exact paths, captured bytes, and possible model charges. No tools, conversation history, implicit repository traversal, or test execution are sent.
 5. Read findings with severity, source lines, literal evidence, and a triggering condition. Findings are checked against the captured file and exact cited lines before they are accepted. A malformed, truncated, oversized, cancelled, or tool-requesting response fails explicitly.
@@ -36,7 +36,7 @@ Review records are private to the official profile and session, atomically writt
 
 A lock left by a crashed writer is not removed automatically. Close all hosts before explicitly recovering a stale Code storage lock; a live or unverified owner must never be overwritten.
 
-Client imports use the official shell module table and syntax-highlighting primitive. Source and findings are rendered as text. All product controls/states use English/Chinese dictionaries and DSH theme tokens. Plugin enable/disable remains independent.
+Client imports use the official shell module table and syntax-highlighting primitive. Source and findings are rendered as text. All product controls/states use English/Chinese dictionaries and DSH theme tokens. The workbench keeps its own VS Code-like layout: an activity bar, a resizable file sidebar, editor tabs with breadcrumbs and a status bar, and a resizable Problems/Review panel. Plugin enable/disable remains independent.
 
 ## Test
 

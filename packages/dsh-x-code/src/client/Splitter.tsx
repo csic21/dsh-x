@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { dragSize, type SizeBounds } from './layout.ts'
+import { COLLAPSE_SNAP, dragSize, type SizeBounds } from './layout.ts'
 interface SplitterProps { value: number, bounds: SizeBounds, label: string, orientation: 'vertical' | 'horizontal', direction: 1 | -1, onResize: (value: number) => void, onToggle: () => void }
 /**
  * A pointer/keyboard separator that previews a size while dragging and commits
@@ -17,8 +17,12 @@ export function Splitter({ value, bounds, label, orientation, direction, onResiz
     drag.current = null
     try { event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* capture already gone */ }
     restore()
+    const value = preview ?? state.origin
     setPreview(null)
-    if (commit) onResize(preview ?? state.origin)
+    // Dragging past the minimum collapses the track, like the editor's own split views.
+    if (!commit) return
+    if (value <= bounds.min + COLLAPSE_SNAP) onToggle()
+    else onResize(value)
   }
   return <div
     className="dxc-splitter" data-orientation={orientation} role="separator" aria-orientation={orientation}
