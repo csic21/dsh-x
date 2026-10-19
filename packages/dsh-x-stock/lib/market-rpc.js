@@ -1,4 +1,4 @@
-import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, parseMarketPreferenceRequest, parseMarketRequest } from './market.js';
+import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, isAshareMinute, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday } from './market.js';
 import { createRpcRoute, failure } from './rpc.js';
 /**
  * Re-validates every quote before it reaches the browser and reports a symbol
@@ -104,6 +104,51 @@ export function projectHistoryResponse(raw, symbol, requested, limit, now) {
         bars: projected,
     };
 }
+/** Re-validates a minute line before it reaches the browser. No point is filled in. */
+export function projectIntradayResponse(raw, symbol, now) {
+    const fail = () => Object.assign(new Error('intraday unavailable'), { code: 'stock/intraday-unavailable' });
+    const value = raw;
+    if (!value || typeof value !== 'object' || value.symbol !== symbol)
+        throw fail();
+    const sessionDate = value.sessionDate;
+    if (typeof sessionDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) || sessionDate > shanghaiToday(now))
+        throw fail();
+    const points = Array.isArray(value.points) ? value.points : null;
+    if (!points || !points.length || points.length > 300)
+        throw fail();
+    let previous = '';
+    const projected = points.map((point) => {
+        if (!point || typeof point !== 'object' || Array.isArray(point))
+            throw fail();
+        const { time, price, volume, average } = point;
+        if (typeof time !== 'string' || !isAshareMinute(time) || time <= previous)
+            throw fail();
+        previous = time;
+        if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0 || price > 1e12)
+            throw fail();
+        if (volume !== null && (typeof volume !== 'number' || !Number.isFinite(volume) || volume < 0 || volume > Number.MAX_SAFE_INTEGER))
+            throw fail();
+        if (average !== null && (typeof average !== 'number' || !Number.isFinite(average) || average <= 0 || average > 1e12))
+            throw fail();
+        return { time, price, volume, average };
+    });
+    const text = (input, max) => typeof input === 'string' && input.trim() && input.length <= max
+        ? input.replace(/[\u0000-\u001f\u007f]/g, '').trim() : null;
+    const name = text(value.name, 64), source = text(value.source, 64);
+    const precision = value.pricePrecision;
+    const previousClose = value.previousClose;
+    if (!name || !source || !Number.isInteger(precision) || precision < 0 || precision > 8)
+        throw fail();
+    if (value.volumeBasis !== 'lots' || typeof value.closed !== 'boolean')
+        throw fail();
+    if (previousClose !== null && (typeof previousClose !== 'number' || !Number.isFinite(previousClose) || previousClose <= 0 || previousClose > 1e12))
+        throw fail();
+    return {
+        symbol, name, source, fetchedAt: new Date(now).toISOString(), sessionDate, previousClose,
+        pricePrecision: precision, volumeBasis: 'lots', currency: 'CNY', exchangeTimezone: 'Asia/Shanghai',
+        closed: value.closed, points: projected,
+    };
+}
 // Exact-route handler behind the official shared Connection admission bridge.
 // The bridge rejects non-owner peers before this code runs; the explicit check
 // keeps the handler safe when it is called directly in tests or another Host.
@@ -142,11 +187,19 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                 const raw = await resolved.history(request.symbol, { adjustment: request.adjustment, limit: request.limit });
                 return { ok: true, value: { status: 'ready', history: projectHistoryResponse(raw, request.symbol, request.adjustment, request.limit, now()) } };
             }
+            if (request.kind === 'intraday') {
+                if (typeof resolved.intraday !== 'function')
+                    return failure('stock/intraday-unavailable', '当前行情源不提供分时。');
+                const raw = await resolved.intraday(request.symbol);
+                return { ok: true, value: { status: 'ready', intraday: projectIntradayResponse(raw, request.symbol, now()) } };
+            }
             return { ok: true, value: { status: 'ready', board: await resolved.board(request.board) } };
         }
         catch (error) {
             if (error?.code === 'stock/history-unavailable')
                 return failure('stock/history-unavailable', '该股票暂无历史日 K 数据。');
+            if (error?.code === 'stock/intraday-unavailable')
+                return failure('stock/intraday-unavailable', '该股票暂无分时数据。');
             return failure('stock/market-unavailable', '市场数据暂不可用，请稍后重试。');
         }
     };

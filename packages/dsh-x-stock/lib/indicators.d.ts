@@ -1,6 +1,8 @@
 export interface IndicatorBar {
     sessionDate: string;
     close: number | null;
+    high?: number | null;
+    low?: number | null;
 }
 export interface MacdParams {
     fast: number;
@@ -8,9 +10,15 @@ export interface MacdParams {
     signal: number;
     histScale: number;
 }
+export interface KdjParams {
+    n: number;
+    k: number;
+    d: number;
+}
 export interface IndicatorConfig {
     maPeriods: number[];
     macd: MacdParams;
+    kdj: KdjParams;
     historyAnchor: string | null;
 }
 export interface IndicatorRow {
@@ -20,6 +28,9 @@ export interface IndicatorRow {
     dea: number | null;
     histRaw: number | null;
     hist: number | null;
+    k: number | null;
+    d: number | null;
+    j: number | null;
 }
 export declare const INDICATOR_ALGORITHM_VERSION = "dsh-independent-sma-ema-v1";
 export declare const MAX_INDICATOR_PERIOD = 500;
@@ -30,7 +41,21 @@ export declare const DEFAULT_MACD: Readonly<{
     signal: 9;
     histScale: 2;
 }>;
+export declare const DEFAULT_KDJ: Readonly<{
+    n: 9;
+    k: 3;
+    d: 3;
+}>;
 export declare function validateMacdParams(raw?: unknown): MacdParams;
+/** Tongdaxin-style KDJ: RSV over N bars, then K and D smooth toward 50. J = 3K − 2D. */
+export declare function validateKdjParams(raw?: unknown): KdjParams;
+export declare function kdj(bars: unknown, input?: unknown): {
+    params: KdjParams;
+    rsv: (number | null)[];
+    k: (number | null)[];
+    d: (number | null)[];
+    j: (number | null)[];
+};
 export declare function validateIndicatorConfig(raw?: unknown): IndicatorConfig;
 /** Null breaks continuity; a complete fresh consecutive window is then required. */
 export declare function sma(values: unknown, size: unknown): (number | null)[];
@@ -61,6 +86,8 @@ export declare function computeIndicators(bars: unknown, input?: unknown): {
         historyAnchor: string;
         maPeriods: number[];
         macd: MacdParams;
+        kdj: KdjParams;
+        kdjSeed: string;
     };
     times: any[];
     ma: {
@@ -75,9 +102,17 @@ export declare function computeIndicators(bars: unknown, input?: unknown): {
         histRaw: (number | null)[];
         hist: (number | null)[];
     };
+    kdj: {
+        params: KdjParams;
+        rsv: (number | null)[];
+        k: (number | null)[];
+        d: (number | null)[];
+        j: (number | null)[];
+    };
     rows: IndicatorRow[];
     warmup: {
         macdBars: number;
+        kdjBars: number;
         availableBars: number;
         complete: boolean;
     };

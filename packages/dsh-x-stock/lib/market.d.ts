@@ -161,6 +161,31 @@ export interface MarketHistory {
     lastSessionDate: string;
     bars: MarketDailyBar[];
 }
+/** One minute of the current A-share session. Volume stays in the source's lots. */
+export interface MarketIntradayPoint {
+    time: string;
+    price: number;
+    volume: number | null;
+    average: number | null;
+}
+export interface MarketIntraday {
+    symbol: string;
+    name: string;
+    source: string;
+    fetchedAt: string;
+    sessionDate: string;
+    previousClose: number | null;
+    pricePrecision: number;
+    /** The minute endpoint reports lots (手) and has no turnover to prove otherwise. */
+    volumeBasis: 'lots';
+    currency: 'CNY';
+    exchangeTimezone: 'Asia/Shanghai';
+    /** False while Shanghai time is still inside the session this series belongs to. */
+    closed: boolean;
+    points: MarketIntradayPoint[];
+}
+/** Auction through the morning close, then the afternoon session. Lunch is excluded. */
+export declare function isAshareMinute(time: string): boolean;
 export type MarketOverviewResult = MarketUnconfigured | {
     status: 'ready';
     overview: MarketOverview;
@@ -198,6 +223,9 @@ export type MarketRequest = {
     symbol: string;
     adjustment: 'none' | 'forward' | 'backward';
     limit: number;
+} | {
+    kind: 'intraday';
+    symbol: string;
 };
 /** Daily bars requested by one history call. Bounded for response size. */
 export declare const MARKET_HISTORY_DEFAULT_LIMIT = 250;
@@ -232,6 +260,8 @@ export interface MarketProvider {
         adjustment: MarketAdjustment;
         limit: number;
     }): Promise<MarketHistory>;
+    /** Today's minute line for one symbol. Optional, and never synthesized from daily bars. */
+    intraday?(symbol: string): Promise<MarketIntraday>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {

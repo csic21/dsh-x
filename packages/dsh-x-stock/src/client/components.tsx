@@ -208,8 +208,8 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
               <div className="dxs-controls">
                 <button type="button" className="dxs-icon-button" disabled={index === 0} aria-label={t('page.move-up', { symbol: entry.symbol })} onClick={() => move(entry.symbol, -1)}>↑</button>
                 <button type="button" className="dxs-icon-button" disabled={index === state.items.length - 1} aria-label={t('page.move-down', { symbol: entry.symbol })} onClick={() => move(entry.symbol, 1)}>↓</button>
-                <button type="button" aria-pressed={entry.fixed} aria-label={t(entry.fixed ? 'page.unfix-aria' : 'page.fix-aria', { symbol: entry.symbol })} onClick={() => toggleFix(entry)}>{entry.fixed ? t('page.unfix') : t('page.fix')}</button>
-                <button type="button" className="dxs-remove" aria-label={t('page.remove-aria', { symbol: entry.symbol })} onClick={() => remove(entry.symbol)}>{t('page.remove')}</button>
+                <button type="button" className="dxs-icon-button" aria-pressed={entry.fixed} aria-label={t(entry.fixed ? 'page.unfix-aria' : 'page.fix-aria', { symbol: entry.symbol })} title={entry.fixed ? t('page.unfix') : t('page.fix')} onClick={() => toggleFix(entry)}>{entry.fixed ? '★' : '☆'}</button>
+                <button type="button" className="dxs-icon-button dxs-remove" aria-label={t('page.remove-aria', { symbol: entry.symbol })} title={t('page.remove')} onClick={() => remove(entry.symbol)}>✕</button>
               </div>
             </li>)}</ol>
             {fixError && <p role="alert" className="dxs-error">{t(fixError, { max: format.count(MAX_FIXED) })}</p>}

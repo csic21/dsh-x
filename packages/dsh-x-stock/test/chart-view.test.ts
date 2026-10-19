@@ -57,7 +57,7 @@ test('prepend preserves logical viewport by its original date anchor', () => {
   assert.deepEqual(preserveLogicalRange(range, all.slice(20), all), { from: 29.5, to: 49.5 })
 })
 function mockLibrary() {
-  const log: any = { options: [], series: [], crosshair: null, click: null, rangeChange: null, remove: 0, resize: 0, realtime: 0, observe: 0, disconnect: 0 }, panes = [320, 80, 150].map(height => ({ getHeight: () => height, setHeight: (next: any) => { height = next }, setStretchFactor: (factor: any) => { height = factor * 50 } }))
+  const log: any = { options: [], series: [], crosshair: null, click: null, rangeChange: null, remove: 0, resize: 0, realtime: 0, observe: 0, disconnect: 0 }, panes = [320, 80, 150, 120].map(height => ({ getHeight: () => height, setHeight: (next: any) => { height = next }, setStretchFactor: (factor: any) => { height = factor * 50 } }))
   let range: any = null
   const timeScale: any = {
     getVisibleLogicalRange: () => range,
@@ -75,12 +75,12 @@ function mockLibrary() {
   class Observer { observe() { log.observe++ } disconnect() { log.disconnect++ } }
   return { log, chart, timeScale, Observer, library: { createChart: (element: any, options: any) => { log.options.push(options); return chart }, CandlestickSeries: 'Candle', HistogramSeries: 'Histogram', LineSeries: 'Line', CrosshairMode: { Normal: 0 } } }
 }
-test('single-chart adapter uses three native panes, tail updates and preserves history viewport', () => {
+test('single-chart adapter uses four native panes, tail updates and preserves history viewport', () => {
   const dom = new JSDOM('<div tabindex="0"></div>'), element = dom.window.document.querySelector<HTMLElement & HTMLInputElement>('div'), mock = mockLibrary(), selection = createSelectionStore(), states: any = []
   const adapter = createStockChartAdapter(element, { selection, library: mock.library, ResizeObserverClass: mock.Observer, onViewport: (value: any) => states.push(value) })
   const dataset = createDemoDataset({ count: 100 }), first: any = { ...dataset, bars: dataset.bars.slice(0, 80) }
   adapter.setData(first, computeIndicators(first.bars)); adapter.setConfig(normalizeChartConfig())
-  assert.deepEqual(mock.log.series.map((s: any) => (s as any).pane), [0, 1, 2, 2, 2, 0, 0, 0])
+  assert.deepEqual(mock.log.series.map((s: any) => (s as any).pane), [0, 1, 2, 2, 2, 3, 3, 3, 0, 0, 0])
   assert.equal((mock.log.options[0] as any).layout.attributionLogo, true)
   assert.equal((mock.log.options[0] as any).layout.panes.enableResize, true)
   assert.equal((mock.log.options[0] as any).handleScale.mouseWheel, false)

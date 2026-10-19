@@ -33,11 +33,15 @@ export function createStockChartAdapter(element: any, {
     hist: chart.addSeries(HistogramSeries, { ...common, base: 0 }, 2),
     dif: chart.addSeries(LineSeries, { ...common, color: '#df9635', lineWidth: 2, crosshairMarkerVisible: true }, 2),
     dea: chart.addSeries(LineSeries, { ...common, color: '#8d70e4', lineWidth: 2, crosshairMarkerVisible: true }, 2),
+    k: chart.addSeries(LineSeries, { ...common, color: '#df9635', lineWidth: 1, crosshairMarkerVisible: true }, 3),
+    d: chart.addSeries(LineSeries, { ...common, color: '#8d70e4', lineWidth: 1, crosshairMarkerVisible: true }, 3),
+    j: chart.addSeries(LineSeries, { ...common, color: '#2582cb', lineWidth: 1, crosshairMarkerVisible: true }, 3),
   }
   for (const period of [5, 10, 20]) series[`ma${period}` as keyof typeof series] = chart.addSeries(LineSeries, { ...common, color: MA_COLORS[period as keyof typeof MA_COLORS], lineWidth: 1, crosshairMarkerVisible: false }, 0)
   series.volume.priceScale().applyOptions({ scaleMargins: { top: .18, bottom: 0 }, autoScale: true })
   series.hist.priceScale().applyOptions({ scaleMargins: { top: .15, bottom: .15 }, autoScale: true })
-  chart.panes()[0].setStretchFactor(6); chart.panes()[1].setStretchFactor(1.5); chart.panes()[2].setStretchFactor(2.5)
+  series.j.priceScale().applyOptions({ scaleMargins: { top: .15, bottom: .15 }, autoScale: true })
+  chart.panes()[0].setStretchFactor(6); chart.panes()[1].setStretchFactor(1.4); chart.panes()[2].setStretchFactor(2); chart.panes()[3].setStretchFactor(2)
   const timeScale = chart.timeScale()
   const report = () => onViewport({ following, newBars })
   const rangeChanged = (range: any) => {
@@ -75,7 +79,7 @@ export function createStockChartAdapter(element: any, {
       const precision = dataset.pricePrecision ?? 2
       for (const key of ['candles', 'ma5', 'ma10', 'ma20']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } })
       const indicatorPrecision = Math.max(3, precision)
-      for (const key of ['dif', 'dea', 'hist']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision: indicatorPrecision, minMove: 10 ** -indicatorPrecision } })
+      for (const key of ['dif', 'dea', 'hist', 'k', 'd', 'j']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision: indicatorPrecision, minMove: 10 ** -indicatorPrecision } })
       selection?.setBars(bars, reset)
       if (reset) {
         following = true; newBars = false
@@ -91,6 +95,9 @@ export function createStockChartAdapter(element: any, {
       if (disposed) return
       for (const period of [5, 10, 20]) series[`ma${period}` as keyof typeof series].applyOptions({ visible: config.maVisible[period] })
       series.dif.applyOptions({ visible: config.difVisible }); series.dea.applyOptions({ visible: config.deaVisible })
+      const kdj = config.kdjVisible !== false
+      for (const key of ['k', 'd', 'j']) series[key as keyof typeof series].applyOptions({ visible: kdj })
+      chart.panes()[3]?.setStretchFactor(kdj ? 2 : 0.001)
     },
     setLocale(nextLocale: any) { if (!disposed) chart.applyOptions({ localization: { locale: nextLocale } }) },
     setTheme(value: any) {
@@ -122,7 +129,7 @@ export function createStockChartAdapter(element: any, {
     maximizeMacd() {
       if (disposed) return false
       const panes = chart.panes()
-      if (!maximized) { restoreHeights = panes.map((pane: any) => pane.getHeight()); [2, 1, 7].forEach((factor, index) => panes[index].setStretchFactor(factor)) }
+      if (!maximized) { restoreHeights = panes.map((pane: any) => pane.getHeight()); [2, 1, 7, 1].slice(0, panes.length).forEach((factor, index) => panes[index].setStretchFactor(factor)) }
       else restoreHeights?.forEach((height: any, index: any) => panes[index].setStretchFactor(height))
       maximized = !maximized; return maximized
     },

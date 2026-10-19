@@ -211,7 +211,7 @@ test('only validated config is saved by scope; bar data never persists and reloa
     assert.equal(h.writes.length, 1)
     assert.equal(h.writes[0].key, scopeKey(SCOPE_A))
     const value = JSON.parse(h.writes[0].value)
-    assert.deepEqual(Object.keys(value).sort(), ['deaVisible', 'difVisible', 'maVisible', 'macd'])
+    assert.deepEqual(Object.keys(value).sort(), ['deaVisible', 'difVisible', 'kdjVisible', 'maVisible', 'macd'])
     assert.equal(value.difVisible, false)
     assert.doesNotMatch(h.writes[0].value, /bars|dataset|Never persist|sessionDate|volume|source/)
     assert.equal(h.saved.get('unrelated-watchlist-key'), 'keep me')

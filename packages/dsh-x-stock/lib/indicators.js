@@ -4,6 +4,7 @@ export const INDICATOR_ALGORITHM_VERSION = 'dsh-independent-sma-ema-v1';
 export const MAX_INDICATOR_PERIOD = 500;
 export const DEFAULT_MA_PERIODS = Object.freeze([5, 10, 20]);
 export const DEFAULT_MACD = Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 });
+export const DEFAULT_KDJ = Object.freeze({ n: 9, k: 3, d: 3 });
 function period(value, label = 'period') {
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > MAX_INDICATOR_PERIOD)
         throw new RangeError(`${label} must be an integer from 1 to ${MAX_INDICATOR_PERIOD}`);
@@ -56,12 +57,77 @@ export function validateMacdParams(raw = {}) {
         throw new RangeError('MACD histScale must be 1 or 2');
     return result;
 }
+/** Tongdaxin-style KDJ: RSV over N bars, then K and D smooth toward 50. J = 3K − 2D. */
+export function validateKdjParams(raw = {}) {
+    const input = raw;
+    if (!input || typeof input !== 'object' || Array.isArray(input))
+        throw new TypeError('KDJ parameters must be an object');
+    for (const key of Object.keys(input))
+        if (!['n', 'k', 'd'].includes(key))
+            throw new TypeError('Unknown KDJ parameter');
+    const result = { ...DEFAULT_KDJ, ...input };
+    period(result.n, 'n');
+    period(result.k, 'k');
+    period(result.d, 'd');
+    return result;
+}
+export function kdj(bars, input = {}) {
+    if (!Array.isArray(bars))
+        throw new TypeError('KDJ input must be an array');
+    const params = validateKdjParams(input);
+    const rsv = [];
+    const k = [];
+    const d = [];
+    const j = [];
+    const window = [];
+    let previousK = null;
+    let previousD = null;
+    const kWeight = 1 / params.k;
+    const dWeight = 1 / params.d;
+    for (const bar of bars) {
+        const high = bar?.high, low = bar?.low, close = bar?.close;
+        const usable = typeof high === 'number' && typeof low === 'number' && typeof close === 'number'
+            && Number.isFinite(high) && Number.isFinite(low) && Number.isFinite(close) && high >= low;
+        if (!usable) {
+            window.length = 0;
+            previousK = null;
+            previousD = null;
+            rsv.push(null);
+            k.push(null);
+            d.push(null);
+            j.push(null);
+            continue;
+        }
+        window.push({ high, low });
+        if (window.length > params.n)
+            window.shift();
+        if (window.length < params.n) {
+            rsv.push(null);
+            k.push(null);
+            d.push(null);
+            j.push(null);
+            continue;
+        }
+        const highest = Math.max(...window.map(item => item.high));
+        const lowest = Math.min(...window.map(item => item.low));
+        const current = highest === lowest ? 50 : number((close - lowest) / (highest - lowest) * 100);
+        const nextK = number((1 - kWeight) * (previousK ?? 50) + kWeight * current);
+        const nextD = number((1 - dWeight) * (previousD ?? 50) + dWeight * nextK);
+        previousK = nextK;
+        previousD = nextD;
+        rsv.push(current);
+        k.push(nextK);
+        d.push(nextD);
+        j.push(number(3 * nextK - 2 * nextD));
+    }
+    return { params, rsv, k, d, j };
+}
 export function validateIndicatorConfig(raw = {}) {
     const input = raw;
     if (!input || typeof input !== 'object' || Array.isArray(input))
         throw new TypeError('Indicator configuration must be an object');
     for (const key of Object.keys(input))
-        if (!['maPeriods', 'macd', 'historyAnchor'].includes(key))
+        if (!['maPeriods', 'macd', 'kdj', 'historyAnchor'].includes(key))
             throw new TypeError('Unknown indicator configuration');
     const maPeriods = input.maPeriods === undefined ? [...DEFAULT_MA_PERIODS] : input.maPeriods;
     if (!Array.isArray(maPeriods) || maPeriods.length > 8)
@@ -72,7 +138,7 @@ export function validateIndicatorConfig(raw = {}) {
         throw new RangeError('MA periods must be unique');
     if (input.historyAnchor !== undefined && input.historyAnchor !== null && !isSessionDate(input.historyAnchor))
         throw new TypeError('historyAnchor must be a session date');
-    return { maPeriods: [...maPeriods], macd: validateMacdParams(input.macd), historyAnchor: input.historyAnchor ?? null };
+    return { maPeriods: [...maPeriods], macd: validateMacdParams(input.macd), kdj: validateKdjParams(input.kdj), historyAnchor: input.historyAnchor ?? null };
 }
 /** Null breaks continuity; a complete fresh consecutive window is then required. */
 export function sma(values, size) {
@@ -162,10 +228,12 @@ export function computeIndicators(bars, input = {}) {
     const times = bars.map((bar) => bar.sessionDate);
     const ma = Object.fromEntries(config.maPeriods.map(size => [size, sma(values, size)]));
     const macdResult = macd(values, config.macd);
+    const kdjResult = kdj(bars.map((bar) => ({ high: bar.high ?? null, low: bar.low ?? null, close: bar.close })), config.kdj);
     const rows = times.map((sessionDate, index) => ({
         sessionDate,
         ma: Object.fromEntries(config.maPeriods.map(size => [size, ma[size][index]])),
         dif: macdResult.dif[index], dea: macdResult.dea[index], histRaw: macdResult.histRaw[index], hist: macdResult.hist[index],
+        k: kdjResult.k[index] ?? null, d: kdjResult.d[index] ?? null, j: kdjResult.j[index] ?? null,
     }));
     const macdBars = config.macd.slow + config.macd.signal - 1;
     return {
@@ -173,9 +241,10 @@ export function computeIndicators(bars, input = {}) {
             algorithmVersion: INDICATOR_ALGORITHM_VERSION,
             seedPolicy: 'independent-sma', missingPolicy: 'reset-and-reseed-on-null',
             input: 'close', historyAnchor, maPeriods: config.maPeriods, macd: config.macd,
+            kdj: config.kdj, kdjSeed: 'previous-or-50',
         },
-        times, ma, macd: macdResult, rows,
-        warmup: { macdBars, availableBars: bars.length, complete: macdResult.hist.at(-1) != null },
+        times, ma, macd: macdResult, kdj: kdjResult, rows,
+        warmup: { macdBars, kdjBars: config.kdj.n, availableBars: bars.length, complete: macdResult.hist.at(-1) != null },
     };
 }
 /**

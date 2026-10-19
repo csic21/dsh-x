@@ -18,6 +18,13 @@ export const MARKET_PAGE_SIZE = 200;
 export const MARKET_CACHE_TTL_MS = 5 * 60_000;
 export const MARKET_OVERVIEW_TTL_MS = 60_000;
 export const MARKET_BOARD_TTL_MS = 2 * 60_000;
+/** Auction through the morning close, then the afternoon session. Lunch is excluded. */
+export function isAshareMinute(time) {
+    if (!/^\d{2}:\d{2}$/.test(time))
+        return false;
+    const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
+    return (minutes >= 9 * 60 + 15 && minutes <= 11 * 60 + 30) || (minutes >= 13 * 60 && minutes <= 15 * 60);
+}
 /** Daily bars requested by one history call. Bounded for response size. */
 export const MARKET_HISTORY_DEFAULT_LIMIT = 250;
 export const MARKET_HISTORY_MAX_LIMIT = 1000;
@@ -350,6 +357,20 @@ export function parseMarketRequest(payload) {
             adjustment: validateAdjustment(payload.adjustment),
             limit: validateHistoryLimit(payload.limit),
         };
+    }
+    if (kind === 'intraday') {
+        if (keys.join(',') !== 'kind,symbol')
+            throw stockMarketError('invalid-input');
+        const symbol = payload.symbol;
+        if (typeof symbol !== 'string')
+            throw stockMarketError('invalid-input');
+        try {
+            validateSymbol(symbol);
+        }
+        catch {
+            throw stockMarketError('invalid-input');
+        }
+        return { kind: 'intraday', symbol };
     }
     throw stockMarketError('invalid-input');
 }

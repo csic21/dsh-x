@@ -51,7 +51,7 @@
 
 **A 股界面默认仍是「未配置行情」。** 插件新增一个**显式选择性开启**的本机适配器 `qt.gtimg.cn`（免密钥、非官方），默认关闭；打开页面「免费源」开关、配置 `marketSource: true` 或设置 `DSH_X_STOCK_MARKET_SOURCE=1` 才会请求它。它只适合个人本机查看：无 SLA、可能被限流或中断、没有交易所授权，不得对外分发或用于商业展示。Finnhub 工具仍可用，但不会把美股订阅当作 A 股数据源，也不会自动索取或把 `FINNHUB_API_KEY` 发到浏览器。
 
-**全插件只有一个 A 股行情来源。** 市场全景、自选详情和底部固定栏都解析同一个 `MarketProvider`，也都受同一个「免费源」开关控制：没有再区分「自选源」和「市场源」。可替换的适配器实现 `name`、`overview()`、`breadth()`、`board(code)`、`quotes(symbols)`，以及可选的 `history(symbol, { adjustment, limit })`；Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。没有 `history` 的适配器只让日 K 显示「当前行情源不提供历史日 K」，报价和市场全景照常工作。`freeSource` 配置与 `DSH_X_STOCK_FREE_SOURCE` 保留为 `marketSource` 的**弃用别名**（等价于强制开启同一个开关），以免既有配置失效。基本面及基于真实来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
+**全插件只有一个 A 股行情来源。** 市场全景、自选详情和底部固定栏都解析同一个 `MarketProvider`，也都受同一个「免费源」开关控制：没有再区分「自选源」和「市场源」。可替换的适配器实现 `name`、`overview()`、`breadth()`、`board(code)`、`quotes(symbols)`，以及可选的 `history(symbol, { adjustment, limit })` 和 `intraday(symbol)`；Host 验证并投影允许字段，不将原始响应、错误或密钥送客户端。没有 `history` 的适配器只让日 K 显示「当前行情源不提供历史日 K」，报价和市场全景照常工作。`freeSource` 配置与 `DSH_X_STOCK_FREE_SOURCE` 保留为 `marketSource` 的**弃用别名**（等价于强制开启同一个开关），以免既有配置失效。基本面及基于真实来源的分析尚未实现；这些能力未来须单独提供，当前不以 quote 接口虚构它们。
 
 #### 本机免密钥源（可选，非官方）
 
@@ -125,7 +125,7 @@ Finnhub 工具通过官方 `HarnessError` 传播错误身份，通过 `output.pr
 
 ## 日 K 图表工作台（第一版）
 
-图表采用官方 Lightweight Charts 5.2.1，单 chart 的日 K/成交量/MACD 三窗格共享时间轴；MA5/10/20 可单独开关，DIF/DEA 可显隐。拖动和平移、缩放、十字线、点击锁定读数、Esc 解锁、获焦后方向键/Home/End 逐根查看、回到最新、MACD 副图放大与参数显式应用均可用。提供分页数据表作为 Canvas 的文本替代。跟随 DSH 中英文和主题，颜色固定红涨绿跌，不随语言变化。
+图表采用官方 Lightweight Charts 5.2.1，单 chart 的 K 线/成交量/MACD/KDJ 四窗格共享时间轴；MA5/10/20 与 KDJ 可单独开关，DIF/DEA 可显隐。周 K、月 K、年 K 由已加载日 K 在本地合并，不另请求、不补缺失成交量；未结束的周期标为未收盘。拖动和平移、缩放、十字线、点击锁定读数、Esc 解锁、获焦后方向键/Home/End 逐根查看、回到最新、MACD 副图放大与参数显式应用均可用。提供分页数据表作为 Canvas 的文本替代。跟随 DSH 中英文和主题，颜色固定红涨绿跌，不随语言变化。
 
 免费源开启后，工作台默认读取同一来源的日 K（`{ kind: 'history', symbol, adjustment, limit }`，最多 1000 根）。复权请求为前复权、不复权或后复权；若上游对某证券不返回复权序列（例如科创板、指数），界面按实际返回的 `day` 标成不复权，不把未复权数据说成前复权。成交量单位不按代码猜：用成交额与收盘价核对，接近收盘价视为股，接近 100 倍收盘价视为手并折算为股，对不上则整段成交量留空。指数成交量是交易所合计口径，轴上标「指数口径」，不当成股数。源没有收盘标志：日期等于上海当天的最后一根标为未收盘，更早的根标为已收盘。日 K 只在打开详情或指数图时请求，关闭免费源后不再请求；宿主内存缓存约 60 秒，不写入自选或磁盘。
 
@@ -133,9 +133,9 @@ Finnhub 工具通过官方 `HarnessError` 传播错误身份，通过 `output.pr
 
 导入格式下载按钮提供完整合成示例。上限 2 MiB/5,000 根；schemaVersion=1，必须明确 symbol、currency、exchangeTimezone、interval="1d"、adjustment、adjustmentRevision、datasetRevision、pricePrecision、volumeUnit="shares"、volumeAdjustment、amountAdjustment、source。bars 必须按 sessionDate 升序唯一，含 OHLC、volume（缺失用 null）、isFinal；本地导入支持价格绝对值不超过 1e12，量额不超过 Number.MAX_SAFE_INTEGER，以保证计算和绘图数值安全；这不是金融理论边界。具体字段及校验见 `src/chart-data.ts`。日线使用交易所会话日期而非浏览器本地时间，价格未复权时必须正数；已复权价格可以为非正有限值，但必须声明方法且满足 OHLC 顺序，不擅自截零。成交量及成交额口径分别声明，缺失量不补零。文件 symbol 必须匹配当前股票；无已选股票时可独立浏览其他合格文件。
 
-指标算法版本 `dsh-independent-sma-ema-v1`（以源码导出为准）：每条 EMA 独立以其周期 SMA 播种；DIF=快 EMA−慢 EMA，DEA 为 DIF 的 EMA；默认 12/26/9，柱=2×(DIF−DEA)，可显式改 ×1。完整预热前为缺失值，缺口重置连续预热；不按可见窗口重算。这个种子规则与 TA-Lib MACD 内部对齐播种不同，不能宣称逐点一致。修订/末根替换与历史补齐采用最多 5,000 根的有界全量确定性重算，渲染适配器可对新增/末根使用 update，保留历史阅读锚点；目前无历史 provider 分页取数。
+指标算法版本 `dsh-independent-sma-ema-v1`（以源码导出为准）：每条 EMA 独立以其周期 SMA 播种；DIF=快 EMA−慢 EMA，DEA 为 DIF 的 EMA；默认 12/26/9，柱=2×(DIF−DEA)，可显式改 ×1。KDJ 默认 9/3/3：RSV 用 N 根最高最低，K/D 从 50 按 1/3 平滑，J=3K−2D；最高价等于最低价时 RSV 记 50。完整预热前为缺失值，缺口重置连续预热；不按可见窗口重算。这个种子规则与 TA-Lib MACD 内部对齐播种不同，不能宣称逐点一致。量化回放只按当前周期的收盘价记录金叉到下一次死叉的涨跌，不含手续费、滑点、仓位或下单，不是预测。修订/末根替换与历史补齐采用最多 5,000 根的有界全量确定性重算，渲染适配器可对新增/末根使用 update，保留历史阅读锚点；目前无历史 provider 分页取数。
 
-Apache-2.0 的 Lightweight Charts 及 MIT 的 fancy-canvas 许可和 NOTICE 随 `licenses/` 打包；保留 TradingView logo 和可见归属链接。没有使用 Advanced Charts，也不包含任何行情授权。当前没有对数坐标、更多指标、交易功能或真实基本面分析。
+Apache-2.0 的 Lightweight Charts 及 MIT 的 fancy-canvas 许可和 NOTICE 随 `licenses/` 打包；保留 TradingView logo 和可见归属链接。没有使用 Advanced Charts，也不包含任何行情授权。分时是当日分钟价格线，成交量按源返回的手显示，不是 1 分钟 K，也不会在没有分时时用日 K 补一条线。当前没有对数坐标、分钟 K、交易功能或真实基本面分析。
 
 ## TypeScript development
 

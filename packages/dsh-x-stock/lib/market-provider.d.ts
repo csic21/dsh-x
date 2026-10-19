@@ -1,9 +1,13 @@
-import type { MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider } from './market.ts';
+import type { MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider, MarketIntraday } from './market.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank";
 export declare const MARKET_STOCK_RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList";
 /** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
 export declare const MARKET_HISTORY_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get";
+/** Today's minute line. Same host and the same bounded client as daily history. */
+export declare const MARKET_MINUTE_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/minute/query?code=";
+export declare const MARKET_INTRADAY_TTL_MS = 15000;
+export declare const MARKET_INTRADAY_MAX_POINTS = 300;
 export declare const MARKET_TIMEOUT_MS = 10000;
 export declare const MARKET_MAX_BYTES: number;
 export declare const MARKET_TOP_LIMIT = 8;
@@ -106,4 +110,6 @@ export declare function projectHistory(options: {
     now: number;
 }): MarketHistory;
 export declare function createTencentMarketProvider(options?: MarketProviderOptions): MarketProvider;
+/** Projects one minute payload. Exported so tests can pin the row layout. */
+export declare function parseMinutePayload(payload: any, symbol: string, now: number): MarketIntraday;
 export { INDEXES as MARKET_INDEXES };

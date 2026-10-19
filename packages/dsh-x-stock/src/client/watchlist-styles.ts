@@ -11,6 +11,7 @@ export const WATCHLIST_CSS = `
 .dxs-banner p{margin:2px 0 0}
 .dxs-banner .dxs-source-enable{flex:none}
 .dxs-layout{flex:1;min-height:0;grid-template-columns:minmax(268px,320px) minmax(0,1fr);gap:0;margin:0;align-items:stretch}
+.dxs-layout>aside.dxs-rail,.dxs-stage{min-width:0;min-height:0}
 .dxs-layout>aside.dxs-rail{max-height:none;overflow:hidden}
 .dxs-rail{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--dxs-bg);border-right:1px solid var(--dxs-line-soft)}
 .dxs-rail-head{flex:none;padding:14px 14px 6px}
@@ -18,7 +19,7 @@ export const WATCHLIST_CSS = `
 .dxs-counts{margin:2px 0 0;color:var(--dxs-muted);font-size:12px;font-variant-numeric:tabular-nums}
 .dxs-rail-list{flex:1;min-height:0;overflow:auto;padding:4px 8px 8px}
 .dxs-list{margin:0}
-.dxs-list li{position:relative;margin:1px 0;border-radius:8px}
+.dxs-list li{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;margin:1px 0;border-radius:8px}
 .dxs-list li.is-selected{background:color-mix(in srgb,var(--dxs-accent) 10%,var(--dxs-bg))}
 .dxs-list li.is-selected::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--dxs-accent)}
 .dxs .dxs-list .dxs-select{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;width:100%;height:auto;min-height:46px;margin:0;padding:7px 10px 7px 12px;border:0;border-radius:8px;background:transparent;box-shadow:none;text-align:left;white-space:normal;line-height:1.25}
@@ -29,11 +30,8 @@ export const WATCHLIST_CSS = `
 .dxs-row-meta{display:flex;align-items:center;gap:6px;min-height:16px;font-size:11px;font-variant-numeric:tabular-nums}
 .dxs-row-meta:empty{display:none}
 .dxs-fixed-mark{display:inline-flex;align-items:center;height:16px;margin:0;padding:0 5px;border-radius:999px;background:color-mix(in srgb,var(--dxs-accent) 12%,var(--dxs-bg));color:var(--dxs-accent);font-size:10px;font-weight:650;line-height:1}
-.dxs .dxs-list .dxs-controls{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:flex;gap:1px;margin:0;padding:2px;border-radius:8px;background:color-mix(in srgb,var(--dxs-bg) 92%,transparent);opacity:0;pointer-events:none}
-.dxs .dxs-list li:hover .dxs-controls,.dxs .dxs-list li:focus-within .dxs-controls,.dxs .dxs-list li.is-selected .dxs-controls{opacity:1;pointer-events:auto}
-.dxs .dxs-list li:hover .dxs-select,.dxs .dxs-list li:focus-within .dxs-select,.dxs .dxs-list li.is-selected .dxs-select{padding-right:132px}
-.dxs .dxs-list .dxs-controls button{height:24px;padding:0 6px;border-color:transparent;background:transparent;color:var(--dxs-muted);font-size:11px;border-radius:6px}
-.dxs .dxs-list .dxs-controls .dxs-icon-button{width:24px;padding:0}
+.dxs .dxs-list .dxs-controls{position:static;transform:none;display:flex;gap:1px;margin:0;padding:0 4px 0 0;border-radius:8px;background:transparent;opacity:1;pointer-events:auto}
+.dxs .dxs-list .dxs-controls button,.dxs .dxs-list .dxs-controls .dxs-icon-button{width:24px;height:24px;padding:0;border-color:transparent;background:transparent;color:var(--dxs-muted);font-size:12px;border-radius:6px}
 .dxs .dxs-list .dxs-controls button:hover:not(:disabled){background:var(--dxs-soft);color:var(--dxs-fg)}
 .dxs .dxs-list .dxs-controls button[aria-pressed=true]{border-color:transparent;color:var(--dxs-accent);background:color-mix(in srgb,var(--dxs-accent) 12%,var(--dxs-bg))}
 .dxs .dxs-list .dxs-remove:hover:not(:disabled){color:var(--dxs-up);background:color-mix(in srgb,var(--dxs-up) 10%,var(--dxs-bg))}
@@ -46,6 +44,7 @@ export const WATCHLIST_CSS = `
 .dxs-shortcut kbd{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:18px;margin:0;padding:0 4px;border:1px solid var(--dxs-line);border-bottom-width:2px;border-radius:4px;background:var(--dxs-soft);color:var(--dxs-muted);font:inherit;font-size:10px;line-height:1}
 .dxs .dxs-bar-toggle button{height:24px;padding:0 2px;border:0;background:transparent;color:var(--dxs-muted)}
 .dxs .dxs-bar-toggle button:hover:not(:disabled){color:var(--dxs-fg);background:transparent}
+.dxs-rail-foot .dxs-search-results{position:static;bottom:auto;box-shadow:none}
 .dxs-form{margin-top:0;gap:8px}
 .dxs-form h2{margin:0;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--dxs-muted)}
 .dxs-form-grid{display:grid;grid-template-columns:minmax(96px,112px) minmax(0,1fr);gap:8px}
@@ -55,8 +54,7 @@ export const WATCHLIST_CSS = `
 .dxs-picked{margin:0;padding:6px 8px;border-radius:8px;background:color-mix(in srgb,var(--dxs-accent) 8%,var(--dxs-bg));color:var(--dxs-fg);font-size:12px}
 .dxs-search{gap:4px}
 .dxs-search-note{margin:0;font-size:11px;line-height:1.45}
-.dxs-rail-foot .dxs-search{position:relative}
-.dxs-rail-foot .dxs-search-results{position:absolute;z-index:5;left:0;right:0;bottom:calc(100% + 4px);margin:0;border-color:var(--dxs-line);background:var(--dxs-bg);box-shadow:0 10px 28px color-mix(in srgb,var(--dxs-fg) 14%,transparent)}
+.dxs-rail-foot .dxs-search-results{position:static;z-index:auto;margin-top:4px;box-shadow:none}
 .dxs-fineprint{font-size:11px;color:var(--dxs-muted)}
 .dxs-fineprint summary{cursor:pointer;width:fit-content}
 .dxs-fineprint p{margin:6px 0 0;line-height:1.45}
@@ -67,7 +65,7 @@ export const WATCHLIST_CSS = `
 .dxs-stage-empty h2{margin:0;font-size:18px}
 .dxs-instrument-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px 20px;margin:0 0 8px;padding:2px 2px 12px;border:0;border-radius:0;background:transparent}
 .dxs-quote-identity{min-width:0}
-.dxs-instrument-summary h2{font-size:22px;font-weight:650;line-height:1.2;letter-spacing:-.01em}
+.dxs-instrument-summary h2{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:22px;font-weight:650;line-height:1.2;letter-spacing:-.01em}
 .dxs-symbol-line{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin:4px 0 0;color:var(--dxs-muted);font-size:12px}
 .dxs-symbol{font-variant-numeric:tabular-nums;letter-spacing:.02em}
 .dxs-quote-figures{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
@@ -91,8 +89,7 @@ export const WATCHLIST_CSS = `
 .dxs-chip strong{font-weight:620}
 .dxs-bar{min-height:44px;padding:6px 12px;background:var(--dxs-bg)}
 @media (hover:none){
-.dxs .dxs-list .dxs-controls{position:static;transform:none;opacity:1;pointer-events:auto;background:transparent;margin-top:0;padding:0 8px 6px}
-.dxs .dxs-list li .dxs-select{padding-right:12px}
+.dxs .dxs-list .dxs-controls{padding-right:4px}
 }
 @media (max-width:760px){
 .dxs-layout,.dxs-layout>aside.dxs-rail{grid-template-columns:1fr}

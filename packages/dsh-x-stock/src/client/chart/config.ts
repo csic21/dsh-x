@@ -1,10 +1,11 @@
 import type { MacdParams } from '../../indicators.ts'
-export interface ChartConfig { maVisible: Record<number, boolean>; macd: MacdParams; difVisible: boolean; deaVisible: boolean }
+export interface ChartConfig { maVisible: Record<number, boolean>; macd: MacdParams; difVisible: boolean; deaVisible: boolean; kdjVisible: boolean }
 export const DEFAULT_CHART_CONFIG = Object.freeze({
   maVisible: Object.freeze({ 5: true, 10: true, 20: true }),
   macd: Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 }),
   difVisible: true,
   deaVisible: true,
+  kdjVisible: true,
 })
 export function normalizeChartConfig(raw: unknown = {}): ChartConfig {
   const value = raw as Record<string, any>
@@ -20,5 +21,6 @@ export function normalizeChartConfig(raw: unknown = {}): ChartConfig {
     macd,
     difVisible: value.difVisible !== false,
     deaVisible: value.deaVisible !== false,
+    kdjVisible: value.kdjVisible !== false,
   }
 }

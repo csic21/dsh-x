@@ -181,6 +181,38 @@ export interface MarketHistory {
   bars: MarketDailyBar[]
 }
 
+/** One minute of the current A-share session. Volume stays in the source's lots. */
+export interface MarketIntradayPoint {
+  time: string
+  price: number
+  volume: number | null
+  average: number | null
+}
+
+export interface MarketIntraday {
+  symbol: string
+  name: string
+  source: string
+  fetchedAt: string
+  sessionDate: string
+  previousClose: number | null
+  pricePrecision: number
+  /** The minute endpoint reports lots (手) and has no turnover to prove otherwise. */
+  volumeBasis: 'lots'
+  currency: 'CNY'
+  exchangeTimezone: 'Asia/Shanghai'
+  /** False while Shanghai time is still inside the session this series belongs to. */
+  closed: boolean
+  points: MarketIntradayPoint[]
+}
+
+/** Auction through the morning close, then the afternoon session. Lunch is excluded. */
+export function isAshareMinute(time: string): boolean {
+  if (!/^\d{2}:\d{2}$/.test(time)) return false
+  const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
+  return (minutes >= 9 * 60 + 15 && minutes <= 11 * 60 + 30) || (minutes >= 13 * 60 && minutes <= 15 * 60)
+}
+
 export type MarketOverviewResult = MarketUnconfigured | { status: 'ready'; overview: MarketOverview }
 export type MarketBreadthResult = MarketUnconfigured | { status: 'ready'; breadth: MarketBreadth }
 export type MarketBoardResult = MarketUnconfigured | { status: 'ready'; board: BoardDetail }
@@ -194,6 +226,7 @@ export type MarketRequest =
   | { kind: 'board'; board: string }
   | { kind: 'quotes'; symbols: string[] }
   | { kind: 'history'; symbol: string; adjustment: 'none' | 'forward' | 'backward'; limit: number }
+  | { kind: 'intraday'; symbol: string }
 
 /** Daily bars requested by one history call. Bounded for response size. */
 export const MARKET_HISTORY_DEFAULT_LIMIT = 250
@@ -233,6 +266,8 @@ export interface MarketProvider {
    * instead of failing the whole source.
    */
   history?(symbol: string, options: { adjustment: MarketAdjustment; limit: number }): Promise<MarketHistory>
+  /** Today's minute line for one symbol. Optional, and never synthesized from daily bars. */
+  intraday?(symbol: string): Promise<MarketIntraday>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -554,6 +589,13 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
       adjustment: validateAdjustment((payload as { adjustment?: unknown }).adjustment),
       limit: validateHistoryLimit((payload as { limit?: unknown }).limit),
     }
+  }
+  if (kind === 'intraday') {
+    if (keys.join(',') !== 'kind,symbol') throw stockMarketError('invalid-input')
+    const symbol = (payload as { symbol?: unknown }).symbol
+    if (typeof symbol !== 'string') throw stockMarketError('invalid-input')
+    try { validateSymbol(symbol) } catch { throw stockMarketError('invalid-input') }
+    return { kind: 'intraday', symbol }
   }
   throw stockMarketError('invalid-input')
 }

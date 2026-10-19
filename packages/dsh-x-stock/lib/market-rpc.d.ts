@@ -1,3 +1,4 @@
+import type { MarketIntraday } from './market.ts';
 import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts';
 import type { MarketController } from './market-preference.ts';
 export type MarketProviderSource = MarketProvider | (() => Promise<MarketProvider | undefined>);
@@ -14,6 +15,8 @@ export declare function projectQuotes(raw: unknown, symbols: string[], now: numb
  * response is bounded to the requested limit. Nothing is repaired or filled in.
  */
 export declare function projectHistoryResponse(raw: unknown, symbol: string, requested: 'none' | 'forward' | 'backward', limit: number, now: number): MarketHistory;
+/** Re-validates a minute line before it reaches the browser. No point is filled in. */
+export declare function projectIntradayResponse(raw: unknown, symbol: string, now: number): MarketIntraday;
 export declare function createMarketHandler({ provider, now }?: {
     provider?: MarketProviderSource;
     now?: () => number;
@@ -33,6 +36,7 @@ export declare function createMarketHandler({ provider, now }?: {
         breadth?: undefined;
         quotes?: undefined;
         history?: undefined;
+        intraday?: undefined;
         board?: undefined;
     };
 } | {
@@ -44,6 +48,7 @@ export declare function createMarketHandler({ provider, now }?: {
         source?: undefined;
         quotes?: undefined;
         history?: undefined;
+        intraday?: undefined;
         board?: undefined;
     };
 } | {
@@ -55,6 +60,7 @@ export declare function createMarketHandler({ provider, now }?: {
         source?: undefined;
         quotes?: undefined;
         history?: undefined;
+        intraday?: undefined;
         board?: undefined;
     };
 } | {
@@ -66,6 +72,7 @@ export declare function createMarketHandler({ provider, now }?: {
         source: string;
         quotes: MarketQuote[];
         history?: undefined;
+        intraday?: undefined;
         board?: undefined;
     };
 } | {
@@ -77,6 +84,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         status: string;
         history: MarketHistory;
+        intraday?: undefined;
         board?: undefined;
     };
 } | {
@@ -87,6 +95,19 @@ export declare function createMarketHandler({ provider, now }?: {
         source?: undefined;
         quotes?: undefined;
         history?: undefined;
+        status: string;
+        intraday: MarketIntraday;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
         status: string;
         board: import("./market.ts").BoardDetail;
     };

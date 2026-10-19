@@ -11,11 +11,11 @@ import {
   MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS,
   MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket,
   level2Parent, level1Name, normalizeMarketCode, shanghaiToday, validateBoardCode, validateHistoryLimit,
-  validateAdjustment,
+  validateAdjustment, isAshareMinute,
 } from './market.ts'
 import type {
   BoardDetail, MarketAdjustment, MarketBreadth, MarketDailyBar, MarketHistory, MarketIndex, MarketOverview,
-  MarketQuote, MarketSector, MarketStock, MarketTopStock, MarketProvider,
+  MarketQuote, MarketSector, MarketStock, MarketTopStock, MarketProvider, MarketIntraday,
 } from './market.ts'
 import { validateSymbol } from './watchlist.ts'
 import { MAX_ABSOLUTE_PRICE } from './chart-data.ts'
@@ -25,6 +25,10 @@ export const MARKET_BOARD_RANK_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtim
 export const MARKET_STOCK_RANK_ENDPOINT = 'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList'
 /** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
 export const MARKET_HISTORY_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get'
+/** Today's minute line. Same host and the same bounded client as daily history. */
+export const MARKET_MINUTE_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/minute/query?code='
+export const MARKET_INTRADAY_TTL_MS = 15_000
+export const MARKET_INTRADAY_MAX_POINTS = 300
 export const MARKET_TIMEOUT_MS = 10_000
 export const MARKET_MAX_BYTES = 512 * 1024
 export const MARKET_TOP_LIMIT = 8
@@ -683,6 +687,22 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
   }
 
   /**
+   * Today's 分时. Each source row is `HHmm price volume average`: volume is
+   * lots (手) and is not converted, because this endpoint has no turnover to
+   * prove the unit. Points outside the A-share session, duplicates and
+   * malformed rows are dropped; nothing is interpolated.
+   */
+  function loadIntraday(symbol: string): Promise<MarketIntraday> {
+    const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`
+    return requestJson(`${MARKET_MINUTE_ENDPOINT}${code}`, MARKET_MAX_BYTES).then(payload => {
+      const unavailable = (message: string) => Object.assign(new Error(message), { code: 'stock/intraday-unavailable' })
+      if (payload?.code !== 0) throw unavailable('intraday request failed')
+      try { return parseMinutePayload(payload, symbol, now()) }
+      catch (error: any) { throw unavailable(error?.message || 'intraday empty') }
+    })
+  }
+
+  /**
    * One symbol's daily history. The source returns `qfqday`/`hfqday`/`day`
    * depending on adjustment, and silently falls back to `day` for symbols it
    * cannot adjust (STAR, some ETFs); the key is therefore read, not assumed.
@@ -771,6 +791,75 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       const count = validateHistoryLimit(limit)
       return getOrLoad(`history:${symbol}:${normalized}:${count}`, overviewTtlMs, () => loadHistory(symbol, normalized, count))
     },
+    intraday: (input: unknown) => {
+      const symbol = validateSymbol(input)
+      return getOrLoad(`intraday:${symbol}`, MARKET_INTRADAY_TTL_MS, () => loadIntraday(symbol))
+    },
+  }
+}
+
+const MINUTE_POINT = /^(\d{2})(\d{2}) (\d+(?:\.\d+)?) (\d+(?:\.\d+)?)(?: (\d+(?:\.\d+)?))?$/
+
+function sessionDateOf(raw: unknown): string {
+  if (typeof raw !== 'string' || !/^\d{8}$/.test(raw)) throw new Error('intraday date')
+  const year = Number(raw.slice(0, 4)), month = Number(raw.slice(4, 6)), day = Number(raw.slice(6, 8))
+  const calendar = new Date(Date.UTC(year, month - 1, day))
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) throw new Error('intraday date')
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+}
+
+/** Projects one minute payload. Exported so tests can pin the row layout. */
+export function parseMinutePayload(payload: any, symbol: string, now: number): MarketIntraday {
+  const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`
+  const entry = payload?.data?.[code]
+  const rows = entry?.data?.data
+  if (!entry || !Array.isArray(rows)) throw new Error('intraday missing')
+  const sessionDate = sessionDateOf(entry.data.date)
+  const today = shanghaiToday(now)
+  if (sessionDate > today) throw new Error('intraday date')
+  const points: MarketIntraday['points'] = []
+  let previous = ''
+  for (const row of rows) {
+    if (points.length >= MARKET_INTRADAY_MAX_POINTS) break
+    const match = typeof row === 'string' ? MINUTE_POINT.exec(row) : null
+    if (!match) continue
+    const time = `${match[1]}:${match[2]}`
+    if (!isAshareMinute(time) || time <= previous) continue
+    const price = Number(match[3])
+    const volume = Number(match[4])
+    const average = match[5] === undefined ? null : Number(match[5])
+    if (!Number.isFinite(price) || price <= 0 || price > 1e12) continue
+    if (!Number.isFinite(volume) || volume < 0 || volume > Number.MAX_SAFE_INTEGER) continue
+    if (average !== null && (!Number.isFinite(average) || average <= 0 || average > 1e12)) continue
+    previous = time
+    points.push({ time, price, volume, average })
+  }
+  if (!points.length) throw new Error('intraday empty')
+  const fields = entry.qt?.[code]
+  const quotedName = Array.isArray(fields) ? cleanText(fields[1], 64) : null
+  const previousClose = Array.isArray(fields) ? positiveOrNull(finiteNumber(fields[4], 0, 1e12)) : null
+  const sample = previousClose ?? points.at(-1)!.price
+  const stamp = new Date(now)
+  const clock = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(stamp)
+  const pick = (type: string) => clock.find(part => part.type === type)?.value ?? ''
+  const minutes = Number(pick('hour')) * 60 + Number(pick('minute'))
+  const weekend = pick('weekday') === 'Sat' || pick('weekday') === 'Sun'
+  const closed = sessionDate < today || weekend || minutes >= 15 * 60
+  return {
+    symbol,
+    name: quotedName ?? symbol,
+    source: MARKET_SOURCE_NAME,
+    fetchedAt: isoNow(now),
+    sessionDate,
+    previousClose,
+    pricePrecision: sample < 10 ? 3 : 2,
+    volumeBasis: 'lots',
+    currency: 'CNY',
+    exchangeTimezone: 'Asia/Shanghai',
+    closed,
+    points,
   }
 }
 
