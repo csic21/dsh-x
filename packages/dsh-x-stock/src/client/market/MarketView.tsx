@@ -4,6 +4,7 @@ import { computeSentiment, marketClock } from '../../market.ts'
 import type { ChangeTone, NestedGroup, TreemapRect } from './treemap.ts'
 import { changeTone, layoutNested, squarify, tileSize } from './treemap.ts'
 import { useBoardDetail, useMarketBreadth, useMarketOverview, useMarketPreference } from './data.ts'
+import { StockWorkbench } from '../workbench.tsx'
 
 interface MarketViewProps {
   rpc: any
@@ -11,6 +12,10 @@ interface MarketViewProps {
   format: any
   locale?: string
   now?: () => Date
+  /** Drill down from the panorama into one stock's details and daily chart. */
+  onOpenStock?: (symbol: string, name: string) => void
+  /** Profile scope, used to remember chart display preferences only. */
+  scope?: string
 }
 
 interface Selection {
@@ -150,13 +155,16 @@ function SentimentPanel({ data, breadth, t, format }: any) {
   </section>
 }
 
-function IndexCard({ index, t, format }: any) {
+function IndexCard({ index, t, format, onOpen }: any) {
   const high = Number.isFinite(index.high) ? index.high : null
   const low = Number.isFinite(index.low) ? index.low : null
   const marker = high !== null && low !== null && high > low ? Math.max(0, Math.min(100, ((index.price - low) / (high - low)) * 100)) : null
   const tone = textTone(index.changePercent)
   return <article className="dxs-mkt-index">
-    <header><div><h4>{index.name}</h4><span>{index.code}</span></div><span className={`dxs-mkt-change ${tone}`}>{format.change(index.changePercent)}</span></header>
+    <header><div>{onOpen
+      ? <button type="button" className="dxs-mkt-link" onClick={() => onOpen(index.code, index.name)} title={t('market.drill.index-title', { name: index.name })}><h4>{index.name}</h4><span>{index.code}</span></button>
+      : <><h4>{index.name}</h4><span>{index.code}</span></>}
+    </div><span className={`dxs-mkt-change ${tone}`}>{format.change(index.changePercent)}</span></header>
     <div className={`dxs-mkt-index-price ${tone}`}>{format.price(index.price)}</div>
     <div className="dxs-mkt-index-sub"><span className={tone}>{format.signed(index.change)}</span><span>{index.amount !== null ? t('market.indices.amount', { amount: format.compact(index.amount) }) : '—'}</span></div>
     {marker !== null ? <div className="dxs-mkt-range" role="img" aria-label={t('market.indices.range')}>
@@ -335,13 +343,16 @@ function DistributionBar({ breadth, t, format }: any) {
   </section>
 }
 
-function StockTable({ stocks, t, format, caption }: any) {
+function StockTable({ stocks, t, format, caption, onOpen }: any) {
   if (!stocks.length) return <p className="dxs-mkt-muted">{t('market.movers.empty')}</p>
   return <div className="dxs-mkt-table-wrap"><table>
     <caption>{caption}</caption>
     <thead><tr><th>{t('market.movers.name')}</th><th>{t('market.movers.price')}</th><th>{t('market.movers.change')}</th><th>{t('market.movers.turnover')}</th></tr></thead>
-    <tbody>{stocks.map((stock: MarketStock) => <tr key={stock.code}>
-      <td><span>{stock.name}</span><small>{stock.code}</small></td>
+    <tbody>{stocks.map((stock: MarketStock) => <tr key={stock.code} className={onOpen ? 'is-drillable' : undefined}>
+      <td>{onOpen
+        ? <button type="button" className="dxs-mkt-link" onClick={() => onOpen(stock.code, stock.name)} title={t('market.drill.title', { name: stock.name })}><span>{stock.name}</span><small>{stock.code}</small></button>
+        : <><span>{stock.name}</span><small>{stock.code}</small></>}
+      </td>
       <td>{format.price(stock.price)}</td>
       <td className={textTone(stock.changePercent)}>{format.change(stock.changePercent)}</td>
       <td>{format.compact(stock.amount)}</td>
@@ -349,15 +360,15 @@ function StockTable({ stocks, t, format, caption }: any) {
   </table></div>
 }
 
-function Movers({ breadth, t, format }: any) {
+function Movers({ breadth, t, format, onOpen }: any) {
   return <section className="dxs-mkt-movers-grid">
-    <div className="dxs-mkt-card"><header className="dxs-mkt-card-head"><div><h3>{t('market.movers.title')}</h3><p>{t('market.movers.subtitle')}</p></div></header><StockTable stocks={breadth.topGainers} t={t} format={format} caption={t('market.movers.title')} /></div>
-    <div className="dxs-mkt-card"><header className="dxs-mkt-card-head"><div><h3>{t('market.movers.losers')}</h3><p>{t('market.movers.subtitle')}</p></div></header><StockTable stocks={breadth.topLosers} t={t} format={format} caption={t('market.movers.losers')} /></div>
-    <div className="dxs-mkt-card"><header className="dxs-mkt-card-head"><div><h3>{t('market.movers.amount')}</h3><p>{t('market.movers.subtitle')}</p></div></header><StockTable stocks={breadth.topAmount} t={t} format={format} caption={t('market.movers.amount')} /></div>
+    <div className="dxs-mkt-card"><header className="dxs-mkt-card-head"><div><h3>{t('market.movers.title')}</h3><p>{t('market.movers.subtitle')}</p></div></header><StockTable stocks={breadth.topGainers} t={t} format={format} caption={t('market.movers.title')} onOpen={onOpen} /></div>
+    <div className="dxs-mkt-card"><header className="dxs-mkt-card-head"><div><h3>{t('market.movers.losers')}</h3><p>{t('market.movers.subtitle')}</p></div></header><StockTable stocks={breadth.topLosers} t={t} format={format} caption={t('market.movers.losers')} onOpen={onOpen} /></div>
+    <div className="dxs-mkt-card"><header className="dxs-mkt-card-head"><div><h3>{t('market.movers.amount')}</h3><p>{t('market.movers.subtitle')}</p></div></header><StockTable stocks={breadth.topAmount} t={t} format={format} caption={t('market.movers.amount')} onOpen={onOpen} /></div>
   </section>
 }
 
-function SectorDetail({ rpc, selection, onClose, t, format }: any) {
+function SectorDetail({ rpc, selection, onClose, t, format, onOpen }: any) {
   const detail = useBoardDetail(rpc, selection.code)
   const [active, setActive] = useState<string | null>(null)
   const { ref, size } = useElementSize(GEO_WIDTH, STOCK_HEIGHT)
@@ -395,17 +406,20 @@ function SectorDetail({ rpc, selection, onClose, t, format }: any) {
           </button>
         })}
       </div> : <p className="dxs-mkt-muted">{t('market.detail.empty')}</p>}
-      {active && stocks.get(active) ? <p className="dxs-mkt-selected-stock">{stocks.get(active)!.name} · {active} · {format.price(stocks.get(active)!.price)} · <span className={textTone(stocks.get(active)!.changePercent)}>{format.change(stocks.get(active)!.changePercent)}</span></p> : null}
+      {active && stocks.get(active) ? <p className="dxs-mkt-selected-stock">{stocks.get(active)!.name} · {active} · {format.price(stocks.get(active)!.price)} · <span className={textTone(stocks.get(active)!.changePercent)}>{format.change(stocks.get(active)!.changePercent)}</span>
+        {onOpen ? <button type="button" className="dxs-mkt-open-stock" onClick={() => onOpen(stocks.get(active)!.code, stocks.get(active)!.name)}>{t('market.drill.open')}</button> : null}
+      </p> : null}
       <div className="dxs-mkt-table-wrap dxs-mkt-detail-table">
         <table>
           <caption>{t('market.detail.title')}</caption>
-          <thead><tr><th>{t('market.detail.stock')}</th><th>{t('market.detail.price')}</th><th>{t('market.detail.change')}</th><th>{t('market.detail.amount')}</th><th>{t('market.detail.cap')}</th></tr></thead>
-          <tbody>{board.stocks.map(stock => <tr key={stock.code} className={active === stock.code ? 'is-selected' : ''} tabIndex={0} onClick={() => setActive(stock.code)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActive(stock.code) } }}>
+          <thead><tr><th>{t('market.detail.stock')}</th><th>{t('market.detail.price')}</th><th>{t('market.detail.change')}</th><th>{t('market.detail.amount')}</th><th>{t('market.detail.cap')}</th>{onOpen ? <th><span className="dxs-sr-only">{t('market.drill.column')}</span></th> : null}</tr></thead>
+          <tbody>{board.stocks.map(stock => <tr key={stock.code} className={`${active === stock.code ? 'is-selected' : ''} ${onOpen ? 'is-drillable' : ''}`} tabIndex={0} onClick={() => setActive(stock.code)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActive(stock.code) } }}>
             <td><span>{stock.name}</span><small>{stock.code}</small></td>
             <td>{format.price(stock.price)}</td>
             <td className={textTone(stock.changePercent)}>{format.change(stock.changePercent)}</td>
             <td>{format.compact(stock.amount)}</td>
             <td>{stock.marketCap !== null ? format.compact(stock.marketCap) : '—'}</td>
+            {onOpen ? <td><button type="button" className="dxs-mkt-drill" onClick={event => { event.stopPropagation(); onOpen(stock.code, stock.name) }} aria-label={t('market.drill.aria', { name: stock.name })}>{t('market.drill.open')}</button></td> : null}
           </tr>)}</tbody>
         </table>
       </div>
@@ -446,11 +460,12 @@ function ErrorCard({ t, onRetry, preference, onChange }: any) {
   </section>
 }
 
-export function MarketView({ rpc, t, format, now = () => new Date() }: MarketViewProps) {
+export function MarketView({ rpc, t, format, locale, now = () => new Date(), onOpenStock, scope }: MarketViewProps) {
   const overview = useMarketOverview(rpc)
   const breadth = useMarketBreadth(rpc)
   const preference = useMarketPreference(rpc)
   const [selected, setSelected] = useState<Selection | null>(null)
+  const [indexChart, setIndexChart] = useState<{ code: string, name: string } | null>(null)
   const changeSource = async (enabled: boolean) => {
     try {
       await preference.setEnabled(enabled)
@@ -506,12 +521,20 @@ export function MarketView({ rpc, t, format, now = () => new Date() }: MarketVie
     <SentimentPanel data={data} breadth={breadthValue} t={t} format={format} />
     <section className="dxs-mkt-card">
       <header className="dxs-mkt-card-head"><div><h3>{t('market.indices.title')}</h3><p>{t('market.indices.subtitle')}</p></div></header>
-      {data.indices.length ? <div className="dxs-mkt-index-grid">{data.indices.map(index => <IndexCard key={index.code} index={index} t={t} format={format} />)}</div> : <p className="dxs-mkt-muted">{t('market.indices.empty')}</p>}
+      {data.indices.length ? <div className="dxs-mkt-index-grid">{data.indices.map(index => <IndexCard key={index.code} index={index} t={t} format={format} onOpen={(code: string, name: string) => setIndexChart({ code, name })} />)}</div> : <p className="dxs-mkt-muted">{t('market.indices.empty')}</p>}
+      <p className="dxs-mkt-muted">{t('market.drill.index-hint')}</p>
     </section>
+    {indexChart ? <section className="dxs-mkt-card dxs-mkt-index-chart" aria-label={t('market.drill.index-chart', { name: indexChart.name })}>
+      <header className="dxs-mkt-card-head">
+        <div><h3>{indexChart.name} · {indexChart.code}</h3><p>{t('market.drill.index-chart-note')}</p></div>
+        <button type="button" onClick={() => setIndexChart(null)}>{t('market.detail.close')}</button>
+      </header>
+      <StockWorkbench key={`index:${indexChart.code}`} symbol={indexChart.code} scope={scope} rpc={rpc} t={t} format={format} locale={locale} />
+    </section> : null}
     <Heatmap data={data} selected={selected} onSelect={setSelected} t={t} format={format} />
-    {selected ? <SectorDetail key={selected.code} rpc={rpc} selection={selected} onClose={() => setSelected(null)} t={t} format={format} /> : null}
+    {selected ? <SectorDetail key={selected.code} rpc={rpc} selection={selected} onClose={() => setSelected(null)} t={t} format={format} onOpen={onOpenStock} /> : null}
     {breadthValue ? <DistributionBar breadth={breadthValue} t={t} format={format} /> : <section className="dxs-mkt-card dxs-mkt-loading" role="status"><span className="dxs-mkt-dot is-live" />{breadth.status === 'error' ? t('market.error') : t('market.breadth.waiting')}{breadth.status === 'error' ? <button type="button" onClick={breadth.refresh}>{t('market.retry')}</button> : null}</section>}
-    {breadthValue ? <Movers breadth={breadthValue} t={t} format={format} /> : null}
+    {breadthValue ? <Movers breadth={breadthValue} t={t} format={format} onOpen={onOpenStock} /> : null}
     <footer className="dxs-mkt-footer">
       <details><summary>{t('market.source.details')}</summary><p>{t('market.source.limits')}</p><p>{t('market.source.model')}</p><p>{t('market.source.no-persist')}</p><p>{t('market.source.persist')}</p></details>
       <p>{t('market.not-advice')}</p>

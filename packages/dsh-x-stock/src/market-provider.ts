@@ -7,20 +7,24 @@
 // Only projected fields leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
 import {
-  MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES,
-  MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE,
-  MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name,
-  normalizeMarketCode, validateBoardCode,
+  MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES,
+  MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS,
+  MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket,
+  level2Parent, level1Name, normalizeMarketCode, shanghaiToday, validateBoardCode, validateHistoryLimit,
+  validateAdjustment,
 } from './market.ts'
 import type {
-  BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketQuote, MarketSector, MarketStock,
-  MarketTopStock, MarketProvider,
+  BoardDetail, MarketAdjustment, MarketBreadth, MarketDailyBar, MarketHistory, MarketIndex, MarketOverview,
+  MarketQuote, MarketSector, MarketStock, MarketTopStock, MarketProvider,
 } from './market.ts'
 import { validateSymbol } from './watchlist.ts'
+import { MAX_ABSOLUTE_PRICE } from './chart-data.ts'
 
 export const MARKET_QUOTE_ENDPOINT = 'https://qt.gtimg.cn/q='
 export const MARKET_BOARD_RANK_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank'
 export const MARKET_STOCK_RANK_ENDPOINT = 'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList'
+/** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
+export const MARKET_HISTORY_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get'
 export const MARKET_TIMEOUT_MS = 10_000
 export const MARKET_MAX_BYTES = 512 * 1024
 export const MARKET_TOP_LIMIT = 8
@@ -322,6 +326,133 @@ function sortTop(stocks: MarketStock[], pick: (stock: MarketStock) => number, di
     .slice(0, MARKET_TOP_LIMIT)
 }
 
+/** Daily rows arrive as arrays; a malformed row is dropped, never repaired. */
+export interface RawDailyRow {
+  sessionDate: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number | null
+  /** Upstream turnover in 万元 (10,000 CNY) when the row carries it. */
+  amountWan: number | null
+}
+
+const HISTORY_ROW = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Parses `[date, open, close, high, low, volume, ..., rate, amountWan]` rows.
+ * The upstream order is open/close/high/low, not OHLC; treating it as OHLC
+ * would silently swap close and high. Impossible OHLC relationships are
+ * rejected rather than clamped, and the result stays sorted and unique.
+ */
+export function parseDailyRows(rows: unknown): RawDailyRow[] {
+  const list = Array.isArray(rows) ? rows : []
+  if (list.length > MARKET_HISTORY_MAX_LIMIT + 50) throw new Error('history response too large')
+  const parsed: RawDailyRow[] = []
+  let previous = ''
+  for (const row of list) {
+    if (!Array.isArray(row) || row.length < 6) continue
+    const sessionDate = row[0]
+    if (typeof sessionDate !== 'string' || !HISTORY_ROW.test(sessionDate)) continue
+    const open = Number(row[1]), close = Number(row[2]), high = Number(row[3]), low = Number(row[4])
+    if (![open, close, high, low].every(Number.isFinite)) continue
+    if (open <= 0 || close <= 0 || high <= 0 || low <= 0) continue
+    if (low > Math.min(open, close) || high < Math.max(open, close) || low > high) continue
+    if (Math.max(open, high, low, close) > MAX_ABSOLUTE_PRICE) continue
+    const rawVolume = row[5]
+    const volume = rawVolume === '' || rawVolume == null ? null : Number(rawVolume)
+    const rawAmount = row[8]
+    const amountWan = rawAmount === '' || rawAmount == null ? null : Number(rawAmount)
+    if (volume !== null && (!Number.isFinite(volume) || volume < 0)) continue
+    if (amountWan !== null && (!Number.isFinite(amountWan) || amountWan < 0)) continue
+    if (sessionDate <= previous) continue
+    previous = sessionDate
+    parsed.push({ sessionDate, open, close, high, low, volume, amountWan })
+  }
+  if (!parsed.length) throw new Error('history empty')
+  return parsed
+}
+
+/**
+ * Tencent sends volume in lots (手, 100 shares) for most SSE/SZSE/ETF rows but
+ * in shares for STAR rows, so the unit is inferred from each row's own
+ * turnover instead of assumed: `amountWan * 1e4 / volume` is an average traded
+ * price, so it lands near `close` for shares and near `100 × close` for lots.
+ * When turnover is missing or the ratio is ambiguous the volume stays unknown
+ * rather than being published under a guessed unit.
+ */
+export function inferVolumeUnit(rows: RawDailyRow[]): { unit: 'shares' | 'lots'; samples: number } | null {
+  let shares = 0, lots = 0
+  for (const row of rows) {
+    if (row.volume === null || !row.volume || row.amountWan === null || !row.amountWan) continue
+    const ratio = ((row.amountWan * 10_000) / row.volume) / row.close
+    if (ratio >= 0.5 && ratio <= 2) shares++
+    else if (ratio >= 50 && ratio <= 200) lots++
+  }
+  const total = shares + lots
+  // Require a clear majority: a mixed or barely-supported sample stays unknown.
+  if (shares > lots && shares >= Math.max(2, Math.ceil(total * 0.8))) return { unit: 'shares', samples: total }
+  if (lots > shares && lots >= Math.max(2, Math.ceil(total * 0.8))) return { unit: 'lots', samples: total }
+  return null
+}
+
+/**
+ * Index codes share the A-share symbol shape but their reported volume is an
+ * exchange aggregate, not a share count. Treating it as shares would mislabel
+ * the axis, so indices carry the source's own unit and say so.
+ */
+export function isIndexSymbol(symbol: string): boolean {
+  return /^(?:SH\.000|SZ\.399|BJ\.899)\d{3}$/.test(symbol)
+}
+
+/** Builds the projected history; bars the unit cannot be established for are dropped. */
+export function projectHistory(options: {
+  symbol: string
+  name: string
+  rows: RawDailyRow[]
+  adjustment: MarketAdjustment
+  precision: number
+  now: number
+}): MarketHistory {
+  const { symbol, name, rows, adjustment, precision, now } = options
+  const index = isIndexSymbol(symbol)
+  const unit = index ? { unit: 'reported' as const, samples: 0 } : inferVolumeUnit(rows)
+  const scale = unit?.unit === 'lots' ? 100 : 1
+  const bars: MarketDailyBar[] = rows.map((row, index) => ({
+    sessionDate: row.sessionDate,
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.close,
+    // An unknown unit is reported as unknown; a lot count is never presented
+    // as a share count.
+    volume: unit && row.volume !== null ? Math.round(row.volume * scale) : null,
+    amount: row.amountWan !== null ? Math.round(row.amountWan * 10_000) : null,
+    // Only today's newest bar can still be moving. The source has no final
+    // flag, so a last bar from an earlier session is final, not provisional.
+    isFinal: index < rows.length - 1 || row.sessionDate !== shanghaiToday(now),
+  }))
+  return {
+    symbol,
+    name,
+    source: MARKET_SOURCE_NAME,
+    fetchedAt: isoNow(now),
+    adjustment,
+    adjustmentLabel: adjustment === 'none' ? 'unadjusted' : adjustment === 'forward' ? 'forward-adjusted (qfq)' : 'backward-adjusted (hfq)',
+    pricePrecision: precision,
+    volumeUnit: 'shares',
+    volumeBasis: unit?.unit ?? 'unknown',
+    amountUnit: 'CNY',
+    currency: 'CNY',
+    exchangeTimezone: 'Asia/Shanghai',
+    firstSessionDate: bars[0]!.sessionDate,
+    lastSessionDate: bars.at(-1)!.sessionDate,
+    bars,
+  }
+}
+
+
 function buildBreadth(rows: MarketStock[], expected: number, partial: boolean, now: number): MarketBreadth {
   const unique = new Map<string, MarketStock>()
   for (const row of rows) if (!unique.has(row.code)) unique.set(row.code, row)
@@ -551,6 +682,43 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     }
   }
 
+  /**
+   * One symbol's daily history. The source returns `qfqday`/`hfqday`/`day`
+   * depending on adjustment, and silently falls back to `day` for symbols it
+   * cannot adjust (STAR, some ETFs); the key is therefore read, not assumed.
+   */
+  async function loadHistory(symbol: string, adjustment: MarketAdjustment, limit: number): Promise<MarketHistory> {
+    const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`
+    const parameter = `${code},day,,,${limit},${adjustment === 'none' ? '' : adjustment === 'forward' ? 'qfq' : 'hfq'}`
+    const payload = await requestJson(`${MARKET_HISTORY_ENDPOINT}?param=${parameter}`, MARKET_MAX_BYTES)
+    if (payload.code !== 0) throw new Error('history request failed')
+    const entry = payload.data?.[code]
+    if (!entry || typeof entry !== 'object') throw new Error('history missing')
+    // The source drops qfq/hfq for symbols it cannot adjust and answers with
+    // `day`; that fallback is detected, never silently relabelled as adjusted.
+    const preferred = adjustment === 'forward' ? 'qfqday' : adjustment === 'backward' ? 'hfqday' : 'day'
+    const key = Array.isArray(entry[preferred]) && entry[preferred].length
+      ? preferred
+      : Array.isArray(entry.day) && entry.day.length ? 'day' : null
+    if (!key) throw new Error('history empty')
+    const parsed = parseDailyRows(entry[key])
+    const fields = entry.qt?.[code]
+    const quotedName = Array.isArray(fields) ? cleanText(fields[1], 64) : null
+    const quotedPrice = Array.isArray(fields) ? finiteNumber(fields[3], 0, 1e9) : null
+    // Sub-10-CNY ETFs quote three decimals; everything else two.
+    const precision = quotedPrice !== null && quotedPrice < 10 ? 3 : 2
+    return projectHistory({
+      symbol,
+      name: quotedName ?? symbol,
+      rows: parsed.slice(-limit),
+      // Report the adjustment actually returned: the source ignores qfq/hfq for
+      // some symbols and sends `day` instead.
+      adjustment: key === 'qfqday' ? 'forward' : key === 'hfqday' ? 'backward' : 'none',
+      precision,
+      now: now(),
+    })
+  }
+
   function getOrLoad<T>(key: string, ttl: number, loader: () => Promise<T>): Promise<T> {
     const cached = cache.get(key)
     if (cached && cached.expires > now()) return Promise.resolve(cached.value as T)
@@ -593,6 +761,15 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
         }
         return quotes
       })
+    },
+    // A closed daily bar does not change during the session, so history is
+    // cached briefly; the newest (provisional) bar refreshes with it.
+    history: (input: unknown, options: unknown) => {
+      const symbol = validateSymbol(input)
+      const { adjustment, limit } = (options ?? {}) as { adjustment?: unknown; limit?: unknown }
+      const normalized = validateAdjustment(adjustment)
+      const count = validateHistoryLimit(limit)
+      return getOrLoad(`history:${symbol}:${normalized}:${count}`, overviewTtlMs, () => loadHistory(symbol, normalized, count))
     },
   }
 }

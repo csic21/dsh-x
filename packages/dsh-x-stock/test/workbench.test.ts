@@ -48,7 +48,7 @@ async function harness(initial: any = {}) {
   vm.runInNewContext(bundle.outputFiles[0].text, {
     module, exports: module.exports, require: createRequire(import.meta.url),
     console, window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
-    localStorage: storage, Intl, TextEncoder, setTimeout, clearTimeout,
+    localStorage: storage, Intl, TextEncoder, AbortController, setTimeout, clearTimeout,
     fetch: () => assert.fail('Workbench must not send chart files or demo data to a network'),
     chartStub(props: any) {
       charts.push(props)
@@ -59,7 +59,13 @@ async function harness(initial: any = {}) {
   })
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('root')!)
-  let props: any = { scope: SCOPE_A, symbol: 'SH.600519', locale: 'en', ...initial.props }
+  const rpc = initial.rpc ?? {
+    call: async (_channel: string, _endpoint: string, payload: any) =>
+      payload?.kind === 'history'
+        ? { ok: true, value: { status: 'unconfigured', source: null } }
+        : { ok: false, error: { code: 'stock/unexpected' } },
+  }
+  let props: any = { scope: SCOPE_A, symbol: 'SH.600519', locale: 'en', rpc, ...initial.props }
   const render = async (next?: any) => {
     props = { ...props, ...next }
     await act(async () => root.render(React.createElement((module.exports as any).StockWorkbench, {
@@ -90,9 +96,11 @@ test('workbench is empty by default and DEMO requires an explicit click with iso
   const h = await harness()
   try {
     assert.equal(h.charts.length, 0)
-    assert.match(h.document.body.textContent, /No historical market data/)
+    // With the free source off, the daily chart is explicitly unconfigured and
+    // no synthetic or placeholder candle is drawn.
+    assert.match(h.document.body.textContent, /Daily data is off/)
     assert.equal(h.document.querySelector<HTMLElement & HTMLInputElement>('[data-chart-stub]'), null)
-    await h.click(h.button('Open synthetic DEMO'))
+    await h.click(h.button('Synthetic DEMO'))
     assert.equal(h.charts.at(-1).dataset.kind, 'demo')
     assert.equal(h.charts.at(-1).dataset.symbol, 'DEMO:SYNTH')
     assert.equal(h.charts.at(-1).dataset.providerId, 'demo-synthetic')
@@ -100,6 +108,7 @@ test('workbench is empty by default and DEMO requires an explicit click with iso
     assert.equal(h.writes.length, 0, 'Opening synthetic data must not persist bars or modify the watchlist')
     await h.click(h.button('Close chart data'))
     assert.equal(h.document.querySelector<HTMLElement & HTMLInputElement>('[data-chart-stub]'), null)
+    assert.match(h.document.body.textContent, /Daily data is off/)
   } finally { await h.close() }
 })
 
@@ -169,7 +178,7 @@ test('clear and explicit DEMO invalidate an in-flight file read', async () => {
     assert.doesNotMatch(h.document.body.textContent, /Must stay cleared|Validating the file locally/)
     const second = deferred()
     await h.selectFile({ size: 1000, text: () => second.promise })
-    await h.click(h.button('Open synthetic DEMO'))
+    await h.click(h.button('Synthetic DEMO'))
     await act(async () => second.resolve(source('Must not replace DEMO')))
     assert.equal(h.charts.at(-1).dataset.kind, 'demo')
     assert.doesNotMatch(h.document.body.textContent, /Must not replace DEMO/)
@@ -207,11 +216,11 @@ test('only validated config is saved by scope; bar data never persists and reloa
     assert.doesNotMatch(h.writes[0].value, /bars|dataset|Never persist|sessionDate|volume|source/)
     assert.equal(h.saved.get('unrelated-watchlist-key'), 'keep me')
     await h.render({ scope: SCOPE_B })
-    await h.click(h.button('Open synthetic DEMO'))
+    await h.click(h.button('Synthetic DEMO'))
     assert.equal(h.charts.at(-1).config.difVisible, true)
     await h.render({ scope: SCOPE_A })
     assert.equal(h.document.querySelector<HTMLElement & HTMLInputElement>('[data-chart-stub]'), null)
-    await h.click(h.button('Open synthetic DEMO'))
+    await h.click(h.button('Synthetic DEMO'))
     assert.equal(h.charts.at(-1).config.difVisible, false)
     assert.equal(h.writes.length, 1)
   } finally { await h.close() }
@@ -220,7 +229,7 @@ test('only validated config is saved by scope; bar data never persists and reloa
 test('storage failure stays visible without losing current chart or in-memory preference', async () => {
   const h = await harness({ storageDenied: true })
   try {
-    await h.click(h.button('Open synthetic DEMO'))
+    await h.click(h.button('Synthetic DEMO'))
     await h.click(h.document.querySelector<HTMLElement & HTMLInputElement>('[data-change-config]'))
     assert.match(h.document.body.textContent, /preferences were not saved/)
     assert.equal(h.charts.at(-1).config.difVisible, false)
@@ -238,7 +247,7 @@ test('persisted unknown MACD fields are removed and malformed config falls back 
   ] as const) {
     const h = await harness({ saved: { [scopeKey(SCOPE_A)]: JSON.stringify(value) } })
     try {
-      await h.click(h.button('Open synthetic DEMO'))
+      await h.click(h.button('Synthetic DEMO'))
       const macd = h.charts.at(-1).config.macd
       assert.deepEqual(Object.keys(macd).sort(), ['fast', 'histScale', 'signal', 'slow'])
       assert.equal(macd.fast, value?.macd?.unsupported ? 8 : 12)

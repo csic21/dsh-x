@@ -119,6 +119,48 @@ export interface MarketQuote {
     fetchedAt: string | null;
     marketStatus: 'closed' | 'unknown';
 }
+/**
+ * One historical daily bar projected to the browser. `volume` is in shares and
+ * `amount` in CNY only when the source's declared unit was verified; both stay
+ * null rather than being guessed. `isFinal` is false only for the newest bar of
+ * a still-running session. No indicator, adjusted close or missing bar is
+ * invented here.
+ */
+export interface MarketDailyBar {
+    sessionDate: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number | null;
+    amount: number | null;
+    isFinal: boolean;
+}
+export interface MarketHistory {
+    symbol: string;
+    name: string;
+    source: string;
+    fetchedAt: string;
+    /** `none` when the source returned unadjusted prices. */
+    adjustment: 'none' | 'forward' | 'backward';
+    adjustmentLabel: string;
+    pricePrecision: number;
+    volumeUnit: 'shares';
+    /**
+     * How the source's volume unit was established for this response. `unknown`
+     * means turnover was missing or ambiguous, so every bar's volume is null;
+     * `reported` means an index row whose volume is the source's own aggregate,
+     * which is not a share count and is labelled as such.
+     */
+    volumeBasis: 'shares' | 'lots' | 'unknown' | 'reported';
+    amountUnit: 'CNY';
+    currency: 'CNY';
+    exchangeTimezone: 'Asia/Shanghai';
+    /** First and last session dates actually returned. */
+    firstSessionDate: string;
+    lastSessionDate: string;
+    bars: MarketDailyBar[];
+}
 export type MarketOverviewResult = MarketUnconfigured | {
     status: 'ready';
     overview: MarketOverview;
@@ -136,7 +178,11 @@ export type MarketQuotesResult = MarketUnconfigured | {
     source: string;
     quotes: MarketQuote[];
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult;
+export type MarketHistoryResult = MarketUnconfigured | {
+    status: 'ready';
+    history: MarketHistory;
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -147,7 +193,19 @@ export type MarketRequest = {
 } | {
     kind: 'quotes';
     symbols: string[];
+} | {
+    kind: 'history';
+    symbol: string;
+    adjustment: 'none' | 'forward' | 'backward';
+    limit: number;
 };
+/** Daily bars requested by one history call. Bounded for response size. */
+export declare const MARKET_HISTORY_DEFAULT_LIMIT = 250;
+export declare const MARKET_HISTORY_MAX_LIMIT = 1000;
+export declare const MARKET_HISTORY_ADJUSTMENTS: readonly ['none', 'forward', 'backward'];
+export type MarketAdjustment = (typeof MARKET_HISTORY_ADJUSTMENTS)[number];
+export declare function validateHistoryLimit(value: unknown): number;
+export declare function validateAdjustment(value: unknown): MarketAdjustment;
 export interface MarketPreference {
     enabled: boolean;
     forced: boolean;
@@ -165,6 +223,15 @@ export interface MarketProvider {
     board(code: string): Promise<BoardDetail>;
     /** Unpaged current quotes for at most MARKET_MAX_QUOTES A-share symbols. */
     quotes(symbols: string[]): Promise<MarketQuote[]>;
+    /**
+     * Daily OHLCV history for one A-share or index; never synthesized. Optional:
+     * a replacement adapter without daily bars leaves the chart unconfigured
+     * instead of failing the whole source.
+     */
+    history?(symbol: string, options: {
+        adjustment: MarketAdjustment;
+        limit: number;
+    }): Promise<MarketHistory>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {
@@ -302,6 +369,8 @@ export interface MarketClock {
  * does not claim a statutory holiday calendar: if there is no quote dated
  * today, the UI says the feed has no today snapshot rather than "trading".
  */
+/** Shanghai calendar date (yyyy-mm-dd) for an instant, independent of the browser zone. */
+export declare function shanghaiToday(now: number): string;
 export declare function marketClock(now: Date, quotedAt: string | null): MarketClock;
 export declare const MARKET_DISTRIBUTION: readonly {
     from: number | null;

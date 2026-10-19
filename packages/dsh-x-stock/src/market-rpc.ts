@@ -1,5 +1,5 @@
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, parseMarketPreferenceRequest, parseMarketRequest } from './market.ts'
-import type { MarketPreference, MarketProvider, MarketQuote } from './market.ts'
+import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts'
 import type { MarketController } from './market-preference.ts'
 import { createRpcRoute, failure } from './rpc.ts'
 
@@ -42,6 +42,66 @@ export function projectQuotes(raw: unknown, symbols: string[], now: number): Mar
   })
 }
 
+/**
+ * Re-validates a provider's daily history before it reaches the browser. This
+ * is the same trust boundary as `projectQuotes`: a replacement adapter cannot
+ * inject extra fields, unordered bars or a bar that violates OHLC, and the
+ * response is bounded to the requested limit. Nothing is repaired or filled in.
+ */
+export function projectHistoryResponse(
+  raw: unknown, symbol: string, requested: 'none' | 'forward' | 'backward', limit: number, now: number,
+): MarketHistory {
+  const fail = () => Object.assign(new Error('history unavailable'), { code: 'stock/history-unavailable' })
+  const value = raw as Record<string, any>
+  if (!value || typeof value !== 'object' || value.symbol !== symbol) throw fail()
+  const bars = Array.isArray(value.bars) ? value.bars.slice(-limit) : null
+  if (!bars || !bars.length) throw fail()
+  let previous = ''
+  const projected = bars.map((bar: any) => {
+    if (!bar || typeof bar !== 'object' || Array.isArray(bar)) throw fail()
+    const { sessionDate, open, high, low, close, volume, amount, isFinal } = bar
+    if (typeof sessionDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) || sessionDate <= previous) throw fail()
+    previous = sessionDate
+    for (const number of [open, high, low, close]) {
+      if (typeof number !== 'number' || !Number.isFinite(number) || number <= 0 || number > 1e12) throw fail()
+    }
+    if (low > Math.min(open, close) || high < Math.max(open, close) || low > high) throw fail()
+    for (const quantity of [volume, amount]) {
+      if (quantity !== null && (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0 || quantity > Number.MAX_SAFE_INTEGER)) throw fail()
+    }
+    if (typeof isFinal !== 'boolean') throw fail()
+    return { sessionDate, open, high, low, close, volume, amount, isFinal }
+  })
+  const text = (input: unknown, max: number) => typeof input === 'string' && input.trim() && input.length <= max
+    ? input.replace(/[\u0000-\u001f\u007f]/g, '').trim() : null
+  const name = text(value.name, 64), source = text(value.source, 64)
+  const precision = value.pricePrecision
+  if (!name || !source || !Number.isInteger(precision) || precision < 0 || precision > 8) throw fail()
+  if (!['shares', 'lots', 'unknown', 'reported'].includes(value.volumeBasis)) throw fail()
+  // The adapter reports what the source actually returned; the requested
+  // adjustment is only a fallback. Claiming qfq for unadjusted rows would be a
+  // provenance lie on the chart.
+  const adjustment = ['none', 'forward', 'backward'].includes(value.adjustment) ? value.adjustment : requested
+  return {
+    symbol,
+    name,
+    source,
+    fetchedAt: new Date(now).toISOString(),
+    adjustment,
+    adjustmentLabel: typeof value.adjustmentLabel === 'string' && value.adjustmentLabel.length <= 64
+      ? value.adjustmentLabel : adjustment,
+    pricePrecision: precision,
+    volumeUnit: 'shares',
+    volumeBasis: value.volumeBasis,
+    amountUnit: 'CNY',
+    currency: 'CNY',
+    exchangeTimezone: 'Asia/Shanghai',
+    firstSessionDate: projected[0]!.sessionDate,
+    lastSessionDate: projected.at(-1)!.sessionDate,
+    bars: projected,
+  }
+}
+
 // Exact-route handler behind the official shared Connection admission bridge.
 // The bridge rejects non-owner peers before this code runs; the explicit check
 // keeps the handler safe when it is called directly in tests or another Host.
@@ -62,8 +122,16 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
         const source = String(resolved.name).slice(0, 64)
         return { ok: true, value: { status: 'ready', source, quotes: projectQuotes(await resolved.quotes(request.symbols), request.symbols, now()) } }
       }
+      if (request.kind === 'history') {
+        // A replacement adapter may have no daily bars. That is an honest
+        // "unavailable" for the chart, not a failure of the quote source.
+        if (typeof resolved.history !== 'function') return failure('stock/history-unavailable', '当前行情源不提供历史日 K。')
+        const raw = await resolved.history(request.symbol, { adjustment: request.adjustment, limit: request.limit })
+        return { ok: true, value: { status: 'ready', history: projectHistoryResponse(raw, request.symbol, request.adjustment, request.limit, now()) } }
+      }
       return { ok: true, value: { status: 'ready', board: await resolved.board(request.board) } }
-    } catch {
+    } catch (error: any) {
+      if (error?.code === 'stock/history-unavailable') return failure('stock/history-unavailable', '该股票暂无历史日 K 数据。')
       return failure('stock/market-unavailable', '市场数据暂不可用，请稍后重试。')
     }
   }

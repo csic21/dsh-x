@@ -1,7 +1,9 @@
-import type { MarketQuote, MarketStock, MarketTopStock, MarketProvider } from './market.ts';
+import type { MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider } from './market.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank";
 export declare const MARKET_STOCK_RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList";
+/** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
+export declare const MARKET_HISTORY_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get";
 export declare const MARKET_TIMEOUT_MS = 10000;
 export declare const MARKET_MAX_BYTES: number;
 export declare const MARKET_TOP_LIMIT = 8;
@@ -58,5 +60,50 @@ interface StockRankPage {
 export declare function parseStockRankPage(payload: any): StockRankPage;
 /** Parses one `v_sh600519="..."` stock line into the projected quote. */
 export declare function parseStockQuote(key: string, fields: string[], now: number): MarketQuote;
+/** Daily rows arrive as arrays; a malformed row is dropped, never repaired. */
+export interface RawDailyRow {
+    sessionDate: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number | null;
+    /** Upstream turnover in 万元 (10,000 CNY) when the row carries it. */
+    amountWan: number | null;
+}
+/**
+ * Parses `[date, open, close, high, low, volume, ..., rate, amountWan]` rows.
+ * The upstream order is open/close/high/low, not OHLC; treating it as OHLC
+ * would silently swap close and high. Impossible OHLC relationships are
+ * rejected rather than clamped, and the result stays sorted and unique.
+ */
+export declare function parseDailyRows(rows: unknown): RawDailyRow[];
+/**
+ * Tencent sends volume in lots (手, 100 shares) for most SSE/SZSE/ETF rows but
+ * in shares for STAR rows, so the unit is inferred from each row's own
+ * turnover instead of assumed: `amountWan * 1e4 / volume` is an average traded
+ * price, so it lands near `close` for shares and near `100 × close` for lots.
+ * When turnover is missing or the ratio is ambiguous the volume stays unknown
+ * rather than being published under a guessed unit.
+ */
+export declare function inferVolumeUnit(rows: RawDailyRow[]): {
+    unit: 'shares' | 'lots';
+    samples: number;
+} | null;
+/**
+ * Index codes share the A-share symbol shape but their reported volume is an
+ * exchange aggregate, not a share count. Treating it as shares would mislabel
+ * the axis, so indices carry the source's own unit and say so.
+ */
+export declare function isIndexSymbol(symbol: string): boolean;
+/** Builds the projected history; bars the unit cannot be established for are dropped. */
+export declare function projectHistory(options: {
+    symbol: string;
+    name: string;
+    rows: RawDailyRow[];
+    adjustment: MarketAdjustment;
+    precision: number;
+    now: number;
+}): MarketHistory;
 export declare function createTencentMarketProvider(options?: MarketProviderOptions): MarketProvider;
 export { INDEXES as MARKET_INDEXES };

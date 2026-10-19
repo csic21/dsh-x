@@ -98,7 +98,7 @@ function AddStock({ add, count, fixedCount, ready, rpc, t, format }: any) {
     <p className="dxs-muted">{t('add.notice')}</p>
   </form>
 }
-function Detail({ item, useResource, t, format, scope, locale }: any) {
+function Detail({ item, useResource, t, format, scope, locale, rpc }: any) {
   const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol)
   return <article aria-label={t('detail.aria', { symbol: item.symbol })}>
     <section className="dxs-section dxs-instrument-summary"><h2>{item.alias || quote?.name || item.symbol}</h2><p className="dxs-muted">{item.symbol}{item.alias ? t('detail.alias') : ''}{item.fixed ? t('detail.fixed') : ''}</p>
@@ -107,7 +107,7 @@ function Detail({ item, useResource, t, format, scope, locale }: any) {
       <details className="dxs-quote-metadata"><summary>{t('detail.source')}</summary><dl><dt>{t('detail.source')}</dt><dd>{sourceOf(snapshot) || t('detail.no-source')}</dd><dt>{t('detail.quoted-at')}</dt><dd>{format.time(quote?.quotedAt, t)}</dd><dt>{t('detail.fetched-at')}</dt><dd>{format.time(quote?.fetchedAt, t)}</dd></dl>
       <p className="dxs-muted">{t('detail.time-notice')}</p></details>
     </section>
-    <StockWorkbench key={`${scope}:${item.symbol}`} symbol={item.symbol} scope={scope} t={t} format={format} locale={locale} />
+    <StockWorkbench key={`${scope}:${item.symbol}`} symbol={item.symbol} scope={scope} t={t} format={format} locale={locale} rpc={rpc} />
     <details className="dxs-section"><summary>{t('detail.fundamentals')}</summary><p>{t('detail.no-fundamentals')}</p><p className="dxs-muted">{t('detail.fundamentals-notice')}</p></details>
     <details className="dxs-section"><summary>{t('detail.analysis')}</summary><p>{t('detail.no-analysis')}</p><p className="dxs-muted">{t('detail.analysis-notice')}</p></details>
   </article>
@@ -119,11 +119,34 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
   const fixedCount = fixedItems(state.items).length
   const [view, setView] = useState<'watchlist' | 'market'>('watchlist')
   const [fixError, setFixError] = useState('')
+  const [drillNotice, setDrillNotice] = useState('')
   const previousSelection = useRef(state.selectedSymbol)
   useEffect(() => {
     if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView('watchlist')
     previousSelection.current = state.selectedSymbol
   }, [state.selectedSymbol])
+  /**
+   * Drill-down from the panorama: an exchange-qualified symbol opens the stock
+   * detail and its daily chart. A stock that is not on the watchlist is opened
+   * without being added to it; only the selection changes.
+   */
+  const openStock = (symbol: any, name: any) => {
+    if (typeof symbol !== 'string' || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) { setDrillNotice(t('market.drill.no-symbol')); return }
+    const known = state.items.some((entry: any) => entry.symbol === symbol)
+    try {
+      if (!known) {
+        // The controller's select() only publishes a selection, so an unknown
+        // symbol has to be added to the list first; keep it unfixed.
+        add({ symbol, alias: name, fixed: false })
+      } else {
+        select(symbol)
+      }
+      setDrillNotice(t(known ? 'market.drill.opened' : 'market.drill.added', { name: name || symbol }))
+      setView('watchlist')
+    } catch (failure: any) {
+      setDrillNotice(errorKey(failure?.code))
+    }
+  }
   const toggleFix = (entry: any) => {
     try { setFixed(entry.symbol, !entry.fixed); setFixError('') }
     catch (failure: any) { setFixError(errorKey(failure.code)) }
@@ -138,7 +161,8 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
       </nav>
       <button onClick={back}>{t('page.back')}</button>
     </header>
-    {view === 'market' ? <MarketView rpc={rpc} t={t} format={format} locale={getLocale()} /> : <>
+    {drillNotice ? <p role="status" className="dxs-notice">{drillNotice}</p> : null}
+    {view === 'market' ? <><MarketView rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} onOpenStock={openStock} /><p className="dxs-muted">{t('market.drill.hint')}</p></> : <>
       <div className={sourceOff ? 'dxs-notice dxs-source-card' : 'dxs-notice'}>
         {sourceOff
           ? <><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p><SourceButton preference={preference} t={t} large />{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</>
@@ -166,7 +190,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
         {fixError && <p role="alert" className="dxs-error">{t(fixError, { max: format.count(MAX_FIXED) })}</p>}
         <p className="dxs-muted">{state.barHidden ? <>{t('page.bar-hidden')} <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button></> : <button type="button" onClick={() => toggleBar()}>{t('page.bar-hide')}</button>} <span className="dxs-muted">{t('page.bar-shortcut')}</span></p>
         <AddStock add={add} count={state.items.length} fixedCount={fixedCount} ready={state.scopeStatus === 'ready'} rpc={rpc} t={t} format={format} /></aside>
-        {state.scopeStatus === 'ready' && (item ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} /> : <StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} />)}
+        {state.scopeStatus === 'ready' && (item ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} /> : <StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} rpc={rpc} />)}
       </div>
     </>}
   </main>

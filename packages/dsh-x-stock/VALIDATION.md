@@ -1,5 +1,14 @@
 # Stock validation
 
+## Drill-down and daily K-line — 2026-10-19
+
+- `pnpm --filter dsh-x-stock test` covers the new history parser, volume-unit inference, owner-only RPC projection, and jsdom drill-down. Offline fixtures only; no credential.
+- `{ kind: 'history', symbol, adjustment, limit }` is on the existing owner-only `dsh-x-stock.market` route and the same free-source switch. A provider without `history()` returns `stock/history-unavailable` and does not fail quotes.
+- Volume is shares only when turnover confirms the unit (or lots × 100). Indices keep the source aggregate and the chart labels it as index units, not shares. A qfq request that comes back as `day` is labelled unadjusted.
+- Market panorama: constituent and mover rows open the stock detail and add an unfixed watchlist item when needed. Index cards expand an inline daily chart and do not touch the watchlist.
+- A one-off Chrome headless smoke of a fixture harness showed the watchlist daily chart, the market panorama, the constituent “查看详情” column, the drilled stock page, and the inline index chart. It is not a Desktop acceptance test, and the harness numbers are synthetic.
+- Not verified against the live Desktop window: pixel layout after install, upstream rate limits, and whether Tencent keeps this kline shape.
+
 ## Watchlist / fixed bar split and one shared source — 2026-10-19
 
 - `pnpm --filter dsh-x-stock test`: 152 tests, 0 failed; `pnpm run typecheck`, package build and the repository integration suite (17 tests) pass. All quote tests use offline fixtures; no network call or credential is involved.

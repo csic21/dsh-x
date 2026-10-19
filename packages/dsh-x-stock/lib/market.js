@@ -18,6 +18,20 @@ export const MARKET_PAGE_SIZE = 200;
 export const MARKET_CACHE_TTL_MS = 5 * 60_000;
 export const MARKET_OVERVIEW_TTL_MS = 60_000;
 export const MARKET_BOARD_TTL_MS = 2 * 60_000;
+/** Daily bars requested by one history call. Bounded for response size. */
+export const MARKET_HISTORY_DEFAULT_LIMIT = 250;
+export const MARKET_HISTORY_MAX_LIMIT = 1000;
+export const MARKET_HISTORY_ADJUSTMENTS = ['none', 'forward', 'backward'];
+export function validateHistoryLimit(value) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > MARKET_HISTORY_MAX_LIMIT)
+        throw stockMarketError('invalid-input');
+    return value;
+}
+export function validateAdjustment(value) {
+    if (!MARKET_HISTORY_ADJUSTMENTS.includes(value))
+        throw stockMarketError('invalid-input');
+    return value;
+}
 export function validateBoardCode(value) {
     if (typeof value !== 'string' || !/^801\d{3}$/.test(value))
         throw stockMarketError('invalid-board');
@@ -202,6 +216,10 @@ function shanghaiParts(at) {
  * does not claim a statutory holiday calendar: if there is no quote dated
  * today, the UI says the feed has no today snapshot rather than "trading".
  */
+/** Shanghai calendar date (yyyy-mm-dd) for an instant, independent of the browser zone. */
+export function shanghaiToday(now) {
+    return shanghaiParts(new Date(now)).date;
+}
 export function marketClock(now, quotedAt) {
     const current = shanghaiParts(now);
     const weekend = current.weekday === 'Sat' || current.weekday === 'Sun';
@@ -313,6 +331,25 @@ export function parseMarketRequest(payload) {
         if (new Set(symbols).size !== symbols.length)
             throw stockMarketError('invalid-input');
         return { kind: 'quotes', symbols };
+    }
+    if (kind === 'history') {
+        if (keys.join(',') !== 'adjustment,kind,limit,symbol')
+            throw stockMarketError('invalid-input');
+        const symbol = payload.symbol;
+        if (typeof symbol !== 'string')
+            throw stockMarketError('invalid-input');
+        try {
+            validateSymbol(symbol);
+        }
+        catch {
+            throw stockMarketError('invalid-input');
+        }
+        return {
+            kind: 'history',
+            symbol,
+            adjustment: validateAdjustment(payload.adjustment),
+            limit: validateHistoryLimit(payload.limit),
+        };
     }
     throw stockMarketError('invalid-input');
 }

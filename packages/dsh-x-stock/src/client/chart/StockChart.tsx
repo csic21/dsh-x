@@ -25,7 +25,7 @@ function Readout({ selection, dataset, indicators, config, t, format }: any) {
   const bar = bars.get(selected.sessionDate) ?? dataset.bars.at(-1), row = rows.get(bar?.sessionDate)
   const values = [
     ...['open', 'high', 'low', 'close'].map(key => [t(`chart.${key}`), format.price(bar?.[key])]),
-    [t('chart.volume'), format.quantity(bar?.volume)], [t('chart.amount', { currency: dataset.currency }), format.quantity(bar?.amount)],
+    [t(dataset.volumeBasis === 'reported' ? 'chart.volume-reported' : 'chart.volume'), format.quantity(bar?.volume)], [t('chart.amount', { currency: dataset.currency }), format.quantity(bar?.amount)],
     ...[5, 10, 20].filter(period => config.maVisible[period]).map(period => [`MA${period}`, format.price(row?.ma[period])]),
     ['DIF', format.indicator(row?.dif)], ['DEA', format.indicator(row?.dea)], [t('chart.hist', { scale: config.macd.histScale }), format.indicator(row?.hist)],
   ]
@@ -52,7 +52,7 @@ const DataTable = memo(function DataTable({ dataset, indicators, config, selecti
     <div className="dxs-chart-table-scroll" tabIndex={0} aria-label={t('chart.table-caption', { symbol: dataset.symbol })}>
       <table className="dxs-chart-table">
         <caption>{t('chart.table-caption', { symbol: dataset.symbol })}</caption>
-        <thead><tr><th scope="col">{t('chart.date')}</th>{['open', 'high', 'low', 'close', 'volume'].map(key => <th key={key} scope="col">{t(`chart.${key}`)}</th>)}<th scope="col">{t('chart.amount', { currency: dataset.currency })}</th>{[5, 10, 20].map(period => <th key={period} scope="col">MA{period}</th>)}<th scope="col">DIF</th><th scope="col">DEA</th><th scope="col">{t('chart.hist', { scale: config.macd.histScale })}</th><th scope="col">{t('chart.final')}</th></tr></thead>
+        <thead><tr><th scope="col">{t('chart.date')}</th>{['open', 'high', 'low', 'close', 'volume'].map(key => <th key={key} scope="col">{t(key === 'volume' && dataset.volumeBasis === 'reported' ? 'chart.volume-reported' : `chart.${key}`)}</th>)}<th scope="col">{t('chart.amount', { currency: dataset.currency })}</th>{[5, 10, 20].map(period => <th key={period} scope="col">MA{period}</th>)}<th scope="col">DIF</th><th scope="col">DEA</th><th scope="col">{t('chart.hist', { scale: config.macd.histScale })}</th><th scope="col">{t('chart.final')}</th></tr></thead>
         <tbody>{dataset.bars.slice(start, start + 100).map((bar: any) => {
           const row = rowsByTime.get(bar.sessionDate)
           return <tr key={bar.sessionDate} aria-selected={bar.sessionDate === selected.sessionDate}><th scope="row"><button aria-label={t('chart.select-row', { date: bar.sessionDate })} onClick={() => onSelect(bar.sessionDate)}>{bar.sessionDate}</button></th>
@@ -124,7 +124,7 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
       <div className="dxs-chart-group">{[5, 10, 20].map(period => <label key={period}><input type="checkbox" checked={config.maVisible[period]} onChange={event => applyConfig({ ...config, maVisible: { ...config.maVisible, [period]: event.target.checked } })} /><span><i className="dxs-chart-swatch" style={{ background: MA_COLORS[period as keyof typeof MA_COLORS] }} />MA{period}</span></label>)}</div>
       <div className="dxs-chart-actions"><button aria-label={t('chart.zoom-in')} onClick={() => adapter.current?.zoom(.8)}>+</button><button aria-label={t('chart.zoom-out')} onClick={() => adapter.current?.zoom(1.25)}>−</button><button onClick={() => adapter.current?.latest()}>{t(viewport.newBars ? 'chart.new-bars' : 'chart.latest')}</button><button onClick={() => adapter.current?.reset()}>{t('chart.reset-view')}</button></div>
     </div>
-    <div className="dxs-chart-pane-labels"><span>{t('chart.volume-pane')}</span><strong onDoubleClick={toggleMacd}>{t('chart.macd-pane', { fast, slow, signal, scale: histScale })}</strong>
+    <div className="dxs-chart-pane-labels"><span>{t(dataset.volumeBasis === 'reported' ? 'chart.volume-pane-reported' : 'chart.volume-pane')}</span><strong onDoubleClick={toggleMacd}>{t('chart.macd-pane', { fast, slow, signal, scale: histScale })}</strong>
       {(['dif', 'dea'] as const).map(key => <button className="dxs-chart-line" key={key} aria-pressed={config[`${key}Visible`]} aria-label={t('chart.hide-line', { line: key.toUpperCase() })} onClick={() => applyConfig({ ...config, [`${key}Visible`]: !config[`${key}Visible`] })}>{key.toUpperCase()}</button>)}
       <button aria-expanded={settings} aria-controls={settingsId} onClick={() => setSettings(!settings)}>{t('chart.settings')}</button><button aria-pressed={maximized} onClick={toggleMacd}>{t(maximized ? 'chart.restore-panes' : 'chart.expand-macd')}</button>
     </div>
@@ -132,7 +132,7 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
     <Readout selection={selection} dataset={dataset} indicators={indicators} config={config} t={t} format={numbers} />
     <div className="dxs-chart-plot" hidden={renderError}>
       <div ref={element} className="dxs-chart-canvas" tabIndex={0} role="group" aria-label={t('chart.canvas')} aria-describedby={helpId} onKeyDown={keyboard} onFocus={event => adapter.current?.setFocused(event.target === event.currentTarget)} onBlur={() => adapter.current?.setFocused(false)} onPointerDown={event => { if (!(event.target as Element).closest('a')) event.currentTarget.focus({ preventScroll: true }) }} />
-      <div className="dxs-chart-watermark" data-kind={dataset.kind}>{t(dataset.kind === 'demo' ? 'chart.demo-watermark' : 'chart.local-watermark')}</div>
+      <div className="dxs-chart-watermark" data-kind={dataset.kind}>{t(dataset.kind === 'demo' ? 'chart.demo-watermark' : dataset.kind === 'market' ? 'chart.market-watermark' : 'chart.local-watermark')}</div>
     </div>
     {renderError && <p className="dxs-chart-error" role="alert">{t('chart.render-error')}</p>}
     {indicators.failed && <p className="dxs-chart-error" role="alert">{t('chart.indicator-error')}</p>}

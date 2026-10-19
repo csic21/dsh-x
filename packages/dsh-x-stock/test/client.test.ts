@@ -29,6 +29,9 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     // Offline fixtures only: the directory never receives a live security here.
     if(endpoint==='dsh-x-stock.search')return {ok:true,value:payload?.action==='status'?{status:'ready',enabled:true,source:'test-directory',results:[]}:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'SZ.002594',name:'比亚迪',kind:'stock'},{symbol:'SH.510300',name:'沪深300ETF华泰柏瑞',kind:'etf'}]}}
     if(endpoint==='dsh-x-stock.market-preference')return {ok:true,value:{enabled:true,forced:false}}
+    // The daily chart is part of the same page; this fixture has no bars, so it
+    // must render the explicit "no daily data" state instead of a fake candle.
+    if(endpoint==='dsh-x-stock.market'&&payload?.kind==='history')return {ok:true,value:{status:'unconfigured',source:null}}
     throw new Error(`unexpected endpoint ${endpoint}`)
   }}},layout:{selectPanel(value: any){selectedPanel=value;calls.push(value)}}}
   vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value: any){assert.equal(value.id,'dsh-x-stock');exported=value.factory((name: any)=>{assert.equal(name,'react');return React})}}},globalThis,navigator:dom.window.navigator,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
@@ -136,7 +139,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.equal(entries.get('sidebar.panellist')[0].options.label(), 'Stocks')
     assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Move SZ.000001 up"]'))
     assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Unfix SZ.000001"]'))
-    assert.match(document.body.textContent, /No historical market data/)
+    assert.match(document.body.textContent, /Daily data is off/)
     await act(async () => (locale as any).addLanguage({ id: 'fr', label: 'Français', fallback: 'en' }))
     await act(async () => locale.setLocale('fr'))
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('h1'))!.textContent, 'Stocks')
@@ -144,7 +147,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.textContent, /16\/10\/2026 15:00:00 \(Shanghai\)/)
     await act(async () => locale.setLocale('zh'))
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('[role="alert"]'))!.textContent, /六位/)
-    assert.match(document.body.textContent,/暂无历史行情/)
+    assert.match(document.body.textContent,/日 K 数据未开启/)
     assert.match(document.body.textContent,/数据不足/)
     assert.equal(document.querySelectorAll('canvas').length,0)
     const tool=entries.get('tool.call.toolview')[0]

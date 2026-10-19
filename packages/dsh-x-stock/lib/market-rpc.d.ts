@@ -1,4 +1,4 @@
-import type { MarketPreference, MarketProvider, MarketQuote } from './market.ts';
+import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts';
 import type { MarketController } from './market-preference.ts';
 export type MarketProviderSource = MarketProvider | (() => Promise<MarketProvider | undefined>);
 /**
@@ -7,6 +7,13 @@ export type MarketProviderSource = MarketProvider | (() => Promise<MarketProvide
  * and upstream errors never leave the Host.
  */
 export declare function projectQuotes(raw: unknown, symbols: string[], now: number): MarketQuote[];
+/**
+ * Re-validates a provider's daily history before it reaches the browser. This
+ * is the same trust boundary as `projectQuotes`: a replacement adapter cannot
+ * inject extra fields, unordered bars or a bar that violates OHLC, and the
+ * response is bounded to the requested limit. Nothing is repaired or filled in.
+ */
+export declare function projectHistoryResponse(raw: unknown, symbol: string, requested: 'none' | 'forward' | 'backward', limit: number, now: number): MarketHistory;
 export declare function createMarketHandler({ provider, now }?: {
     provider?: MarketProviderSource;
     now?: () => number;
@@ -25,6 +32,7 @@ export declare function createMarketHandler({ provider, now }?: {
         overview?: undefined;
         breadth?: undefined;
         quotes?: undefined;
+        history?: undefined;
         board?: undefined;
     };
 } | {
@@ -35,6 +43,7 @@ export declare function createMarketHandler({ provider, now }?: {
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
+        history?: undefined;
         board?: undefined;
     };
 } | {
@@ -45,6 +54,7 @@ export declare function createMarketHandler({ provider, now }?: {
         breadth: import("./market.ts").MarketBreadth;
         source?: undefined;
         quotes?: undefined;
+        history?: undefined;
         board?: undefined;
     };
 } | {
@@ -55,6 +65,7 @@ export declare function createMarketHandler({ provider, now }?: {
         status: string;
         source: string;
         quotes: MarketQuote[];
+        history?: undefined;
         board?: undefined;
     };
 } | {
@@ -64,6 +75,18 @@ export declare function createMarketHandler({ provider, now }?: {
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
+        status: string;
+        history: MarketHistory;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
         status: string;
         board: import("./market.ts").BoardDetail;
     };

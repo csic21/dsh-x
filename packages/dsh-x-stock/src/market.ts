@@ -137,17 +137,79 @@ export interface MarketQuote {
   marketStatus: 'closed' | 'unknown'
 }
 
+/**
+ * One historical daily bar projected to the browser. `volume` is in shares and
+ * `amount` in CNY only when the source's declared unit was verified; both stay
+ * null rather than being guessed. `isFinal` is false only for the newest bar of
+ * a still-running session. No indicator, adjusted close or missing bar is
+ * invented here.
+ */
+export interface MarketDailyBar {
+  sessionDate: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number | null
+  amount: number | null
+  isFinal: boolean
+}
+
+export interface MarketHistory {
+  symbol: string
+  name: string
+  source: string
+  fetchedAt: string
+  /** `none` when the source returned unadjusted prices. */
+  adjustment: 'none' | 'forward' | 'backward'
+  adjustmentLabel: string
+  pricePrecision: number
+  volumeUnit: 'shares'
+  /**
+   * How the source's volume unit was established for this response. `unknown`
+   * means turnover was missing or ambiguous, so every bar's volume is null;
+   * `reported` means an index row whose volume is the source's own aggregate,
+   * which is not a share count and is labelled as such.
+   */
+  volumeBasis: 'shares' | 'lots' | 'unknown' | 'reported'
+  amountUnit: 'CNY'
+  currency: 'CNY'
+  exchangeTimezone: 'Asia/Shanghai'
+  /** First and last session dates actually returned. */
+  firstSessionDate: string
+  lastSessionDate: string
+  bars: MarketDailyBar[]
+}
+
 export type MarketOverviewResult = MarketUnconfigured | { status: 'ready'; overview: MarketOverview }
 export type MarketBreadthResult = MarketUnconfigured | { status: 'ready'; breadth: MarketBreadth }
 export type MarketBoardResult = MarketUnconfigured | { status: 'ready'; board: BoardDetail }
 export type MarketQuotesResult = MarketUnconfigured | { status: 'ready'; source: string; quotes: MarketQuote[] }
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult
+export type MarketHistoryResult = MarketUnconfigured | { status: 'ready'; history: MarketHistory }
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult
 
 export type MarketRequest =
   | { kind: 'overview' }
   | { kind: 'breadth' }
   | { kind: 'board'; board: string }
   | { kind: 'quotes'; symbols: string[] }
+  | { kind: 'history'; symbol: string; adjustment: 'none' | 'forward' | 'backward'; limit: number }
+
+/** Daily bars requested by one history call. Bounded for response size. */
+export const MARKET_HISTORY_DEFAULT_LIMIT = 250
+export const MARKET_HISTORY_MAX_LIMIT = 1000
+export const MARKET_HISTORY_ADJUSTMENTS = ['none', 'forward', 'backward'] as const
+export type MarketAdjustment = (typeof MARKET_HISTORY_ADJUSTMENTS)[number]
+
+export function validateHistoryLimit(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > MARKET_HISTORY_MAX_LIMIT) throw stockMarketError('invalid-input')
+  return value
+}
+
+export function validateAdjustment(value: unknown): MarketAdjustment {
+  if (!MARKET_HISTORY_ADJUSTMENTS.includes(value as MarketAdjustment)) throw stockMarketError('invalid-input')
+  return value as MarketAdjustment
+}
 
 export interface MarketPreference {
   enabled: boolean
@@ -165,6 +227,12 @@ export interface MarketProvider {
   board(code: string): Promise<BoardDetail>
   /** Unpaged current quotes for at most MARKET_MAX_QUOTES A-share symbols. */
   quotes(symbols: string[]): Promise<MarketQuote[]>
+  /**
+   * Daily OHLCV history for one A-share or index; never synthesized. Optional:
+   * a replacement adapter without daily bars leaves the chart unconfigured
+   * instead of failing the whole source.
+   */
+  history?(symbol: string, options: { adjustment: MarketAdjustment; limit: number }): Promise<MarketHistory>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -380,6 +448,11 @@ function shanghaiParts(at: Date) {
  * does not claim a statutory holiday calendar: if there is no quote dated
  * today, the UI says the feed has no today snapshot rather than "trading".
  */
+/** Shanghai calendar date (yyyy-mm-dd) for an instant, independent of the browser zone. */
+export function shanghaiToday(now: number): string {
+  return shanghaiParts(new Date(now)).date
+}
+
 export function marketClock(now: Date, quotedAt: string | null): MarketClock {
   const current = shanghaiParts(now)
   const weekend = current.weekday === 'Sat' || current.weekday === 'Sun'
@@ -469,6 +542,18 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
     try { symbols = raw.map(validateSymbol) } catch { throw stockMarketError('invalid-input') }
     if (new Set(symbols).size !== symbols.length) throw stockMarketError('invalid-input')
     return { kind: 'quotes', symbols }
+  }
+  if (kind === 'history') {
+    if (keys.join(',') !== 'adjustment,kind,limit,symbol') throw stockMarketError('invalid-input')
+    const symbol = (payload as { symbol?: unknown }).symbol
+    if (typeof symbol !== 'string') throw stockMarketError('invalid-input')
+    try { validateSymbol(symbol) } catch { throw stockMarketError('invalid-input') }
+    return {
+      kind: 'history',
+      symbol,
+      adjustment: validateAdjustment((payload as { adjustment?: unknown }).adjustment),
+      limit: validateHistoryLimit((payload as { limit?: unknown }).limit),
+    }
   }
   throw stockMarketError('invalid-input')
 }

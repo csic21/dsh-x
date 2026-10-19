@@ -211,7 +211,7 @@ const pageBundle = await build({
     name: 'stub-workbench',
     setup(builder) {
       builder.onResolve({ filter: /\/workbench\.tsx$/ }, () => ({ path: 'workbench-stub', namespace: 'test' }))
-      builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export function StockWorkbench() { return null }', loader: 'js' }))
+      builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export function StockWorkbench(props) { return globalThis.__workbenchStub(props) }', loader: 'js' }))
     },
   }],
 })
@@ -255,6 +255,139 @@ test('stock page tabs switch between the watchlist and the market panorama', asy
     assert.match(dom.window.document.body.textContent ?? '', /3,301/)
     assert.doesNotMatch(dom.window.document.body.textContent ?? '', /我的自选/)
     assert.equal(tabs[1]!.getAttribute('aria-pressed'), 'true')
+  } finally {
+    await act(async () => root.unmount())
+    dom.window.close()
+    for (const [key, value] of Object.entries(original)) { if (value === undefined) delete (globalThis as any)[key]; else (globalThis as any)[key] = value }
+  }
+})
+
+test('market panorama drills into a stock and the workbench requests its daily bars', async () => {
+  ;(globalThis as any).__workbenchStub = Object.assign((props: any) => { (globalThis as any).__workbenchStub.calls.push(props); return null }, { calls: [] as any[] })
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
+  const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
+  ;(globalThis as any).window = dom.window
+  globalThis.document = dom.window.document
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+  const history = {
+    symbol: 'SH.688825', name: '长鑫科技', source: '腾讯行情 (unofficial)', fetchedAt: QUOTED,
+    adjustment: 'forward', adjustmentLabel: 'forward-adjusted (qfq)', pricePrecision: 2,
+    volumeUnit: 'shares', volumeBasis: 'lots', amountUnit: 'CNY', currency: 'CNY', exchangeTimezone: 'Asia/Shanghai',
+    firstSessionDate: '2026-10-15', lastSessionDate: '2026-10-19',
+    bars: [
+      { sessionDate: '2026-10-15', open: 44, high: 46, low: 43.5, close: 45.02, volume: 1_000_000, amount: 45_000_000, isFinal: true },
+      { sessionDate: '2026-10-16', open: 45, high: 47, low: 44.8, close: 46.5, volume: 1_200_000, amount: 55_000_000, isFinal: true },
+      { sessionDate: '2026-10-19', open: 46.4, high: 47.2, low: 46, close: 46.9, volume: 800_000, amount: 37_000_000, isFinal: false },
+    ],
+  }
+  const calls: any[] = []
+  const rpc = {
+    call: async (_channel: string, _endpoint: string, payload: any) => {
+      calls.push(payload)
+      if (payload?.action === 'get') return { ok: true, value: { enabled: true, forced: false } }
+      if (payload.kind === 'history') return { ok: true, value: { status: 'ready', history: { ...history, symbol: payload.symbol } } }
+      if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
+      if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
+      if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      return { ok: true, value: { status: 'ready', board } }
+    },
+  }
+  const { createRoot } = await import('react-dom/client')
+  const root = createRoot(dom.window.document.getElementById('root')!)
+  const added: any[] = [], selected: any[] = []
+  const state: any = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: null }
+  const useWatchlist = (selector: any) => selector(state)
+  const useResource = () => ({ status: 'live', value: null })
+  const noop = () => {}
+  try {
+    await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
+      useWatchlist, useResource, add: (item: any) => { added.push(item); state.items.push({ ...item }); state.selectedSymbol = item.symbol },
+      remove: noop, move: noop, select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol }, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
+      t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
+    })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const tabs = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-view-tabs button')]
+    await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    // Open the sector panel, pick a constituent, then drill into it.
+    const tile = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-mkt-tile')].find(element => element.textContent?.includes('半导体'))
+    await act(async () => tile!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const drill = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-mkt-drill')].find(element => element.textContent === '查看详情')
+    assert.ok(drill, 'constituent rows must offer a drill-down action')
+    await act(async () => drill!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    // An unknown stock is added unfixed and selected, never silently fixed.
+    assert.deepEqual(added, [{ symbol: 'SH.688825', alias: '长鑫科技', fixed: false }])
+    assert.match(dom.window.document.body.textContent ?? '', /已加入自选并打开/)
+    assert.equal(tabs[0]!.getAttribute('aria-pressed'), 'true')
+    // The stub workbench receives the drilled symbol; the real component then
+    // requests its history (covered by workbench/history tests).
+    const mounted = (globalThis as any).__workbenchStub.calls.at(-1)
+    assert.equal(mounted.symbol, 'SH.688825')
+    assert.equal(mounted.rpc, rpc)
+  } finally {
+    await act(async () => root.unmount())
+    dom.window.close()
+    for (const [key, value] of Object.entries(original)) { if (value === undefined) delete (globalThis as any)[key]; else (globalThis as any)[key] = value }
+  }
+})
+
+test('a mover row and an index card drill down without touching the watchlist', async () => {
+  ;(globalThis as any).__workbenchStub = Object.assign((props: any) => { (globalThis as any).__workbenchStub.calls.push(props); return null }, { calls: [] as any[] })
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
+  const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
+  ;(globalThis as any).window = dom.window
+  globalThis.document = dom.window.document
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+  const calls: any[] = []
+  const rpc = {
+    call: async (_channel: string, _endpoint: string, payload: any) => {
+      calls.push(payload)
+      if (payload?.action === 'get') return { ok: true, value: { enabled: true, forced: false } }
+      if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
+      if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
+      if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      return { ok: true, value: { status: 'ready', board } }
+    },
+  }
+  const { createRoot } = await import('react-dom/client')
+  const root = createRoot(dom.window.document.getElementById('root')!)
+  const added: any[] = [], selected: any[] = []
+  const state: any = { items: [{ symbol: 'SH.600519', alias: '茅台', fixed: false }], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: 'SH.600519' }
+  const useWatchlist = (selector: any) => selector(state)
+  const useResource = () => ({ status: 'live', value: null })
+  const noop = () => {}
+  try {
+    await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
+      useWatchlist, useResource, add: (item: any) => added.push(item), remove: noop, move: noop,
+      select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol }, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
+      t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
+    })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const tabs = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-view-tabs button')]
+    await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const mover = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-mkt-movers-grid .dxs-mkt-link')][0]
+    assert.ok(mover, 'mover rows must offer a drill-down action')
+    await act(async () => mover!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.deepEqual(added, [{ symbol: 'BJ.920196', alias: 'N南乳', fixed: false }])
+    assert.match(dom.window.document.body.textContent ?? '', /已加入自选并打开/)
+    // An index is opened too, but it is not an exchange-qualified A-share, so it
+    // must not be written to the watchlist.
+    await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const index = dom.window.document.querySelector<HTMLElement>('.dxs-mkt-index .dxs-mkt-link')
+    assert.ok(index, 'index cards must offer a drill-down action')
+    await act(async () => index!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.deepEqual(added, [{ symbol: 'BJ.920196', alias: 'N南乳', fixed: false }], 'indices never enter the A-share watchlist')
+    assert.match(dom.window.document.body.textContent ?? '', /上证指数 · SH\.000001/)
+    assert.match(dom.window.document.body.textContent ?? '', /指数日 K 来自同一个本机免费源/)
+    const chart = (globalThis as any).__workbenchStub.calls.at(-1)
+    assert.equal(chart.symbol, 'SH.000001')
+    assert.equal(chart.rpc, rpc)
   } finally {
     await act(async () => root.unmount())
     dom.window.close()

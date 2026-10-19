@@ -133,6 +133,7 @@ export const zh = {
   'error.cancelled': '行情请求已取消。',
   'error.unavailable': '行情暂不可用，请稍后重试。',
   'error.market-unavailable': '行情暂不可用，请稍后重试。',
+  'error.history-unavailable': '该股票暂无历史日 K 数据。',
   'error.unknown': '操作未完成，请稍后重试。',
 }
 /** @type {Record<keyof typeof zh, string>} */
@@ -263,6 +264,7 @@ export const en = {
   'error.cancelled': 'Quote request cancelled.',
   'error.unavailable': 'Quotes are temporarily unavailable. Please try again later.',
   'error.market-unavailable': 'Quotes are temporarily unavailable. Please try again later.',
+  'error.history-unavailable': 'No daily history is available for this stock.',
   'error.unknown': 'The action could not be completed. Please try again.',
 }
 
