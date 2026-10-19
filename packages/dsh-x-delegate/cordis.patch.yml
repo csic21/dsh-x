@@ -1,0 +1,29 @@
+- insert:
+    - id: dsh-x-delegate
+      name: dsh-x-delegate
+      config:
+        acp:
+          - providerName: grok
+            command: grok
+            args: [agent, stdio]
+            permission: read-only
+            config: {}
+            env: {}
+            disposeEofGraceMs: 6000
+            disposeGraceMs: 3000
+          - providerName: opencode
+            command: opencode
+            args: [acp, --standalone]
+            permission: read-only
+            config: {}
+            env: {}
+            disposeEofGraceMs: 6000
+            disposeGraceMs: 3000
+        codex:
+          providerName: delegate-codex
+          toolName: delegate_codex
+          command: codex
+          sandbox: workspace-write
+          env: {}
+          disposeGraceMs: 3000
+        tools: true

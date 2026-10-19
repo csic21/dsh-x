@@ -38,6 +38,12 @@ const packages = {
     category: 'web',
     icon: 'icons/dsh-x-browser.svg',
   },
+  'dsh-x-delegate': {
+    title: { en: 'Delegate', zh: '委派' },
+    description: { en: 'Delegate one task to a local Codex, Grok, or OpenCode CLI, with a per-call model.', zh: '把一个任务委派给本机的 Codex、Grok 或 OpenCode，并可按次选择模型。' },
+    category: 'development',
+    icon: 'icons/dsh-x-delegate.svg',
+  },
 }
 
 const compare = (a, b) => {
@@ -107,7 +113,7 @@ const plugins = Object.entries(packages).flatMap(([name, display]) => {
 const index = {
   format: 1,
   title: { en: 'DSH-X plugins', zh: 'DSH-X 插件' },
-  description: { en: 'Code review, A-share quotes and an experimental embedded browser for DeepSeek Harness.', zh: 'DeepSeek Harness 的代码审查、A 股行情与实验性内嵌浏览器。' },
+  description: { en: 'Code review, external coding agents, A-share quotes and an experimental embedded browser for DeepSeek Harness.', zh: 'DeepSeek Harness 的代码审查、外部编码代理、A 股行情与实验性内嵌浏览器。' },
   metadata: {
     categories: {
       development: { title: { en: 'Development', zh: '开发' } },

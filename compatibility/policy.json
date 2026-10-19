@@ -26,7 +26,8 @@
   "pluginDirectories": [
     "packages/dsh-x-code",
     "packages/dsh-x-stock",
-    "packages/dsh-x-browser"
+    "packages/dsh-x-browser",
+    "packages/dsh-x-delegate"
   ],
   "packageManager": {
     "name": "pnpm",

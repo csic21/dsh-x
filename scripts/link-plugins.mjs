@@ -21,7 +21,7 @@ if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(values.profile) || values.profile === 'd
   throw new Error('使用普通 profile 名称，例如 web。desktop 必须使用官方 Desktop 自带的 CLI，此脚本不操作它。')
 }
 const root = fileURLToPath(new URL('..', import.meta.url))
-const packages = ['dsh-x-code', 'dsh-x-stock', 'dsh-x-browser'].map(name => path.join(root, 'packages', name))
+const packages = ['dsh-x-code', 'dsh-x-stock', 'dsh-x-browser', 'dsh-x-delegate'].map(name => path.join(root, 'packages', name))
 for (const directory of packages) {
   if (!existsSync(path.join(directory, 'package.json'))) throw new Error(`缺少插件：${directory}`)
 }
@@ -33,4 +33,4 @@ const result = spawnSync(values.dsh, ['plugin', '--profile', values.profile, 'ad
 })
 if (result.error) throw result.error
 if (result.status !== 0) process.exit(result.status ?? 1)
-console.log(`已链接 Code、Stocks 与实验性 Browser；使用同一个 DSH_HOME 启动 ${values.profile}。`)
+console.log(`已链接 Code、Stocks、Delegate 与实验性 Browser；使用同一个 DSH_HOME 启动 ${values.profile}。`)

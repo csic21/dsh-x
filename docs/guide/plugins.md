@@ -7,6 +7,7 @@
 | `dsh-x-code` | 代码工作区：文件树、源码/差异、快照审查与 findings | 按需 | 可用 |
 | `dsh-x-stock` | A 股自选（含名称搜索）、市场全景、独立详情页、底部固定栏；另含只读报价工具 | 按需 | 可用，行情源需显式开启 |
 | `dsh-x-browser` | 受控浏览器操作与权限边界 | 不装（实验性） | 实验性，Electron 行为不在本仓库验证 |
+| `dsh-x-delegate` | 把一个任务委派给本机 Codex、Grok 或 OpenCode | 按需 | 可用；真实 CLI 回合不在仓库内验证 |
 
 ## dsh-x-code
 
@@ -30,6 +31,16 @@
 - 可选开启本机免密钥源（`qt.gtimg.cn` / 腾讯公开榜单，非官方、无授权，仅个人本机使用，是轮询而非推送，不承诺实时或可再分发）。市场情绪指数由插件计算，不是供应商或交易所官方指标。
 - 另有 Finnhub 单股票报价工具，需要凭据，覆盖范围取决于其套餐。
 - 使用自有的 main / sidebar 插槽；`shell.bottom` 有固定股票且未被隐藏、且无其他注册者时才显示，冲突时退让。
+
+## dsh-x-delegate
+
+把一个自包含任务交给本机已经登录的外部编码代理，不携带官方钉死的 Codex 0.153.4 载荷：
+
+- `delegate_grok`：`grok agent stdio`（Agent Client Protocol）。
+- `delegate_opencode`：`opencode acp --standalone`。`--standalone` 避免并发委派挤在同一个后台服务上。
+- `delegate_codex`：`PATH` 上的 `codex exec --json`。Provider 名是 `delegate-codex`，可以和官方 `subagent_codex` 同时启用。
+- 每次调用可传 `model`。Grok / OpenCode 还可传 `permission`（默认 `read-only`）；Codex 可传 `sandbox`。
+- 认证沿用各 CLI 自己的 home。插件不复制凭据，也不继承当前会话。
 
 ## dsh-x-browser
 
