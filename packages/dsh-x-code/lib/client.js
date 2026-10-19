@@ -555,28 +555,49 @@ function useMediaUrl(payload, mime, encoding) {
   }, [url]);
   return url;
 }
+var MIN_ZOOM = 0.1;
+var MAX_ZOOM = 8;
+function clampZoom(value) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
 function stepZoom(current, direction) {
-  const base2 = current === "fit" ? 1 : current;
-  const next = direction > 0 ? base2 * 1.25 : base2 / 1.25;
-  return Math.min(8, Math.max(0.1, Math.round(next * 100) / 100));
+  const next = direction > 0 ? current * 1.25 : current / 1.25;
+  return clampZoom(Math.round(next * 100) / 100);
+}
+function wheelZoom(current, event) {
+  const line = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 800 : 1;
+  return clampZoom(current * Math.exp(-(event.deltaY * line) / 500));
 }
 function ImageView({ src, name, label = "image", t }) {
   const stage = (0, import_react2.useRef)(null);
+  const image = (0, import_react2.useRef)(null);
   const [mode, setMode] = (0, import_react2.useState)("fit");
   const [natural, setNatural] = (0, import_react2.useState)(null);
   const [broken, setBroken] = (0, import_react2.useState)(false);
+  const displayed = () => {
+    const node = image.current;
+    if (!node?.naturalWidth) return 1;
+    const width = node.getBoundingClientRect().width;
+    return width > 0 ? width / node.naturalWidth : 1;
+  };
+  (0, import_react2.useEffect)(() => {
+    setMode("fit");
+    setBroken(false);
+    setNatural(null);
+  }, [src]);
   (0, import_react2.useEffect)(() => {
     const node = stage.current;
     if (!node) return;
     const onWheel = (event) => {
+      if (!event.deltaY) return;
       event.preventDefault();
-      setMode((current) => stepZoom(current, event.deltaY < 0 ? 1 : -1));
+      setMode((current) => wheelZoom(current === "fit" ? displayed() : current, event));
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
   }, []);
   const sized = mode !== "fit" && natural && natural.width > 0;
-  return /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-media", "data-media": label }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-media-toolbar", role: "toolbar", "aria-label": t("preview") }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("zoomOut"), onClick: () => setMode((current) => stepZoom(current, -1)) }, "\u2212"), /* @__PURE__ */ import_react2.default.createElement("span", null, mode === "fit" ? t("zoomFit") : t("zoomPercent", { percent: Math.round(mode * 100) })), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("zoomIn"), onClick: () => setMode((current) => stepZoom(current, 1)) }, "+"), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-pressed": mode === "fit", onClick: () => setMode("fit") }, t("zoomFit")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-pressed": mode === 1, onClick: () => setMode(1) }, t("zoomActual")), natural && natural.width > 0 && /* @__PURE__ */ import_react2.default.createElement("span", null, t("dimensions", { width: natural.width, height: natural.height }))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-media-stage", "data-fit": mode === "fit" || void 0, ref: stage }, /* @__PURE__ */ import_react2.default.createElement("img", { src, alt: name, hidden: broken || void 0, "data-broken": broken || void 0, style: sized ? { width: Math.round(natural.width * mode) } : void 0, onLoad: (event) => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }), onError: () => setBroken(true) }), broken && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t("mediaFailed"))));
+  return /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-media", "data-media": label }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-media-toolbar", role: "toolbar", "aria-label": t("preview") }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("zoomOut"), onClick: () => setMode((current) => stepZoom(current === "fit" ? displayed() : current, -1)) }, "\u2212"), /* @__PURE__ */ import_react2.default.createElement("span", null, mode === "fit" ? t("zoomFit") : t("zoomPercent", { percent: Math.round(mode * 100) })), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("zoomIn"), onClick: () => setMode((current) => stepZoom(current === "fit" ? displayed() : current, 1)) }, "+"), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-pressed": mode === "fit", onClick: () => setMode("fit") }, t("zoomFit")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-pressed": mode === 1, onClick: () => setMode(1) }, t("zoomActual")), natural && natural.width > 0 && /* @__PURE__ */ import_react2.default.createElement("span", null, t("dimensions", { width: natural.width, height: natural.height }))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-media-stage", "data-fit": mode === "fit" || void 0, ref: stage }, /* @__PURE__ */ import_react2.default.createElement("img", { ref: image, src, alt: name, hidden: broken || void 0, "data-broken": broken || void 0, style: sized ? { width: natural.width * mode } : void 0, onLoad: (event) => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }), onError: () => setBroken(true) }), broken && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t("mediaFailed"))));
 }
 function MediaView({ kind, payload, encoding, mime, name, t }) {
   const url = useMediaUrl(payload, mime, encoding);
@@ -815,33 +836,40 @@ function moveTab(tabs, from, to) {
 }
 
 // src/client/Splitter.tsx
-function Splitter({ value, bounds, label, orientation, direction, className = "", onResize, onToggle }) {
-  const [preview, setPreview] = (0, import_react5.useState)(null);
+function Splitter({ value, bounds, label, orientation, direction, className = "", onResize, onToggle, onPreview }) {
+  const [dragging, setDragging] = (0, import_react5.useState)(false);
   const drag = (0, import_react5.useRef)(null);
-  const shown = preview ?? value, vertical = orientation === "vertical";
+  const vertical = orientation === "vertical";
   (0, import_react5.useEffect)(() => () => {
-    if (drag.current) restore();
+    const state = drag.current;
+    if (state?.frame) cancelAnimationFrame(state.frame);
+    restore();
   }, []);
   const restore = () => {
     try {
       document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     } catch {
     }
   };
   const end = (event, commit) => {
     const state = drag.current;
     if (!state || state.pointer !== event.pointerId) return;
+    if (state.frame) cancelAnimationFrame(state.frame);
     drag.current = null;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
     }
     restore();
-    const value2 = preview ?? state.origin;
-    setPreview(null);
-    if (!commit) return;
-    if (value2 <= bounds.min + COLLAPSE_SNAP) onToggle();
-    else onResize(value2);
+    setDragging(false);
+    const next = state.latest;
+    if (!commit) {
+      onPreview?.(state.origin);
+      return;
+    }
+    if (next <= bounds.min + COLLAPSE_SNAP) onToggle();
+    else onResize(next);
   };
   return /* @__PURE__ */ import_react5.default.createElement(
     "div",
@@ -853,24 +881,35 @@ function Splitter({ value, bounds, label, orientation, direction, className = ""
       "aria-label": label,
       "aria-valuemin": bounds.min,
       "aria-valuemax": bounds.max,
-      "aria-valuenow": shown,
-      "data-dragging": preview != null || void 0,
+      "aria-valuenow": dragging ? void 0 : value,
+      "data-dragging": dragging || void 0,
       tabIndex: 0,
       onPointerDown: (event) => {
         if (event.button !== 0) return;
-        drag.current = { at: vertical ? event.clientX : event.clientY, origin: value, pointer: event.pointerId };
-        setPreview(value);
+        drag.current = { at: vertical ? event.clientX : event.clientY, origin: value, pointer: event.pointerId, latest: value, frame: 0 };
+        setDragging(true);
         try {
           event.currentTarget.setPointerCapture(event.pointerId);
         } catch {
         }
         document.body.style.cursor = vertical ? "col-resize" : "row-resize";
+        document.body.style.userSelect = "none";
         event.preventDefault();
       },
       onPointerMove: (event) => {
         const state = drag.current;
         if (!state || state.pointer !== event.pointerId) return;
-        setPreview(dragSize(state.origin, ((vertical ? event.clientX : event.clientY) - state.at) * direction, bounds));
+        state.latest = dragSize(state.origin, ((vertical ? event.clientX : event.clientY) - state.at) * direction, bounds);
+        if (state.frame) return;
+        const separator = event.currentTarget;
+        const paint = () => {
+          const active = drag.current;
+          if (!active) return;
+          active.frame = 0;
+          separator.setAttribute("aria-valuenow", String(active.latest));
+          onPreview?.(active.latest);
+        };
+        state.frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame(paint) : (paint(), 0);
       },
       onPointerUp: (event) => end(event, true),
       onPointerCancel: (event) => end(event, false),
@@ -1474,6 +1513,7 @@ function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview
 function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, cancel, back, t, formatTime }) {
   const state = useCode((value) => value), snapshot = state.snapshot;
   const page = (0, import_react6.useRef)(null);
+  const workbench = (0, import_react6.useRef)(null);
   const { layout, update: setLayout } = useWorkbenchLayout(browserStorage());
   const [narrow, setNarrow] = (0, import_react6.useState)(false), [pane, setPane] = (0, import_react6.useState)("files");
   const [tabs, setTabs] = (0, import_react6.useState)([]), [path, setPath] = (0, import_react6.useState)(null);
@@ -1632,7 +1672,11 @@ ${JSON.stringify(args, null, 2)}`);
   const counts = { files: files.length, changes: files.filter(isChanged).length, history: snapshot?.history.length ?? 0 };
   const showSidebar = !layout.sidebarCollapsed;
   const showPanel = !layout.panelCollapsed;
-  const columns = `40px ${showSidebar ? `${layout.sidebar}px 4px` : "0px 0px"} minmax(240px,1fr) ${showPanel ? `4px ${layout.panel}px` : "0px 0px"}`;
+  const columnsFor = (sidebar, panel) => `40px ${showSidebar ? `${sidebar}px 4px` : "0px 0px"} minmax(240px,1fr) ${showPanel ? `4px ${panel}px` : "0px 0px"}`;
+  const columns = columnsFor(layout.sidebar, layout.panel);
+  const paintTrack = (sidebar, panel) => {
+    if (workbench.current) workbench.current.style.gridTemplateColumns = columnsFor(sidebar, panel);
+  };
   return /* @__PURE__ */ import_react6.default.createElement("main", { className: "dxc dxc-page", ref: page, "data-code-session": sessionId, "data-pane": pane, "data-narrow": narrow || void 0, "data-sidebar": showSidebar || void 0, "data-panel": showPanel || void 0 }, /* @__PURE__ */ import_react6.default.createElement("header", { className: "dxc-titlebar" }, /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-brand" }, /* @__PURE__ */ import_react6.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react6.default.createElement("h1", null, t("title")), snapshot && /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxc-repo", title: snapshot.workspace.repoRoot }, basename(snapshot.workspace.repoRoot))), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-header-actions" }, !narrow && /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": showSidebar, "aria-label": t("toggleSidebar"), title: t("toggleSidebar"), onClick: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }, /* @__PURE__ */ import_react6.default.createElement(SidebarIcon, null)), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": showPanel, "aria-label": t("togglePanel"), title: t("togglePanel"), onClick: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }, /* @__PURE__ */ import_react6.default.createElement(PanelIcon, null))), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: back }, t("back")), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: () => {
     clearFile();
     refresh();
@@ -1646,10 +1690,10 @@ ${JSON.stringify(args, null, 2)}`);
   } }, /* @__PURE__ */ import_react6.default.createElement("option", { value: "current" }, t("current")), /* @__PURE__ */ import_react6.default.createElement("option", { value: "review" }, t("reviewed"), " \xB7 ", shortHash(review.snapshotId)))), historyId && /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-banner dxc-history-banner" }, /* @__PURE__ */ import_react6.default.createElement("span", null, t("viewingHistory"), " \xB7 ", shortHash(review?.snapshotId)), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: latest }, t("latestReview"))), !live && snapshot && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t("disconnected")), notice && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t(notice, { count: maxFiles }), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: () => setNotice(null) }, "\xD7")), running && /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-banner dxc-running", role: "status" }, /* @__PURE__ */ import_react6.default.createElement("span", { className: "dxc-state-dot" }), /* @__PURE__ */ import_react6.default.createElement("span", null, t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : "state.running")), /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: back }, t("openConversation")), canStop && /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", disabled: !live || state.pending || operation?.state === "cancelling", onClick: async () => {
     const result = await cancel();
     if (!result.ok) setNotice("cancelUnconfirmed");
-  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react6.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react6.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, narrow && /* @__PURE__ */ import_react6.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: pane, onChange: setPane, items: [{ value: "files", label: t("files") }, { value: "code", label: t("code") }, { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-workbench", style: narrow ? void 0 : { gridTemplateColumns: columns } }, !narrow && /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-track-activity" }, /* @__PURE__ */ import_react6.default.createElement(ActivityBar, { activity: layout.activity, onChange: changeActivity, counts, t })), (narrow || showSidebar) && /* @__PURE__ */ import_react6.default.createElement(Sidebar, { files, path: effectivePath, selected, select: toggleFile, open: (next) => openFile(next), t, limit: maxFiles, snapshot, reviewed: context === "review", activity: layout.activity, history: snapshot.history, historyId, inspectHistory, latest, formatTime }), !narrow && showSidebar && /* @__PURE__ */ import_react6.default.createElement(Splitter, { value: layout.sidebar, bounds: SIDEBAR_BOUNDS, label: t("resizeSidebar"), orientation: "vertical", direction: 1, className: "dxc-track-sidebar-splitter", onResize: (value) => setLayout({ sidebar: value }), onToggle: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }), /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxc-editor" }, /* @__PURE__ */ import_react6.default.createElement(EditorTabs, { path: effectivePath, tabs, select: (next) => setPath(next), close: closeTabPath, reorder: (from, to) => setTabs((value) => moveTab(value, from, to)), closeOthers, closeAll, t }), /* @__PURE__ */ import_react6.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
+  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react6.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react6.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react6.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react6.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react6.default.createElement(import_react6.default.Fragment, null, narrow && /* @__PURE__ */ import_react6.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: pane, onChange: setPane, items: [{ value: "files", label: t("files") }, { value: "code", label: t("code") }, { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-workbench", ref: workbench, style: narrow ? void 0 : { gridTemplateColumns: columns } }, !narrow && /* @__PURE__ */ import_react6.default.createElement("div", { className: "dxc-track-activity" }, /* @__PURE__ */ import_react6.default.createElement(ActivityBar, { activity: layout.activity, onChange: changeActivity, counts, t })), (narrow || showSidebar) && /* @__PURE__ */ import_react6.default.createElement(Sidebar, { files, path: effectivePath, selected, select: toggleFile, open: (next) => openFile(next), t, limit: maxFiles, snapshot, reviewed: context === "review", activity: layout.activity, history: snapshot.history, historyId, inspectHistory, latest, formatTime }), !narrow && showSidebar && /* @__PURE__ */ import_react6.default.createElement(Splitter, { value: layout.sidebar, bounds: SIDEBAR_BOUNDS, label: t("resizeSidebar"), orientation: "vertical", direction: 1, className: "dxc-track-sidebar-splitter", onResize: (value) => setLayout({ sidebar: value }), onPreview: (value) => paintTrack(value, layout.panel), onToggle: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }), /* @__PURE__ */ import_react6.default.createElement("section", { className: "dxc-editor" }, /* @__PURE__ */ import_react6.default.createElement(EditorTabs, { path: effectivePath, tabs, select: (next) => setPath(next), close: closeTabPath, reorder: (from, to) => setTabs((value) => moveTab(value, from, to)), closeOthers, closeAll, t }), /* @__PURE__ */ import_react6.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
     clearFile();
     if (request) loadFile(request);
-  }, scrollPositions, t })), !narrow && showPanel && /* @__PURE__ */ import_react6.default.createElement(Splitter, { value: layout.panel, bounds: PANEL_BOUNDS, label: t("resizePanel"), orientation: "vertical", direction: -1, className: "dxc-track-panel-splitter", onResize: (value) => setLayout({ panel: value }), onToggle: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }), (narrow || showPanel) && /* @__PURE__ */ import_react6.default.createElement(BottomPanel, { tab: layout.panelTab, setTab: (tab) => setLayout({ panelTab: tab }), review, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime }))));
+  }, scrollPositions, t })), !narrow && showPanel && /* @__PURE__ */ import_react6.default.createElement(Splitter, { value: layout.panel, bounds: PANEL_BOUNDS, label: t("resizePanel"), orientation: "vertical", direction: -1, className: "dxc-track-panel-splitter", onResize: (value) => setLayout({ panel: value }), onPreview: (value) => paintTrack(layout.sidebar, value), onToggle: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }), (narrow || showPanel) && /* @__PURE__ */ import_react6.default.createElement(BottomPanel, { tab: layout.panelTab, setTab: (tab) => setLayout({ panelTab: tab }), review, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime }))));
 }
 function CodeToolRow({ phase, block, open, t }) {
   const meta = block?.meta, valid = meta?.kind === "dsh-x-code.result" && meta.version === 1;

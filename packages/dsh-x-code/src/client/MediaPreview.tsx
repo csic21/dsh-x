@@ -30,23 +30,44 @@ function useMediaUrl(payload: string | null | undefined, mime: string, encoding:
   return url
 }
 
-function stepZoom(current: Zoom, direction: 1 | -1): number {
-  const base = current === 'fit' ? 1 : current
-  const next = direction > 0 ? base * 1.25 : base / 1.25
-  return Math.min(8, Math.max(0.1, Math.round(next * 100) / 100))
+const MIN_ZOOM = 0.1
+const MAX_ZOOM = 8
+
+function clampZoom(value: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
+}
+
+/** One click is a clear step. The wheel uses distance instead, so a trackpad flick is not a burst of clicks. */
+function stepZoom(current: number, direction: 1 | -1): number {
+  const next = direction > 0 ? current * 1.25 : current / 1.25
+  return clampZoom(Math.round(next * 100) / 100)
+}
+
+function wheelZoom(current: number, event: WheelEvent): number {
+  const line = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 800 : 1
+  return clampZoom(current * Math.exp(-(event.deltaY * line) / 500))
 }
 
 function ImageView({ src, name, label = 'image', t }: { src: string, name: string, label?: string, t: Translate }) {
   const stage = useRef<HTMLDivElement>(null)
+  const image = useRef<HTMLImageElement>(null)
   const [mode, setMode] = useState<Zoom>('fit')
   const [natural, setNatural] = useState<{ width: number, height: number } | null>(null)
   const [broken, setBroken] = useState(false)
+  const displayed = () => {
+    const node = image.current
+    if (!node?.naturalWidth) return 1
+    const width = node.getBoundingClientRect().width
+    return width > 0 ? width / node.naturalWidth : 1
+  }
+  useEffect(() => { setMode('fit'); setBroken(false); setNatural(null) }, [src])
   useEffect(() => {
     const node = stage.current
     if (!node) return
     const onWheel = (event: WheelEvent) => {
+      if (!event.deltaY) return
       event.preventDefault()
-      setMode(current => stepZoom(current, event.deltaY < 0 ? 1 : -1))
+      setMode(current => wheelZoom(current === 'fit' ? displayed() : current, event))
     }
     node.addEventListener('wheel', onWheel, { passive: false })
     return () => node.removeEventListener('wheel', onWheel)
@@ -54,15 +75,15 @@ function ImageView({ src, name, label = 'image', t }: { src: string, name: strin
   const sized = mode !== 'fit' && natural && natural.width > 0
   return <div className="dxc-media" data-media={label}>
     <div className="dxc-media-toolbar" role="toolbar" aria-label={t('preview')}>
-      <button type="button" aria-label={t('zoomOut')} onClick={() => setMode(current => stepZoom(current, -1))}>−</button>
+      <button type="button" aria-label={t('zoomOut')} onClick={() => setMode(current => stepZoom(current === 'fit' ? displayed() : current, -1))}>−</button>
       <span>{mode === 'fit' ? t('zoomFit') : t('zoomPercent', { percent: Math.round(mode * 100) })}</span>
-      <button type="button" aria-label={t('zoomIn')} onClick={() => setMode(current => stepZoom(current, 1))}>+</button>
+      <button type="button" aria-label={t('zoomIn')} onClick={() => setMode(current => stepZoom(current === 'fit' ? displayed() : current, 1))}>+</button>
       <button type="button" aria-pressed={mode === 'fit'} onClick={() => setMode('fit')}>{t('zoomFit')}</button>
       <button type="button" aria-pressed={mode === 1} onClick={() => setMode(1)}>{t('zoomActual')}</button>
       {natural && natural.width > 0 && <span>{t('dimensions', { width: natural.width, height: natural.height })}</span>}
     </div>
     <div className="dxc-media-stage" data-fit={mode === 'fit' || undefined} ref={stage}>
-      <img src={src} alt={name} hidden={broken || undefined} data-broken={broken || undefined} style={sized ? { width: Math.round(natural.width * mode) } : undefined} onLoad={event => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setBroken(true)} />
+      <img ref={image} src={src} alt={name} hidden={broken || undefined} data-broken={broken || undefined} style={sized ? { width: natural.width * mode } : undefined} onLoad={event => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setBroken(true)} />
       {broken && <p className="dxc-state">{t('mediaFailed')}</p>}
     </div>
   </div>
