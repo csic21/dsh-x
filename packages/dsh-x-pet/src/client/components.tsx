@@ -21,6 +21,9 @@ export interface PetStandardProps {
   usePanelInfo: (selector: (state: any) => any) => any
 }
 
+/** How far the pointer must travel before a press becomes a drag. */
+const DRAG_THRESHOLD = 6
+
 const STATE_LABEL: Record<PetState, string> = {
   idle: 'state.idle',
   running: 'state.running',
@@ -66,6 +69,8 @@ export function PetSprite(props: {
   url: string | null
   rows: number
   state: PetState
+  /** Whether the state keeps repeating; a greeting plays once. */
+  loop?: boolean
   reducedMotion: boolean
   label: string
   describedBy?: string
@@ -76,6 +81,7 @@ export function PetSprite(props: {
   onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void
 }) {
   const { url, rows, state, reducedMotion, label } = props
+  const loop = props.loop ?? true
   const ref = useRef<HTMLButtonElement>(null)
   const [hovered, setHovered] = useState(false)
   const [look, setLook] = useState<LookFrame | null>(null)
@@ -92,38 +98,39 @@ export function PetSprite(props: {
     const element = ref.current
     if (!element || !url) return
     if (look) { showLookFrame(element, look, rows); return }
-    // The Codex character loops its state: a working pet keeps working, and a
-    // hovered pet keeps jumping until the pointer leaves.
-    return playSprite(element, animation, { rows, reducedMotion, loop: true })
-  }, [url, rows, animation, reducedMotion, look])
+    // A working pet keeps working and a hovered pet keeps jumping; a greeting
+    // plays through and hands the sprite back to the session state.
+    return playSprite(element, animation, { rows, reducedMotion, loop })
+  }, [url, rows, animation, reducedMotion, look, loop])
 
   // The look follows the pointer while it is over the pet, and for ten
   // seconds after it leaves: the same linger the Codex character uses.
   useEffect(() => {
     if (!lookable) { setLook(null); return }
+    const element = ref.current
+    if (!element) return
+    const host = element.ownerDocument?.defaultView ?? globalThis
     let linger: ReturnType<typeof setTimeout> | undefined
     const cancel = () => {
-      if (linger !== undefined) { clearTimeout(linger); linger = undefined }
+      if (linger !== undefined) { host.clearTimeout(linger); linger = undefined }
       setLook(null)
     }
     const onMove = (event: PointerEvent) => {
       if (event.isPrimary === false || event.pointerType === 'touch') return
-      const element = ref.current
-      if (!element) return
       const bounds = element.getBoundingClientRect()
       if (bounds.width <= 0 || bounds.height <= 0) return
       const over = event.clientX >= bounds.left && event.clientX <= bounds.right
         && event.clientY >= bounds.top && event.clientY <= bounds.bottom
       if (over) {
-        if (linger !== undefined) clearTimeout(linger)
-        linger = setTimeout(cancel, LOOK_LINGER_MS)
+        if (linger !== undefined) host.clearTimeout(linger)
+        linger = host.setTimeout(cancel, LOOK_LINGER_MS)
       } else if (linger === undefined) return
       setLook(lookFrame(event.clientX - (bounds.left + bounds.width / 2), event.clientY - (bounds.top + bounds.height / 2)))
     }
-    globalThis.addEventListener?.('pointermove', onMove, { passive: true })
+    host.addEventListener?.('pointermove', onMove, { passive: true })
     return () => {
-      globalThis.removeEventListener?.('pointermove', onMove)
-      if (linger !== undefined) clearTimeout(linger)
+      host.removeEventListener?.('pointermove', onMove)
+      if (linger !== undefined) host.clearTimeout(linger)
     }
   }, [lookable, rows])
 
@@ -140,6 +147,7 @@ export function PetSprite(props: {
     style={{ backgroundImage: `url(${url})`, backgroundSize: `800% ${rows * 100}%` }}
     onPointerEnter={() => { setHovered(true); props.onPointerEnter() }}
     onPointerLeave={() => { setHovered(false); props.onPointerLeave() }}
+    draggable={false}
     onPointerDown={props.onPointerDown}
     onClick={props.onClick}
     onKeyDown={props.onKeyDown}
@@ -213,6 +221,119 @@ function PetRow(props: { pet: any, active: boolean, t: Translate, onSelect: (id:
   </li>
 }
 
+/** A run of work the pet can narrate: elapsed time, a block, or a finish. */
+export interface Narration {
+  /** What the bubble says, or null when the pet stays quiet. */
+  text: string | null
+  /** True while a turn is running, so the bubble can keep counting. */
+  busy: boolean
+  /** True for a short while after a turn finishes, when the pet waves. */
+  celebrate: boolean
+}
+
+const NOTIFY_KEY = 'dsh-x-pet:notify'
+
+function notificationsAllowed(): boolean {
+  try {
+    if (globalThis.localStorage?.getItem(NOTIFY_KEY) === 'off') return false
+    return notificationPermission() === 'granted'
+  } catch { return false }
+}
+
+function notificationPermission(): string {
+  try { return (globalThis as any).Notification?.permission ?? 'denied' } catch { return 'denied' }
+}
+
+/** One notification per finished turn, and only when the window is in the background. */
+function notifyFinished(title: string | null, t: Translate): void {
+  try {
+    if (!notificationsAllowed()) return
+    if (globalThis.document?.visibilityState === 'visible') return
+    const Ctor = (globalThis as any).Notification
+    if (!Ctor) return
+    new Ctor(t('notify.owner'), { body: title ? t('notify.doneTitle', { title }) : t('notify.done'), tag: 'dsh-x-pet' })
+  } catch { /* A refused notification never breaks the frame. */ }
+}
+
+const formatElapsed = (ms: number): string => {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor(total % 3600 / 60)
+  const seconds = total % 60
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`
+}
+
+/**
+ * Read the conversation the frame is showing and turn it into one line the pet
+ * can say: what is running, what it is waiting for, or what just finished.
+ */
+export function usePetNarration(
+  list: any,
+  statuses: Map<string, SessionStatus> | undefined,
+  t: Translate,
+): Narration {
+  const rows = (list?.byId ?? {}) as Record<string, any>
+  const current = Object.values(rows).find((row: any) => (row?.retainedBy?.mainView ?? 0) > 0)
+  const currentId: string | undefined = current?.id
+  const status = currentId ? statuses?.get(currentId) : undefined
+  const busy = status?.running === true
+  const pending = status?.pendingInteraction?.kind
+
+  const [elapsed, setElapsed] = useState(0)
+  const [finished, setFinished] = useState<{ title: string | null } | null>(null)
+  const [celebrate, setCelebrate] = useState(false)
+  const since = useRef<number | null>(null)
+  const previous = useRef<Map<string, boolean>>(new Map())
+
+  // Watch every session so a turn finishing in the background still counts.
+  useEffect(() => {
+    if (!statuses) return
+    const done: { title: string | null }[] = []
+    for (const [id, value] of statuses) {
+      const was = previous.current.get(id)
+      const now = value.running === true
+      if (was === true && !now) {
+        const title = rows[id]?.title
+        done.push({ title: typeof title === 'string' && title.trim() ? title.trim() : null })
+      }
+      previous.current.set(id, now)
+    }
+    if (done.length === 0) return
+    // A turn that already wants the user's attention is not a celebration:
+    // the waiting state says more than a finished one.
+    if ([...statuses.values()].some(item => item.pendingInteraction)) return
+    setFinished(done[0])
+    setCelebrate(true)
+    notifyFinished(done[0].title, t)
+  }, [statuses, list, t])
+
+  useEffect(() => {
+    if (!celebrate) return
+    const timer = globalThis.setTimeout(() => setCelebrate(false), 2_100)
+    return () => globalThis.clearTimeout(timer)
+  }, [celebrate])
+
+  useEffect(() => {
+    if (!finished) return
+    const timer = globalThis.setTimeout(() => setFinished(null), 9_000)
+    return () => globalThis.clearTimeout(timer)
+  }, [finished])
+
+  useEffect(() => {
+    if (!busy) { since.current = null; setElapsed(0); return }
+    if (since.current === null) since.current = Date.now()
+    const timer = globalThis.setInterval(() => setElapsed(Date.now() - (since.current ?? Date.now())), 1000)
+    return () => globalThis.clearInterval(timer)
+  }, [busy])
+
+  let text: string | null = null
+  if (pending) text = t(pending === 'question' ? 'bubble.question' : 'bubble.blocked')
+  else if (busy && status) text = t('bubble.working', { elapsed: formatElapsed(elapsed) })
+  else if (finished) text = finished.title ? t('bubble.doneTitle', { title: finished.title }) : t('bubble.done')
+  return { text, busy, celebrate }
+}
+
 export function PetFrame(props: PetStandardProps & {
   controller: PetController
   t: Translate
@@ -223,17 +344,19 @@ export function PetFrame(props: PetStandardProps & {
   const [failed, setFailed] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
   const [offset, setOffset] = useState<{ x: number, y: number } | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const dragged = useRef(false)
   const reducedMotion = useMemo(() => prefersReducedMotion(globalThis.window), [])
   const list = standard.useSessions((state: any) => state)
   const statuses = standard.useSessionStatus((state: any) => state)
   const panelActive = standard.usePanelInfo((info: any) => info.activePanelId !== null)
   const state = derivePetState(list, statuses, panelActive === true)
+  const narration = usePetNarration(list, statuses, t)
   const view = useSyncExternalStore(
     useCallback(listener => controller.subscribe(listener), [controller]),
     useCallback(() => controller.getSnapshot(), [controller]),
   )
   const active = view?.active ?? 'off'
+  const animation = narration.celebrate ? 'waving' : state
 
   useEffect(() => { void controller.load() }, [controller])
 
@@ -252,51 +375,59 @@ export function PetFrame(props: PetStandardProps & {
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
     const target = event.currentTarget
+    const host = target.ownerDocument?.defaultView ?? globalThis
     const startX = event.clientX
     const startY = event.clientY
     const origin = offset ?? { x: 0, y: 0 }
     const latest = { x: origin.x, y: origin.y }
     let moved = false
+    dragged.current = false
     const onMove = (move: PointerEvent) => {
       const dx = move.clientX - startX
       const dy = move.clientY - startY
-      if (!moved && Math.hypot(dx, dy) < 4) return
+      // A drag starts only after a real move, so a click never turns into one.
+      if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
       moved = true
-      setDragging(true)
+      dragged.current = true
       target.setPointerCapture?.(move.pointerId)
       latest.x = origin.x + dx
       latest.y = origin.y + dy
       setOffset({ x: latest.x, y: latest.y })
     }
     const onUp = () => {
-      globalThis.removeEventListener?.('pointermove', onMove)
-      globalThis.removeEventListener?.('pointerup', onUp)
-      globalThis.removeEventListener?.('pointercancel', onUp)
-      setDragging(false)
-      if (moved) void controller.move(latest.x, latest.y).catch(() => {})
+      host.removeEventListener?.('pointermove', onMove)
+      host.removeEventListener?.('pointerup', onUp)
+      host.removeEventListener?.('pointercancel', onUp)
+      if (!moved) return
+      void controller.move(latest.x, latest.y).catch(() => {})
+      // The click that follows this release is the tail of the drag, not a
+      // request to open the picker. Clear the flag after it has passed.
+      host.setTimeout(() => { dragged.current = false }, 0)
     }
-    globalThis.addEventListener?.('pointermove', onMove)
-    globalThis.addEventListener?.('pointerup', onUp)
-    globalThis.addEventListener?.('pointercancel', onUp)
+    host.addEventListener?.('pointermove', onMove)
+    host.addEventListener?.('pointerup', onUp)
+    host.addEventListener?.('pointercancel', onUp)
   }, [controller, offset])
 
   const onClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (dragging) { event.preventDefault(); return }
+    if (dragged.current) { dragged.current = false; event.preventDefault(); return }
     setPickerOpen(true)
-  }, [dragging])
+  }, [])
 
   if (active === 'off') return null
 
-  const label = `${t('frame.label')} · ${t(STATE_LABEL[state])}`
+  const label = `${t('frame.label')} · ${t(STATE_LABEL[animation])}`
   const style = offset ? ({ '--dxp-x': `${offset.x}px`, '--dxp-y': `${offset.y}px` } as any) : undefined
 
   return <>
-    <div className="dxp" style={style} data-pet-state={state}>
+    <div className="dxp" style={style} data-pet-state={animation}>
       <div className="dxp-stage">
+        <div className="dxp-bubble" data-show={narration.text !== null} role="status" aria-live="polite">{narration.text}</div>
         <PetSprite
           url={url}
           rows={view?.pets.find(pet => pet.id === active)?.rows ?? 11}
-          state={state}
+          state={animation}
+          loop={animation !== 'waving'}
           reducedMotion={reducedMotion}
           label={label}
           onPointerEnter={() => {}}
@@ -305,7 +436,7 @@ export function PetFrame(props: PetStandardProps & {
           onClick={onClick}
           onKeyDown={() => {}}
         />
-        <div className="dxp-status" role="status">{t(STATE_LABEL[state])}</div>
+        <div className="dxp-status">{t(STATE_LABEL[state])}</div>
         <div className="dxp-controls">
           <button type="button" onClick={() => setPickerOpen(true)}>{t('frame.open')}</button>
           <button type="button" onClick={() => { void controller.select('off').catch(() => {}) }}>{t('frame.hide')}</button>
@@ -357,6 +488,7 @@ export function PetSettings(props: { controller: PetController, t: Translate }) 
         onClick={() => { void controller.select(shown ? 'off' : (restore ?? 'off')).catch(() => {}) }}
       />
     </div>
+    <NotifyRow t={t} />
     <h3>{t('settings.pick')}</h3>
     {pets.length === 0
       ? <p className="dxp-empty">{t('settings.empty')}</p>
@@ -365,6 +497,44 @@ export function PetSettings(props: { controller: PetController, t: Translate }) 
       </ul>}
     <p className="dxp-settings-note">{t('settings.local', { path: view?.source ? `${view.source}/pets` : '~/.codex/pets' })}</p>
   </section>
+}
+
+/** Completion notifications are a browser permission, so they get their own switch. */
+function NotifyRow(props: { t: Translate }) {
+  const { t } = props
+  const [permission, setPermission] = useState(notificationPermission)
+  const [enabled, setEnabled] = useState(() => {
+    try { return notificationsAllowed() } catch { return false }
+  })
+  const toggle = async () => {
+    if (enabled) {
+      try { globalThis.localStorage?.setItem(NOTIFY_KEY, 'off') } catch { /* private mode */ }
+      setEnabled(false)
+      return
+    }
+    let state = notificationPermission()
+    if (state === 'default') {
+      try { state = await (globalThis as any).Notification.requestPermission() } catch { state = 'denied' }
+      setPermission(state)
+    }
+    if (state !== 'granted') { setEnabled(false); return }
+    try { globalThis.localStorage?.setItem(NOTIFY_KEY, 'on') } catch { /* private mode */ }
+    setEnabled(true)
+  }
+  return <div className="dxp-switch-row">
+    <div>
+      <strong>{t('settings.notify')}</strong>
+      <span>{permission === 'denied' ? t('settings.notifyDenied') : t('settings.notifyHint')}</span>
+    </div>
+    <button
+      type="button"
+      role="switch"
+      className="dxp-switch"
+      aria-checked={enabled && permission === 'granted'}
+      aria-label={t('settings.notify')}
+      onClick={() => { void toggle() }}
+    />
+  </div>
 }
 
 function SettingsCard(props: { pet: any, active: boolean, t: Translate, controller: PetController, onSelect: (id: string) => void }) {

@@ -54,6 +54,14 @@ test('the pet frame registers in the frame overlay and follows the session state
     console,
     crypto: { randomUUID: () => 'rpc-1' },
   })
+  // The sprite only renders once its atlas resolves, so the frame needs a
+  // fetch that answers with image bytes and a URL that can mint a blob URL.
+  const originalFetch = (globalThis as any).fetch
+  const originalCreate = (URL as any).createObjectURL
+  const originalRevoke = (URL as any).revokeObjectURL
+  ;(globalThis as any).fetch = async () => ({ ok: true, blob: async () => new dom.window.Blob(['sheet']) })
+  ;(URL as any).createObjectURL = () => 'blob:dsh-x-pet'
+  ;(URL as any).revokeObjectURL = () => {}
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('app')!)
   try {
@@ -92,9 +100,40 @@ test('the pet frame registers in the frame overlay and follows the session state
     status.completionUnread = true
     await render()
     assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp')!.dataset.petState, 'review')
+
+    // A finished turn makes the pet speak up and wave, then settle again.
+    status.completionUnread = false
+    status.running = true
+    await render()
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble')!.textContent, 'bubble.working')
+    status.running = false
+    await render()
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp')!.dataset.petState, 'waving')
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble')!.textContent, 'bubble.done')
+
+    // A press that only moves the pointer is a drag: it moves the pet and never
+    // opens the picker. A press that stays put is a click and does open it.
+    const sprite = () => dom.window.document.querySelector<HTMLElement>('.dxp-sprite')!
+    const pointer = (type: string, target: any, x: number, y: number) => act(async () => {
+      target.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }))
+    })
+    await pointer('pointerdown', sprite(), 100, 100)
+    await pointer('pointermove', dom.window, 150, 130)
+    await pointer('pointerup', dom.window, 150, 130)
+    await act(async () => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
+    assert.equal(dom.window.document.querySelector('.dxp-dialog'), null, 'a drag must not open the picker')
+    assert.ok(rpcCalls.includes('dsh-x-pet/move'), 'a drag saves the new position')
+
+    await pointer('pointerdown', sprite(), 200, 200)
+    await pointer('pointerup', dom.window, 200, 200)
+    await act(async () => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
+    assert.ok(dom.window.document.querySelector('.dxp-dialog'), 'a click opens the picker')
   } finally {
     await act(async () => root.unmount())
     for (const dispose of disposers) dispose?.()
+    ;(globalThis as any).fetch = originalFetch
+    ;(URL as any).createObjectURL = originalCreate
+    ;(URL as any).revokeObjectURL = originalRevoke
     ;(globalThis as any).window = original.window
     ;(globalThis as any).document = original.document
     ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = original.IS_REACT_ACT_ENVIRONMENT

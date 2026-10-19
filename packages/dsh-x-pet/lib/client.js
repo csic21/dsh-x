@@ -204,17 +204,17 @@ function playSprite(element, state, options) {
       if (plan.loopStart === null) return;
       index = plan.loopStart;
       set(plan.frames[index]);
-      timer = setTimeout(tick, plan.frames[index].durationMs);
+      timer = globalThis.setTimeout(tick, plan.frames[index].durationMs);
       return;
     }
     index = next;
     set(plan.frames[index]);
-    timer = setTimeout(tick, plan.frames[index].durationMs);
+    timer = globalThis.setTimeout(tick, plan.frames[index].durationMs);
   };
-  timer = setTimeout(tick, plan.frames[0].durationMs);
+  timer = globalThis.setTimeout(tick, plan.frames[0].durationMs);
   return () => {
     disposed = true;
-    if (timer !== void 0) clearTimeout(timer);
+    if (timer !== void 0) globalThis.clearTimeout(timer);
   };
 }
 function showLookFrame(element, look, rows) {
@@ -229,6 +229,7 @@ function prefersReducedMotion(view) {
 }
 
 // src/client/components.tsx
+var DRAG_THRESHOLD = 6;
 var STATE_LABEL = {
   idle: "state.idle",
   running: "state.running",
@@ -255,6 +256,7 @@ function derivePetState(list, statuses, panelActive) {
 var LOOK_LINGER_MS = 1e4;
 function PetSprite(props) {
   const { url, rows, state, reducedMotion, label } = props;
+  const loop = props.loop ?? true;
   const ref = (0, import_react.useRef)(null);
   const [hovered, setHovered] = (0, import_react.useState)(false);
   const [look, setLook] = (0, import_react.useState)(null);
@@ -267,38 +269,39 @@ function PetSprite(props) {
       showLookFrame(element, look, rows);
       return;
     }
-    return playSprite(element, animation, { rows, reducedMotion, loop: true });
-  }, [url, rows, animation, reducedMotion, look]);
+    return playSprite(element, animation, { rows, reducedMotion, loop });
+  }, [url, rows, animation, reducedMotion, look, loop]);
   (0, import_react.useEffect)(() => {
     if (!lookable) {
       setLook(null);
       return;
     }
+    const element = ref.current;
+    if (!element) return;
+    const host = element.ownerDocument?.defaultView ?? globalThis;
     let linger;
     const cancel = () => {
       if (linger !== void 0) {
-        clearTimeout(linger);
+        host.clearTimeout(linger);
         linger = void 0;
       }
       setLook(null);
     };
     const onMove = (event) => {
       if (event.isPrimary === false || event.pointerType === "touch") return;
-      const element = ref.current;
-      if (!element) return;
       const bounds = element.getBoundingClientRect();
       if (bounds.width <= 0 || bounds.height <= 0) return;
       const over = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
       if (over) {
-        if (linger !== void 0) clearTimeout(linger);
-        linger = setTimeout(cancel, LOOK_LINGER_MS);
+        if (linger !== void 0) host.clearTimeout(linger);
+        linger = host.setTimeout(cancel, LOOK_LINGER_MS);
       } else if (linger === void 0) return;
       setLook(lookFrame(event.clientX - (bounds.left + bounds.width / 2), event.clientY - (bounds.top + bounds.height / 2)));
     };
-    globalThis.addEventListener?.("pointermove", onMove, { passive: true });
+    host.addEventListener?.("pointermove", onMove, { passive: true });
     return () => {
-      globalThis.removeEventListener?.("pointermove", onMove);
-      if (linger !== void 0) clearTimeout(linger);
+      host.removeEventListener?.("pointermove", onMove);
+      if (linger !== void 0) host.clearTimeout(linger);
     };
   }, [lookable, rows]);
   if (!url) {
@@ -322,6 +325,7 @@ function PetSprite(props) {
         setHovered(false);
         props.onPointerLeave();
       },
+      draggable: false,
       onPointerDown: props.onPointerDown,
       onClick: props.onClick,
       onKeyDown: props.onKeyDown
@@ -367,6 +371,96 @@ function PetRow(props) {
     }
   ), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-row-text" }, /* @__PURE__ */ import_react.default.createElement("strong", null, pet.displayName), /* @__PURE__ */ import_react.default.createElement("span", null, pet.description || t("picker.rows", { rows: pet.rows }))), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-tag" }, t(pet.source === "codex" ? "picker.codex" : pet.source === "local" ? "picker.local" : "picker.bundled"))));
 }
+var NOTIFY_KEY = "dsh-x-pet:notify";
+function notificationsAllowed() {
+  try {
+    if (globalThis.localStorage?.getItem(NOTIFY_KEY) === "off") return false;
+    return notificationPermission() === "granted";
+  } catch {
+    return false;
+  }
+}
+function notificationPermission() {
+  try {
+    return globalThis.Notification?.permission ?? "denied";
+  } catch {
+    return "denied";
+  }
+}
+function notifyFinished(title, t) {
+  try {
+    if (!notificationsAllowed()) return;
+    if (globalThis.document?.visibilityState === "visible") return;
+    const Ctor = globalThis.Notification;
+    if (!Ctor) return;
+    new Ctor(t("notify.owner"), { body: title ? t("notify.doneTitle", { title }) : t("notify.done"), tag: "dsh-x-pet" });
+  } catch {
+  }
+}
+var formatElapsed = (ms) => {
+  const total = Math.max(0, Math.floor(ms / 1e3));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total % 3600 / 60);
+  const seconds = total % 60;
+  const pad = (value) => String(value).padStart(2, "0");
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+};
+function usePetNarration(list, statuses, t) {
+  const rows = list?.byId ?? {};
+  const current = Object.values(rows).find((row2) => (row2?.retainedBy?.mainView ?? 0) > 0);
+  const currentId = current?.id;
+  const status = currentId ? statuses?.get(currentId) : void 0;
+  const busy = status?.running === true;
+  const pending = status?.pendingInteraction?.kind;
+  const [elapsed, setElapsed] = (0, import_react.useState)(0);
+  const [finished, setFinished] = (0, import_react.useState)(null);
+  const [celebrate, setCelebrate] = (0, import_react.useState)(false);
+  const since = (0, import_react.useRef)(null);
+  const previous = (0, import_react.useRef)(/* @__PURE__ */ new Map());
+  (0, import_react.useEffect)(() => {
+    if (!statuses) return;
+    const done = [];
+    for (const [id, value] of statuses) {
+      const was = previous.current.get(id);
+      const now = value.running === true;
+      if (was === true && !now) {
+        const title = rows[id]?.title;
+        done.push({ title: typeof title === "string" && title.trim() ? title.trim() : null });
+      }
+      previous.current.set(id, now);
+    }
+    if (done.length === 0) return;
+    if ([...statuses.values()].some((item) => item.pendingInteraction)) return;
+    setFinished(done[0]);
+    setCelebrate(true);
+    notifyFinished(done[0].title, t);
+  }, [statuses, list, t]);
+  (0, import_react.useEffect)(() => {
+    if (!celebrate) return;
+    const timer = globalThis.setTimeout(() => setCelebrate(false), 2100);
+    return () => globalThis.clearTimeout(timer);
+  }, [celebrate]);
+  (0, import_react.useEffect)(() => {
+    if (!finished) return;
+    const timer = globalThis.setTimeout(() => setFinished(null), 9e3);
+    return () => globalThis.clearTimeout(timer);
+  }, [finished]);
+  (0, import_react.useEffect)(() => {
+    if (!busy) {
+      since.current = null;
+      setElapsed(0);
+      return;
+    }
+    if (since.current === null) since.current = Date.now();
+    const timer = globalThis.setInterval(() => setElapsed(Date.now() - (since.current ?? Date.now())), 1e3);
+    return () => globalThis.clearInterval(timer);
+  }, [busy]);
+  let text = null;
+  if (pending) text = t(pending === "question" ? "bubble.question" : "bubble.blocked");
+  else if (busy && status) text = t("bubble.working", { elapsed: formatElapsed(elapsed) });
+  else if (finished) text = finished.title ? t("bubble.doneTitle", { title: finished.title }) : t("bubble.done");
+  return { text, busy, celebrate };
+}
 function PetFrame(props) {
   const { controller, t } = props;
   const standard = props;
@@ -374,17 +468,19 @@ function PetFrame(props) {
   const [failed, setFailed] = (0, import_react.useState)(false);
   const [url, setUrl] = (0, import_react.useState)(null);
   const [offset, setOffset] = (0, import_react.useState)(null);
-  const [dragging, setDragging] = (0, import_react.useState)(false);
+  const dragged = (0, import_react.useRef)(false);
   const reducedMotion = (0, import_react.useMemo)(() => prefersReducedMotion(globalThis.window), []);
   const list = standard.useSessions((state2) => state2);
   const statuses = standard.useSessionStatus((state2) => state2);
   const panelActive = standard.usePanelInfo((info) => info.activePanelId !== null);
   const state = derivePetState(list, statuses, panelActive === true);
+  const narration = usePetNarration(list, statuses, t);
   const view = (0, import_react.useSyncExternalStore)(
     (0, import_react.useCallback)((listener) => controller.subscribe(listener), [controller]),
     (0, import_react.useCallback)(() => controller.getSnapshot(), [controller])
   );
   const active = view?.active ?? "off";
+  const animation = narration.celebrate ? "waving" : state;
   (0, import_react.useEffect)(() => {
     void controller.load();
   }, [controller]);
@@ -413,50 +509,57 @@ function PetFrame(props) {
   const onPointerDown = (0, import_react.useCallback)((event) => {
     if (event.button !== 0) return;
     const target = event.currentTarget;
+    const host = target.ownerDocument?.defaultView ?? globalThis;
     const startX = event.clientX;
     const startY = event.clientY;
     const origin = offset ?? { x: 0, y: 0 };
     const latest = { x: origin.x, y: origin.y };
     let moved = false;
+    dragged.current = false;
     const onMove = (move) => {
       const dx = move.clientX - startX;
       const dy = move.clientY - startY;
-      if (!moved && Math.hypot(dx, dy) < 4) return;
+      if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
       moved = true;
-      setDragging(true);
+      dragged.current = true;
       target.setPointerCapture?.(move.pointerId);
       latest.x = origin.x + dx;
       latest.y = origin.y + dy;
       setOffset({ x: latest.x, y: latest.y });
     };
     const onUp = () => {
-      globalThis.removeEventListener?.("pointermove", onMove);
-      globalThis.removeEventListener?.("pointerup", onUp);
-      globalThis.removeEventListener?.("pointercancel", onUp);
-      setDragging(false);
-      if (moved) void controller.move(latest.x, latest.y).catch(() => {
+      host.removeEventListener?.("pointermove", onMove);
+      host.removeEventListener?.("pointerup", onUp);
+      host.removeEventListener?.("pointercancel", onUp);
+      if (!moved) return;
+      void controller.move(latest.x, latest.y).catch(() => {
       });
+      host.setTimeout(() => {
+        dragged.current = false;
+      }, 0);
     };
-    globalThis.addEventListener?.("pointermove", onMove);
-    globalThis.addEventListener?.("pointerup", onUp);
-    globalThis.addEventListener?.("pointercancel", onUp);
+    host.addEventListener?.("pointermove", onMove);
+    host.addEventListener?.("pointerup", onUp);
+    host.addEventListener?.("pointercancel", onUp);
   }, [controller, offset]);
   const onClick = (0, import_react.useCallback)((event) => {
-    if (dragging) {
+    if (dragged.current) {
+      dragged.current = false;
       event.preventDefault();
       return;
     }
     setPickerOpen(true);
-  }, [dragging]);
+  }, []);
   if (active === "off") return null;
-  const label = `${t("frame.label")} \xB7 ${t(STATE_LABEL[state])}`;
+  const label = `${t("frame.label")} \xB7 ${t(STATE_LABEL[animation])}`;
   const style = offset ? { "--dxp-x": `${offset.x}px`, "--dxp-y": `${offset.y}px` } : void 0;
-  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": state }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement(
+  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": narration.text !== null, role: "status", "aria-live": "polite" }, narration.text), /* @__PURE__ */ import_react.default.createElement(
     PetSprite,
     {
       url,
       rows: view?.pets.find((pet) => pet.id === active)?.rows ?? 11,
-      state,
+      state: animation,
+      loop: animation !== "waving",
       reducedMotion,
       label,
       onPointerEnter: () => {
@@ -468,7 +571,7 @@ function PetFrame(props) {
       onKeyDown: () => {
       }
     }
-  ), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-status", role: "status" }, t(STATE_LABEL[state])), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setPickerOpen(true) }, t("frame.open")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
+  ), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-status" }, t(STATE_LABEL[state])), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setPickerOpen(true) }, t("frame.open")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
     void controller.select("off").catch(() => {
     });
   } }, t("frame.hide"))))), pickerOpen ? /* @__PURE__ */ import_react.default.createElement(
@@ -520,10 +623,62 @@ function PetSettings(props) {
         });
       }
     }
-  )), /* @__PURE__ */ import_react.default.createElement("h3", null, t("settings.pick")), pets.length === 0 ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-empty" }, t("settings.empty")) : /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxp-grid" }, pets.map((pet) => /* @__PURE__ */ import_react.default.createElement(SettingsCard, { key: pet.id, pet, active: view?.active === pet.id, t, controller, onSelect: (id) => {
+  )), /* @__PURE__ */ import_react.default.createElement(NotifyRow, { t }), /* @__PURE__ */ import_react.default.createElement("h3", null, t("settings.pick")), pets.length === 0 ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-empty" }, t("settings.empty")) : /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxp-grid" }, pets.map((pet) => /* @__PURE__ */ import_react.default.createElement(SettingsCard, { key: pet.id, pet, active: view?.active === pet.id, t, controller, onSelect: (id) => {
     void controller.select(id).catch(() => {
     });
   } }))), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-settings-note" }, t("settings.local", { path: view?.source ? `${view.source}/pets` : "~/.codex/pets" })));
+}
+function NotifyRow(props) {
+  const { t } = props;
+  const [permission, setPermission] = (0, import_react.useState)(notificationPermission);
+  const [enabled, setEnabled] = (0, import_react.useState)(() => {
+    try {
+      return notificationsAllowed();
+    } catch {
+      return false;
+    }
+  });
+  const toggle = async () => {
+    if (enabled) {
+      try {
+        globalThis.localStorage?.setItem(NOTIFY_KEY, "off");
+      } catch {
+      }
+      setEnabled(false);
+      return;
+    }
+    let state = notificationPermission();
+    if (state === "default") {
+      try {
+        state = await globalThis.Notification.requestPermission();
+      } catch {
+        state = "denied";
+      }
+      setPermission(state);
+    }
+    if (state !== "granted") {
+      setEnabled(false);
+      return;
+    }
+    try {
+      globalThis.localStorage?.setItem(NOTIFY_KEY, "on");
+    } catch {
+    }
+    setEnabled(true);
+  };
+  return /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-switch-row" }, /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("strong", null, t("settings.notify")), /* @__PURE__ */ import_react.default.createElement("span", null, permission === "denied" ? t("settings.notifyDenied") : t("settings.notifyHint"))), /* @__PURE__ */ import_react.default.createElement(
+    "button",
+    {
+      type: "button",
+      role: "switch",
+      className: "dxp-switch",
+      "aria-checked": enabled && permission === "granted",
+      "aria-label": t("settings.notify"),
+      onClick: () => {
+        void toggle();
+      }
+    }
+  ));
 }
 function SettingsCard(props) {
   const { pet, active, t, controller, onSelect } = props;
@@ -559,6 +714,11 @@ var zh = {
   "state.waiting": "\u7B49\u5F85\u4F60\u7684\u8F93\u5165",
   "state.failed": "\u51FA\u9519\u4E86",
   "state.review": "\u67E5\u770B\u7ED3\u679C",
+  "bubble.working": "\u8FDB\u884C\u4E2D \xB7 {elapsed}",
+  "bubble.blocked": "\u7B49\u4F60\u786E\u8BA4\u4E00\u4E0B",
+  "bubble.question": "\u7B49\u4F60\u56DE\u7B54",
+  "bubble.done": "\u8FD9\u8F6E\u505A\u5B8C\u4E86",
+  "bubble.doneTitle": "\u300C{title}\u300D\u505A\u5B8C\u4E86",
   "picker.title": "\u9009\u62E9\u684C\u5BA0",
   "picker.close": "\u5173\u95ED",
   "picker.bundled": "\u5185\u7F6E",
@@ -572,6 +732,12 @@ var zh = {
   "settings.pick": "\u9009\u62E9\u89D2\u8272",
   "settings.local": "\u81EA\u5DF1\u505A\u7684\u684C\u5BA0\u653E\u5728 {path}\uFF0C\u4F1A\u548C\u8FD9\u4E9B\u89D2\u8272\u51FA\u73B0\u5728\u4E00\u8D77\u3002",
   "settings.empty": "\u6CA1\u6709\u627E\u5230\u672C\u673A\u7684 Codex \u5E94\u7528\uFF0C\u76EE\u524D\u53EA\u6709\u5185\u7F6E\u89D2\u8272\u3002",
+  "settings.notify": "\u5B8C\u6210\u65F6\u63D0\u9192",
+  "settings.notifyHint": "\u7A97\u53E3\u5728\u540E\u53F0\u65F6\uFF0C\u7528\u7CFB\u7EDF\u901A\u77E5\u544A\u8BC9\u4F60\u8FD9\u8F6E\u505A\u5B8C\u4E86\u3002",
+  "settings.notifyDenied": "\u7CFB\u7EDF\u5DF2\u62D2\u7EDD\u901A\u77E5\u6743\u9650\uFF0C\u9700\u8981\u5728\u7CFB\u7EDF\u8BBE\u7F6E\u91CC\u6253\u5F00\u3002",
+  "notify.owner": "DeepSeek Harness",
+  "notify.done": "\u8FD9\u8F6E\u5BF9\u8BDD\u505A\u5B8C\u4E86",
+  "notify.doneTitle": "\u300C{title}\u300D\u505A\u5B8C\u4E86",
   "picker.rows": "{rows} \u884C\u52A8\u753B",
   "picker.active": "\u5F53\u524D",
   "picker.hide": "\u9690\u85CF\u684C\u5BA0",
@@ -596,6 +762,11 @@ var en = {
   "state.waiting": "Waiting for you",
   "state.failed": "Failed",
   "state.review": "Review",
+  "bubble.working": "Working \xB7 {elapsed}",
+  "bubble.blocked": "Waiting for your approval",
+  "bubble.question": "Waiting for your answer",
+  "bubble.done": "This turn is done",
+  "bubble.doneTitle": '"{title}" is done',
   "picker.title": "Choose a pet",
   "picker.close": "Close",
   "picker.bundled": "Bundled",
@@ -609,6 +780,12 @@ var en = {
   "settings.pick": "Choose a character",
   "settings.local": "Pets you make yourself go in {path} and show up here with the others.",
   "settings.empty": "No Codex app was found on this Mac, so only the bundled pet is available.",
+  "settings.notify": "Tell me when a turn finishes",
+  "settings.notifyHint": "When the window is in the background, a system notification says the turn is done.",
+  "settings.notifyDenied": "Notifications are blocked in the system settings.",
+  "notify.owner": "DeepSeek Harness",
+  "notify.done": "This conversation finished its turn",
+  "notify.doneTitle": '"{title}" finished its turn',
   "picker.rows": "{rows} animation rows",
   "picker.active": "Active",
   "picker.hide": "Hide the pet",
@@ -634,8 +811,11 @@ var CSS = `
 .dxp-controls button{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
 .dxp-controls button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
 .dxp-controls button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:1px}
-.dxp-status{font-size:11px;color:var(--dsw-alias-label-secondary,#717885);background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l1,#e4e7ec);border-radius:999px;padding:1px 8px;opacity:0;transition:opacity .16s ease;white-space:nowrap;pointer-events:none}
+.dxp-bubble{position:relative;max-width:220px;padding:7px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);box-shadow:0 8px 20px rgba(15,23,42,.16);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease;overflow-wrap:anywhere}
+.dxp-bubble[data-show=true]{opacity:1;transform:none}
+.dxp-bubble::after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;margin-left:-4px;transform:rotate(45deg);background:inherit;border-right:1px solid var(--dsw-alias-border-l2,#d7dbe2);border-bottom:1px solid var(--dsw-alias-border-l2,#d7dbe2)}
 .dxp-stage:hover .dxp-status,.dxp-stage:focus-within .dxp-status{opacity:1}
+.dxp-status{font-size:11px;color:var(--dsw-alias-label-secondary,#717885);background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l1,#e4e7ec);border-radius:999px;padding:1px 8px;opacity:0;transition:opacity .16s ease;white-space:nowrap;pointer-events:none}
 .dxp-scrim{position:fixed;inset:0;z-index:60;background:rgba(15,23,42,.32);display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:auto}
 .dxp-dialog{width:min(420px,100%);max-height:min(560px,calc(100vh - 48px));display:flex;flex-direction:column;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);border-radius:14px;box-shadow:0 18px 48px rgba(15,23,42,.24);overflow:hidden}
 .dxp-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--dsw-alias-border-l1,#eceef1)}

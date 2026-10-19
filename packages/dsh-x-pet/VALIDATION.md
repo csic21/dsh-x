@@ -2,7 +2,7 @@
 
 ## Compatibility target
 
-- Plugin: `dsh-x-pet@0.8.0`
+- Plugin: `dsh-x-pet@0.8.1`
 - Official DSH runtime: `0.2.1-rc.2`
 - Codex pet contract: sprite atlas 1536 wide, 192×208 per cell, 9 rows (1536×1872) or 11 rows (1536×2288), transparent background, local pet packages under `${CODEX_HOME:-~/.codex}/pets/<name>/` with `pet.json` and `spritesheet.webp`.
 
@@ -17,6 +17,8 @@ The Codex rows, frame counts, per-frame durations, the slowed idle loop, the thr
 - Store: the bundled sheet is a valid Codex sheet; local pets are read from the Codex pets folder; a manifest with a foreign id, a sheet that is not a pet atlas, and a manifest that tries to escape its folder are all skipped; the selection and the dragged position are stored under the official profile directory and survive a restart.
 - Routes: the connection envelope is validated, unknown fields and a wrong method are refused, a failing handler answers with a failure instead of throwing, and the atlas route answers with image bytes rather than JSON.
 - Compiled Client registration: the frame registers in `shell.overlay` with its own id, and the rendered state follows the session facts (running, waiting, review, idle).
+- Gestures: a press that moves is a drag (it saves the position and never opens the picker); a press that stays put is a click and opens the picker.
+- Narration: the bubble reports a running turn, a pending approval, and a finished turn, and the pet waves once when a turn completes.
 
 ## Not verified here
 

@@ -28,15 +28,15 @@ export function playSprite(
       if (plan.loopStart === null) return
       index = plan.loopStart
       set(plan.frames[index])
-      timer = setTimeout(tick, plan.frames[index].durationMs)
+      timer = globalThis.setTimeout(tick, plan.frames[index].durationMs)
       return
     }
     index = next
     set(plan.frames[index])
-    timer = setTimeout(tick, plan.frames[index].durationMs)
+    timer = globalThis.setTimeout(tick, plan.frames[index].durationMs)
   }
-  timer = setTimeout(tick, plan.frames[0].durationMs)
-  return () => { disposed = true; if (timer !== undefined) clearTimeout(timer) }
+  timer = globalThis.setTimeout(tick, plan.frames[0].durationMs)
+  return () => { disposed = true; if (timer !== undefined) globalThis.clearTimeout(timer) }
 }
 
 /** Show one look frame; Codex paints it over the animation while it lasts. */
