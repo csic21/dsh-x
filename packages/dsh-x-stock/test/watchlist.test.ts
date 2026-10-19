@@ -5,7 +5,7 @@ import { createWatchlistController } from '../src/client/controller.ts'
 import { mountWhenVacant } from '../src/client/placement.ts'
 import { quoteResource, addressFor, fixedAddressFor, pollDelay, FIXED_POLL_MS, IDLE_POLL_MS } from '../src/client/resource.ts'
 import { MARKET_ENDPOINT } from '../src/market.ts'
-import { isFixedBarShortcut } from '../src/client/shortcut.ts'
+import { fixedBarShortcutLabel, isApplePlatform, isFixedBarShortcut } from '../src/client/shortcut.ts'
 const scope = '11111111-1111-4111-8111-111111111111'
 const key = scopedStorageKey(scope)
 const legacyKey = `${LEGACY_STORAGE_KEY}:${scope}`
@@ -190,6 +190,16 @@ test('the fixed bar shortcut is deliberate, layout-independent and never steals 
   for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) assert.equal(isFixedBarShortcut(press({ target: { tagName } })), false, tagName)
   assert.equal(isFixedBarShortcut(press({ target: { tagName: 'DIV', isContentEditable: true } })), false)
   assert.equal(isFixedBarShortcut(press({ target: undefined })), true)
+  // macOS Option rewrites the character. The chord still matches on the physical key.
+  assert.equal(isFixedBarShortcut(press({ key: 'Í' })), true)
+  assert.equal(isApplePlatform({ platform: 'MacIntel', userAgent: '' }), true)
+  assert.equal(isApplePlatform({ platform: '', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' }), true)
+  assert.equal(isApplePlatform({ userAgentData: { platform: 'macOS' }, platform: '', userAgent: '' }), true)
+  assert.equal(isApplePlatform({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' }), false)
+  assert.equal(isApplePlatform({ platform: 'Linux x86_64', userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' }), false)
+  assert.equal(fixedBarShortcutLabel({ platform: 'MacIntel', userAgent: '' }), '⌥⇧S')
+  assert.equal(fixedBarShortcutLabel({ platform: 'Win32', userAgent: '' }), 'Alt+Shift+S')
+  assert.equal(fixedBarShortcutLabel({ platform: 'Linux x86_64', userAgent: '' }), 'Alt+Shift+S')
 })
 
 test('the storage key is scoped per profile scope',()=>{

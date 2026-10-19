@@ -45,7 +45,7 @@ export function apply(ctx: any) {
     return () => style.remove()
   }, 'stock: styles')
   ctx.effect(() => ctx.resources.register(quoteResource(ctx.connection.rpc)), 'stock: quote resources')
-  // Alt+Shift+S shows or hides the fixed bar from anywhere in the app. Typing
+  // Option+Shift+S on macOS, Alt+Shift+S elsewhere, hides or shows the fixed bar. Typing
   // in a field keeps the key, and storage failures stay visible in the UI.
   const shortcut = (event: any) => {
     if (!isFixedBarShortcut(event)) return

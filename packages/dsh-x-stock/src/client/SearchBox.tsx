@@ -148,7 +148,7 @@ export function InstrumentSearch({ rpc, onPick, t, delay = 250 }: any) {
       onKeyDown={keyDown}
     />
     {availability === 'checking' && <p className="dxs-muted" role="status">{t('add.search.checking')}</p>}
-    {availability === 'enabled' && <p className="dxs-muted">{t('add.search.notice')}</p>}
+    {availability === 'enabled' && <p className="dxs-muted dxs-search-note">{t('add.search.notice')}</p>}
     {availability === 'unavailable' && <p className="dxs-muted">{t('add.search.unavailable')}</p>}
     {availability === 'disabled' && <p className="dxs-muted">
       {t('add.search.disabled')}{' '}
