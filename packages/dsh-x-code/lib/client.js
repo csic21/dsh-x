@@ -302,13 +302,13 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     stopRead(entry);
     void refreshEntry(entry);
   };
-  const selectTarget = (sessionId, mode, base) => {
+  const selectTarget = (sessionId, mode, base2) => {
     const entry = entryFor(sessionId);
-    if (entry.target.mode === mode && entry.target.base === base) return;
+    if (entry.target.mode === mode && entry.target.base === base2) return;
     stopRead(entry);
     stopFile(entry);
     entry.fileTarget = null;
-    entry.target = { mode, ...mode === "range" ? { base } : {} };
+    entry.target = { mode, ...mode === "range" ? { base: base2 } : {} };
     publish(entry, empty());
     void refreshEntry(entry);
   };
@@ -425,11 +425,47 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
 }
 
 // src/client/components.tsx
-var import_react2 = __toESM(require("react"), 1);
+var import_react5 = __toESM(require("react"), 1);
 
 // src/client/CodeViewer.tsx
-var import_react = __toESM(require("react"), 1);
+var import_react2 = __toESM(require("react"), 1);
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
+
+// src/client/icons.tsx
+var import_react = __toESM(require("react"), 1);
+var base = (size) => ({ viewBox: "0 0 16 16", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: 1.2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true });
+function ExplorerIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M2.5 3.5h4l1.2 1.5h5.8v7.5H2.5z" }));
+}
+function ReviewIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M8 1.8 13 3.6v4.1c0 3.4-2.4 5.4-5 6.5-2.6-1.1-5-3.1-5-6.5V3.6z" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "m5.7 7.8 1.7 1.7 3.1-3.4" }));
+}
+function HistoryIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("circle", { cx: "8", cy: "8", r: "5.6" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M8 4.8V8l2.3 1.5" }));
+}
+function ChangesIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("circle", { cx: "4", cy: "3.4", r: "1.5" }), /* @__PURE__ */ import_react.default.createElement("circle", { cx: "4", cy: "12.6", r: "1.5" }), /* @__PURE__ */ import_react.default.createElement("circle", { cx: "12", cy: "8", r: "1.5" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M4 4.9v6.2M5.5 8h5" }));
+}
+function ChevronIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("path", { d: "m6 4 4 4-4 4" }));
+}
+function CloseIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("path", { d: "m4.5 4.5 7 7m0-7-7 7" }));
+}
+function SidebarIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("rect", { x: "1.8", y: "2.8", width: "12.4", height: "10.4", rx: "1.4" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M6 2.8v10.4" }));
+}
+function PanelIcon({ size = 16 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("rect", { x: "1.8", y: "2.8", width: "12.4", height: "10.4", rx: "1.4" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "M1.8 9.6h12.4" }));
+}
+function WrapIcon({ size = 14 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { ...base(size) }, /* @__PURE__ */ import_react.default.createElement("path", { d: "M2.5 4.5h11M2.5 8h8.5a2 2 0 0 1 0 4H8" }), /* @__PURE__ */ import_react.default.createElement("path", { d: "m9.6 10.6-1.6 1.4 1.6 1.4" }));
+}
+function CodeGlyph({ size = 20 }) {
+  return /* @__PURE__ */ import_react.default.createElement("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ import_react.default.createElement("path", { d: "m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18", strokeLinecap: "round", strokeLinejoin: "round" }));
+}
+
+// src/client/CodeViewer.tsx
 function Tabs({ items, value, onChange, label, className = "" }) {
   const onKey = (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -439,28 +475,28 @@ function Tabs({ items, value, onChange, label, className = "" }) {
     onChange(items[next].value);
     event.currentTarget.parentElement?.children[next]?.focus();
   };
-  return /* @__PURE__ */ import_react.default.createElement("div", { className: `dxc-tabs ${className}`, role: "tablist", "aria-label": label }, items.map((item) => /* @__PURE__ */ import_react.default.createElement("button", { key: item.value, type: "button", role: "tab", "aria-selected": value === item.value, tabIndex: value === item.value ? 0 : -1, onKeyDown: onKey, onClick: () => onChange(item.value) }, item.label)));
+  return /* @__PURE__ */ import_react2.default.createElement("div", { className: `dxc-tabs ${className}`, role: "tablist", "aria-label": label }, items.map((item) => /* @__PURE__ */ import_react2.default.createElement("button", { key: item.value, type: "button", role: "tab", "aria-selected": value === item.value, tabIndex: value === item.value ? 0 : -1, onKeyDown: onKey, onClick: () => onChange(item.value) }, item.label)));
 }
 function MarkedText({ text: text2, query, spans }) {
   const chunks = spans?.length ? spans : [{ text: text2, style: void 0 }];
   let offset = 0;
   const matches = query ? searchMatches([text2], query) : [];
-  return /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-text" }, chunks.map((span, token) => {
+  return /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-line-text" }, chunks.map((span, token) => {
     const start = offset, end = offset + span.text.length;
     offset = end;
     const boundaries = [start, end, ...matches.flatMap((match) => [Math.max(start, match.start), Math.min(end, match.end)]).filter((point) => point > start && point < end)].sort((a, b) => a - b);
-    return /* @__PURE__ */ import_react.default.createElement("span", { key: token, style: span.style }, boundaries.slice(0, -1).map((point, index) => {
+    return /* @__PURE__ */ import_react2.default.createElement("span", { key: token, style: span.style }, boundaries.slice(0, -1).map((point, index) => {
       const part = span.text.slice(point - start, boundaries[index + 1] - start);
-      return matches.some((match) => point >= match.start && point < match.end) ? /* @__PURE__ */ import_react.default.createElement("mark", { key: index }, part) : /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, { key: index }, part);
+      return matches.some((match) => point >= match.start && point < match.end) ? /* @__PURE__ */ import_react2.default.createElement("mark", { key: index }, part) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, { key: index }, part);
     }));
   }));
 }
 function Source({ text: text2, highlights, query, activeLine, focus, side }) {
   const lines = sourceLines(text2);
-  return /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-source-lines" }, lines.map((line, at) => /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-source-line", key: at, "data-line-target": `${side}:${at + 1}`, "data-focused": focus?.side === side && at + 1 >= focus.startLine && at + 1 <= focus.endLine || void 0, "data-find-active": activeLine === `${side}:${at + 1}` || void 0 }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-hidden": "true" }, at + 1), /* @__PURE__ */ import_react.default.createElement(MarkedText, { text: line, spans: highlights?.[at], query }))));
+  return /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-source-lines" }, lines.map((line, at) => /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-source-line", key: at, "data-line-target": `${side}:${at + 1}`, "data-focused": focus?.side === side && at + 1 >= focus.startLine && at + 1 <= focus.endLine || void 0, "data-find-active": activeLine === `${side}:${at + 1}` || void 0 }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-line-number", "aria-hidden": "true" }, at + 1), /* @__PURE__ */ import_react2.default.createElement(MarkedText, { text: line, spans: highlights?.[at], query }))));
 }
 function Diff({ hunks, split, wrap, oldHighlights, newHighlights, query, activeLine, focus, t }) {
-  const columns = (0, import_react.useRef)({ left: null, right: null });
+  const columns = (0, import_react2.useRef)({ left: null, right: null });
   const follow = (side) => (event) => {
     const peer = columns.current[side === "left" ? "right" : "left"];
     if (peer && peer.scrollLeft !== event.currentTarget.scrollLeft) peer.scrollLeft = event.currentTarget.scrollLeft;
@@ -468,37 +504,42 @@ function Diff({ hunks, split, wrap, oldHighlights, newHighlights, query, activeL
   const focused = (side, line) => focus?.side === side && line != null && line >= focus.startLine && line <= focus.endLine || void 0;
   const cell = (row, side, key) => {
     const no = row?.[side], spans = (side === "old" ? oldHighlights : newHighlights)?.[(no ?? 0) - 1];
-    return /* @__PURE__ */ import_react.default.createElement("div", { key, className: `dxc-diff-cell dxc-line-${row?.kind ?? "empty"}`, "data-line-target": no ? `${side}:${no}` : void 0, "data-focused": focused(side, no), "data-find-active": activeLine === `${side}:${no}` || void 0 }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-hidden": "true" }, no ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-sign", "aria-hidden": "true" }, row?.kind === "add" ? "+" : row?.kind === "del" ? "\u2212" : ""), /* @__PURE__ */ import_react.default.createElement(MarkedText, { text: row?.text ?? "", spans, query }));
+    return /* @__PURE__ */ import_react2.default.createElement("div", { key, className: `dxc-diff-cell dxc-line-${row?.kind ?? "empty"}`, "data-line-target": no ? `${side}:${no}` : void 0, "data-focused": focused(side, no), "data-find-active": activeLine === `${side}:${no}` || void 0 }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-line-number", "aria-hidden": "true" }, no ?? ""), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-line-sign", "aria-hidden": "true" }, row?.kind === "add" ? "+" : row?.kind === "del" ? "\u2212" : ""), /* @__PURE__ */ import_react2.default.createElement(MarkedText, { text: row?.text ?? "", spans, query }));
   };
-  if (split && !wrap) return /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-split-columns" }, ["left", "right"].map((side) => /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-split-column", key: side, ref: (node) => {
+  if (split && !wrap) return /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-split-columns" }, ["left", "right"].map((side) => /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-split-column", key: side, ref: (node) => {
     columns.current[side] = node;
-  }, onScroll: follow(side) }, hunks.map((hunk, index) => /* @__PURE__ */ import_react.default.createElement("section", { className: "dxc-hunk", key: index }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-hunk-header" }, `@@ \u2212${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`), pairedRows(hunkRows(hunk)).map((row, at) => cell(row[side], side === "left" ? "old" : "new", at)))))));
-  return /* @__PURE__ */ import_react.default.createElement("div", { className: `dxc-diff-lines ${split ? "dxc-split" : "dxc-unified"}` }, hunks.map((hunk, index) => {
+  }, onScroll: follow(side) }, hunks.map((hunk, index) => /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-hunk", key: index }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-hunk-header" }, `@@ \u2212${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`), pairedRows(hunkRows(hunk)).map((row, at) => cell(row[side], side === "left" ? "old" : "new", at)))))));
+  return /* @__PURE__ */ import_react2.default.createElement("div", { className: `dxc-diff-lines ${split ? "dxc-split" : "dxc-unified"}` }, hunks.map((hunk, index) => {
     const rows = hunkRows(hunk);
-    return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxc-hunk", key: index }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-hunk-header" }, `@@ \u2212${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`, hunk.heading && ` ${hunk.heading}`), split ? pairedRows(rows).map((row, at) => /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-split-row", key: at }, cell(row.left, "old", "left"), cell(row.right, "new", "right"))) : rows.map((row, at) => /* @__PURE__ */ import_react.default.createElement("div", { className: `dxc-unified-row dxc-line-${row.kind}`, key: at, "data-line-target": `${row.new == null ? "old" : "new"}:${row.new ?? row.old}`, "data-focused": focused("old", row.old) || focused("new", row.new), "data-find-active": activeLine === `${row.new == null ? "old" : "new"}:${row.new ?? row.old}` || void 0 }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-label": t("oldSide") }, row.old ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-number", "aria-label": t("newSide") }, row.new ?? ""), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-line-sign", "aria-hidden": "true" }, row.kind === "add" ? "+" : row.kind === "del" ? "\u2212" : ""), /* @__PURE__ */ import_react.default.createElement(MarkedText, { text: row.text, spans: (row.new == null ? oldHighlights : newHighlights)?.[(row.new ?? row.old ?? 0) - 1], query }))));
+    return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-hunk", key: index }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-hunk-header" }, `@@ \u2212${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`, hunk.heading && ` ${hunk.heading}`), split ? pairedRows(rows).map((row, at) => /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-split-row", key: at }, cell(row.left, "old", "left"), cell(row.right, "new", "right"))) : rows.map((row, at) => /* @__PURE__ */ import_react2.default.createElement("div", { className: `dxc-unified-row dxc-line-${row.kind}`, key: at, "data-line-target": `${row.new == null ? "old" : "new"}:${row.new ?? row.old}`, "data-focused": focused("old", row.old) || focused("new", row.new), "data-find-active": activeLine === `${row.new == null ? "old" : "new"}:${row.new ?? row.old}` || void 0 }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-line-number", "aria-label": t("oldSide") }, row.old ?? ""), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-line-number", "aria-label": t("newSide") }, row.new ?? ""), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-line-sign", "aria-hidden": "true" }, row.kind === "add" ? "+" : row.kind === "del" ? "\u2212" : ""), /* @__PURE__ */ import_react2.default.createElement(MarkedText, { text: row.text, spans: (row.new == null ? oldHighlights : newHighlights)?.[(row.new ?? row.old ?? 0) - 1], query }))));
   }));
 }
+function Breadcrumbs({ path }) {
+  const segments = path?.split("/").filter(Boolean) ?? [];
+  if (!segments.length) return null;
+  return /* @__PURE__ */ import_react2.default.createElement("nav", { className: "dxc-breadcrumbs", "aria-label": "breadcrumbs" }, segments.map((segment, at) => /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, { key: at }, at > 0 && /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-crumb-sep", "aria-hidden": "true" }, /* @__PURE__ */ import_react2.default.createElement(ChevronIcon, { size: 11 })), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-crumb", "data-last": at === segments.length - 1 || void 0 }, segment))));
+}
 function CodeViewer({ file, status, error, path, identity, mode, context, focus, retry, scrollPositions, t }) {
-  const [tab, setTab] = (0, import_react.useState)("source"), [side, setSide] = (0, import_react.useState)("new"), [split, setSplit] = (0, import_react.useState)(false), [wrap, setWrap] = (0, import_react.useState)(false);
-  const [narrow, setNarrow] = (0, import_react.useState)(false);
-  const [findOpen, setFindOpen] = (0, import_react.useState)(false), [query, setQuery] = (0, import_react.useState)(""), [matchIndex, setMatchIndex] = (0, import_react.useState)(0);
-  const scroll = (0, import_react.useRef)(null), findInput = (0, import_react.useRef)(null), root = (0, import_react.useRef)(null);
+  const [tab, setTab] = (0, import_react2.useState)("source"), [side, setSide] = (0, import_react2.useState)("new"), [split, setSplit] = (0, import_react2.useState)(false), [wrap, setWrap] = (0, import_react2.useState)(false);
+  const [narrow, setNarrow] = (0, import_react2.useState)(false);
+  const [findOpen, setFindOpen] = (0, import_react2.useState)(false), [query, setQuery] = (0, import_react2.useState)(""), [matchIndex, setMatchIndex] = (0, import_react2.useState)(0);
+  const scroll = (0, import_react2.useRef)(null), findInput = (0, import_react2.useRef)(null), root = (0, import_react2.useRef)(null);
   const highlighter = (0, import_dsh_client_ui_primitives.useCodeHighlighter)((0, import_dsh_client_ui_primitives.languageForPath)(path ?? ""));
-  const oldHighlights = (0, import_react.useMemo)(() => highlighter(file?.beforeText ?? ""), [highlighter, file?.beforeText]);
-  const newHighlights = (0, import_react.useMemo)(() => highlighter(file?.text ?? ""), [highlighter, file?.text]);
-  const hunks = (0, import_react.useMemo)(() => diffHunks(file?.hunks ?? file?.diff), [file?.hunks, file?.diff]);
-  const rows = (0, import_react.useMemo)(() => tab === "source" ? sourceLines(side === "old" ? file?.beforeText : file?.text).map((text2, at) => ({ text: text2, key: `${side}:${at + 1}` })) : hunks.flatMap(hunkRows).map((row) => ({ text: row.text, key: `${row.new == null ? "old" : "new"}:${row.new ?? row.old}` })), [file, tab, side, hunks]);
-  const matches = (0, import_react.useMemo)(() => searchMatches(rows.map((row) => row.text), query), [rows, query]);
+  const oldHighlights = (0, import_react2.useMemo)(() => highlighter(file?.beforeText ?? ""), [highlighter, file?.beforeText]);
+  const newHighlights = (0, import_react2.useMemo)(() => highlighter(file?.text ?? ""), [highlighter, file?.text]);
+  const hunks = (0, import_react2.useMemo)(() => diffHunks(file?.hunks ?? file?.diff), [file?.hunks, file?.diff]);
+  const rows = (0, import_react2.useMemo)(() => tab === "source" ? sourceLines(side === "old" ? file?.beforeText : file?.text).map((text2, at) => ({ text: text2, key: `${side}:${at + 1}` })) : hunks.flatMap(hunkRows).map((row) => ({ text: row.text, key: `${row.new == null ? "old" : "new"}:${row.new ?? row.old}` })), [file, tab, side, hunks]);
+  const matches = (0, import_react2.useMemo)(() => searchMatches(rows.map((row) => row.text), query), [rows, query]);
   const normalizedIndex = matches.length ? matchIndex % matches.length : 0;
   const activeLine = matches.length ? rows[matches[normalizedIndex].line - 1].key : null;
   const scrollKey = `${identity}:${tab}:${side}`;
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     if (!globalThis.ResizeObserver || !root.current) return;
     const observer = new ResizeObserver((entries) => setNarrow(entries[0].contentRect.width < 560));
     observer.observe(root.current);
     return () => observer.disconnect();
   }, []);
-  (0, import_react.useLayoutEffect)(() => {
+  (0, import_react2.useLayoutEffect)(() => {
     const node = scroll.current;
     if (!node) return;
     const position = scrollPositions.current.get(scrollKey);
@@ -508,22 +549,22 @@ function CodeViewer({ file, status, error, path, identity, mode, context, focus,
       scrollPositions.current.set(scrollKey, { top: node.scrollTop, left: node.scrollLeft });
     };
   }, [scrollKey, status, scrollPositions]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     setMatchIndex(0);
   }, [query, tab, side, identity]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     if (findOpen) findInput.current?.focus();
   }, [findOpen]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     if (!focus) return;
     setTab("source");
     setSide(focus.side ?? "new");
   }, [focus]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     const target = focus && status === "ready" ? root.current?.querySelector(`[data-line-target="${focus.side ?? "new"}:${focus.startLine}"]`) : null;
     target?.scrollIntoView?.({ block: "center" });
   }, [focus, status, tab, side]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     if (findOpen && activeLine) root.current?.querySelector(`[data-line-target="${activeLine}"]`)?.scrollIntoView?.({ block: "center" });
   }, [findOpen, activeLine, normalizedIndex]);
   const nextMatch = (delta) => setMatchIndex((value) => matches.length ? (value + delta + matches.length) % matches.length : 0);
@@ -536,7 +577,8 @@ function CodeViewer({ file, status, error, path, identity, mode, context, focus,
   const nonText = ["binary", "oversized", "symlink", "excluded", "unavailable"].includes(kind ?? "");
   const source = side === "old" ? file?.beforeText : file?.text;
   const loadedPath = file?.path === path;
-  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxc-viewer", "aria-label": t("codeView"), ref: root, tabIndex: 0, onKeyDown: (event) => {
+  const totalLines = sourceLines(file?.text).length;
+  return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-viewer", "aria-label": t("codeView"), ref: root, tabIndex: 0, onKeyDown: (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
       event.preventDefault();
       setFindOpen(true);
@@ -545,12 +587,167 @@ function CodeViewer({ file, status, error, path, identity, mode, context, focus,
       event.preventDefault();
       closeFind();
     }
-  } }, /* @__PURE__ */ import_react.default.createElement("header", { className: "dxc-viewer-heading" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-path", title: path ?? void 0 }, path || t("chooseFile")), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxc-readonly" }, t("readOnly"))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-viewer-controls" }, /* @__PURE__ */ import_react.default.createElement(Tabs, { value: tab, onChange: setTab, label: t("code"), items: [{ value: "source", label: t("source") }, { value: "diff", label: t("diff") }] }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-viewer-options" }, tab === "source" ? /* @__PURE__ */ import_react.default.createElement("select", { "aria-label": t("context"), value: side, onChange: (event) => setSide(event.target.value) }, /* @__PURE__ */ import_react.default.createElement("option", { value: "new" }, context === "review" ? t("reviewed") : t(`origin.${mode}`)), /* @__PURE__ */ import_react.default.createElement("option", { value: "old" }, t("before"))) : /* @__PURE__ */ import_react.default.createElement("button", { className: "dxc-split-control", type: "button", disabled: narrow, title: narrow ? t("splitNarrow") : void 0, "aria-pressed": split && !narrow, onClick: () => setSplit((value) => !value) }, t(split && !narrow ? "split" : "unified")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": wrap, "aria-label": t("wrap"), title: t("wrap"), onClick: () => setWrap((value) => !value) }, "\u21B5"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-label": t("find"), title: t("find"), onClick: () => setFindOpen((value) => !value) }, "\u2315"))), findOpen && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-find", role: "search" }, /* @__PURE__ */ import_react.default.createElement("input", { ref: findInput, value: query, placeholder: t("findPlaceholder"), "aria-label": t("find"), onChange: (event) => setQuery(event.target.value), onKeyDown: (event) => {
+  } }, /* @__PURE__ */ import_react2.default.createElement("header", { className: "dxc-viewer-heading" }, /* @__PURE__ */ import_react2.default.createElement(Breadcrumbs, { path }), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-readonly" }, t("readOnly"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-viewer-controls" }, /* @__PURE__ */ import_react2.default.createElement(Tabs, { value: tab, onChange: setTab, label: t("code"), items: [{ value: "source", label: t("source") }, { value: "diff", label: t("diff") }] }), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-viewer-options" }, tab === "source" ? /* @__PURE__ */ import_react2.default.createElement("select", { "aria-label": t("context"), value: side, onChange: (event) => setSide(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "new" }, context === "review" ? t("reviewed") : t(`origin.${mode}`)), /* @__PURE__ */ import_react2.default.createElement("option", { value: "old" }, t("before"))) : /* @__PURE__ */ import_react2.default.createElement("button", { className: "dxc-split-control", type: "button", disabled: narrow, title: narrow ? t("splitNarrow") : void 0, "aria-pressed": split && !narrow, onClick: () => setSplit((value) => !value) }, t(split && !narrow ? "split" : "unified")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": wrap, "aria-label": t("wrap"), title: t("wrap"), onClick: () => setWrap((value) => !value) }, /* @__PURE__ */ import_react2.default.createElement(WrapIcon, null)), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-label": t("find"), title: t("find"), onClick: () => setFindOpen((value) => !value) }, /* @__PURE__ */ import_react2.default.createElement("svg", { viewBox: "0 0 16 16", width: "14", height: "14", fill: "none", stroke: "currentColor", strokeWidth: "1.4" }, /* @__PURE__ */ import_react2.default.createElement("circle", { cx: "7", cy: "7", r: "4" }), /* @__PURE__ */ import_react2.default.createElement("path", { d: "m10 10 3.5 3.5", strokeLinecap: "round" }))))), findOpen && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-find", role: "search" }, /* @__PURE__ */ import_react2.default.createElement("input", { ref: findInput, value: query, placeholder: t("findPlaceholder"), "aria-label": t("find"), onChange: (event) => setQuery(event.target.value), onKeyDown: (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       nextMatch(event.shiftKey ? -1 : 1);
     }
-  } }), /* @__PURE__ */ import_react.default.createElement("span", { role: "status" }, matches.length ? t("matches", { current: normalizedIndex + 1, count: matches.length }) : t("noMatches")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("previousMatch"), disabled: !matches.length, onClick: () => nextMatch(-1) }, "\u2191"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("nextMatch"), disabled: !matches.length, onClick: () => nextMatch(1) }, "\u2193"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", "aria-label": t("closeFind"), onClick: closeFind }, "\xD7")), loadedPath && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-version" }, /* @__PURE__ */ import_react.default.createElement("span", null, tab === "source" && side === "old" ? t("beforeVersion", { version: shortHash(file.baseVersion) }) : t("afterVersion", { origin: context === "review" ? t("reviewed") : t(`origin.${mode}`), version: shortHash(["Worktree", "Index"].includes(file.version ?? "") ? file.hash : file.version ?? file.hash) })), tab === "diff" && /* @__PURE__ */ import_react.default.createElement("span", null, t("beforeVersion", { version: shortHash(file.baseVersion) }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-code-scroll", ref: scroll, "data-wrap": wrap || void 0, onScroll: (event) => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }) }, !path ? /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-empty dxc-code-empty" }, /* @__PURE__ */ import_react.default.createElement("span", { "aria-hidden": "true" }, "{ }"), /* @__PURE__ */ import_react.default.createElement("p", null, t("chooseFile"))) : status === "loading" || status === "ready" && !loadedPath ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state", role: "status" }, t("fileLoading")) : status === "failed" ? /* @__PURE__ */ import_react.default.createElement("div", { className: "dxc-state", role: "alert" }, /* @__PURE__ */ import_react.default.createElement("p", null, t(/stale/i.test(error?.code ?? "") ? "fileChanged" : "fileFailed")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: retry }, t("retry"))) : loadedPath ? /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, (file.truncated || file.diffTruncated) && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-inline-warning" }, t("truncated")), nonText ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t(kind === "unavailable" ? "fileFailed" : kind ?? "unavailable")) : tab === "source" ? source == null || side === "old" && file.beforeKind === "missing" || side === "new" && (file.afterKind === "missing" || kind === "missing") ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("missing")) : source === "" ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("emptyFile")) : /* @__PURE__ */ import_react.default.createElement(Source, { text: source, highlights: side === "old" ? oldHighlights : newHighlights, query, activeLine, focus, side }) : hunks.length ? /* @__PURE__ */ import_react.default.createElement(Diff, { hunks, split: split && !narrow, wrap, oldHighlights, newHighlights, query, activeLine, focus, t }) : /* @__PURE__ */ import_react.default.createElement("p", { className: "dxc-state" }, t("noDiff"))) : null));
+  } }), /* @__PURE__ */ import_react2.default.createElement("span", { role: "status" }, matches.length ? t("matches", { current: normalizedIndex + 1, count: matches.length }) : t("noMatches")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("previousMatch"), disabled: !matches.length, onClick: () => nextMatch(-1) }, "\u2191"), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("nextMatch"), disabled: !matches.length, onClick: () => nextMatch(1) }, "\u2193"), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("closeFind"), onClick: closeFind }, /* @__PURE__ */ import_react2.default.createElement(CloseIcon, { size: 12 }))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-code-scroll", ref: scroll, "data-wrap": wrap || void 0, onScroll: (event) => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }) }, !path ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty dxc-code-empty" }, /* @__PURE__ */ import_react2.default.createElement("span", { "aria-hidden": "true" }, "{ }"), /* @__PURE__ */ import_react2.default.createElement("p", null, t("chooseFile"))) : status === "loading" || status === "ready" && !loadedPath ? /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state", role: "status" }, t("fileLoading")) : status === "failed" ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-state", role: "alert" }, /* @__PURE__ */ import_react2.default.createElement("p", null, t(/stale/i.test(error?.code ?? "") ? "fileChanged" : "fileFailed")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: retry }, t("retry"))) : loadedPath ? /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, (file.truncated || file.diffTruncated) && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-inline-warning" }, t("truncated")), nonText ? /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t(kind === "unavailable" ? "fileFailed" : kind ?? "unavailable")) : tab === "source" ? source == null || side === "old" && file.beforeKind === "missing" || side === "new" && (file.afterKind === "missing" || kind === "missing") ? /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t("missing")) : source === "" ? /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t("emptyFile")) : /* @__PURE__ */ import_react2.default.createElement(Source, { text: source, highlights: side === "old" ? oldHighlights : newHighlights, query, activeLine, focus, side }) : hunks.length ? /* @__PURE__ */ import_react2.default.createElement(Diff, { hunks, split: split && !narrow, wrap, oldHighlights, newHighlights, query, activeLine, focus, t }) : /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t("noDiff"))) : null), /* @__PURE__ */ import_react2.default.createElement("footer", { className: "dxc-statusbar" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-status-item" }, tab === "source" ? side === "old" ? t("beforeVersion", { version: shortHash(file?.baseVersion) }) : t("afterVersion", { origin: context === "review" ? t("reviewed") : t(`origin.${mode}`), version: shortHash(["Worktree", "Index"].includes(file?.version ?? "") ? file?.hash : file?.version ?? file?.hash) }) : t("diff")), loadedPath && totalLines > 0 && /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-status-item" }, t("lineCount", { count: totalLines })), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-status-spacer" }), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-status-item" }, t("readOnly"))));
+}
+
+// src/client/Splitter.tsx
+var import_react4 = __toESM(require("react"), 1);
+
+// src/client/layout.ts
+var import_react3 = require("react");
+var SIDEBAR_BOUNDS = { min: 180, max: 460, default: 236 };
+var PANEL_BOUNDS = { min: 250, max: 560, default: 328 };
+var ACTIVITIES = ["files", "changes", "history"];
+var PANEL_TABS = ["problems", "review"];
+var DEFAULT_LAYOUT = { sidebar: SIDEBAR_BOUNDS.default, panel: PANEL_BOUNDS.default, sidebarCollapsed: false, panelCollapsed: false, activity: "files", panelTab: "review" };
+var LAYOUT_KEY = "dsh-x-code:layout:v1";
+var clampSize = (value, bounds) => Number.isFinite(value) ? Math.min(bounds.max, Math.max(bounds.min, Math.round(value))) : bounds.default;
+var dragSize = (origin, delta, bounds) => clampSize(origin + delta, bounds);
+function normalizeLayout(value) {
+  const record2 = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const number = (key, bounds) => typeof record2[key] === "number" ? clampSize(record2[key], bounds) : bounds.default;
+  return {
+    sidebar: number("sidebar", SIDEBAR_BOUNDS),
+    panel: number("panel", PANEL_BOUNDS),
+    sidebarCollapsed: record2.sidebarCollapsed === true,
+    panelCollapsed: record2.panelCollapsed === true,
+    activity: ACTIVITIES.includes(record2.activity) ? record2.activity : DEFAULT_LAYOUT.activity,
+    panelTab: PANEL_TABS.includes(record2.panelTab) ? record2.panelTab : DEFAULT_LAYOUT.panelTab
+  };
+}
+function browserStorage() {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+function readLayout(storage) {
+  try {
+    return normalizeLayout(JSON.parse(storage?.getItem(LAYOUT_KEY) ?? "null"));
+  } catch {
+    return { ...DEFAULT_LAYOUT };
+  }
+}
+function writeLayout(storage, layout) {
+  try {
+    storage?.setItem(LAYOUT_KEY, JSON.stringify(layout));
+  } catch {
+  }
+}
+function useWorkbenchLayout(storage) {
+  const [layout, setLayout] = (0, import_react3.useState)(() => readLayout(storage));
+  (0, import_react3.useEffect)(() => {
+    writeLayout(storage, layout);
+  }, [storage, layout]);
+  const update = (patch) => setLayout((value) => normalizeLayout({ ...value, ...patch }));
+  const reset = () => setLayout({ ...DEFAULT_LAYOUT });
+  return { layout, update, reset };
+}
+var MAX_TABS = 24;
+function addTab(tabs, path, preview) {
+  const at = tabs.findIndex((tab) => tab.path === path);
+  if (at >= 0) return preview || !tabs[at].preview ? tabs : tabs.map((tab, index) => index === at ? { ...tab, preview: false } : tab);
+  const last = tabs.length - 1;
+  if (preview && last >= 0 && tabs[last].preview) return [...tabs.slice(0, last), { path, preview: true }];
+  return [...tabs, { path, preview }].slice(-MAX_TABS);
+}
+function closeTab(tabs, path, active) {
+  const at = tabs.findIndex((tab) => tab.path === path);
+  if (at < 0) return { tabs, active };
+  const next = tabs.filter((tab) => tab.path !== path);
+  return { tabs: next, active: active === path ? next[Math.min(at, next.length - 1)]?.path ?? null : active };
+}
+function moveTab(tabs, from, to) {
+  if (from === to || from < 0 || from >= tabs.length || to < 0 || to >= tabs.length) return tabs;
+  const next = [...tabs], [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+// src/client/Splitter.tsx
+function Splitter({ value, bounds, label, orientation, direction, onResize, onToggle }) {
+  const [preview, setPreview] = (0, import_react4.useState)(null);
+  const drag = (0, import_react4.useRef)(null);
+  const shown = preview ?? value, vertical = orientation === "vertical";
+  (0, import_react4.useEffect)(() => () => {
+    if (drag.current) restore();
+  }, []);
+  const restore = () => {
+    try {
+      document.body.style.cursor = "";
+    } catch {
+    }
+  };
+  const end = (event, commit) => {
+    const state = drag.current;
+    if (!state || state.pointer !== event.pointerId) return;
+    drag.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+    }
+    restore();
+    setPreview(null);
+    if (commit) onResize(preview ?? state.origin);
+  };
+  return /* @__PURE__ */ import_react4.default.createElement(
+    "div",
+    {
+      className: "dxc-splitter",
+      "data-orientation": orientation,
+      role: "separator",
+      "aria-orientation": orientation,
+      "aria-label": label,
+      "aria-valuemin": bounds.min,
+      "aria-valuemax": bounds.max,
+      "aria-valuenow": shown,
+      "data-dragging": preview != null || void 0,
+      tabIndex: 0,
+      onPointerDown: (event) => {
+        if (event.button !== 0) return;
+        drag.current = { at: vertical ? event.clientX : event.clientY, origin: value, pointer: event.pointerId };
+        setPreview(value);
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch {
+        }
+        document.body.style.cursor = vertical ? "col-resize" : "row-resize";
+        event.preventDefault();
+      },
+      onPointerMove: (event) => {
+        const state = drag.current;
+        if (!state || state.pointer !== event.pointerId) return;
+        setPreview(dragSize(state.origin, ((vertical ? event.clientX : event.clientY) - state.at) * direction, bounds));
+      },
+      onPointerUp: (event) => end(event, true),
+      onPointerCancel: (event) => end(event, false),
+      onDoubleClick: onToggle,
+      onKeyDown: (event) => {
+        const back = vertical ? "ArrowLeft" : "ArrowUp", forward = vertical ? "ArrowRight" : "ArrowDown";
+        const step = event.shiftKey ? 48 : 12;
+        if (event.key === back || event.key === forward) {
+          event.preventDefault();
+          onResize(dragSize(value, (event.key === forward ? step : -step) * direction, bounds));
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          onResize(bounds.min);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          onResize(bounds.max);
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onToggle();
+        }
+      }
+    },
+    /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-splitter-grip", "aria-hidden": "true" })
+  );
 }
 
 // src/client/locales.ts
@@ -576,6 +773,23 @@ var en = {
   excluded: "This file is excluded from source preview.",
   title: "Code",
   open: "Open Code",
+  explorer: "Explorer",
+  activityBar: "Workbench views",
+  openEditors: "Open editors",
+  tabActions: "Tab actions",
+  closeTab: "Close {name}",
+  closeTabAction: "Close",
+  closeOthers: "Close others",
+  closeAll: "Close all",
+  panel: "Review panel",
+  reviewSummary: "Review",
+  problems: "Problems",
+  noHistory: "No recorded reviews yet.",
+  toggleSidebar: "Toggle sidebar",
+  togglePanel: "Toggle review panel",
+  resizeSidebar: "Resize the file sidebar",
+  resizePanel: "Resize the review panel",
+  lineCount: "{count} lines",
   back: "Conversation",
   refresh: "Refresh",
   loading: "Loading repository\u2026",
@@ -781,6 +995,23 @@ var zh = {
   excluded: "\u6B64\u6587\u4EF6\u4E0D\u5728\u6E90\u7801\u9884\u89C8\u8303\u56F4\u5185\u3002",
   title: "Code",
   open: "\u6253\u5F00 Code",
+  explorer: "\u8D44\u6E90\u7BA1\u7406\u5668",
+  activityBar: "\u5DE5\u4F5C\u53F0\u89C6\u56FE",
+  openEditors: "\u5DF2\u6253\u5F00\u7684\u7F16\u8F91\u5668",
+  tabActions: "\u6807\u7B7E\u64CD\u4F5C",
+  closeTab: "\u5173\u95ED {name}",
+  closeTabAction: "\u5173\u95ED",
+  closeOthers: "\u5173\u95ED\u5176\u4ED6",
+  closeAll: "\u5168\u90E8\u5173\u95ED",
+  panel: "\u5BA1\u67E5\u9762\u677F",
+  reviewSummary: "\u5BA1\u67E5",
+  problems: "\u95EE\u9898",
+  noHistory: "\u8FD8\u6CA1\u6709\u5BA1\u67E5\u8BB0\u5F55\u3002",
+  toggleSidebar: "\u663E\u793A/\u9690\u85CF\u4FA7\u8FB9\u680F",
+  togglePanel: "\u663E\u793A/\u9690\u85CF\u5BA1\u67E5\u9762\u677F",
+  resizeSidebar: "\u8C03\u6574\u6587\u4EF6\u4FA7\u8FB9\u680F\u5BBD\u5EA6",
+  resizePanel: "\u8C03\u6574\u5BA1\u67E5\u9762\u677F\u5BBD\u5EA6",
+  lineCount: "{count} \u884C",
   back: "\u8FD4\u56DE\u5BF9\u8BDD",
   refresh: "\u5237\u65B0",
   loading: "\u6B63\u5728\u8BFB\u53D6\u4ED3\u5E93\u2026",
@@ -977,60 +1208,124 @@ var messageKey = (code) => {
 
 // src/client/components.tsx
 function CodeIcon() {
-  return /* @__PURE__ */ import_react2.default.createElement("svg", { viewBox: "0 0 24 24", width: "20", height: "20", fill: "none", stroke: "currentColor", strokeWidth: "1.7", "aria-hidden": "true" }, /* @__PURE__ */ import_react2.default.createElement("path", { d: "m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18", strokeLinecap: "round", strokeLinejoin: "round" }));
+  return /* @__PURE__ */ import_react5.default.createElement(CodeGlyph, { size: 20 });
 }
 function CodeEntry({ open, t }) {
-  return /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-dock" }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-entry", onClick: open, title: t("open") }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-entry-icon", "aria-hidden": "true" }, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null)), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-entry-label" }, t("title")), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-entry-go", "aria-hidden": "true" }, /* @__PURE__ */ import_react2.default.createElement("svg", { viewBox: "0 0 24 24", width: "14", height: "14", fill: "none", stroke: "currentColor", strokeWidth: "2" }, /* @__PURE__ */ import_react2.default.createElement("path", { d: "m9 6 6 6-6 6", strokeLinecap: "round", strokeLinejoin: "round" })))));
+  return /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-dock" }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-entry", onClick: open, title: t("open") }, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-entry-icon", "aria-hidden": "true" }, /* @__PURE__ */ import_react5.default.createElement(CodeIcon, null)), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-entry-label" }, t("title")), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-entry-go", "aria-hidden": "true" }, /* @__PURE__ */ import_react5.default.createElement(ChevronIcon, { size: 14 }))));
 }
 function CodePanel({ renderSlot }) {
   return renderSlot("dsh-x-code.workspace", {});
 }
 var STATUS_MARKS = { added: "A", deleted: "D", renamed: "R", untracked: "U", conflicted: "!" };
-var indent = (depth) => ({ paddingInlineStart: 8 + depth * 12 });
+var indent = (depth) => ({ paddingInlineStart: 10 + depth * 11 });
+var mark = (file) => isChanged(file) ? STATUS_MARKS[file.status] ?? "M" : "";
+function ActivityBar({ activity, onChange, counts, t }) {
+  const items = [
+    { value: "files", label: t("explorer"), icon: /* @__PURE__ */ import_react5.default.createElement(ExplorerIcon, null), count: counts.files },
+    { value: "changes", label: t("changed"), icon: /* @__PURE__ */ import_react5.default.createElement(ChangesIcon, null), count: counts.changes },
+    { value: "history", label: t("history"), icon: /* @__PURE__ */ import_react5.default.createElement(HistoryIcon, null), count: counts.history }
+  ];
+  return /* @__PURE__ */ import_react5.default.createElement("nav", { className: "dxc-activity", "aria-label": t("explorer") }, items.map((item) => /* @__PURE__ */ import_react5.default.createElement("button", { key: item.value, type: "button", className: "dxc-activity-item", "aria-pressed": activity === item.value, title: item.label, "aria-label": item.label, onClick: () => onChange(item.value) }, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-activity-icon", "aria-hidden": "true" }, item.icon), item.count > 0 && /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-activity-count" }, item.count))));
+}
 function FileRow({ file, path, selected, select, open, t, limit, reviewed, depth }) {
-  return /* @__PURE__ */ import_react2.default.createElement("li", { className: "dxc-file-row", style: indent(depth), "data-selected": path === file.path || void 0 }, !reviewed && /* @__PURE__ */ import_react2.default.createElement("input", { type: "checkbox", "aria-label": t("selectFile", { path: file.path }), checked: selected.includes(file.path), disabled: !file.selectable || !selected.includes(file.path) && selected.length >= limit, onChange: () => select(file.path) }), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-file", "aria-current": path === file.path ? "true" : void 0, "aria-label": t("openFile", { path: file.path }), title: file.path, onClick: () => open(file.path) }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-file-name" }, basename(file.path)), /* @__PURE__ */ import_react2.default.createElement("span", { className: `dxc-file-status dxc-status-${file.status}`, title: t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : "file.modified") }, isChanged(file) ? STATUS_MARKS[file.status] ?? "M" : "")));
+  return /* @__PURE__ */ import_react5.default.createElement("li", { className: "dxc-file-row", style: indent(depth), "data-selected": path === file.path || void 0 }, !reviewed && /* @__PURE__ */ import_react5.default.createElement("input", { type: "checkbox", "aria-label": t("selectFile", { path: file.path }), checked: selected.includes(file.path), disabled: !file.selectable || !selected.includes(file.path) && selected.length >= limit, onChange: () => select(file.path) }), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-file", "aria-current": path === file.path ? "true" : void 0, "aria-label": t("openFile", { path: file.path }), title: file.path, onClick: () => open(file.path) }, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-file-name" }, basename(file.path)), /* @__PURE__ */ import_react5.default.createElement("span", { className: `dxc-file-status dxc-status-${file.status}`, title: t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : "file.modified") }, mark(file))));
 }
 function TreeBranch({ node, depth, ...rest }) {
   if (!node.directories.length && !node.files.length) return null;
-  return /* @__PURE__ */ import_react2.default.createElement("li", { className: "dxc-branch" }, /* @__PURE__ */ import_react2.default.createElement("details", { className: "dxc-directory", open: true }, /* @__PURE__ */ import_react2.default.createElement("summary", { title: node.path, "aria-label": node.path, style: indent(depth) }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-disclosure", "aria-hidden": "true" }, "\u25B8"), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-dir-name" }, node.name)), /* @__PURE__ */ import_react2.default.createElement("ul", { className: "dxc-children" }, node.directories.map((child) => /* @__PURE__ */ import_react2.default.createElement(TreeBranch, { key: child.path, node: child, depth: depth + 1, ...rest })), node.files.map((file) => /* @__PURE__ */ import_react2.default.createElement(FileRow, { key: file.path, file, depth: depth + 1, ...rest })))));
+  return /* @__PURE__ */ import_react5.default.createElement("li", { className: "dxc-branch" }, /* @__PURE__ */ import_react5.default.createElement("details", { className: "dxc-directory", open: true }, /* @__PURE__ */ import_react5.default.createElement("summary", { title: node.path, "aria-label": node.path, style: indent(depth) }, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-disclosure", "aria-hidden": "true" }, /* @__PURE__ */ import_react5.default.createElement(ChevronIcon, { size: 12 })), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-dir-name" }, node.name)), /* @__PURE__ */ import_react5.default.createElement("ul", { className: "dxc-children" }, node.directories.map((child) => /* @__PURE__ */ import_react5.default.createElement(TreeBranch, { key: child.path, node: child, depth: depth + 1, ...rest })), node.files.map((file) => /* @__PURE__ */ import_react5.default.createElement(FileRow, { key: file.path, file, depth: depth + 1, ...rest })))));
 }
-function FileNavigator({ files, path, selected, select, open, t, limit, snapshot, reviewed }) {
-  const [filter, setFilter] = (0, import_react2.useState)("changed"), [query, setQuery] = (0, import_react2.useState)("");
-  const tree = (0, import_react2.useMemo)(() => fileTree(files, query, reviewed ? "all" : filter), [files, query, filter, reviewed]);
+function FileList({ files, path, selected, select, open, t, limit, reviewed, filter }) {
+  const [query, setQuery] = (0, import_react5.useState)("");
+  const tree = (0, import_react5.useMemo)(() => fileTree(files, query, reviewed ? "all" : filter), [files, query, filter, reviewed]);
   const rows = { path, selected, select, open, t, limit, reviewed };
-  return /* @__PURE__ */ import_react2.default.createElement("aside", { className: "dxc-files", "aria-label": t("files") }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("files")), /* @__PURE__ */ import_react2.default.createElement("span", null, t("fileCount", { count: files.length }))), !reviewed && /* @__PURE__ */ import_react2.default.createElement(Tabs, { label: t("files"), value: filter, onChange: setFilter, items: [{ value: "changed", label: t("changed") }, { value: "all", label: t("all") }] }), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-file-search" }, /* @__PURE__ */ import_react2.default.createElement("span", { "aria-hidden": "true" }, "\u2315"), /* @__PURE__ */ import_react2.default.createElement("input", { type: "search", value: query, onChange: (event) => setQuery(event.target.value), placeholder: t("searchFiles"), "aria-label": t("fileSearchLabel") })), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-file-list" }, tree.directories.length || tree.files.length ? /* @__PURE__ */ import_react2.default.createElement("ul", { className: "dxc-tree" }, tree.directories.map((node) => /* @__PURE__ */ import_react2.default.createElement(TreeBranch, { key: node.path, node, depth: 0, ...rows })), tree.files.map((file) => /* @__PURE__ */ import_react2.default.createElement(FileRow, { key: file.path, file, depth: 0, ...rows }))) : /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-state" }, t(filter === "changed" && !query && !reviewed ? "noChanges" : "noFiles"))), /* @__PURE__ */ import_react2.default.createElement("footer", { className: "dxc-file-footer" }, reviewed ? /* @__PURE__ */ import_react2.default.createElement("span", null, t("reviewedOnly")) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("span", null, t("selection", { count: selected.length })), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => select(selected.length ? null : "all") }, t(selected.length ? "clearSelection" : "selectChanged"))), snapshot.truncated && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-inline-warning" }, t("partialFiles"))));
+  return /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-file-search" }, /* @__PURE__ */ import_react5.default.createElement("span", { "aria-hidden": "true" }, /* @__PURE__ */ import_react5.default.createElement("svg", { viewBox: "0 0 16 16", width: "12", height: "12", fill: "none", stroke: "currentColor", strokeWidth: "1.4" }, /* @__PURE__ */ import_react5.default.createElement("circle", { cx: "7", cy: "7", r: "4" }), /* @__PURE__ */ import_react5.default.createElement("path", { d: "m10 10 3.5 3.5", strokeLinecap: "round" }))), /* @__PURE__ */ import_react5.default.createElement("input", { type: "search", value: query, onChange: (event) => setQuery(event.target.value), placeholder: t("searchFiles"), "aria-label": t("fileSearchLabel") })), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-file-list" }, tree.directories.length || tree.files.length ? /* @__PURE__ */ import_react5.default.createElement("ul", { className: "dxc-tree" }, tree.directories.map((node) => /* @__PURE__ */ import_react5.default.createElement(TreeBranch, { key: node.path, node, depth: 0, ...rows })), tree.files.map((file) => /* @__PURE__ */ import_react5.default.createElement(FileRow, { key: file.path, file, depth: 0, ...rows }))) : /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-state" }, t(filter === "changed" && !query && !reviewed ? "noChanges" : "noFiles"))));
+}
+function Sidebar({ files, path, selected, select, open, t, limit, snapshot, reviewed, activity, history, historyId, inspectHistory, latest, formatTime }) {
+  const [filter, setFilter] = (0, import_react5.useState)("changed");
+  const changed = files.filter(isChanged), scope = activity === "changes" ? filter : "all";
+  const shown = scope === "changed" ? changed : files;
+  const title = activity === "files" ? "explorer" : activity === "changes" ? "changed" : "history";
+  return /* @__PURE__ */ import_react5.default.createElement("aside", { className: "dxc-sidebar", "aria-label": t(title) }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-sidebar-title" }, /* @__PURE__ */ import_react5.default.createElement("strong", null, t(title)), activity !== "history" && /* @__PURE__ */ import_react5.default.createElement("span", null, t("fileCount", { count: shown.length }))), activity === "history" ? /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-history-pane" }, history.length ? /* @__PURE__ */ import_react5.default.createElement("ol", null, [...history].reverse().map((item) => /* @__PURE__ */ import_react5.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-history-item", "aria-pressed": historyId === item.id, onClick: () => inspectHistory(item.id) }, /* @__PURE__ */ import_react5.default.createElement("time", null, formatTime(item.createdAt)), /* @__PURE__ */ import_react5.default.createElement("span", null, t("openFindings", { count: item.findings }), " \xB7 ", shortHash(item.snapshotId)))))) : /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-state" }, t("noHistory")), historyId && /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-link", onClick: latest }, t("latestReview"))) : /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, activity === "changes" && !reviewed && /* @__PURE__ */ import_react5.default.createElement(Tabs, { className: "dxc-sidebar-tabs", label: t("files"), value: filter, onChange: setFilter, items: [{ value: "changed", label: t("changed") }, { value: "all", label: t("all") }] }), /* @__PURE__ */ import_react5.default.createElement(FileList, { files: shown, path, selected, select, open, t, limit, reviewed, filter: scope }), /* @__PURE__ */ import_react5.default.createElement("footer", { className: "dxc-file-footer" }, reviewed ? /* @__PURE__ */ import_react5.default.createElement("span", null, t("reviewedOnly")) : /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("span", null, t("selection", { count: selected.length })), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: () => select(selected.length ? null : "all") }, t(selected.length ? "clearSelection" : "selectChanged"))), snapshot.truncated && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-inline-warning" }, t("partialFiles")))));
+}
+function EditorTabs({ path, tabs, select, close, reorder, closeOthers, closeAll, t }) {
+  const [menu, setMenu] = (0, import_react5.useState)(false), dragging = (0, import_react5.useRef)(null);
+  if (!tabs.length) return null;
+  return /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-editor-tabs", role: "tablist", "aria-label": t("openEditors") }, tabs.map((tab, at) => /* @__PURE__ */ import_react5.default.createElement(
+    "div",
+    {
+      key: tab.path,
+      className: "dxc-tab",
+      role: "presentation",
+      "data-active": tab.path === path || void 0,
+      "data-preview": tab.preview || void 0,
+      draggable: true,
+      onDragStart: () => {
+        dragging.current = at;
+      },
+      onDragOver: (event) => event.preventDefault(),
+      onDrop: (event) => {
+        event.preventDefault();
+        if (dragging.current != null) reorder(dragging.current, at);
+        dragging.current = null;
+      },
+      onDragEnd: () => {
+        dragging.current = null;
+      }
+    },
+    /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab.path === path, title: tab.path, onClick: () => select(tab.path), onAuxClick: (event) => {
+      if (event.button === 1) close(tab.path);
+    } }, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-tab-name" }, basename(tab.path))),
+    /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-tab-close", "aria-label": t("closeTab", { name: basename(tab.path) }), onClick: () => close(tab.path) }, /* @__PURE__ */ import_react5.default.createElement(CloseIcon, { size: 12 }))
+  )), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-tab-menu-wrap" }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-tab-menu", "aria-haspopup": "menu", "aria-expanded": menu, "aria-label": t("tabActions"), onClick: () => setMenu((value) => !value) }, /* @__PURE__ */ import_react5.default.createElement(ChevronIcon, { size: 13 })), menu && /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-tab-popup", role: "menu", onMouseLeave: () => setMenu(false) }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", role: "menuitem", disabled: !path, onClick: () => {
+    if (path) close(path);
+    setMenu(false);
+  } }, t("closeTabAction")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", role: "menuitem", disabled: !path || tabs.length < 2, onClick: () => {
+    if (path) closeOthers(path);
+    setMenu(false);
+  } }, t("closeOthers")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", role: "menuitem", onClick: () => {
+    closeAll();
+    setMenu(false);
+  } }, t("closeAll")))));
 }
 function FindingCard({ finding, jump, t }) {
-  return /* @__PURE__ */ import_react2.default.createElement("article", { className: "dxc-finding", "data-severity": finding.severity }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-finding-top" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-finding-id" }, finding.id.slice(0, 7))), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-finding-title", onClick: jump }, finding.title), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-location", title: finding.path, "aria-label": t("findingLocation", { path: finding.path, line: finding.startLine }), onClick: jump }, basename(finding.path), /* @__PURE__ */ import_react2.default.createElement("span", null, ":", finding.startLine, finding.endLine !== finding.startLine ? `\u2013${finding.endLine}` : "")), /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-finding-body" }, finding.body), (finding.evidence || finding.trigger) && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("details")), finding.evidence && /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-detail-label" }, t("evidence")), /* @__PURE__ */ import_react2.default.createElement("pre", null, finding.evidence)), finding.trigger && /* @__PURE__ */ import_react2.default.createElement("div", null, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-detail-label" }, t("trigger")), /* @__PURE__ */ import_react2.default.createElement("p", null, finding.trigger))));
+  return /* @__PURE__ */ import_react5.default.createElement("article", { className: "dxc-finding", "data-severity": finding.severity }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-finding-top" }, /* @__PURE__ */ import_react5.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-finding-id" }, finding.id.slice(0, 7))), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-finding-title", onClick: jump }, finding.title), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-location", title: finding.path, "aria-label": t("findingLocation", { path: finding.path, line: finding.startLine }), onClick: jump }, basename(finding.path), /* @__PURE__ */ import_react5.default.createElement("span", null, ":", finding.startLine, finding.endLine !== finding.startLine ? `\u2013${finding.endLine}` : "")), /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-finding-body" }, finding.body), (finding.evidence || finding.trigger) && /* @__PURE__ */ import_react5.default.createElement("details", null, /* @__PURE__ */ import_react5.default.createElement("summary", null, t("details")), finding.evidence && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-detail-label" }, t("evidence")), /* @__PURE__ */ import_react5.default.createElement("pre", null, finding.evidence)), finding.trigger && /* @__PURE__ */ import_react5.default.createElement("div", null, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-detail-label" }, t("trigger")), /* @__PURE__ */ import_react5.default.createElement("p", null, finding.trigger))));
 }
-function Findings({ review, history, historyId, inspectHistory, historyStatus, jump, rereview, enabled, canRereview, t, formatTime }) {
-  const [severity, setSeverity] = (0, import_react2.useState)("all");
+function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }) {
+  const [severity, setSeverity] = (0, import_react5.useState)("all");
   const filtered = review?.findings.filter((finding) => severity === "all" || finding.severity === severity) ?? [];
   const complete = isComplete(review);
-  return /* @__PURE__ */ import_react2.default.createElement("aside", { className: "dxc-findings", "aria-label": t("findings") }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("findings")), review && /* @__PURE__ */ import_react2.default.createElement("span", null, review.findings.length)), !review && historyId ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-state", role: historyStatus === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react2.default.createElement("p", null, t(historyStatus === "failed" ? "historyFailed" : "historyLoading")), historyStatus === "failed" && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => inspectHistory(historyId) }, t("retry"))) : !review ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty dxc-findings-empty" }, /* @__PURE__ */ import_react2.default.createElement("span", { "aria-hidden": "true" }, "\u25CE"), /* @__PURE__ */ import_react2.default.createElement("strong", null, t("noReview")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("noReviewHint"))) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-review-summary" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-review-state", role: "status" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: `dxc-state-dot dxc-review-${review.state}` }), /* @__PURE__ */ import_react2.default.createElement("strong", null, t(Object.hasOwn(en, `state.${review.state}`) ? `state.${review.state}` : "incomplete"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-muted" }, t("coverage", { count: review.paths?.length ?? 0 }), " \xB7 ", shortHash(review.snapshotId)), review.createdAt && /* @__PURE__ */ import_react2.default.createElement("time", { className: "dxc-muted" }, formatTime(review.createdAt)), review.summary && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("summary")), /* @__PURE__ */ import_react2.default.createElement("p", null, review.summary))), review.stale && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("stale")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("staleHint"))), !complete && !activeReview(review) && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("incomplete")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("incompleteHint")), review.reason && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react2.default.createElement("p", null, review.reason))), review.findings.length > 0 && /* @__PURE__ */ import_react2.default.createElement("select", { className: "dxc-severity-filter", value: severity, "aria-label": t("allFindings"), onChange: (event) => setSeverity(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "all" }, t("allFindings")), SEVERITIES.map((item) => /* @__PURE__ */ import_react2.default.createElement("option", { key: item, value: item }, t(`severity.${item}`), " (", review.findings.filter((finding) => finding.severity === item).length, ")"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-findings-list" }, filtered.map((finding) => /* @__PURE__ */ import_react2.default.createElement(FindingCard, { key: finding.id, finding, jump: () => jump(finding), t })), complete && review.findings.length === 0 && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-no-findings" }, t("noFindings"))), /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc-checks" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react2.default.createElement("strong", null, t("checks"))), review.checks?.length ? /* @__PURE__ */ import_react2.default.createElement("ul", null, review.checks.map((check, at) => /* @__PURE__ */ import_react2.default.createElement("li", { key: at }, /* @__PURE__ */ import_react2.default.createElement("span", null, check.name ?? check.command ?? t("checks")), /* @__PURE__ */ import_react2.default.createElement("span", { className: check.status === "failed" ? "dxc-warning" : "dxc-muted" }, t(check.status === "passed" && check.verified !== true ? "check.unknown" : Object.hasOwn(en, `check.${check.status}`) ? `check.${check.status}` : "check.unknown")), check.evidence && /* @__PURE__ */ import_react2.default.createElement("details", null, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("evidence")), /* @__PURE__ */ import_react2.default.createElement("pre", null, check.evidence))))) : /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("noChecks"))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-findings-actions" }, complete && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", disabled: !enabled || !canRereview, onClick: rereview }, t("rereview"))), !canRereview && complete && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-muted" }, t("worktreeFirst"))), history?.length > 0 && /* @__PURE__ */ import_react2.default.createElement("details", { className: "dxc-history" }, /* @__PURE__ */ import_react2.default.createElement("summary", null, t("history"), " (", history.length, ")"), /* @__PURE__ */ import_react2.default.createElement("ol", null, [...history].reverse().map((item) => /* @__PURE__ */ import_react2.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-history-item", "aria-pressed": historyId === item.id, onClick: () => inspectHistory(item.id) }, /* @__PURE__ */ import_react2.default.createElement("time", null, formatTime(item.createdAt)), /* @__PURE__ */ import_react2.default.createElement("span", null, t("openFindings", { count: item.findings }), " \xB7 ", shortHash(item.snapshotId))))))));
+  if (!review && historyId) return /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-state", role: historyStatus === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react5.default.createElement("p", null, t(historyStatus === "failed" ? "historyFailed" : "historyLoading")), historyStatus === "failed" && /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: () => inspectHistory(historyId) }, t("retry")));
+  if (!review) return /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-empty dxc-panel-empty" }, /* @__PURE__ */ import_react5.default.createElement(ReviewIcon, { size: 24 }), /* @__PURE__ */ import_react5.default.createElement("strong", null, t("noReview")), /* @__PURE__ */ import_react5.default.createElement("p", null, t("noReviewHint")));
+  return /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-review-summary" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-review-state", role: "status" }, /* @__PURE__ */ import_react5.default.createElement("span", { className: `dxc-state-dot dxc-review-${review.state}` }), /* @__PURE__ */ import_react5.default.createElement("strong", null, t(Object.hasOwn(en, `state.${review.state}`) ? `state.${review.state}` : "incomplete"))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-muted" }, t("coverage", { count: review.paths?.length ?? 0 }), " \xB7 ", shortHash(review.snapshotId)), review.createdAt && /* @__PURE__ */ import_react5.default.createElement("time", { className: "dxc-muted" }, formatTime(review.createdAt)), review.summary && /* @__PURE__ */ import_react5.default.createElement("details", null, /* @__PURE__ */ import_react5.default.createElement("summary", null, t("summary")), /* @__PURE__ */ import_react5.default.createElement("p", null, review.summary))), review.stale && /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react5.default.createElement("strong", null, t("stale")), /* @__PURE__ */ import_react5.default.createElement("p", null, t("staleHint"))), !complete && !activeReview(review) && /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-notice dxc-warning" }, /* @__PURE__ */ import_react5.default.createElement("strong", null, t("incomplete")), /* @__PURE__ */ import_react5.default.createElement("p", null, t("incompleteHint")), review.reason && /* @__PURE__ */ import_react5.default.createElement("details", null, /* @__PURE__ */ import_react5.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react5.default.createElement("p", null, review.reason))), review.findings.length > 0 && /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-panel-filter" }, /* @__PURE__ */ import_react5.default.createElement("select", { className: "dxc-severity-filter", value: severity, "aria-label": t("allFindings"), onChange: (event) => setSeverity(event.target.value) }, /* @__PURE__ */ import_react5.default.createElement("option", { value: "all" }, t("allFindings")), SEVERITIES.map((item) => /* @__PURE__ */ import_react5.default.createElement("option", { key: item, value: item }, t(`severity.${item}`), " (", review.findings.filter((finding) => finding.severity === item).length, ")")))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-findings-list" }, filtered.map((finding) => /* @__PURE__ */ import_react5.default.createElement(FindingCard, { key: finding.id, finding, jump: () => jump(finding), t })), complete && review.findings.length === 0 && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-no-findings" }, t("noFindings"))), /* @__PURE__ */ import_react5.default.createElement("section", { className: "dxc-checks" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-section-title" }, /* @__PURE__ */ import_react5.default.createElement("strong", null, t("checks"))), review.checks?.length ? /* @__PURE__ */ import_react5.default.createElement("ul", null, review.checks.map((check, at) => /* @__PURE__ */ import_react5.default.createElement("li", { key: at }, /* @__PURE__ */ import_react5.default.createElement("span", null, check.name ?? check.command ?? t("checks")), /* @__PURE__ */ import_react5.default.createElement("span", { className: check.status === "failed" ? "dxc-warning" : "dxc-muted" }, t(check.status === "passed" && check.verified !== true ? "check.unknown" : Object.hasOwn(en, `check.${check.status}`) ? `check.${check.status}` : "check.unknown")), check.evidence && /* @__PURE__ */ import_react5.default.createElement("details", null, /* @__PURE__ */ import_react5.default.createElement("summary", null, t("evidence")), /* @__PURE__ */ import_react5.default.createElement("pre", null, check.evidence))))) : /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-muted" }, t("noChecks"))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-findings-actions" }, complete && /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", disabled: !enabled || !canRereview, onClick: rereview }, t("rereview")), !canRereview && complete && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-muted" }, t("worktreeFirst"))));
+}
+function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }) {
+  const problems = review?.findings.length ?? 0;
+  return /* @__PURE__ */ import_react5.default.createElement("aside", { className: "dxc-panel", "aria-label": t("panel") }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-panel-tabs", role: "tablist", "aria-label": t("panel") }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "problems", onClick: () => setTab("problems") }, t("problems"), problems > 0 && /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-count" }, problems)), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "review", onClick: () => setTab("review") }, t("reviewSummary"))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-panel-body" }, tab === "problems" ? /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-problems" }, !review ? /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-state" }, t("noReviewHint")) : review.findings.length === 0 ? /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-state" }, isComplete(review) ? t("noFindings") : t("incomplete")) : /* @__PURE__ */ import_react5.default.createElement("ul", { className: "dxc-problem-list" }, review.findings.map((finding) => /* @__PURE__ */ import_react5.default.createElement("li", { key: finding.id }, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-problem", onClick: () => jump(finding) }, /* @__PURE__ */ import_react5.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-problem-title" }, finding.title), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-problem-path", title: finding.path }, basename(finding.path), /* @__PURE__ */ import_react5.default.createElement("span", null, ":", finding.startLine))))))) : /* @__PURE__ */ import_react5.default.createElement(ReviewPane, { review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory })));
 }
 function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, cancel, back, t, formatTime }) {
   const state = useCode((value) => value), snapshot = state.snapshot;
-  const page = (0, import_react2.useRef)(null), [layout, setLayout] = (0, import_react2.useState)("wide");
-  (0, import_react2.useEffect)(() => {
+  const page = (0, import_react5.useRef)(null);
+  const { layout, update: setLayout } = useWorkbenchLayout(browserStorage());
+  const [narrow, setNarrow] = (0, import_react5.useState)(false), [pane, setPane] = (0, import_react5.useState)("files");
+  const [tabs, setTabs] = (0, import_react5.useState)([]), [path, setPath] = (0, import_react5.useState)(null);
+  const [selected, setSelected] = (0, import_react5.useState)([]), [context, setContext] = (0, import_react5.useState)("current"), [notice, setNotice] = (0, import_react5.useState)(null), [focus, setFocus] = (0, import_react5.useState)(null);
+  const [base2, setBase] = (0, import_react5.useState)(snapshot?.workspace.baseRef ?? "main"), [mode, setMode] = (0, import_react5.useState)(snapshot?.workspace.mode ?? "worktree");
+  const scrollPositions = (0, import_react5.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react5.useRef)(null), previousReview = (0, import_react5.useRef)(void 0), rereviewId = (0, import_react5.useRef)(null);
+  (0, import_react5.useEffect)(() => {
     if (!globalThis.ResizeObserver || !page.current) return;
     const observer = new ResizeObserver((entries) => {
       const width = entries[0].contentRect.width;
-      setLayout(width < 650 ? "narrow" : width <= 1100 ? "medium" : "wide");
+      setNarrow(width < 700);
     });
     observer.observe(page.current);
     return () => observer.disconnect();
   }, []);
-  const [path, setPath] = (0, import_react2.useState)(null), [selected, setSelected] = (0, import_react2.useState)([]);
-  const [context, setContext] = (0, import_react2.useState)("current"), [pane, setPane] = (0, import_react2.useState)("files"), [notice, setNotice] = (0, import_react2.useState)(null), [focus, setFocus] = (0, import_react2.useState)(null);
-  const [base, setBase] = (0, import_react2.useState)(snapshot?.workspace.baseRef ?? "main"), [mode, setMode] = (0, import_react2.useState)(snapshot?.workspace.mode ?? "worktree");
-  const scrollPositions = (0, import_react2.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react2.useRef)(null), previousReview = (0, import_react2.useRef)(void 0), rereviewId = (0, import_react2.useRef)(null);
   const live = state.status === "live", historyId = state.historyId, review = historyId ? state.inspectedReview : snapshot?.review;
   const maxFiles = snapshot?.limits.maxSelectedFiles ?? 20;
   const files = context === "review" && review && snapshot ? snapshot.files.filter((file) => review.paths.includes(file.path)).concat(review.paths.filter((item) => !snapshot.files.some((file) => file.path === item)).map((path2) => ({ path: path2, status: "modified", changed: true, selectable: false }))) : snapshot?.files ?? [];
   const currentFile = files.find((file) => file.path === path);
   const effectivePath = currentFile?.path ?? null;
-  const request = (0, import_react2.useMemo)(() => snapshot && effectivePath ? { scope: snapshot.scope, workspaceId: snapshot.workspace.id, path: effectivePath, mode: snapshot.workspace.mode, ...snapshot.workspace.mode === "range" ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}, ...context === "review" && review ? { reviewId: review.id } : {} } : null, [snapshot?.scope, snapshot?.workspace.id, snapshot?.workspace.mode, snapshot?.workspace.baseRef, effectivePath, context, review?.id]);
+  const request = (0, import_react5.useMemo)(() => snapshot && effectivePath ? { scope: snapshot.scope, workspaceId: snapshot.workspace.id, path: effectivePath, mode: snapshot.workspace.mode, ...snapshot.workspace.mode === "range" ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}, ...context === "review" && review ? { reviewId: review.id } : {} } : null, [snapshot?.scope, snapshot?.workspace.id, snapshot?.workspace.mode, snapshot?.workspace.baseRef, effectivePath, context, review?.id]);
   const fileKey = request ? JSON.stringify(request) : null;
   const fileMatches = fileKey && state.fileKey === fileKey;
   const identity = `${snapshot?.scope}:${context === "review" ? review?.snapshotId : snapshot?.workspace.id}:${effectivePath}`;
@@ -1038,14 +1333,14 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
   const operation = snapshot?.operation;
   const canStop = Boolean(operation?.id);
   const running = Boolean(operation) || activeReview(snapshot?.review);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react5.useEffect)(() => {
     if (!request) {
       clearFile();
       return;
     }
     loadFile(request);
   }, [fileKey, state.fileStatus === "idle"]);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react5.useEffect)(() => {
     if (!snapshot) return;
     setMode(snapshot.workspace.mode);
     if (snapshot.workspace.mode === "range") setBase(snapshot.workspace.baseRef ?? "main");
@@ -1059,9 +1354,10 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
       previousReview.current = review?.id;
     }
   }, [snapshot?.workspace.id, review?.id]);
-  const changeScope = (value, baseValue = base) => {
+  const changeScope = (value, baseValue = base2) => {
     setMode(value);
     setPath(null);
+    setTabs([]);
     setSelected([]);
     setFocus(null);
     setContext("current");
@@ -1073,20 +1369,40 @@ function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selectTarget
   const inspectHistory = (id) => {
     setContext("review");
     setPath(null);
+    setTabs([]);
     setFocus(null);
-    setPane("findings");
     clearFile();
     loadReview(id);
+    setPane("findings");
   };
   const latest = () => {
     setPath(null);
+    setTabs([]);
     setFocus(null);
     loadReview(null);
   };
-  const openFile = (next) => {
+  const openFile = (next, preview = true) => {
+    setTabs((value) => addTab(value, next, preview));
     setPath(next);
-    setPane("code");
     setFocus(null);
+    setPane("code");
+  };
+  const closeTabPath = (next) => {
+    const result = closeTab(tabs, next, path);
+    setTabs(result.tabs);
+    if (result.active !== path) {
+      setPath(result.active);
+      if (!result.active) clearFile();
+    }
+  };
+  const closeOthers = (keep) => {
+    setTabs((value) => value.filter((tab) => tab.path === keep));
+    setPath(keep);
+  };
+  const closeAll = () => {
+    setTabs([]);
+    setPath(null);
+    clearFile();
   };
   const put = (text2) => {
     try {
@@ -1139,48 +1455,311 @@ ${JSON.stringify(args, null, 2)}`);
   };
   const jump = (finding) => {
     setContext("review");
-    setPath(finding.path);
-    setPane(layout === "narrow" ? "code" : "findings");
+    openFile(finding.path, false);
     setFocus({ side: finding.side === "before" ? "old" : "new", startLine: finding.startLine, endLine: finding.endLine ?? finding.startLine, findingId: finding.id });
   };
-  if (!sessionId) return /* @__PURE__ */ import_react2.default.createElement("main", { className: "dxc dxc-page" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty" }, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react2.default.createElement("h1", null, t("title")), /* @__PURE__ */ import_react2.default.createElement("p", null, t("noSession")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: back }, t("openConversation"))));
-  return /* @__PURE__ */ import_react2.default.createElement("main", { className: "dxc dxc-page", ref: page, "data-code-session": sessionId, "data-pane": pane }, /* @__PURE__ */ import_react2.default.createElement("header", { className: "dxc-header" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-brand" }, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react2.default.createElement("h1", null, t("title")), snapshot && /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-repo", title: snapshot.workspace.repoRoot }, basename(snapshot.workspace.repoRoot))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-header-actions" }, /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: back }, t("back")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: () => {
+  const changeActivity = (activity) => setLayout(layout.activity === activity && !layout.sidebarCollapsed ? { sidebarCollapsed: true } : { activity, sidebarCollapsed: false });
+  if (!sessionId) return /* @__PURE__ */ import_react5.default.createElement("main", { className: "dxc dxc-page" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-empty" }, /* @__PURE__ */ import_react5.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react5.default.createElement("h1", null, t("title")), /* @__PURE__ */ import_react5.default.createElement("p", null, t("noSession")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: back }, t("openConversation"))));
+  const counts = { files: files.length, changes: files.filter(isChanged).length, history: snapshot?.history.length ?? 0 };
+  const showSidebar = !layout.sidebarCollapsed;
+  const showPanel = !layout.panelCollapsed;
+  const columns = `40px ${showSidebar ? `${layout.sidebar}px 4px` : "0px 0px"} minmax(240px,1fr) ${showPanel ? `4px ${layout.panel}px` : "0px 0px"}`;
+  return /* @__PURE__ */ import_react5.default.createElement("main", { className: "dxc dxc-page", ref: page, "data-code-session": sessionId, "data-pane": pane, "data-narrow": narrow || void 0, "data-sidebar": showSidebar || void 0, "data-panel": showPanel || void 0 }, /* @__PURE__ */ import_react5.default.createElement("header", { className: "dxc-titlebar" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-brand" }, /* @__PURE__ */ import_react5.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react5.default.createElement("h1", null, t("title")), snapshot && /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-repo", title: snapshot.workspace.repoRoot }, basename(snapshot.workspace.repoRoot))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-header-actions" }, !narrow && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": showSidebar, "aria-label": t("toggleSidebar"), title: t("toggleSidebar"), onClick: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }, /* @__PURE__ */ import_react5.default.createElement(SidebarIcon, null)), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-icon-button", "aria-pressed": showPanel, "aria-label": t("togglePanel"), title: t("togglePanel"), onClick: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }, /* @__PURE__ */ import_react5.default.createElement(PanelIcon, null))), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: back }, t("back")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: () => {
     clearFile();
     refresh();
-  } }, t("refresh")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", className: "dxc-primary", disabled: !live || !selected.length || !reviewAvailable || running || snapshot?.truncated || snapshot?.complete === false, onClick: () => beginReview("review") }, t("review"), /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-count" }, selected.length)))), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-toolbar" }, /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-scope" }, /* @__PURE__ */ import_react2.default.createElement("label", { htmlFor: `code-scope-${sessionId}` }, t("scope")), /* @__PURE__ */ import_react2.default.createElement("select", { id: `code-scope-${sessionId}`, value: mode, onChange: (event) => changeScope(event.target.value) }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "worktree" }, t("mode.worktree")), /* @__PURE__ */ import_react2.default.createElement("option", { value: "staged" }, t("mode.staged")), /* @__PURE__ */ import_react2.default.createElement("option", { value: "range" }, t("mode.range"))), mode === "range" && /* @__PURE__ */ import_react2.default.createElement("form", { onSubmit: (event) => {
+  } }, t("refresh")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", className: "dxc-primary", disabled: !live || !selected.length || !reviewAvailable || running || snapshot?.truncated || snapshot?.complete === false, onClick: () => beginReview("review") }, t("review"), /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-count" }, selected.length)))), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-toolbar" }, /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-scope" }, /* @__PURE__ */ import_react5.default.createElement("label", { htmlFor: `code-scope-${sessionId}` }, t("scope")), /* @__PURE__ */ import_react5.default.createElement("select", { id: `code-scope-${sessionId}`, value: mode, onChange: (event) => changeScope(event.target.value) }, /* @__PURE__ */ import_react5.default.createElement("option", { value: "worktree" }, t("mode.worktree")), /* @__PURE__ */ import_react5.default.createElement("option", { value: "staged" }, t("mode.staged")), /* @__PURE__ */ import_react5.default.createElement("option", { value: "range" }, t("mode.range"))), mode === "range" && /* @__PURE__ */ import_react5.default.createElement("form", { onSubmit: (event) => {
     event.preventDefault();
-    changeScope("range", base);
-  } }, /* @__PURE__ */ import_react2.default.createElement("input", { "aria-label": t("base"), value: base, placeholder: t("basePlaceholder"), onChange: (event) => setBase(event.target.value), maxLength: 160 }), /* @__PURE__ */ import_react2.default.createElement("button", { type: "submit", disabled: !base.trim() }, t("applyBase")))), review && /* @__PURE__ */ import_react2.default.createElement("select", { "aria-label": t("context"), value: context, onChange: (event) => {
+    changeScope("range", base2);
+  } }, /* @__PURE__ */ import_react5.default.createElement("input", { "aria-label": t("base"), value: base2, placeholder: t("basePlaceholder"), onChange: (event) => setBase(event.target.value), maxLength: 160 }), /* @__PURE__ */ import_react5.default.createElement("button", { type: "submit", disabled: !base2.trim() }, t("applyBase")))), review && /* @__PURE__ */ import_react5.default.createElement("select", { "aria-label": t("context"), value: context, onChange: (event) => {
     setContext(event.target.value);
     setFocus(null);
     clearFile();
-  } }, /* @__PURE__ */ import_react2.default.createElement("option", { value: "current" }, t("current")), /* @__PURE__ */ import_react2.default.createElement("option", { value: "review" }, t("reviewed"), " \xB7 ", shortHash(review.snapshotId)))), historyId && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-banner dxc-history-banner" }, /* @__PURE__ */ import_react2.default.createElement("span", null, t("viewingHistory"), " \xB7 ", shortHash(review?.snapshotId)), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: latest }, t("latestReview"))), !live && snapshot && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t("disconnected")), notice && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t(notice, { count: maxFiles }), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: () => setNotice(null) }, "\xD7")), running && /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-banner dxc-running", role: "status" }, /* @__PURE__ */ import_react2.default.createElement("span", { className: "dxc-state-dot" }), /* @__PURE__ */ import_react2.default.createElement("span", null, t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : "state.running")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: back }, t("openConversation")), canStop && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", disabled: !live || state.pending || operation?.state === "cancelling", onClick: async () => {
+  } }, /* @__PURE__ */ import_react5.default.createElement("option", { value: "current" }, t("current")), /* @__PURE__ */ import_react5.default.createElement("option", { value: "review" }, t("reviewed"), " \xB7 ", shortHash(review.snapshotId)))), historyId && /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-banner dxc-history-banner" }, /* @__PURE__ */ import_react5.default.createElement("span", null, t("viewingHistory"), " \xB7 ", shortHash(review?.snapshotId)), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: latest }, t("latestReview"))), !live && snapshot && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t("disconnected")), notice && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t(notice, { count: maxFiles }), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: () => setNotice(null) }, "\xD7")), running && /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-banner dxc-running", role: "status" }, /* @__PURE__ */ import_react5.default.createElement("span", { className: "dxc-state-dot" }), /* @__PURE__ */ import_react5.default.createElement("span", null, t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : "state.running")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: back }, t("openConversation")), canStop && /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", disabled: !live || state.pending || operation?.state === "cancelling", onClick: async () => {
     const result = await cancel();
     if (!result.ok) setNotice("cancelUnconfirmed");
-  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react2.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react2.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: layout === "medium" && pane === "code" ? "files" : pane, onChange: setPane, items: [{ value: "files", label: t("files") }, ...layout === "medium" ? [] : [{ value: "code", label: t("code") }], { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react2.default.createElement("div", { className: "dxc-workbench" }, /* @__PURE__ */ import_react2.default.createElement(FileNavigator, { files, path: effectivePath, selected, select: toggleFile, open: openFile, t, limit: maxFiles, snapshot, reviewed: context === "review" }), /* @__PURE__ */ import_react2.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
+  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react5.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react5.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react5.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, narrow && /* @__PURE__ */ import_react5.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: pane, onChange: setPane, items: [{ value: "files", label: t("files") }, { value: "code", label: t("code") }, { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react5.default.createElement("div", { className: "dxc-workbench", style: narrow ? void 0 : { gridTemplateColumns: columns } }, !narrow && /* @__PURE__ */ import_react5.default.createElement(ActivityBar, { activity: layout.activity, onChange: changeActivity, counts, t }), /* @__PURE__ */ import_react5.default.createElement(Sidebar, { files, path: effectivePath, selected, select: toggleFile, open: (next) => openFile(next), t, limit: maxFiles, snapshot, reviewed: context === "review", activity: layout.activity, history: snapshot.history, historyId, inspectHistory, latest, formatTime }), !narrow && /* @__PURE__ */ import_react5.default.createElement(Splitter, { value: layout.sidebar, bounds: SIDEBAR_BOUNDS, label: t("resizeSidebar"), orientation: "vertical", direction: 1, onResize: (value) => setLayout({ sidebar: value }), onToggle: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }), /* @__PURE__ */ import_react5.default.createElement("section", { className: "dxc-editor" }, /* @__PURE__ */ import_react5.default.createElement(EditorTabs, { path: effectivePath, tabs, select: (next) => setPath(next), close: closeTabPath, reorder: (from, to) => setTabs((value) => moveTab(value, from, to)), closeOthers, closeAll, t }), /* @__PURE__ */ import_react5.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
     clearFile();
     if (request) loadFile(request);
-  }, scrollPositions, t }), /* @__PURE__ */ import_react2.default.createElement(Findings, { review, history: snapshot.history, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime }))));
+  }, scrollPositions, t })), !narrow && /* @__PURE__ */ import_react5.default.createElement(Splitter, { value: layout.panel, bounds: PANEL_BOUNDS, label: t("resizePanel"), orientation: "vertical", direction: -1, onResize: (value) => setLayout({ panel: value }), onToggle: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }), /* @__PURE__ */ import_react5.default.createElement(BottomPanel, { tab: layout.panelTab, setTab: (tab) => setLayout({ panelTab: tab }), review, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime }))));
 }
 function CodeToolRow({ phase, block, open, t }) {
   const meta = block?.meta, valid = meta?.kind === "dsh-x-code.result" && meta.version === 1;
   const review = valid ? meta.review : null;
-  return /* @__PURE__ */ import_react2.default.createElement("section", { className: "dxc dxc-tool" }, /* @__PURE__ */ import_react2.default.createElement("header", null, /* @__PURE__ */ import_react2.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react2.default.createElement("strong", null, t("title")), /* @__PURE__ */ import_react2.default.createElement("span", null, t(phase !== "result" ? "toolRunning" : block?.isError ? "toolFailed" : "historical"))), phase === "result" && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, review ? /* @__PURE__ */ import_react2.default.createElement("p", null, t(isComplete(review) ? "openFindings" : "incomplete", { count: review.findings?.length ?? 0 }), review.stale ? ` \xB7 ${t("stale")}` : "") : /* @__PURE__ */ import_react2.default.createElement("p", null, t(valid ? "historical" : "toolUnknown")), /* @__PURE__ */ import_react2.default.createElement("button", { type: "button", onClick: open }, t("viewWorkbench"))));
+  return /* @__PURE__ */ import_react5.default.createElement("section", { className: "dxc dxc-tool" }, /* @__PURE__ */ import_react5.default.createElement("header", null, /* @__PURE__ */ import_react5.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react5.default.createElement("strong", null, t("title")), /* @__PURE__ */ import_react5.default.createElement("span", null, t(phase !== "result" ? "toolRunning" : block?.isError ? "toolFailed" : "historical"))), phase === "result" && /* @__PURE__ */ import_react5.default.createElement(import_react5.default.Fragment, null, review ? /* @__PURE__ */ import_react5.default.createElement("p", null, t(isComplete(review) ? "openFindings" : "incomplete", { count: review.findings?.length ?? 0 }), review.stale ? ` \xB7 ${t("stale")}` : "") : /* @__PURE__ */ import_react5.default.createElement("p", null, t(valid ? "historical" : "toolUnknown")), /* @__PURE__ */ import_react5.default.createElement("button", { type: "button", onClick: open }, t("viewWorkbench"))));
 }
 
 // src/client/styles.ts
 var CSS = `
-.dxc{--code-bg:var(--dsw-alias-bg-layer-1,#fff);--code-soft:var(--dsw-alias-bg-layer-2,#f5f6f8);--code-line:var(--dsw-alias-border-l2,#e2e5e9);--code-fg:var(--dsw-alias-label-primary,#20252e);--code-muted:var(--dsw-alias-label-secondary,#717885);--code-accent:var(--dsw-alias-brand-primary,#4666d5);--code-warning:var(--dsw-alias-state-warn-primary,#9b6815);color:var(--code-fg);font:13px/1.5 system-ui,sans-serif;box-sizing:border-box}.dxc *{box-sizing:border-box;min-width:0}.dxc-page{height:100%;min-height:0;width:100%;max-width:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--code-bg);container-type:inline-size}.dxc h1,.dxc h2,.dxc p{margin:0}.dxc button,.dxc input,.dxc select{font:inherit;color:inherit}.dxc button,.dxc select,.dxc input[type=search],.dxc input:not([type]){border:1px solid var(--code-line);border-radius:6px;background:var(--code-bg)}.dxc button{cursor:pointer;padding:5px 9px;line-height:1.45;white-space:nowrap}.dxc button:hover:not(:disabled){background:var(--code-soft)}.dxc button:disabled,.dxc input:disabled,.dxc select:disabled{opacity:.45;cursor:not-allowed}.dxc :is(button,input,select,summary,[tabindex]):focus-visible{outline:2px solid var(--code-accent);outline-offset:2px}.dxc input[type=checkbox]{width:14px;height:14px;flex:none;margin:0;accent-color:var(--code-accent)}.dxc input[type=search],.dxc input:not([type]),.dxc select{padding:5px 8px}.dxc select{max-width:100%}.dxc .dxc-primary{background:var(--code-accent);border-color:var(--code-accent);color:var(--dsw-alias-label-primary-foreground,#fff);font-weight:550}.dxc .dxc-primary:hover:not(:disabled){background:color-mix(in srgb,var(--code-accent) 90%,#000)}.dxc-muted{color:var(--code-muted);font-size:11px}.dxc-warning{color:var(--code-warning)}.dxc-inline-warning{background:color-mix(in srgb,var(--code-warning) 8%,var(--code-bg));color:var(--code-warning);padding:8px 12px;font:12px/1.5 system-ui,sans-serif;white-space:normal}.dxc details summary{cursor:pointer;color:var(--code-muted);font-size:11px}.dxc pre{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;margin:6px 0}.dxc details p{font-size:12px;margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}
-.dxc-header{padding:18px 20px 14px;padding-inline-start:max(20px,var(--dsh-frame-leading-clearance,0px));display:flex;gap:14px;align-items:center;justify-content:space-between;flex:none}.dxc-brand{display:flex;align-items:center;gap:9px;min-width:0}.dxc-brand svg{color:var(--code-accent);flex:none}.dxc-brand h1{font-size:18px;font-weight:650;letter-spacing:-.5px}.dxc-repo{color:var(--code-muted);font-size:12px;margin-left:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dxc-header-actions{display:flex;gap:7px;align-items:center;flex:none}.dxc-count{display:inline-block;background:color-mix(in srgb,var(--dsw-alias-label-primary-foreground,#fff) 15%,transparent);border-radius:4px;margin-left:7px;padding:0 5px;font-size:11px}.dxc-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 20px 13px;border-bottom:1px solid var(--code-line);flex-wrap:wrap;flex:none}.dxc-scope{display:flex;gap:7px;align-items:center}.dxc-scope label{color:var(--code-muted);font-size:11px}.dxc-scope form{display:flex;gap:5px}.dxc-scope input{width:145px}.dxc-banner{display:flex;align-items:center;gap:9px;padding:9px 20px;border-bottom:1px solid var(--code-line);background:var(--code-soft);font-size:12px;flex:none;flex-wrap:wrap}.dxc-banner>button:last-child{margin-left:auto}.dxc-banner button{font-size:11px;padding:3px 7px}.dxc-running{color:var(--code-accent)}.dxc-state-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--code-accent);flex:none}.dxc-review-failed,.dxc-review-interrupted,.dxc-review-blocked{background:var(--code-warning)}
-.dxc-workbench{display:grid;grid-template-columns:minmax(160px,205px) minmax(270px,1fr) minmax(250px,300px);flex:1;min-height:0;overflow:hidden}.dxc-files{border-right:1px solid var(--code-line);display:flex;flex-direction:column;overflow:hidden;min-height:0;padding-top:14px;background:color-mix(in srgb,var(--code-soft) 35%,var(--code-bg))}.dxc-section-title{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:0 14px;font-size:12px}.dxc-section-title>span{color:var(--code-muted);font-size:11px;font-variant-numeric:tabular-nums}.dxc-files>.dxc-tabs{margin:10px 12px 0}.dxc-tabs{display:flex;gap:2px;background:var(--code-soft);padding:2px;border-radius:6px;width:max-content;max-width:100%}.dxc-tabs button{border:none;background:transparent;font-size:11px;padding:4px 10px;color:var(--code-muted);border-radius:4px}.dxc-tabs button[aria-selected=true]{background:var(--code-bg);color:var(--code-fg);box-shadow:0 1px 3px #0000000b}.dxc-file-search{display:flex;align-items:center;gap:5px;margin:12px;border:1px solid var(--code-line);background:var(--code-bg);border-radius:6px;padding:0 7px}.dxc-file-search>span{color:var(--code-muted);font-size:17px}.dxc-file-search input[type=search]{border:0;background:transparent;width:100%;padding:6px 0;font-size:11px;outline-offset:5px}.dxc-file-list{flex:1;overflow:auto;padding:0 5px 12px}.dxc-tree,.dxc-children{padding:0;margin:0;list-style:none}.dxc-branch,.dxc-file-row{list-style:none}.dxc-directory{margin:1px 0}.dxc-directory>summary{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:5px;overflow:hidden;white-space:nowrap;list-style:none;font-size:11px;cursor:pointer}.dxc-directory>summary::-webkit-details-marker{display:none}.dxc-directory>summary:hover{background:var(--code-soft)}.dxc-disclosure{display:inline-block;flex:none;font-size:9px;color:var(--code-muted);transition:transform .12s}.dxc-directory[open]>summary .dxc-disclosure{transform:rotate(90deg)}.dxc-dir-name{overflow:hidden;text-overflow:ellipsis;font-size:11px;letter-spacing:.01em;color:var(--code-muted)}.dxc-file-row{display:flex;align-items:center;gap:6px;border-radius:5px;margin:1px 0;padding-right:4px}.dxc-file-row[data-selected=true]{background:color-mix(in srgb,var(--code-accent) 9%,var(--code-bg))}.dxc-file-row[data-selected=true] .dxc-file-name{color:var(--code-accent);font-weight:550}.dxc-file{display:flex;align-items:center;gap:6px;width:100%;text-align:left;min-width:0;border:0!important;background:transparent!important;padding:5px 6px!important;font-size:12px!important}.dxc-file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.dxc-file-status{font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;min-width:10px;text-align:center;color:var(--code-muted)}.dxc-status-added,.dxc-status-untracked{color:#2b865c}.dxc-status-deleted{color:#bb5863}.dxc-status-modified{color:var(--code-warning)}.dxc-file-footer{padding:10px 12px;border-top:1px solid var(--code-line);font-size:10px;color:var(--code-muted);display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap}.dxc-file-footer button{font-size:10px;padding:2px 5px;background:transparent;border-color:transparent}.dxc-file-footer>span{flex:1}
-.dxc-viewer{display:flex;flex-direction:column;overflow:hidden;min-height:0;outline:none}.dxc-viewer-heading{display:flex;gap:12px;align-items:center;padding:13px 15px 8px;flex:none}.dxc-path{font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.dxc-readonly{font-size:9px;letter-spacing:.04em;color:var(--code-muted);border:1px solid var(--code-line);padding:1px 5px;border-radius:4px;flex:none}.dxc-viewer-controls{display:flex;justify-content:space-between;align-items:center;padding:0 12px 9px;gap:8px;flex-wrap:wrap;flex:none}.dxc-viewer-options{display:flex;gap:5px;align-items:center}.dxc-viewer-options button,.dxc-viewer-options select{font-size:10px;padding:4px 6px}.dxc-viewer-options select{max-width:150px}.dxc-viewer-options button[aria-pressed=true]{border-color:var(--code-accent);color:var(--code-accent);background:color-mix(in srgb,var(--code-accent) 6%,var(--code-bg))}.dxc-icon-button{min-width:27px}.dxc-version{display:flex;justify-content:space-between;gap:8px;padding:6px 15px;border-block:1px solid var(--code-line);font-size:10px;color:var(--code-muted);background:var(--code-soft);flex:none}.dxc-version span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.dxc-code-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:35px;font:12px/1.8 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-variant-ligatures:none;tab-size:2}.dxc-source-lines{padding-top:9px;min-width:max-content}.dxc-source-line{display:grid;grid-template-columns:48px minmax(0,1fr);min-height:22px;padding-right:16px}.dxc-line-number{font-size:10px;color:var(--code-muted);opacity:.8;text-align:right;padding:0 12px 0 6px;user-select:none;font-variant-numeric:tabular-nums}.dxc-line-text{white-space:pre;display:block;padding-right:12px}.dxc-line-text mark{background:#eecb6a66;color:inherit;border-radius:2px}.dxc-code-scroll[data-wrap=true] .dxc-line-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}.dxc-code-scroll[data-wrap=true] .dxc-source-lines{min-width:0}.dxc-code-scroll [data-focused=true]{background:color-mix(in srgb,var(--code-accent) 13%,var(--code-bg));box-shadow:inset 3px 0 var(--code-accent)}.dxc-code-scroll [data-find-active=true]{box-shadow:inset 0 0 0 1px #cda74880;background:color-mix(in srgb,#eecb6a 13%,var(--code-bg))}.dxc-hunk-header{font-size:10px;line-height:26px;white-space:nowrap;padding:0 12px;color:var(--code-muted);background:var(--code-soft);border-block:1px solid var(--code-line);position:sticky;left:0;overflow:hidden;text-overflow:ellipsis}.dxc-hunk+.dxc-hunk{margin-top:10px}.dxc-unified-row{display:grid;grid-template-columns:38px 38px 16px minmax(0,1fr);min-height:22px;min-width:max-content}.dxc-unified-row .dxc-line-number{padding:0 6px}.dxc-line-sign{text-align:center;color:var(--code-muted);user-select:none;font-size:11px}.dxc-line-add{background:color-mix(in srgb,#47a879 10%,var(--code-bg))}.dxc-line-del{background:color-mix(in srgb,#d16574 10%,var(--code-bg))}.dxc-line-add .dxc-line-sign{color:#2b865c}.dxc-line-del .dxc-line-sign{color:#bb5863}.dxc-line-empty{background:var(--code-soft)}.dxc-split-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.dxc-split-column{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:thin}.dxc-split-column:first-child{border-right:1px solid var(--code-line)}.dxc-split-column .dxc-diff-cell{min-width:max-content;overflow:visible;border:0;height:22px}.dxc-split-column .dxc-line-text{overflow:visible}.dxc-split-column .dxc-hunk-header{height:28px}.dxc-split-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.dxc-diff-cell{display:grid;grid-template-columns:36px 14px minmax(0,1fr);min-height:22px;overflow:hidden}.dxc-diff-cell .dxc-line-text{overflow:hidden}.dxc-diff-cell:first-child{border-right:1px solid var(--code-line)}.dxc-diff-cell .dxc-line-number{padding:0 5px}.dxc-code-scroll[data-wrap=true] .dxc-unified-row{min-width:0}.dxc-find{display:flex;align-items:center;gap:4px;padding:6px 12px;background:var(--code-soft);border-top:1px solid var(--code-line)}.dxc-find input{flex:1;width:50px}.dxc-find>span{font-size:10px;color:var(--code-muted);padding:0 4px;white-space:nowrap}.dxc-find button{font-size:12px;padding:2px 6px}.dxc-state{padding:20px 16px;font:12px/1.7 system-ui,sans-serif;color:var(--code-muted)}.dxc-state button{margin-top:10px}.dxc-empty{display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;padding:45px 20px;color:var(--code-muted);text-align:center;font-size:12px;flex:1}.dxc-empty>svg{width:28px;height:28px;margin-bottom:4px;opacity:.55}.dxc-empty>span{font:26px/1.5 ui-monospace,monospace;opacity:.45;margin-bottom:7px}.dxc-empty strong{font-weight:550;color:var(--code-fg)}.dxc-code-empty{height:100%;min-height:180px}.dxc-findings-empty{justify-content:flex-start;padding-top:50px;gap:7px}
-.dxc-findings{border-left:1px solid var(--code-line);display:flex;flex-direction:column;overflow:auto;min-height:0;padding:14px 0 10px;background:color-mix(in srgb,var(--code-soft) 20%,var(--code-bg))}.dxc-review-summary{padding:13px 14px 11px;border-bottom:1px solid var(--code-line)}.dxc-review-state{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px}.dxc-review-summary time{display:block;font-size:10px;margin-top:3px}.dxc-review-summary details{margin-top:8px}.dxc-notice{padding:10px 12px;margin:10px 12px 0;background:var(--code-soft);border:1px solid var(--code-line);border-radius:6px;font-size:11px}.dxc-notice p{margin-top:4px;line-height:1.55;color:var(--code-muted)}.dxc-notice.dxc-warning{border-color:color-mix(in srgb,var(--code-warning) 28%,var(--code-line));background:color-mix(in srgb,var(--code-warning) 5%,var(--code-bg))}.dxc-severity-filter{margin:12px 12px 3px;max-width:calc(100% - 24px)!important;font-size:11px!important}.dxc-findings-list{padding:0 12px}.dxc-finding{margin:10px 0;padding:12px;background:var(--code-bg);border:1px solid var(--code-line);border-radius:8px;box-shadow:0 2px 4px #00000002}.dxc-finding-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.dxc-finding-top label{display:flex;align-items:center;gap:7px}.dxc-finding-id{font:9px/1.5 ui-monospace,monospace;color:var(--code-muted)}.dxc-severity{font-size:9px;line-height:1.8;padding:0 6px;border-radius:4px;background:var(--code-soft);color:var(--code-muted);font-weight:600}.dxc-severity-critical,.dxc-severity-high{background:color-mix(in srgb,#c65a68 10%,var(--code-bg));color:#b64c5b}.dxc-severity-medium{background:color-mix(in srgb,var(--code-warning) 10%,var(--code-bg));color:var(--code-warning)}.dxc-severity-low{background:color-mix(in srgb,var(--code-accent) 9%,var(--code-bg));color:var(--code-accent)}.dxc-finding-title{display:block;text-align:left;border:0!important;background:transparent!important;padding:0!important;font-size:12px!important;line-height:1.55!important;font-weight:600;white-space:normal!important}.dxc-location{font:10px/1.5 ui-monospace,monospace!important;color:var(--code-accent)!important;border:0!important;background:transparent!important;padding:3px 0!important;display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}.dxc-location span{color:var(--code-muted)}.dxc-finding-body{font-size:11px;margin:5px 0 8px!important;line-height:1.65;overflow-wrap:anywhere}.dxc-finding details{border-top:1px solid var(--code-line);padding-top:7px}.dxc-detail-label{font-size:10px;font-weight:550;color:var(--code-muted);display:block;margin-top:8px}.dxc-finding pre{padding:7px;background:var(--code-soft);border-radius:4px}.dxc-no-findings{padding:24px 3px;color:var(--code-muted);font-size:12px}.dxc-checks{border-top:1px solid var(--code-line);padding:12px 0;margin-top:8px}.dxc-checks>p{margin:8px 14px}.dxc-checks ul{padding:0 14px;margin:8px 0 0;list-style:none}.dxc-checks li{display:flex;justify-content:space-between;gap:7px;flex-wrap:wrap;font-size:11px;margin:7px 0}.dxc-checks li>span:first-child{flex:1;overflow-wrap:anywhere}.dxc-checks details{width:100%}.dxc-findings-actions{display:flex;flex-direction:column;gap:7px;padding:10px 12px;border-top:1px solid var(--code-line);margin-top:auto;position:sticky;bottom:-10px;background:var(--code-bg)}.dxc-findings-actions button{font-size:12px}.dxc-history{padding:12px 14px 4px;border-top:1px solid var(--code-line)}.dxc-history ol{list-style:none;margin:8px 0 0;padding:0}.dxc-history-item{display:flex;flex-direction:column;gap:3px;text-align:left;font-size:10px!important;width:100%;background:transparent!important;border-color:transparent!important}.dxc-history-item[aria-pressed=true]{border-color:var(--code-accent)!important;color:var(--code-accent)}.dxc-history li{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--code-muted);padding:7px 0;border-top:1px solid var(--code-line)}
-.dxc-setup{margin:12px 20px;padding:13px 15px;border:1px solid color-mix(in srgb,var(--code-accent) 40%,var(--code-line));border-radius:9px;background:var(--code-soft);flex:none}.dxc-setup>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.dxc-setup>header button{border:0;background:transparent;padding:0 3px;font-size:17px}.dxc-setup-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.dxc-setup-fields label{display:grid;gap:5px;font-size:11px;color:var(--code-muted)}.dxc-setup-fields select{width:100%;color:var(--code-fg)}.dxc-session-model{display:block;padding:6px 8px;color:var(--code-fg);border:1px solid var(--code-line);border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dxc-setup-meta{display:flex;justify-content:space-between;align-items:center;margin:7px 0;color:var(--code-muted);font-size:10px}.dxc-setup-meta button{font-size:10px;border:0;background:transparent;padding:1px 0;color:var(--code-accent)}.dxc-setup-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}.dxc-setup>p{font-size:10px;margin-top:5px}.dxc-mobile-tabs{display:none}.dxc-dock{box-sizing:border-box;flex:none;width:calc(100% - var(--dsh-composer-side-clearance,16px) - var(--dsh-composer-side-clearance,16px) - var(--dsh-composer-dock-inset,8px) - var(--dsh-composer-dock-inset,8px));max-width:calc(var(--dsh-composer-card-max-width,952px) - var(--dsh-composer-dock-inset,8px) - var(--dsh-composer-dock-inset,8px));margin:0 auto;padding:0 var(--dsh-composer-dock-inset,8px)}.dxc-entry{box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;height:32px;margin:0;padding:0 10px;border:0;border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--dsw-alias-label-primary,#20252e);font-family:var(--dsw-font-family,system-ui,sans-serif);font-size:13px;font-weight:500;line-height:20px;text-align:left;white-space:nowrap;cursor:pointer}.dxc-entry:hover{background:var(--dsw-alias-bg-layer-2,#f2f3f5)}.dxc-entry:active{background:var(--dsw-alias-bg-layer-2,#e9ebee)}.dxc-entry:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:-2px}.dxc-entry-icon{display:grid;place-items:center;flex:none;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary,#717885))}.dxc-entry-icon svg{width:16px;height:16px}.dxc-entry-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.dxc-entry-go{display:grid;place-items:center;flex:none;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary,#717885));opacity:.75}.dxc-tool{padding:12px}.dxc-tool header{display:flex;align-items:center;gap:7px}.dxc-tool header>span{font-size:11px;color:var(--code-muted);margin-left:auto}.dxc-tool p{margin:8px 0;color:var(--code-muted);font-size:12px}.dxc-tool button{font-size:11px}
-@container(min-width:650px) and (max-width:1100px){.dxc-workbench{grid-template-columns:190px minmax(0,1fr)}.dxc-mobile-tabs{display:flex;margin:9px 12px}.dxc-workbench>.dxc-files{display:flex;grid-column:1;grid-row:1}.dxc-workbench>.dxc-viewer{display:flex;grid-column:2;grid-row:1}.dxc-workbench>.dxc-findings{display:none}.dxc-page[data-pane=findings] .dxc-workbench{grid-template-columns:280px minmax(0,1fr)}.dxc-page[data-pane=findings] .dxc-files{display:none}.dxc-page[data-pane=findings] .dxc-findings{display:flex;grid-column:1;grid-row:1;border-left:0;border-right:1px solid var(--code-line)}}
-@container(max-width:649px){.dxc-workbench{display:block;position:relative}.dxc-mobile-tabs{display:flex;margin:9px 12px}.dxc-workbench>.dxc-files,.dxc-workbench>.dxc-viewer,.dxc-workbench>.dxc-findings{display:none;height:100%;border:0}.dxc-page[data-pane=files] .dxc-files,.dxc-page[data-pane=code] .dxc-viewer,.dxc-page[data-pane=findings] .dxc-findings{display:flex}.dxc-file-list{padding-inline:10px}.dxc-file-row{max-width:100%}.dxc-findings-actions{flex-direction:row;justify-content:flex-end;margin-top:auto;bottom:-10px;flex-wrap:wrap}.dxc-findings-actions>p{width:100%}.dxc-findings-actions button{min-width:130px}.dxc-files>.dxc-tabs{margin-inline:14px}}
-@container(max-width:560px){.dxc-header{padding:13px 12px 10px;gap:7px;flex-wrap:wrap}.dxc-header-actions{gap:5px}.dxc-header-actions>button{font-size:11px;padding:5px 7px}.dxc-brand{gap:6px}.dxc-brand h1{font-size:16px}.dxc-repo{max-width:125px;font-size:10px;margin-left:1px}.dxc-toolbar{padding:0 12px 10px;gap:7px}.dxc-toolbar select{font-size:11px}.dxc-scope{gap:5px;flex-wrap:wrap}.dxc-scope label{display:none}.dxc-scope input{width:110px;font-size:11px!important}.dxc-scope form button{font-size:11px}.dxc-banner{padding:8px 12px;font-size:11px}.dxc-setup{margin:8px 12px;padding:10px}.dxc-setup-fields{gap:8px}.dxc-viewer-heading{padding:10px 12px 8px}.dxc-path{font-size:11px}.dxc-readonly{font-size:8px}.dxc-split-control{display:none}.dxc-split-row{grid-template-columns:1fr}.dxc-diff-cell:first-child{border-right:0}.dxc-diff-cell.dxc-line-context:first-child{display:none}.dxc-diff-cell.dxc-line-empty{display:none}.dxc-version{font-size:9px}.dxc-code-scroll{font-size:11px}.dxc-findings-list{display:block}.dxc-findings-actions button{min-width:0;flex:1}.dxc-find>span{font-size:9px}.dxc-find{padding-inline:8px}.dxc-source-line{grid-template-columns:38px minmax(0,1fr)}.dxc-source-line .dxc-line-number{padding-right:9px}}
+.dxc{--code-bg:var(--dsw-alias-bg-layer-1,#fff);--code-soft:var(--dsw-alias-bg-layer-2,#f5f6f8);--code-sunken:color-mix(in srgb,var(--dsw-alias-bg-layer-2,#f2f3f5) 70%,var(--dsw-alias-bg-layer-1,#fff));--code-line:var(--dsw-alias-border-l2,#e2e5e9);--code-line-soft:color-mix(in srgb,var(--dsw-alias-border-l2,#e2e5e9) 55%,transparent);--code-fg:var(--dsw-alias-label-primary,#20252e);--code-muted:var(--dsw-alias-label-secondary,#717885);--code-accent:var(--dsw-alias-brand-primary,#4666d5);--code-warning:var(--dsw-alias-state-warn-primary,#9b6815);--code-success:var(--dsw-alias-state-success-primary,#2b865c);--code-danger:var(--dsw-alias-state-error-primary,#bb5863);--code-tab-h:35px;color:var(--code-fg);font:13px/1.5 system-ui,sans-serif;box-sizing:border-box}
+.dxc *{box-sizing:border-box;min-width:0}
+.dxc-page{height:100%;min-height:0;width:100%;max-width:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--code-bg);container-type:inline-size}
+.dxc h1,.dxc h2,.dxc p{margin:0}
+.dxc button,.dxc input,.dxc select{font:inherit;color:inherit}
+.dxc button,.dxc select,.dxc input[type=search],.dxc input:not([type]){border:1px solid var(--code-line);border-radius:6px;background:var(--code-bg)}
+.dxc button{cursor:pointer;padding:5px 9px;line-height:1.45;white-space:nowrap}
+.dxc button:hover:not(:disabled){background:var(--code-soft)}
+.dxc button:disabled,.dxc input:disabled,.dxc select:disabled{opacity:.45;cursor:not-allowed}
+.dxc :is(button,input,select,summary,[tabindex]):focus-visible{outline:2px solid var(--code-accent);outline-offset:2px}
+.dxc input[type=checkbox]{width:13px;height:13px;flex:none;margin:0;accent-color:var(--code-accent)}
+.dxc input[type=search],.dxc input:not([type]),.dxc select{padding:5px 8px}
+.dxc select{max-width:100%}
+.dxc .dxc-primary{background:var(--code-accent);border-color:var(--code-accent);color:var(--dsw-alias-label-primary-foreground,#fff);font-weight:550}
+.dxc .dxc-primary:hover:not(:disabled){background:color-mix(in srgb,var(--code-accent) 90%,#000)}
+.dxc-muted{color:var(--code-muted);font-size:11px}
+.dxc-warning{color:var(--code-warning)}
+.dxc-inline-warning{background:color-mix(in srgb,var(--code-warning) 8%,var(--code-bg));color:var(--code-warning);padding:8px 12px;font:12px/1.5 system-ui,sans-serif;white-space:normal}
+.dxc details summary{cursor:pointer;color:var(--code-muted);font-size:11px}
+.dxc pre{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;margin:6px 0}
+.dxc details p{font-size:12px;margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Title bar: a compact, editor-like header instead of a page hero. */
+.dxc-titlebar{display:flex;align-items:center;gap:14px;justify-content:space-between;height:44px;padding:0 12px;padding-inline-start:max(12px,var(--dsh-frame-leading-clearance,0px));border-bottom:1px solid var(--code-line);background:var(--code-sunken);flex:none}
+.dxc-brand{display:flex;align-items:center;gap:8px;min-width:0}
+.dxc-brand svg{color:var(--code-accent);flex:none}
+.dxc-brand h1{font-size:13px;font-weight:600;letter-spacing:0}
+.dxc-repo{color:var(--code-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-left:1px solid var(--code-line);padding-left:8px;margin-left:2px}
+.dxc-header-actions{display:flex;gap:5px;align-items:center;flex:none}
+.dxc-header-actions>button{font-size:11px;padding:4px 8px}
+.dxc-count{display:inline-block;background:color-mix(in srgb,var(--dsw-alias-label-primary-foreground,#fff) 16%,transparent);border-radius:4px;margin-left:6px;padding:0 5px;font-size:10px;font-variant-numeric:tabular-nums}
+.dxc-header-actions .dxc-primary .dxc-count{background:color-mix(in srgb,var(--dsw-alias-label-primary-foreground,#fff) 22%,transparent)}
+.dxc-icon-button{display:inline-grid;place-items:center;min-width:26px;padding:4px 6px!important;border-color:transparent!important;background:transparent!important;color:var(--code-muted)}
+.dxc-icon-button:hover:not(:disabled){background:var(--code-soft)!important;color:var(--code-fg)}
+.dxc-icon-button[aria-pressed=true]{color:var(--code-fg);background:color-mix(in srgb,var(--code-accent) 10%,transparent)!important}
+.dxc-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;border-bottom:1px solid var(--code-line);flex-wrap:wrap;flex:none;font-size:11px}
+.dxc-scope{display:flex;gap:6px;align-items:center}
+.dxc-scope label{color:var(--code-muted);font-size:11px}
+.dxc-scope form{display:flex;gap:5px}
+.dxc-scope input{width:145px;font-size:11px}
+.dxc-scope select,.dxc-toolbar select{font-size:11px;padding:3px 6px}
+.dxc-scope button{font-size:11px;padding:3px 8px}
+.dxc-banner{display:flex;align-items:center;gap:9px;padding:7px 12px;border-bottom:1px solid var(--code-line);background:var(--code-soft);font-size:11px;flex:none;flex-wrap:wrap}
+.dxc-banner>button:last-child{margin-left:auto}
+.dxc-banner button{font-size:11px;padding:2px 7px}
+.dxc-running{color:var(--code-accent)}
+.dxc-state-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--code-accent);flex:none}
+.dxc-review-failed,.dxc-review-interrupted,.dxc-review-blocked{background:var(--code-warning)}
+
+/* Workbench: activity bar, resizable sidebar, editor, resizable review panel. */
+.dxc-workbench{display:grid;grid-template-columns:40px 236px 4px minmax(240px,1fr) 4px 328px;flex:1;min-height:0;overflow:hidden}
+.dxc-activity{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border-right:1px solid var(--code-line);background:var(--code-sunken);flex:none;overflow:hidden}
+.dxc-activity-item{position:relative;display:grid;place-items:center;width:32px;height:32px;padding:0!important;border:0!important;background:transparent!important;border-radius:6px;color:var(--code-muted)}
+.dxc-activity-item:hover:not(:disabled){background:color-mix(in srgb,var(--code-fg) 7%,transparent)!important;color:var(--code-fg)}
+.dxc-activity-item[aria-pressed=true]{color:var(--code-fg)}
+.dxc-activity-item[aria-pressed=true]::before{content:'';position:absolute;inset-inline-start:-6px;top:7px;bottom:7px;width:2px;border-radius:2px;background:var(--code-accent)}
+.dxc-activity-icon{display:grid;place-items:center}
+.dxc-activity-count{position:absolute;top:1px;right:0;min-width:14px;height:14px;padding:0 4px;border-radius:7px;background:var(--code-accent);color:var(--dsw-alias-label-primary-foreground,#fff);font-size:9px;line-height:14px;font-variant-numeric:tabular-nums;text-align:center}
+.dxc-sidebar{border-right:1px solid var(--code-line);display:flex;flex-direction:column;overflow:hidden;min-height:0;background:var(--code-sunken)}
+.dxc-sidebar-title{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:9px 12px 7px;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.dxc-sidebar-title>strong{font-weight:600;color:var(--code-muted)}
+.dxc-sidebar-title>span{color:var(--code-muted);font-size:10px;font-variant-numeric:tabular-nums;text-transform:none;letter-spacing:0}
+.dxc-section-title{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:0 14px;font-size:12px}
+.dxc-section-title>span{color:var(--code-muted);font-size:11px;font-variant-numeric:tabular-nums}
+.dxc-tabs{display:flex;gap:2px;background:var(--code-soft);padding:2px;border-radius:6px;width:max-content;max-width:100%}
+.dxc-tabs button{border:none;background:transparent;font-size:11px;padding:3px 9px;color:var(--code-muted);border-radius:4px}
+.dxc-tabs button[aria-selected=true]{background:var(--code-bg);color:var(--code-fg);box-shadow:0 1px 3px #0000000b}
+.dxc-sidebar-tabs{margin:0 12px 8px}
+.dxc-file-search{display:flex;align-items:center;gap:5px;margin:0 10px 8px;border:1px solid var(--code-line);background:var(--code-bg);border-radius:6px;padding:0 7px;flex:none}
+.dxc-file-search>span{color:var(--code-muted);display:grid;place-items:center}
+.dxc-file-search input[type=search]{border:0;background:transparent;width:100%;padding:5px 0;font-size:11px;outline-offset:5px}
+.dxc-file-list{flex:1;overflow:auto;padding:0 6px 12px}
+.dxc-tree,.dxc-children{padding:0;margin:0;list-style:none}
+.dxc-branch,.dxc-file-row{list-style:none}
+.dxc-directory{margin:1px 0}
+.dxc-directory>summary{display:flex;align-items:center;gap:3px;padding:3px 6px;border-radius:5px;overflow:hidden;white-space:nowrap;list-style:none;font-size:11px;cursor:pointer;font-weight:550}
+.dxc-directory>summary::-webkit-details-marker{display:none}
+.dxc-directory>summary:hover{background:color-mix(in srgb,var(--code-fg) 6%,transparent)}
+.dxc-disclosure{display:grid;place-items:center;flex:none;color:var(--code-muted);transition:transform .12s}
+.dxc-directory[open]>summary .dxc-disclosure{transform:rotate(90deg)}
+.dxc-dir-name{overflow:hidden;text-overflow:ellipsis;font-size:11px;letter-spacing:.01em}
+.dxc-file-row{display:flex;align-items:center;gap:5px;border-radius:5px;margin:1px 0;padding-right:4px}
+.dxc-file-row:hover{background:color-mix(in srgb,var(--code-fg) 5%,transparent)}
+.dxc-file-row[data-selected=true]{background:color-mix(in srgb,var(--code-accent) 12%,transparent)}
+.dxc-file-row[data-selected=true] .dxc-file-name{color:var(--code-fg);font-weight:550}
+.dxc-file{display:flex;align-items:center;gap:6px;width:100%;text-align:left;min-width:0;border:0!important;background:transparent!important;padding:3px 4px!important;font-size:12px!important;border-radius:5px}
+.dxc-file:hover:not(:disabled){background:transparent!important}
+.dxc-file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:12px}
+.dxc-file-status{font:9px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;min-width:9px;text-align:center;color:var(--code-muted);font-weight:600}
+.dxc-status-added,.dxc-status-untracked{color:var(--code-success)}
+.dxc-status-deleted{color:var(--code-danger)}
+.dxc-status-modified{color:var(--code-warning)}
+.dxc-file-footer{padding:7px 10px;border-top:1px solid var(--code-line);font-size:10px;color:var(--code-muted);display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;flex:none}
+.dxc-file-footer button{font-size:10px;padding:1px 5px;background:transparent;border-color:transparent;color:var(--code-accent)}
+.dxc-file-footer>span{flex:1}
+.dxc-history-pane{flex:1;overflow:auto;padding:2px 10px 12px;display:flex;flex-direction:column;gap:6px}
+.dxc-history-pane ol{list-style:none;margin:0;padding:0}
+.dxc-history-pane li{margin:2px 0}
+.dxc-link{border:0!important;background:transparent!important;color:var(--code-accent)!important;font-size:11px!important;padding:4px 0!important;text-align:left}
+
+/* Editor: tabs, breadcrumbs, code, status bar. */
+.dxc-editor{display:flex;flex-direction:column;overflow:hidden;min-height:0;min-width:0;background:var(--code-bg)}
+.dxc-editor-tabs{display:flex;align-items:stretch;height:var(--code-tab-h);border-bottom:1px solid var(--code-line);background:var(--code-sunken);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;flex:none}
+.dxc-tab{display:flex;align-items:center;gap:2px;border-right:1px solid var(--code-line);padding:0 2px 0 10px;background:var(--code-sunken);position:relative;max-width:210px;flex:none}
+.dxc-tab[data-active=true]{background:var(--code-bg)}
+.dxc-tab[data-active=true]::after{content:'';position:absolute;inset-inline:0;top:0;height:1px;background:var(--code-accent)}
+.dxc-tab[data-preview=true] .dxc-tab-name{font-style:italic;color:var(--code-muted)}
+.dxc-tab[role=tablist]{outline:none}
+.dxc-tab button[role=tab]{border:0!important;background:transparent!important;padding:0!important;font-size:12px!important;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--code-muted);border-radius:0}
+.dxc-tab[data-active=true] button[role=tab]{color:var(--code-fg)}
+.dxc-tab button[role=tab]:hover:not(:disabled){background:transparent!important;color:var(--code-fg)}
+.dxc-tab-name{display:block;overflow:hidden;text-overflow:ellipsis}
+.dxc-tab-close{display:grid;place-items:center;width:18px;height:18px;padding:0!important;border:0!important;background:transparent!important;border-radius:4px;color:var(--code-muted);opacity:0}
+.dxc-tab:hover .dxc-tab-close,.dxc-tab[data-active=true] .dxc-tab-close{opacity:1}
+.dxc-tab-close:hover:not(:disabled){background:color-mix(in srgb,var(--code-fg) 12%,transparent)!important;color:var(--code-fg)}
+.dxc-tab-menu-wrap{position:relative;margin-left:auto;display:flex;align-items:center;padding:0 4px;flex:none}
+.dxc-tab-menu{display:grid;place-items:center;width:22px;height:22px;padding:0!important;border:0!important;background:transparent!important;color:var(--code-muted)}
+.dxc-tab-popup{position:absolute;top:calc(100% + 2px);right:4px;z-index:20;display:flex;flex-direction:column;min-width:130px;padding:4px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--code-line);border-radius:7px;box-shadow:0 8px 22px #0000001f}
+.dxc-tab-popup button{border:0!important;background:transparent!important;text-align:left;font-size:11px!important;padding:5px 8px!important;border-radius:4px}
+.dxc-tab-popup button:hover:not(:disabled){background:var(--code-soft)!important}
+.dxc-viewer{display:flex;flex-direction:column;overflow:hidden;min-height:0;flex:1;outline:none}
+.dxc-viewer-heading{display:flex;gap:10px;align-items:center;padding:6px 12px;flex:none;border-bottom:1px solid var(--code-line-soft);min-height:28px}
+.dxc-breadcrumbs{display:flex;align-items:center;gap:1px;overflow:hidden;flex:1;font-size:11px;color:var(--code-muted);white-space:nowrap}
+.dxc-crumb{overflow:hidden;text-overflow:ellipsis}
+.dxc-crumb[data-last]{color:var(--code-fg);flex:none;max-width:none}
+.dxc-crumb-sep{display:grid;place-items:center;opacity:.55;flex:none}
+.dxc-readonly{font-size:9px;letter-spacing:.04em;color:var(--code-muted);border:1px solid var(--code-line);padding:0 5px;border-radius:4px;flex:none;line-height:16px}
+.dxc-viewer-controls{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;gap:8px;flex-wrap:wrap;flex:none;border-bottom:1px solid var(--code-line-soft)}
+.dxc-viewer-options{display:flex;gap:4px;align-items:center}
+.dxc-viewer-options button,.dxc-viewer-options select{font-size:10px;padding:2px 6px}
+.dxc-viewer-options select{max-width:150px}
+.dxc-viewer-options button[aria-pressed=true]{border-color:var(--code-accent);color:var(--code-accent);background:color-mix(in srgb,var(--code-accent) 6%,var(--code-bg))}
+.dxc-viewer-options .dxc-icon-button[aria-pressed=true]{border-color:transparent!important}
+.dxc-code-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding-bottom:12px;font:12px/1.75 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-variant-ligatures:none;tab-size:2}
+.dxc-source-lines{padding:6px 0;min-width:max-content}
+.dxc-source-line{display:grid;grid-template-columns:50px minmax(0,1fr);min-height:21px;padding-right:16px}
+.dxc-source-line:hover{background:color-mix(in srgb,var(--code-fg) 3%,transparent)}
+.dxc-line-number{font-size:10px;color:var(--code-muted);opacity:.75;text-align:right;padding:0 12px 0 6px;user-select:none;font-variant-numeric:tabular-nums}
+.dxc-line-text{white-space:pre;display:block;padding-right:12px}
+.dxc-line-text mark{background:#eecb6a66;color:inherit;border-radius:2px}
+.dxc-code-scroll[data-wrap=true] .dxc-line-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.dxc-code-scroll[data-wrap=true] .dxc-source-lines{min-width:0}
+.dxc-code-scroll [data-focused=true]{background:color-mix(in srgb,var(--code-accent) 13%,var(--code-bg));box-shadow:inset 3px 0 var(--code-accent)}
+.dxc-code-scroll [data-find-active=true]{box-shadow:inset 0 0 0 1px #cda74880;background:color-mix(in srgb,#eecb6a 13%,var(--code-bg))}
+.dxc-hunk-header{font-size:10px;line-height:24px;white-space:nowrap;padding:0 12px;color:var(--code-muted);background:var(--code-soft);border-block:1px solid var(--code-line);position:sticky;left:0;overflow:hidden;text-overflow:ellipsis}
+.dxc-hunk+.dxc-hunk{margin-top:10px}
+.dxc-unified-row{display:grid;grid-template-columns:38px 38px 16px minmax(0,1fr);min-height:21px;min-width:max-content}
+.dxc-unified-row .dxc-line-number{padding:0 6px}
+.dxc-line-sign{text-align:center;color:var(--code-muted);user-select:none;font-size:11px}
+.dxc-line-add{background:color-mix(in srgb,var(--code-success) 10%,var(--code-bg))}
+.dxc-line-del{background:color-mix(in srgb,var(--code-danger) 10%,var(--code-bg))}
+.dxc-line-add .dxc-line-sign{color:var(--code-success)}
+.dxc-line-del .dxc-line-sign{color:var(--code-danger)}
+.dxc-line-empty{background:var(--code-soft)}
+.dxc-split-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.dxc-split-column{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:thin}
+.dxc-split-column:first-child{border-right:1px solid var(--code-line)}
+.dxc-split-column .dxc-diff-cell{min-width:max-content;overflow:visible;border:0;height:21px}
+.dxc-split-column .dxc-line-text{overflow:visible}
+.dxc-split-column .dxc-hunk-header{height:26px}
+.dxc-split-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.dxc-diff-cell{display:grid;grid-template-columns:36px 14px minmax(0,1fr);min-height:21px;overflow:hidden}
+.dxc-diff-cell .dxc-line-text{overflow:hidden}
+.dxc-diff-cell:first-child{border-right:1px solid var(--code-line)}
+.dxc-diff-cell .dxc-line-number{padding:0 5px}
+.dxc-code-scroll[data-wrap=true] .dxc-unified-row{min-width:0}
+.dxc-find{display:flex;align-items:center;gap:4px;padding:5px 10px;background:var(--code-soft);border-bottom:1px solid var(--code-line)}
+.dxc-find input{flex:1;width:50px}
+.dxc-find>span{font-size:10px;color:var(--code-muted);padding:0 4px;white-space:nowrap}
+.dxc-find button{display:grid;place-items:center;font-size:11px;padding:2px 6px}
+.dxc-statusbar{display:flex;align-items:center;gap:12px;height:22px;padding:0 10px;border-top:1px solid var(--code-line);background:var(--code-sunken);font-size:10px;color:var(--code-muted);flex:none;overflow:hidden;white-space:nowrap}
+.dxc-status-item{overflow:hidden;text-overflow:ellipsis}
+.dxc-status-spacer{flex:1}
+.dxc-state{padding:16px 14px;font:12px/1.7 system-ui,sans-serif;color:var(--code-muted)}
+.dxc-state button{margin-top:10px}
+.dxc-empty{display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;padding:45px 20px;color:var(--code-muted);text-align:center;font-size:12px;flex:1}
+.dxc-empty>svg{width:28px;height:28px;margin-bottom:4px;opacity:.55}
+.dxc-empty>span{font:26px/1.5 ui-monospace,monospace;opacity:.45;margin-bottom:7px}
+.dxc-empty strong{font-weight:550;color:var(--code-fg)}
+.dxc-code-empty{height:100%;min-height:180px}
+.dxc-panel-empty{justify-content:flex-start;padding-top:44px;gap:7px}
+
+/* Review panel: Problems list and the full review detail. */
+.dxc-panel{border-left:1px solid var(--code-line);display:flex;flex-direction:column;overflow:hidden;min-height:0;background:var(--code-bg)}
+.dxc-panel-tabs{display:flex;align-items:center;gap:2px;height:var(--code-tab-h);padding:0 6px;border-bottom:1px solid var(--code-line);background:var(--code-sunken);flex:none;overflow-x:auto;scrollbar-width:thin}
+.dxc-panel-tabs button{position:relative;border:0!important;background:transparent!important;font-size:11px!important;padding:0 8px!important;height:100%;color:var(--code-muted);border-radius:0;display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.04em}
+.dxc-panel-tabs button[aria-selected=true]{color:var(--code-fg)}
+.dxc-panel-tabs button[aria-selected=true]::after{content:'';position:absolute;inset-inline:4px;bottom:0;height:1px;background:var(--code-accent)}
+.dxc-panel-tabs .dxc-count{margin-left:0;background:color-mix(in srgb,var(--code-fg) 12%,transparent);color:var(--code-fg)}
+.dxc-panel-body{flex:1;overflow:auto;min-height:0;padding-bottom:10px}
+.dxc-problems{padding:4px 0}
+.dxc-problem-list{list-style:none;margin:0;padding:0}
+.dxc-problem{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:'sev title' 'sev path';gap:1px 8px;width:100%;text-align:left;border:0!important;background:transparent!important;padding:5px 10px!important;border-radius:0}
+.dxc-problem:hover:not(:disabled){background:color-mix(in srgb,var(--code-fg) 5%,transparent)!important}
+.dxc-problem .dxc-severity{grid-area:sev;align-self:center}
+.dxc-problem-title{grid-area:title;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dxc-problem-path{grid-area:path;font:10px/1.5 ui-monospace,monospace;color:var(--code-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dxc-panel-filter{padding:8px 10px 0}
+.dxc-severity-filter{max-width:100%!important;font-size:11px!important;padding:3px 6px!important}
+.dxc-review-summary{padding:10px 12px;border-bottom:1px solid var(--code-line)}
+.dxc-review-state{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:3px}
+.dxc-review-summary time{display:block;font-size:10px;margin-top:3px}
+.dxc-review-summary details{margin-top:7px}
+.dxc-notice{padding:9px 11px;margin:9px 10px 0;background:var(--code-soft);border:1px solid var(--code-line);border-radius:6px;font-size:11px}
+.dxc-notice p{margin-top:4px;line-height:1.55;color:var(--code-muted)}
+.dxc-notice.dxc-warning{border-color:color-mix(in srgb,var(--code-warning) 28%,var(--code-line));background:color-mix(in srgb,var(--code-warning) 5%,var(--code-bg))}
+.dxc-findings-list{padding:0 10px}
+.dxc-finding{margin:9px 0;padding:10px;background:var(--code-bg);border:1px solid var(--code-line);border-radius:7px}
+.dxc-finding-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.dxc-finding-id{font:9px/1.5 ui-monospace,monospace;color:var(--code-muted)}
+.dxc-severity{font-size:9px;line-height:1.8;padding:0 5px;border-radius:4px;background:var(--code-soft);color:var(--code-muted);font-weight:600;white-space:nowrap;text-transform:uppercase;letter-spacing:.02em}
+.dxc-severity-critical,.dxc-severity-high{background:color-mix(in srgb,var(--code-danger) 12%,var(--code-bg));color:var(--code-danger)}
+.dxc-severity-medium{background:color-mix(in srgb,var(--code-warning) 12%,var(--code-bg));color:var(--code-warning)}
+.dxc-severity-low,.dxc-severity-info{background:color-mix(in srgb,var(--code-accent) 10%,var(--code-bg));color:var(--code-accent)}
+.dxc-finding-title{display:block;text-align:left;border:0!important;background:transparent!important;padding:0!important;font-size:12px!important;line-height:1.55!important;font-weight:600;white-space:normal!important;border-radius:0}
+.dxc-finding-title:hover:not(:disabled){background:transparent!important;color:var(--code-accent)}
+.dxc-location{font:10px/1.5 ui-monospace,monospace!important;color:var(--code-accent)!important;border:0!important;background:transparent!important;padding:3px 0!important;display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;border-radius:0}
+.dxc-location:hover:not(:disabled){background:transparent!important;text-decoration:underline}
+.dxc-location span{color:var(--code-muted)}
+.dxc-finding-body{font-size:11px;margin:4px 0 8px!important;line-height:1.65;overflow-wrap:anywhere}
+.dxc-finding details{border-top:1px solid var(--code-line);padding-top:6px}
+.dxc-detail-label{font-size:10px;font-weight:550;color:var(--code-muted);display:block;margin-top:8px}
+.dxc-finding pre{padding:7px;background:var(--code-soft);border-radius:4px}
+.dxc-no-findings{padding:22px 3px;color:var(--code-muted);font-size:12px}
+.dxc-checks{border-top:1px solid var(--code-line);padding:10px 0;margin-top:8px}
+.dxc-checks>p{margin:8px 14px}
+.dxc-checks ul{padding:0 14px;margin:8px 0 0;list-style:none}
+.dxc-checks li{display:flex;justify-content:space-between;gap:7px;flex-wrap:wrap;font-size:11px;margin:6px 0}
+.dxc-checks li>span:first-child{flex:1;overflow-wrap:anywhere}
+.dxc-checks details{width:100%}
+.dxc-findings-actions{display:flex;flex-direction:column;gap:7px;padding:10px 12px;border-top:1px solid var(--code-line);margin-top:auto;background:var(--code-bg)}
+.dxc-findings-actions button{font-size:12px}
+.dxc-history{padding:12px 14px 4px;border-top:1px solid var(--code-line)}
+.dxc-history ol{list-style:none;margin:8px 0 0;padding:0}
+.dxc-history-item{display:flex;flex-direction:column;gap:3px;text-align:left;font-size:10px!important;width:100%;background:transparent!important;border-color:transparent!important;border-radius:5px}
+.dxc-history-item:hover:not(:disabled){background:color-mix(in srgb,var(--code-fg) 6%,transparent)!important}
+.dxc-history-item[aria-pressed=true]{border-color:var(--code-accent)!important;color:var(--code-accent)}
+.dxc-history-item time{color:var(--code-muted)}
+
+/* Resizable separators: a 4px track with a visible hover/active grip. */
+.dxc-splitter{position:relative;display:flex;align-items:center;justify-content:center;cursor:col-resize;touch-action:none;outline:none;background:transparent;z-index:3}
+.dxc-splitter::before{content:'';position:absolute;inset-block:0;inset-inline-start:50%;width:1px;margin-inline-start:-.5px;background:var(--code-line)}
+.dxc-splitter-grip{position:relative;width:3px;height:28px;border-radius:2px;background:transparent;transition:background .12s}
+.dxc-splitter:hover .dxc-splitter-grip,.dxc-splitter[data-dragging=true] .dxc-splitter-grip{background:var(--code-accent)}
+.dxc-splitter:focus-visible .dxc-splitter-grip{background:var(--code-accent)}
+.dxc-splitter[data-dragging=true]::before,.dxc-splitter:hover::before{background:var(--code-accent)}
+.dxc-splitter[data-dragging=true]{background:color-mix(in srgb,var(--code-accent) 8%,transparent)}
+
+/* Composer dock entry and tool row keep the shared Harness look. */
+.dxc-mobile-tabs{display:none}
+.dxc-dock{box-sizing:border-box;flex:none;width:calc(100% - var(--dsh-composer-side-clearance,16px) - var(--dsh-composer-side-clearance,16px) - var(--dsh-composer-dock-inset,8px) - var(--dsh-composer-dock-inset,8px));max-width:calc(var(--dsh-composer-card-max-width,952px) - var(--dsh-composer-dock-inset,8px) - var(--dsh-composer-dock-inset,8px));margin:0 auto;padding:0 var(--dsh-composer-dock-inset,8px)}
+.dxc-entry{box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;height:32px;margin:0;padding:0 10px;border:0;border-radius:var(--dsw-radius-md,8px);background:transparent;color:var(--dsw-alias-label-primary,#20252e);font-family:var(--dsw-font-family,system-ui,sans-serif);font-size:13px;font-weight:500;line-height:20px;text-align:left;white-space:nowrap;cursor:pointer}
+.dxc-entry:hover{background:var(--dsw-alias-bg-layer-2,#f2f3f5)}
+.dxc-entry:active{background:var(--dsw-alias-bg-layer-2,#e9ebee)}
+.dxc-entry:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:-2px}
+.dxc-entry-icon{display:grid;place-items:center;flex:none;color:var(--dsw-alias-label-secondary,#717885)}
+.dxc-entry-icon svg{width:16px;height:16px}
+.dxc-entry-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.dxc-entry-go{display:grid;place-items:center;flex:none;color:var(--dsw-alias-label-secondary,#717885);opacity:.75}
+.dxc-tool{padding:12px}
+.dxc-tool header{display:flex;align-items:center;gap:7px}
+.dxc-tool header>span{font-size:11px;color:var(--code-muted);margin-left:auto}
+.dxc-tool p{margin:8px 0;color:var(--code-muted);font-size:12px}
+.dxc-tool button{font-size:11px}
+
+/* Narrow workbench: one pane at a time, chosen by the mobile tabs. */
+@container(max-width:699px){.dxc-workbench{display:block;position:relative}.dxc-activity,.dxc-splitter,.dxc-statusbar{display:none}.dxc-mobile-tabs{display:flex;margin:8px 12px}.dxc-sidebar,.dxc-editor,.dxc-panel{display:none;height:100%;border:0;min-height:0}.dxc-page[data-pane=files] .dxc-sidebar{display:flex}.dxc-page[data-pane=code] .dxc-editor{display:flex}.dxc-page[data-pane=findings] .dxc-panel{display:flex}.dxc-file-list{padding-inline:8px}.dxc-findings-actions{flex-direction:row;justify-content:flex-end;flex-wrap:wrap}.dxc-findings-actions>p{width:100%}.dxc-findings-actions button{min-width:120px}}
+@container(max-width:560px){.dxc-titlebar{padding:0 8px;gap:7px;height:40px}.dxc-header-actions{gap:3px}.dxc-header-actions>button{font-size:11px;padding:4px 6px}.dxc-brand{gap:6px}.dxc-brand h1{font-size:12px}.dxc-repo{max-width:110px;font-size:10px}.dxc-toolbar{padding:5px 8px;gap:6px}.dxc-toolbar select{font-size:11px}.dxc-scope{gap:5px;flex-wrap:wrap}.dxc-scope label{display:none}.dxc-scope input{width:110px;font-size:11px!important}.dxc-banner{padding:7px 10px;font-size:11px}.dxc-viewer-heading{padding:5px 8px}.dxc-readonly{font-size:8px}.dxc-split-control{display:none}.dxc-split-row{grid-template-columns:1fr}.dxc-diff-cell:first-child{border-right:0}.dxc-diff-cell.dxc-line-context:first-child{display:none}.dxc-diff-cell.dxc-line-empty{display:none}.dxc-code-scroll{font-size:11px}.dxc-findings-actions button{min-width:0;flex:1}.dxc-find>span{font-size:9px}.dxc-find{padding-inline:8px}.dxc-source-line{grid-template-columns:40px minmax(0,1fr)}.dxc-source-line .dxc-line-number{padding-right:9px}.dxc-tab{max-width:160px}}
 @media(max-height:520px){.dxc-page{overflow-y:auto}.dxc-workbench{flex:1 0 260px;min-height:260px}}
-@media(prefers-reduced-motion:reduce){.dxc *{scroll-behavior:auto!important}}
+@media(prefers-reduced-motion:reduce){.dxc *{scroll-behavior:auto!important;transition:none!important}}
 `;
 
 // src/client/index.ts
@@ -1212,7 +1791,7 @@ function apply(ctx) {
       back,
       formatTime,
       refresh: () => sessionId && controller.refresh(sessionId),
-      selectTarget: (mode, base) => sessionId && controller.selectTarget(sessionId, mode, base),
+      selectTarget: (mode, base2) => sessionId && controller.selectTarget(sessionId, mode, base2),
       loadReview: (reviewId) => sessionId && controller.loadReview(sessionId, reviewId),
       loadFile: (target) => sessionId && controller.loadFile(sessionId, target),
       clearFile: () => sessionId && controller.clearFile(sessionId),

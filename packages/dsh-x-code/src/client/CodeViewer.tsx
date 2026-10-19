@@ -9,6 +9,7 @@ export interface CodeViewerProps { file: CodeSource | null, status: string, erro
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { languageForPath, useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
 import { diffHunks, hunkRows, pairedRows, searchMatches, shortHash, sourceLines } from './model.ts'
+import { ChevronIcon, CloseIcon, WrapIcon } from './icons.tsx'
 
 /** Native-button tabs support arrows without creating a second selection source. */
 export function Tabs({ items, value, onChange, label, className = '' }: { items: { value: string, label: string }[], value: string, onChange: (value: string) => void, label: string, className?: string }) {
@@ -65,6 +66,15 @@ function Diff({ hunks, split, wrap, oldHighlights, newHighlights, query, activeL
   })}</div>
 }
 
+function Breadcrumbs({ path }: { path: string | null }) {
+  const segments = path?.split('/').filter(Boolean) ?? []
+  if (!segments.length) return null
+  return <nav className="dxc-breadcrumbs" aria-label="breadcrumbs">{segments.map((segment, at) => <React.Fragment key={at}>
+    {at > 0 && <span className="dxc-crumb-sep" aria-hidden="true"><ChevronIcon size={11} /></span>}
+    <span className="dxc-crumb" data-last={at === segments.length - 1 || undefined}>{segment}</span>
+  </React.Fragment>)}</nav>
+}
+
 /** Read-only source/diff built from captured server text and the shared DSH highlighter. */
 export function CodeViewer({ file, status, error, path, identity, mode, context, focus, retry, scrollPositions, t }: CodeViewerProps) {
   const [tab, setTab] = useState('source'), [side, setSide] = useState('new'), [split, setSplit] = useState(false), [wrap, setWrap] = useState(false)
@@ -110,23 +120,29 @@ export function CodeViewer({ file, status, error, path, identity, mode, context,
   const nonText = ['binary', 'oversized', 'symlink', 'excluded', 'unavailable'].includes(kind ?? '')
   const source = side === 'old' ? file?.beforeText : file?.text
   const loadedPath = file?.path === path
+  const totalLines = sourceLines(file?.text).length
   return <section className="dxc-viewer" aria-label={t('codeView')} ref={root} tabIndex={0} onKeyDown={event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); setFindOpen(true) }
     if (event.key === 'Escape' && findOpen) { event.preventDefault(); closeFind() }
   }}>
-    <header className="dxc-viewer-heading"><div className="dxc-path" title={path ?? undefined}>{path || t('chooseFile')}</div><span className="dxc-readonly">{t('readOnly')}</span></header>
+    <header className="dxc-viewer-heading"><Breadcrumbs path={path} /><span className="dxc-readonly">{t('readOnly')}</span></header>
     <div className="dxc-viewer-controls"><Tabs value={tab} onChange={setTab} label={t('code')} items={[{ value: 'source', label: t('source') }, { value: 'diff', label: t('diff') }]} />
       <div className="dxc-viewer-options">{tab === 'source' ? <select aria-label={t('context')} value={side} onChange={event => setSide(event.target.value)}><option value="new">{context === 'review' ? t('reviewed') : t(`origin.${mode}`)}</option><option value="old">{t('before')}</option></select> : <button className="dxc-split-control" type="button" disabled={narrow} title={narrow ? t('splitNarrow') : undefined} aria-pressed={split && !narrow} onClick={() => setSplit(value => !value)}>{t(split && !narrow ? 'split' : 'unified')}</button>}
-        <button type="button" className="dxc-icon-button" aria-pressed={wrap} aria-label={t('wrap')} title={t('wrap')} onClick={() => setWrap(value => !value)}>↵</button><button type="button" className="dxc-icon-button" aria-label={t('find')} title={t('find')} onClick={() => setFindOpen(value => !value)}>⌕</button>
+        <button type="button" className="dxc-icon-button" aria-pressed={wrap} aria-label={t('wrap')} title={t('wrap')} onClick={() => setWrap(value => !value)}><WrapIcon /></button><button type="button" className="dxc-icon-button" aria-label={t('find')} title={t('find')} onClick={() => setFindOpen(value => !value)}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="7" cy="7" r="4" /><path d="m10 10 3.5 3.5" strokeLinecap="round" /></svg></button>
       </div>
     </div>
-    {findOpen && <div className="dxc-find" role="search"><input ref={findInput} value={query} placeholder={t('findPlaceholder')} aria-label={t('find')} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); nextMatch(event.shiftKey ? -1 : 1) } }} /><span role="status">{matches.length ? t('matches', { current: normalizedIndex + 1, count: matches.length }) : t('noMatches')}</span><button type="button" aria-label={t('previousMatch')} disabled={!matches.length} onClick={() => nextMatch(-1)}>↑</button><button type="button" aria-label={t('nextMatch')} disabled={!matches.length} onClick={() => nextMatch(1)}>↓</button><button type="button" aria-label={t('closeFind')} onClick={closeFind}>×</button></div>}
-    {loadedPath && <div className="dxc-version"><span>{tab === 'source' && side === 'old' ? t('beforeVersion', { version: shortHash(file.baseVersion) }) : t('afterVersion', { origin: context === 'review' ? t('reviewed') : t(`origin.${mode}`), version: shortHash(['Worktree', 'Index'].includes(file.version ?? '') ? file.hash : file.version ?? file.hash) })}</span>{tab === 'diff' && <span>{t('beforeVersion', { version: shortHash(file.baseVersion) })}</span>}</div>}
+    {findOpen && <div className="dxc-find" role="search"><input ref={findInput} value={query} placeholder={t('findPlaceholder')} aria-label={t('find')} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); nextMatch(event.shiftKey ? -1 : 1) } }} /><span role="status">{matches.length ? t('matches', { current: normalizedIndex + 1, count: matches.length }) : t('noMatches')}</span><button type="button" aria-label={t('previousMatch')} disabled={!matches.length} onClick={() => nextMatch(-1)}>↑</button><button type="button" aria-label={t('nextMatch')} disabled={!matches.length} onClick={() => nextMatch(1)}>↓</button><button type="button" aria-label={t('closeFind')} onClick={closeFind}><CloseIcon size={12} /></button></div>}
     <div className="dxc-code-scroll" ref={scroll} data-wrap={wrap || undefined} onScroll={event => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })}>
       {!path ? <div className="dxc-empty dxc-code-empty"><span aria-hidden="true">{'{ }'}</span><p>{t('chooseFile')}</p></div> : status === 'loading' || status === 'ready' && !loadedPath ? <p className="dxc-state" role="status">{t('fileLoading')}</p> : status === 'failed' ? <div className="dxc-state" role="alert"><p>{t(/stale/i.test(error?.code ?? '') ? 'fileChanged' : 'fileFailed')}</p><button type="button" onClick={retry}>{t('retry')}</button></div> : loadedPath ? <>
         {(file.truncated || file.diffTruncated) && <p className="dxc-inline-warning">{t('truncated')}</p>}
         {nonText ? <p className="dxc-state">{t(kind === 'unavailable' ? 'fileFailed' : kind ?? 'unavailable')}</p> : tab === 'source' ? source == null || side === 'old' && file.beforeKind === 'missing' || side === 'new' && (file.afterKind === 'missing' || kind === 'missing') ? <p className="dxc-state">{t('missing')}</p> : source === '' ? <p className="dxc-state">{t('emptyFile')}</p> : <Source text={source} highlights={side === 'old' ? oldHighlights : newHighlights} query={query} activeLine={activeLine} focus={focus} side={side} /> : hunks.length ? <Diff hunks={hunks} split={split && !narrow} wrap={wrap} oldHighlights={oldHighlights} newHighlights={newHighlights} query={query} activeLine={activeLine} focus={focus} t={t} /> : <p className="dxc-state">{t('noDiff')}</p>}
       </> : null}
     </div>
+    <footer className="dxc-statusbar">
+      <span className="dxc-status-item">{tab === 'source' ? (side === 'old' ? t('beforeVersion', { version: shortHash(file?.baseVersion) }) : t('afterVersion', { origin: context === 'review' ? t('reviewed') : t(`origin.${mode}`), version: shortHash(['Worktree', 'Index'].includes(file?.version ?? '') ? file?.hash : file?.version ?? file?.hash) })) : t('diff')}</span>
+      {loadedPath && totalLines > 0 && <span className="dxc-status-item">{t('lineCount', { count: totalLines })}</span>}
+      <span className="dxc-status-spacer" />
+      <span className="dxc-status-item">{t('readOnly')}</span>
+    </footer>
   </section>
 }

@@ -12,8 +12,8 @@ const contents={path:'src/calc.js',kind:'text',status:'modified',text:'export fu
 
 test('compiled Code client browses, searches, switches locales and prepares exact DSH review without sending',async()=>{
  const dom=new JSDOM('<!doctype html><html><head></head><body><div id="app"></div></body></html>',{url:'http://localhost/'})
- const originals={window:(globalThis as any).window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:(globalThis as any).IS_REACT_ACT_ENVIRONMENT,ResizeObserver:globalThis.ResizeObserver}
- ;(globalThis as any).window=dom.window;globalThis.document=dom.window.document;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
+ const originals={window:(globalThis as any).window,document:globalThis.document,localStorage:(globalThis as any).localStorage,IS_REACT_ACT_ENVIRONMENT:(globalThis as any).IS_REACT_ACT_ENVIRONMENT,ResizeObserver:globalThis.ResizeObserver}
+ ;(globalThis as any).window=dom.window;globalThis.document=dom.window.document;globalThis.localStorage=dom.window.localStorage;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
  const observers=new Set<ResizeObserver>();class ResizeObserver { callback: any; target: any; constructor(callback: any){this.callback=callback;observers.add(this)}observe(target: any){this.target=target}disconnect(){observers.delete(this)} }
  ;(globalThis as any).ResizeObserver=ResizeObserver
  const resize=async(selector: any,width: any)=>act(async()=>{const target=document.querySelector<HTMLElement & HTMLInputElement>(selector);const observer=[...observers].find(item=>item.target===target);assert.ok(observer,`observed ${selector}`);observer.callback([{target,contentRect:{width}}]);await wait()})
@@ -36,8 +36,26 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   assert.equal(entries.get('main')[0].options.children['dsh-x-code.workspace'].scope,'session-maybe')
   await act(async()=>{root.render(React.createElement(Render));await wait()})
   assert.match(document.body.textContent,/example/);assert.match(document.body.textContent,/No review yet/)
-  await resize('.dxc-page',900);assert.equal(document.querySelectorAll('.dxc-mobile-tabs button').length,2)
+  assert.equal(document.querySelector('.dxc-activity')!.getAttribute('aria-label'),'Explorer')
+  assert.equal(document.querySelectorAll('.dxc-activity-item').length,3)
+  assert.equal(document.querySelectorAll('.dxc-splitter').length,2)
+  assert.equal(document.querySelector('.dxc-page')!.getAttribute('data-sidebar'),'true')
+  assert.equal(document.querySelector('.dxc-page')!.getAttribute('data-panel'),'true')
+  await resize('.dxc-page',900);assert.equal(document.querySelectorAll('.dxc-mobile-tabs button').length,0)
+  const sidebarSplitter=document.querySelector<HTMLElement & HTMLInputElement>('.dxc-splitter[aria-label="Resize the file sidebar"]')!
+  assert.equal(sidebarSplitter.getAttribute('aria-valuenow'),'236')
+  await act(async()=>{sidebarSplitter.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await wait()})
+  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-splitter[aria-label="Resize the file sidebar"]')!.getAttribute('aria-valuenow'),'248')
+  assert.equal(JSON.parse(localStorage.getItem('dsh-x-code:layout:v1')!).sidebar,248,'the resized track is persisted')
+  await act(async()=>{document.querySelector<HTMLElement & HTMLInputElement>('.dxc-splitter[aria-label="Resize the file sidebar"]')!.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await wait()})
+  assert.equal(document.querySelector('.dxc-page')!.getAttribute('data-sidebar'),null,'Enter collapses the sidebar')
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Toggle sidebar"]'))
+  assert.equal(document.querySelector('.dxc-page')!.getAttribute('data-sidebar'),'true')
   await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Open src/calc.js"]'))
+  assert.equal(document.querySelectorAll('.dxc-tab').length,1)
+  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-tab')!.getAttribute('data-preview'),'true')
+  assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-breadcrumbs')!.textContent!,/src.*calc\.js/)
+  assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-statusbar')!.textContent!,/Read-only/)
   assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-source-lines')!.textContent,/return a \/ b/)
   await click(byText('Diff'));assert.equal(document.querySelectorAll('.dxc-unified-row')!.length,4)
   await click(byText('Unified'));assert.equal(document.querySelectorAll('.dxc-split-column')!.length,2)
@@ -47,7 +65,10 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Select src/calc.js for review"]'))
   await click([...document.querySelectorAll('button')].find(button=>button.textContent==='Review1'))
   assert.equal(panel,null);assert.equal(sendCount,0);assert.match(draft,/^Existing user text/);assert.match(draft,/dsh_x_code_review/);assert.match(draft,/"runtime": "dsh"/);assert.doesNotMatch(draft,/"model":/)
-  await click(byText('All'))
+  assert.equal(document.querySelectorAll('.dxc-sidebar-tabs button').length,0)
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Changed"]'))
+  assert.equal(document.querySelectorAll('.dxc-sidebar-tabs button').length,2)
+  await click([...document.querySelectorAll('.dxc-sidebar-tabs button')].find(button=>button.textContent==='All'))
   const branch=document.querySelector<HTMLDetailsElement>('.dxc-tree>.dxc-branch>details')!
   assert.equal(branch.open,true);assert.equal(branch.querySelector('.dxc-dir-name')!.textContent,'src');assert.equal(branch.querySelector('summary')!.getAttribute('aria-label'),'src');assert.equal(branch.querySelectorAll('.dxc-children>.dxc-file-row').length,1)
   assert.equal(document.querySelectorAll('.dxc-tree>.dxc-file-row').length,1);assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-tree>.dxc-file-row .dxc-file-name')!.textContent,'README.md')
@@ -56,26 +77,49 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   await act(async()=>locale.setLocale('en'))
   snapshot.revision=2;snapshot.review={id:'review-1',state:'completed',mode:'worktree',stale:false,createdAt:'2026-10-17T10:00:00Z',snapshotId:'snapshot-1',paths:['src/calc.js'],findings:[{id:'finding-1',path:'src/calc.js',side:'before',startLine:2,endLine:2,severity:'high',title:'Guard disappeared',body:'Zero denominators no longer have a defined fallback.',evidence:'return b ? a / b : 0',trigger:'b is zero',status:'open'}],checks:[]}
   await act(async()=>{face.refresh();await wait();await wait()})
-  assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-findings')!.textContent,/Checks not run/)
+  assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-panel')!.textContent,/Checks not run/)
+  await click([...document.querySelectorAll('.dxc-panel-tabs button')].find(button=>button.textContent==='Problems1'))
+  assert.equal(document.querySelectorAll('.dxc-problem').length,1)
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-problem'))
+  await click([...document.querySelectorAll('.dxc-panel-tabs button')].find(button=>button.textContent==='Review'))
   await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-finding-title'))
   assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-toolbar>select')!.value,'review')
   assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-viewer-options select')!.value,'old')
   assert.match(document.querySelector<HTMLElement & HTMLInputElement>('[data-focused="true"]')!.textContent,/return b/)
   assert.equal(calls.filter(call=>call.name==='code/file').at(-1).args.reviewId,'review-1')
-  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-page')!.dataset.pane,'findings')
+  assert.equal(document.querySelectorAll('.dxc-tab').length,2)
+  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-tab[data-active=true] button[role=tab]')!.getAttribute('title'),'src/calc.js')
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Close README.md"]'))
+  assert.equal(document.querySelectorAll('.dxc-tab').length,1,'closing an inactive tab keeps the active editor')
+  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-tab[data-active=true] button[role=tab]')!.getAttribute('title'),'src/calc.js')
+  const pressed=()=>[...document.querySelectorAll('.dxc-activity-item')].find(button=>button.getAttribute('aria-pressed')==='true')!
+  assert.equal(pressed().getAttribute('aria-label'),'Changed')
+  await click(pressed())
+  assert.equal(document.querySelector('.dxc-page')!.getAttribute('data-sidebar'),null,'choosing the active view collapses the sidebar')
+  await click(pressed())
+  assert.equal(document.querySelector('.dxc-page')!.getAttribute('data-sidebar'),'true','choosing it again restores the sidebar')
+  await click([...document.querySelectorAll('.dxc-activity-item')].find(button=>button.getAttribute('aria-label')==='Explorer'))
+  assert.equal(pressed().getAttribute('aria-label'),'Explorer')
   await click(byText('Re-review'))
   assert.match(draft,/"previousReviewId": "review-1"/)
   await resize('.dxc-page',390);await resize('.dxc-viewer',390)
   assert.equal(document.querySelectorAll('.dxc-mobile-tabs button').length,3)
-  await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-finding-title'));assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-page')!.dataset.pane,'code')
+  assert.equal(document.querySelectorAll('.dxc-splitter').length,0,'narrow layouts do not offer splitters')
+  await click([...document.querySelectorAll('.dxc-mobile-tabs button')].find(button=>/^Findings/.test(button.textContent!))!)
+  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-page')!.dataset.pane,'findings')
+  await click([...document.querySelectorAll('.dxc-panel-tabs button')].find(button=>button.textContent==='Review'))
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-finding-title'))
+  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-page')!.dataset.pane,'code')
   await click(byText('Diff'));assert.equal(byText('Unified')!.disabled,true);assert.equal(document.querySelectorAll('.dxc-split-column').length,0)
   await resize('.dxc-page',900);await resize('.dxc-viewer',620);await click(byText('Source'))
   snapshot.revision=3;snapshot.review.stale=true
   await act(async()=>{face.refresh();await wait();await wait()})
-  assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-findings')!.textContent,/Files changed since this review/)
+  assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-panel')!.textContent,/Files changed since this review/)
   historical={...structuredClone(snapshot.review),id:'review-old',snapshotId:'older-snapshot',stale:true,isLatest:false,findings:[{...snapshot.review.findings[0],id:'old-finding',title:'Earlier finding'}]}
   snapshot.history=[{id:'review-old',state:'completed',snapshotId:'older-snapshot',summary:'Earlier',runtime:'dsh',createdAt:'2026-10-16T10:00:00Z',findings:1,previousReviewId:null}]
   await act(async()=>{face.refresh();await wait();await wait()})
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Review history"]'))
+  assert.equal(document.querySelector('.dxc-sidebar-title')!.textContent!.includes('Review history'),true)
   await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-history-item'))
   assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-history-banner')!.textContent,/Historical review/)
   assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-finding-title')!.textContent,/Earlier finding/)
@@ -84,7 +128,7 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   await click(byText('Latest review'));assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-finding-title')!.textContent,/Guard disappeared/)
   snapshot.dshAvailable=false
   await act(async()=>{face.refresh();await wait();await wait()})
-  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-header .dxc-primary')!.disabled,true)
+  assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-header-actions .dxc-primary')!.disabled,true)
   assert.match(document.body.textContent,/Configure a session model/)
   snapshot.dshAvailable=true
   snapshot.revision=4;snapshot.workspace={...snapshot.workspace,id:'staged-v2',mode:'staged'}
@@ -95,6 +139,5 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('[id="code-scope-session"]')!.value,'staged')
   await act(async()=>{root.render(React.createElement(Render,{sessionId:null}));await wait()})
   assert.match(document.body.textContent,/Open a conversation to browse/)
-
  }finally{await act(async()=>root.unmount());disposers.reverse().forEach(fn=>fn?.());effects.reverse().forEach(fn=>fn?.());assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('style[data-plugin="dsh-x-code"]'),null);dom.window.close();for(const[key,value]of Object.entries(originals)){if(value===undefined)delete (globalThis as any)[key];else (globalThis as any)[key]=value}}
 })
