@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawn, execFileSync } from 'node:child_process'
 import { createRepository } from '../src/repository.ts'
+import { MAX_PREVIEW_MEDIA_BYTES } from '../src/formats.ts'
 import { createReviewStore } from '../src/store.ts'
 import { parseReview, reviewPrompt } from '../src/review.ts'
 export function subprocess(spec: import('../src/git.ts').SpawnSpec): import('../src/git.ts').SpawnHandle{const child=spawn(spec.argv[0],spec.argv.slice(1),{cwd:spec.cwd,stdio:['ignore','pipe','pipe'],signal:spec.signal,env:{...process.env,...spec.env}});return {stdout:child.stdout,stderr:child.stderr,done:new Promise<any>((resolve,reject)=>{child.on('error',reject);child.on('close',(exitCode,signal)=>resolve({exitCode,signal}))})}}
@@ -21,6 +22,41 @@ test('unknown/traversal paths, credential filenames, ignored content, symlinks a
  for(const file of ['../etc/passwd','/etc/passwd','app.js\0'])await assert.rejects(()=>h.repository.file(inv,file),{code:'CODE_PATH'})
  assert.equal(inv.files.some(f=>f.path==='.env'),false)
  for(const file of ['ignored.js','secret.js','binary.js','large.js','link.js']){const v=await h.repository.file(inv,file);assert.notEqual(v.kind,'text',file);assert.equal(v.text,undefined,file);await assert.rejects(()=>h.repository.capture(inv,[file]),{code:'CODE_EXCLUDED'})}
+})
+test('svg stays source text and images, audio, and video preview without entering review',async t=>{
+ const h=fixture(t)
+ const svg='<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="10" height="10"/></svg>\n'
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64')
+ const next=Buffer.concat([png,Buffer.from([1])])
+ writeFileSync(path.join(h.root,'icon.svg'),svg)
+ writeFileSync(path.join(h.root,'pixel.png'),png)
+ writeFileSync(path.join(h.root,'tone.mp3'),Buffer.from([1,2,3,4]))
+ writeFileSync(path.join(h.root,'key.svg'),'const api_key = "abcdefghijklmnopqrstuv";\n<svg></svg>\n')
+ symlinkSync(path.join(h.root,'pixel.png'),path.join(h.root,'linked.png'))
+ writeFileSync(path.join(h.root,'.gitignore'),'ignored.js\n.env\nsecret.png\n')
+ writeFileSync(path.join(h.root,'secret.png'),png)
+ h.git('add','-f','secret.png')
+ const inv=await h.repository.inventory(h.options)
+ assert.equal(inv.files.find(file=>file.path==='icon.svg')!.selectable,true)
+ const shown=await h.repository.file(inv,'icon.svg',{preview:true})
+ assert.equal(shown.kind,'text');assert.match(shown.text!,/<script>alert\(1\)<\/script>/)
+ assert.equal((await h.repository.capture(inv,['icon.svg'])).files[0].text,svg)
+ const image=await h.repository.file(inv,'pixel.png',{preview:true})
+ assert.equal(image.kind,'image');assert.equal(image.mediaType,'image/png');assert.ok(Buffer.from(image.data!,'base64').equals(png))
+ assert.equal(inv.files.find(file=>file.path==='pixel.png')!.selectable,false)
+ await assert.rejects(()=>h.repository.capture(inv,['pixel.png']),{code:'CODE_EXCLUDED'})
+ const hidden=await h.repository.file(inv,'pixel.png');assert.notEqual(hidden.kind,'image');assert.equal(hidden.data,undefined)
+ assert.equal((await h.repository.file(inv,'tone.mp3',{preview:true})).kind,'audio')
+ const link=await h.repository.file(inv,'linked.png',{preview:true});assert.notEqual(link.kind,'image');assert.equal(link.data,undefined)
+ const ignored=await h.repository.file(inv,'secret.png',{preview:true});assert.notEqual(ignored.kind,'image');assert.equal(ignored.data,undefined)
+ const secretSvg=await h.repository.file(inv,'key.svg',{preview:true});assert.notEqual(secretSvg.kind,'text');assert.equal(secretSvg.text,undefined)
+ h.git('add','pixel.png','icon.svg');h.git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','media')
+ writeFileSync(path.join(h.root,'pixel.png'),next)
+ const compared=await h.repository.file(await h.repository.inventory(h.options),'pixel.png',{preview:true})
+ assert.ok(Buffer.from(compared.data!,'base64').equals(next));assert.ok(Buffer.from(compared.beforeData!,'base64').equals(png))
+ writeFileSync(path.join(h.root,'huge.png'),Buffer.alloc(MAX_PREVIEW_MEDIA_BYTES+1))
+ const huge=await h.repository.file(await h.repository.inventory(h.options),'huge.png',{preview:true})
+ assert.equal(huge.kind,'oversized');assert.equal(huge.data,undefined)
 })
 test('preview shows source above the review cap and still withholds it from capture',async t=>{
  const h=fixture(t)

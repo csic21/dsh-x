@@ -4,6 +4,8 @@ import { constants } from 'node:fs'
 import { lstat, open, realpath } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
+import { MAX_PREVIEW_MEDIA_BYTES, mediaOf } from './formats.ts'
+import type { MediaKind } from './formats.ts'
 
 // Evidence is deliberately a small, text-only source snapshot, not a recursive
 // filesystem reader. Every excluded changed path makes the review incomplete.
@@ -12,7 +14,7 @@ export const MAX_EVIDENCE_FILE_BYTES = 64 * 1024
 export const MAX_SNAPSHOT_BYTES = 256 * 1024
 const EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.json', '.md', '.mdx', '.txt',
-  '.yml', '.yaml', '.toml', '.xml', '.html', '.css', '.scss', '.less', '.sql',
+  '.yml', '.yaml', '.toml', '.xml', '.svg', '.html', '.css', '.scss', '.less', '.sql',
   '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift', '.c', '.h', '.cpp',
   '.hpp', '.cs', '.sh', '.bash', '.ps1', '.bat', '.cmd', '.ini', '.conf',
   '.graphql', '.gql', '.vue', '.svelte', '.lock', '.csv', '.tsv', '.proto',
@@ -161,6 +163,64 @@ export async function readEvidenceFile(root: string, file: string, options?: { m
 export function fileIssue(file: EvidenceFile): EvidenceIssue | null {
   if (file.kind === 'text' || file.kind === 'missing') return null
   return issue('FILE_INCOMPLETE', `${JSON.stringify(file.path)}: ${file.reason ?? file.kind}`, file.path)
+}
+
+/** One previewable media side. Binary bytes stay base64 and never enter review capture. */
+export interface MediaRead {
+  path: string
+  kind: MediaKind | 'missing' | 'oversized' | 'excluded' | 'unavailable' | 'symlink'
+  reason?: string
+  data?: string
+}
+
+/**
+ * Read a known image, audio, or video for local preview.
+ * Private paths, symlinks, and files over the preview cap are withheld.
+ * SVG is source text and is not read here.
+ */
+export async function readPreviewMedia(root: string, file: string, maxBytes = MAX_PREVIEW_MEDIA_BYTES): Promise<MediaRead> {
+  const media = mediaOf(file)
+  const reason = evidencePathReason(file)
+  if (!media || reason === 'unsafe path' || reason === 'private or excluded path') return { path: file, kind: 'excluded', reason: reason ?? 'not a previewable file' }
+  let handle: FileHandle | undefined
+  try {
+    let cursor = root
+    const parts = file.split('/')
+    for (let index = 0; index < parts.length; index += 1) {
+      cursor = path.join(cursor, parts[index])
+      const entry = await lstat(cursor)
+      if (entry.isSymbolicLink()) return { path: file, kind: 'symlink', reason: 'symbolic link' }
+      if (index < parts.length - 1 && !entry.isDirectory()) return { path: file, kind: 'excluded', reason: 'non-directory ancestor' }
+      if (index === parts.length - 1 && !entry.isFile()) return { path: file, kind: 'excluded', reason: 'not a regular file' }
+    }
+    const metadata = await lstat(cursor)
+    if (metadata.size > maxBytes) return { path: file, kind: 'oversized', reason: 'file exceeds preview size limit' }
+    const resolved = await realpath(cursor)
+    if (resolved !== path.join(root, ...parts)) return { path: file, kind: 'excluded', reason: 'path resolved outside the captured location' }
+    handle = await open(cursor, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+    const before = await handle.stat()
+    if (!before.isFile()) return { path: file, kind: 'excluded', reason: 'not a regular file' }
+    if (before.dev !== metadata.dev || before.ino !== metadata.ino) return { path: file, kind: 'unavailable', reason: 'file identity changed before reading' }
+    if (before.size > maxBytes) return { path: file, kind: 'oversized', reason: 'file exceeds preview size limit' }
+    const bytes = Buffer.alloc(before.size)
+    let offset = 0
+    while (offset < bytes.length) {
+      const result = await handle.read(bytes, offset, bytes.length - offset, offset)
+      if (result.bytesRead === 0) break
+      offset += result.bytesRead
+    }
+    const after = await handle.stat()
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs || before.size !== offset) {
+      return { path: file, kind: 'unavailable', reason: 'file changed while collecting evidence' }
+    }
+    return { path: file, kind: media.kind, data: bytes.toString('base64') }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') return { path: file, kind: 'missing' }
+    return { path: file, kind: 'unavailable', reason: `file unavailable (${code ?? 'read failed'})` }
+  } finally {
+    await handle?.close()
+  }
 }
 
 export function sameFile(left: EvidenceFile, right: EvidenceFile): boolean {

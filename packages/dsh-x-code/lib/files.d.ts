@@ -1,3 +1,4 @@
+import type { MediaKind } from './formats.ts';
 export declare const MAX_EVIDENCE_FILES = 20;
 export declare const MAX_EVIDENCE_FILE_BYTES: number;
 export declare const MAX_SNAPSHOT_BYTES: number;
@@ -49,4 +50,17 @@ export declare function readEvidenceFile(root: string, file: string, options?: {
     truncate?: boolean;
 }): Promise<EvidenceFile>;
 export declare function fileIssue(file: EvidenceFile): EvidenceIssue | null;
+/** One previewable media side. Binary bytes stay base64 and never enter review capture. */
+export interface MediaRead {
+    path: string;
+    kind: MediaKind | 'missing' | 'oversized' | 'excluded' | 'unavailable' | 'symlink';
+    reason?: string;
+    data?: string;
+}
+/**
+ * Read a known image, audio, or video for local preview.
+ * Private paths, symlinks, and files over the preview cap are withheld.
+ * SVG is source text and is not read here.
+ */
+export declare function readPreviewMedia(root: string, file: string, maxBytes?: number): Promise<MediaRead>;
 export declare function sameFile(left: EvidenceFile, right: EvidenceFile): boolean;

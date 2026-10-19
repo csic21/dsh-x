@@ -17,11 +17,11 @@ export interface SpawnHandle {
 }
 export type Spawn = (spec: SpawnSpec) => SpawnHandle | Promise<SpawnHandle>
 /** One bounded Git read; `code` stays nullable because a signal can end the process. */
-export interface GitCapture { output: string, error: string, ok: boolean, code: number | null, truncated: boolean }
+export interface GitCapture { output: string, error: string, ok: boolean, code: number | null, truncated: boolean, bytes?: Buffer }
 
 /** Fixed argv only; never invoke a shell, textconv, hooks, or configured filters. */
 export function createGit(spawn: Spawn) {
-  async function capture(cwd: string, args: string[], signal: AbortSignal | undefined, maxBytes = 2_000_000, configLookup = false): Promise<GitCapture> {
+  async function capture(cwd: string, args: string[], signal: AbortSignal | undefined, maxBytes = 2_000_000, configLookup = false, binary = false): Promise<GitCapture> {
     signal?.throwIfAborted()
     const control = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)])
     const env: Record<string, string | undefined>={...Object.fromEntries(Object.keys(process.env).filter(key=>/^GIT_/i.test(key)).map(key=>[key,undefined])),GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:process.platform==='win32'?'NUL':'/dev/null',GIT_CONFIG_COUNT:'0',GIT_TERMINAL_PROMPT:'0',GIT_NO_LAZY_FETCH:'1'}
@@ -35,16 +35,16 @@ export function createGit(spawn: Spawn) {
     const child = await spawn({ argv: args, cwd, env, signal: control, graceMs: 500,
       stdio: { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' } })
     let truncated = false
-    async function read(stream: AsyncIterable<Uint8Array> | null, limit: number): Promise<string> {
+    async function read(stream: AsyncIterable<Uint8Array> | null, limit: number): Promise<Buffer> {
       let size = 0; const parts: Buffer[] = []
       for await (const chunk of stream ?? []) { const bytes = Buffer.from(chunk); size += bytes.length; if (size > limit) { truncated = true; continue }; parts.push(bytes) }
-      return Buffer.concat(parts).toString('utf8')
+      return Buffer.concat(parts)
     }
-    const [output, error, done] = await Promise.all([read(child.stdout, maxBytes), read(child.stderr, 8000), child.done])
+    const [stdout, stderr, done] = await Promise.all([read(child.stdout, maxBytes), read(child.stderr, 8000), child.done])
     signal?.throwIfAborted()
-    return { output, error, ok: done.exitCode === 0 && !done.signal && !truncated, code: done.exitCode, truncated }
+    return { output: binary ? '' : stdout.toString('utf8'), bytes: binary ? stdout : undefined, error: stderr.toString('utf8'), ok: done.exitCode === 0 && !done.signal && !truncated, code: done.exitCode, truncated }
   }
-  return async function git(cwd: string, args: string[], signal: AbortSignal | undefined, maxBytes?: number): Promise<GitCapture> {
+  return async function git(cwd: string, args: string[], signal: AbortSignal | undefined, maxBytes?: number, binary = false): Promise<GitCapture> {
     const prefix: string[] = ['git', '--no-pager', '--no-optional-locks', '--no-replace-objects', ...(args[0] === 'check-ignore' ? [] : ['--literal-pathspecs']), '-c', 'protocol.allow=never', '-c', 'diff.suppressBlankEmpty=false', '-c', 'color.ui=false', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false']
     if (['ls-files','check-ignore'].includes(args[0])) {
       const excludes = await capture(cwd, [...prefix, 'config', '--path', '--null', '--get', 'core.excludesFile'], signal, 8192, true)
@@ -58,6 +58,6 @@ export function createGit(spawn: Spawn) {
       if (keys.some(key => !/^filter\.[A-Za-z0-9_.-]+\.(clean|process|required)$/.test(key))) throw fail('CODE_GIT', 'Unsupported Git filter configuration.')
       for (const driver of new Set(keys.map(key => key.replace(/\.(clean|process|required)$/, '')))) prefix.push('-c', `${driver}.clean=`, '-c', `${driver}.process=`, '-c', `${driver}.required=false`)
     }
-    return capture(cwd, [...prefix, ...args], signal, maxBytes)
+    return capture(cwd, [...prefix, ...args], signal, maxBytes, false, binary)
   }
 }

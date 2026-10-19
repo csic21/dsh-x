@@ -25,7 +25,8 @@ Below 700px the grid becomes a single pane chosen by Files / Code / Findings tab
 - The Diff tab offers Unified / Split and Wrap. Both preserve old/new line numbers. Hunk positions are backend Git output, not a client-computed edit graph.
 - Syntax coloring uses the official public DSH code highlighter. Source and diff text never use raw HTML insertion.
 - Selection changes clear the prior file synchronously; only a response matching session, scope, workspace/snapshot, path and request generation may populate the viewer.
-- Binary, oversized, symlink, missing, untracked and empty files have explicit states. Bounds are visible. “Not displayed” or “not reviewed” is never represented as an empty successful diff.
+- SVG uses the same Source and Preview tabs as Markdown. Preview draws the file as an image and does not execute scripts. Common images, audio, and video preview locally, with zoom for images, and stay excluded from review.
+- Other binary, oversized, symlink, missing, untracked and empty files have explicit states. Bounds are visible. “Not displayed” or “not reviewed” is never represented as an empty successful diff.
 
 ## Review interaction
 

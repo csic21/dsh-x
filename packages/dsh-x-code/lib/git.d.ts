@@ -28,6 +28,7 @@ export interface GitCapture {
     ok: boolean;
     code: number | null;
     truncated: boolean;
+    bytes?: Buffer;
 }
 /** Fixed argv only; never invoke a shell, textconv, hooks, or configured filters. */
-export declare function createGit(spawn: Spawn): (cwd: string, args: string[], signal: AbortSignal | undefined, maxBytes?: number) => Promise<GitCapture>;
+export declare function createGit(spawn: Spawn): (cwd: string, args: string[], signal: AbortSignal | undefined, maxBytes?: number, binary?: boolean) => Promise<GitCapture>;

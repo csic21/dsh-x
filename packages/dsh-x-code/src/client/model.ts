@@ -1,5 +1,6 @@
 import type { SnapshotView, PublicReview, SourceView } from '../controller.ts'
 import type { WorkspaceFile } from '../repository.ts'
+import { isSvgPath, mediaOf } from '../formats.ts'
 // Wire views also tolerate older hosts that omit optional presentation fields.
 export type CodeSnapshot = Omit<SnapshotView, 'workspace' | 'files'> & {
   workspace: Partial<SnapshotView['workspace']> & Pick<SnapshotView['workspace'], 'id' | 'mode'>
@@ -12,6 +13,40 @@ export interface DiffHunk { oldStart: number, oldLines: number, newStart: number
 export interface DiffRow { kind: string, old: number | null, new: number | null, text: string }
 export const MODES = ['worktree', 'staged', 'range']
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info']
+/** Markdown documents get a rendered preview. MDX is the same grammar; JSX stays literal text. */
+export function isMarkdownPath(path: string | null | undefined): boolean {
+  return /\.(?:md|mdx)$/i.test(path?.split('/').pop() ?? '')
+}
+export type PreviewKind = 'markdown' | 'svg' | 'image' | 'audio' | 'video'
+export type ViewerTab = 'source' | 'preview' | 'diff'
+
+/** How the viewer should treat a path. Raster media has no source or text diff. */
+export function previewKind(path: string | null | undefined): PreviewKind | null {
+  if (!path) return null
+  if (isMarkdownPath(path)) return 'markdown'
+  if (isSvgPath(path)) return 'svg'
+  return mediaOf(path)?.kind ?? null
+}
+
+export function showsSource(path: string | null | undefined): boolean {
+  const kind = previewKind(path)
+  return kind !== 'image' && kind !== 'audio' && kind !== 'video'
+}
+
+/** Source and diff stay available for text, including SVG. Binary media is preview only. */
+export function viewerTabs(path: string | null | undefined): ViewerTab[] {
+  const kind = previewKind(path)
+  if (kind === 'image' || kind === 'audio' || kind === 'video') return ['preview']
+  if (kind === 'markdown' || kind === 'svg') return ['source', 'preview', 'diff']
+  return ['source', 'diff']
+}
+
+/** Rendered formats open on the picture or document. A finding still lands on source. */
+export function defaultViewerTab(path: string | null | undefined, focused: boolean): ViewerTab {
+  if (focused && showsSource(path)) return 'source'
+  if (previewKind(path)) return 'preview'
+  return 'source'
+}
 const record = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value)
 const text = (value: unknown): value is string => typeof value === 'string'
 const identifier = (value: unknown): value is string => text(value) && value.length > 0 && value.length <= 4096
@@ -33,6 +68,12 @@ export function readSnapshot(value: unknown, sessionId: string): CodeSnapshot | 
 /** A read is useful only for the exact file and content generation requested. */
 export function readFile(value: unknown, path: string): CodeSource | null {
   if (!record(value) || value.path !== path || !text(value.status ?? value.kind ?? 'text')) return null
+  if (['image', 'audio', 'video'].includes(value.kind)) {
+    if (value.mediaType != null && !text(value.mediaType)) return null
+    if (value.data != null && !text(value.data)) return null
+    if (value.beforeData != null && !text(value.beforeData)) return null
+    return value as CodeSource
+  }
   if (['text', 'missing'].includes(value.kind) && (!text(value.text) || !text(value.beforeText))) return null
   if (value.text != null && !text(value.text) || value.beforeText != null && !text(value.beforeText)) return null
   if (value.diff != null && !text(value.diff) && !Array.isArray(value.diff) && !record(value.diff)) return null

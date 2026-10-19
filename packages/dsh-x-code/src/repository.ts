@@ -3,8 +3,10 @@ import type { BigIntStats } from 'node:fs'
 import path from 'node:path'
 import { createGit } from './git.ts'
 import type { Spawn } from './git.ts'
-import { evidencePathReason, readEvidenceFile, containsCredentialLikeText, hashText, MAX_EVIDENCE_FILE_BYTES } from './files.ts'
-import type { EvidenceFile } from './files.ts'
+import { evidencePathReason, readEvidenceFile, readPreviewMedia, containsCredentialLikeText, hashText, MAX_EVIDENCE_FILE_BYTES } from './files.ts'
+import type { EvidenceFile, MediaRead } from './files.ts'
+import { MAX_PREVIEW_MEDIA_BYTES, mediaOf } from './formats.ts'
+import type { MediaKind } from './formats.ts'
 import { fail, hash } from './store.ts'
 export const LIMITS = Object.freeze({maxFiles:4000,maxSelectedFiles:20,maxFileBytes:MAX_EVIDENCE_FILE_BYTES,maxReviewBytes:49152,maxFindings:100})
 /** Comparison scope selected for one repository read. */
@@ -32,6 +34,10 @@ export interface FileEvidence {
   diff?: string
   hunks?: Hunk[]
   truncated?: boolean
+  /** Base64 media for a preview-only image, audio, or video. Never stored in a review snapshot. */
+  data?: string
+  beforeData?: string
+  mediaType?: string
   diffTruncated?: boolean
   selectable?: boolean
   changed?: boolean
@@ -171,15 +177,37 @@ export function createRepository(spawn: Spawn) {
   if(containsCredentialLikeText(text))return {path:file,kind:'excluded',reason:'possible credential content excluded'}
   return {path:file,kind:'text',text,hash:hashText(text)}
  }
+ async function mediaBlob(inv: Inventory, entry: ManifestEntry | undefined, kind: MediaKind): Promise<MediaRead> {
+  if(!entry)return {path:'',kind:'missing'}
+  if(!['100644','100755'].includes(entry.mode))return {path:'',kind:'symlink',reason:'symbolic link or unsupported Git object'}
+  const size=Number((await required(inv.workspace.repoRoot,['cat-file','-s',entry.oid],inv.signal,100)).trim())
+  if(!Number.isSafeInteger(size)||size<0||size>MAX_PREVIEW_MEDIA_BYTES)return {path:'',kind:'oversized',reason:'file exceeds preview size limit'}
+  const captured=await git(inv.workspace.repoRoot,['cat-file','blob',entry.oid],inv.signal,Math.max(size,1),true)
+  if(!captured.ok||!captured.bytes||captured.bytes.length!==size)return {path:'',kind:'unavailable',reason:'file changed while collecting evidence'}
+  return {path:'',kind,data:captured.bytes.toString('base64')}
+ }
+ async function previewMedia(inv: Inventory, file: string, kind: MediaKind, mime: string, meta: WorkspaceFile): Promise<FileEvidence> {
+  const version=inv.workspace.mode==='worktree'?'Worktree':inv.workspace.mode==='staged'?'Index':inv.workspace.head
+  const after=inv.workspace.mode==='worktree'?await readPreviewMedia(inv.workspace.repoRoot,file):await mediaBlob(inv,inv.after.get(file),kind)
+  const before=await mediaBlob(inv,inv.before.get(file),kind)
+  const viewable=(side: MediaRead)=>side.kind===kind||side.kind==='missing'
+  if(!viewable(after))return {path:file,kind:after.kind==='symlink'?'symlink':after.kind,status:meta.status,reason:after.reason,truncated:false,version,baseVersion:inv.workspace.base}
+  const shown=after.kind===kind||before.kind===kind?kind:after.kind
+  return {path:file,kind:shown,mediaType:mime,status:meta.status,data:after.data,beforeData:before.kind===kind?before.data:undefined,afterKind:after.kind,beforeKind:before.kind,text:'',beforeText:'',version,baseVersion:inv.workspace.base,diff:'',hunks:[],truncated:false,reason:shown===kind?undefined:after.reason}
+ }
  async function file(inv: Inventory,file: string,options?: {preview?: boolean}): Promise<FileEvidence> {
    const preview=options?.preview===true
   const meta=inv.files.find(item=>item.path===file)
   if(!meta||evidencePathReason(file)==='unsafe path')throw fail('CODE_PATH','The file is outside the enumerated repository scope.')
-  if(!meta.selectable)return {path:file,kind:'excluded',status:meta.status,reason:meta.reason??undefined,truncated:false}
+  const media=mediaOf(file)
+  const unmerged=Boolean(inv.after.get(file)?.unmerged||inv.before.get(file)?.unmerged)
+  const mediaPreview=preview&&media!=null&&meta.reason==='not an allowlisted source-text file'&&!unmerged
+  if(!meta.selectable&&!mediaPreview)return {path:file,kind:'excluded',status:meta.status,reason:meta.reason??undefined,truncated:false}
   // --no-index also checks tracked files, so ignored credentials remain excluded.
   const ignored=await git(inv.workspace.repoRoot,['check-ignore','--no-index','--',file],inv.signal,8192)
   if(ignored.code===0)return {path:file,kind:'excluded',status:meta.status,reason:'ignored file',truncated:false}
   if(ignored.code!==1)throw fail('CODE_GIT','Ignore rules could not be checked.')
+  if(mediaPreview&&media)return previewMedia(inv,file,media.kind,media.mime,meta)
   const before=await blob(inv,inv.before.get(file),file,preview)
   let after: FileEvidence=inv.workspace.mode==='worktree'?await readEvidenceFile(inv.workspace.repoRoot,file,preview?{maxBytes:Number.MAX_SAFE_INTEGER}:undefined):await blob(inv,inv.after.get(file),file,preview)
   if(after.kind==='missing')after={...after,text:'',hash:hashText('')}

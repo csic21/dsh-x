@@ -39,6 +39,10 @@ export interface FileEvidence {
     diff?: string;
     hunks?: Hunk[];
     truncated?: boolean;
+    /** Base64 media for a preview-only image, audio, or video. Never stored in a review snapshot. */
+    data?: string;
+    beforeData?: string;
+    mediaType?: string;
     diffTruncated?: boolean;
     selectable?: boolean;
     changed?: boolean;

@@ -1,7 +1,7 @@
 import { fail } from './store.js';
 /** Fixed argv only; never invoke a shell, textconv, hooks, or configured filters. */
 export function createGit(spawn) {
-    async function capture(cwd, args, signal, maxBytes = 2_000_000, configLookup = false) {
+    async function capture(cwd, args, signal, maxBytes = 2_000_000, configLookup = false, binary = false) {
         signal?.throwIfAborted();
         const control = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)]);
         const env = { ...Object.fromEntries(Object.keys(process.env).filter(key => /^GIT_/i.test(key)).map(key => [key, undefined])), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null', GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1' };
@@ -28,13 +28,13 @@ export function createGit(spawn) {
                 ;
                 parts.push(bytes);
             }
-            return Buffer.concat(parts).toString('utf8');
+            return Buffer.concat(parts);
         }
-        const [output, error, done] = await Promise.all([read(child.stdout, maxBytes), read(child.stderr, 8000), child.done]);
+        const [stdout, stderr, done] = await Promise.all([read(child.stdout, maxBytes), read(child.stderr, 8000), child.done]);
         signal?.throwIfAborted();
-        return { output, error, ok: done.exitCode === 0 && !done.signal && !truncated, code: done.exitCode, truncated };
+        return { output: binary ? '' : stdout.toString('utf8'), bytes: binary ? stdout : undefined, error: stderr.toString('utf8'), ok: done.exitCode === 0 && !done.signal && !truncated, code: done.exitCode, truncated };
     }
-    return async function git(cwd, args, signal, maxBytes) {
+    return async function git(cwd, args, signal, maxBytes, binary = false) {
         const prefix = ['git', '--no-pager', '--no-optional-locks', '--no-replace-objects', ...(args[0] === 'check-ignore' ? [] : ['--literal-pathspecs']), '-c', 'protocol.allow=never', '-c', 'diff.suppressBlankEmpty=false', '-c', 'color.ui=false', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false'];
         if (['ls-files', 'check-ignore'].includes(args[0])) {
             const excludes = await capture(cwd, [...prefix, 'config', '--path', '--null', '--get', 'core.excludesFile'], signal, 8192, true);
@@ -53,6 +53,6 @@ export function createGit(spawn) {
             for (const driver of new Set(keys.map(key => key.replace(/\.(clean|process|required)$/, ''))))
                 prefix.push('-c', `${driver}.clean=`, '-c', `${driver}.process=`, '-c', `${driver}.required=false`);
         }
-        return capture(cwd, [...prefix, ...args], signal, maxBytes);
+        return capture(cwd, [...prefix, ...args], signal, maxBytes, false, binary);
     };
 }

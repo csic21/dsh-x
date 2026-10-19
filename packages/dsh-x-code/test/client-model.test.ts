@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, readSnapshot, reviewRequest } from '../src/client/model.ts'
+import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, isMarkdownPath, previewKind, viewerTabs, defaultViewerTab, readFile, readSnapshot, reviewRequest } from '../src/client/model.ts'
 import { en, zh, messageKey } from '../src/client/locales.ts'
 const snapshot = (): any => ({ scope:'profile',sessionId:'session',revision:1,workspace:{id:'version',mode:'worktree',base:'abc',baseRef:'main'},files:[{path:'src/b.js',status:'modified',selectable:true,changed:true},{path:'README.md',status:'unchanged',selectable:true,changed:false}],limits:{maxSelectedFiles:20},review:null })
 
@@ -10,6 +10,16 @@ test('Git hunk projection preserves old/new numbers and aligns replacement runs'
  assert.equal(hunks.length,1);assert.equal(hunks[0].heading,'function f')
  const rows=hunkRows(hunks[0]);assert.deepEqual(rows.map(row=>[row.old,row.new]),[[8,8],[9,null],[null,9],[null,10],[10,11]])
  const split=pairedRows(rows);assert.equal(split.length,4);assert.equal(split[1].left!.text,'old');assert.equal(split[1].right!.text,'new');assert.equal(split[2].left,undefined)
+})
+test('markdown preview is limited to md and mdx documents',()=>{
+  assert.equal(isMarkdownPath('README.md'),true);assert.equal(isMarkdownPath('docs/guide.MDX'),true);assert.equal(isMarkdownPath('src/readme.md.ts'),false);assert.equal(isMarkdownPath('notes.md.bak'),false);assert.equal(isMarkdownPath(null),false)
+})
+test('svg keeps source and image preview, while raster media is preview only',()=>{
+  assert.equal(previewKind('icons/logo.SVG'),'svg');assert.deepEqual(viewerTabs('icons/logo.SVG'),['source','preview','diff']);assert.equal(defaultViewerTab('icons/logo.SVG',false),'preview');assert.equal(defaultViewerTab('icons/logo.SVG',true),'source')
+  assert.equal(previewKind('assets/pixel.PNG'),'image');assert.deepEqual(viewerTabs('assets/pixel.PNG'),['preview']);assert.equal(defaultViewerTab('shot.jpg',true),'preview')
+  assert.equal(previewKind('clip.mp4'),'video');assert.equal(previewKind('tone.mp3'),'audio');assert.equal(previewKind('src/app.ts'),null);assert.deepEqual(viewerTabs('src/app.ts'),['source','diff']);assert.equal(previewKind('notes.md.bak'),null)
+  const image={path:'a.png',kind:'image',mediaType:'image/png',data:'aaaa',beforeData:'bbbb',text:''}
+  assert.equal(readFile(image,'a.png'),image);assert.equal(readFile({...image,data:1},'a.png'),null);assert.equal(readFile({path:'a.png',kind:'image'},'a.png')?.kind,'image')
 })
 test('source terminators and literal search preserve exact offsets',()=>{
  assert.deepEqual(sourceLines(''),[]);assert.deepEqual(sourceLines('a\n\n'),['a','']);assert.deepEqual(searchMatches(['A[a A[a','other'],'a[a'),[{line:1,start:0,end:3},{line:1,start:4,end:7}]);assert.deepEqual(searchMatches(['x'],''),[])
