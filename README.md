@@ -34,7 +34,7 @@ AI Browser 只面向 Desktop：先启动一次 Desktop 初始化 profile，完�
 
 ## 更新
 
-`plugins-v*` tag 会触发 GitHub Pages 重新生成市场索引：
+`plugins-v*` tag 会触发 GitHub Pages 重新生成市场索引。四个插件各自升版本；没改的插件不会出现新版本：
 
 - 新版本出现在 Discover 里，状态变为 **Update available**；
 - 官方对第三方插件没有一键升级，升级方式是 **卸载后安装新版本**：

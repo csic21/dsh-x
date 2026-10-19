@@ -1,11 +1,14 @@
 # 发布流程
 
-发布的是**插件 Git 版本**，不是桌面应用，也不是 npm 包。所有包同版本，由 `plugins-v*` tag 统一驱动。
+发布的是**插件 Git 版本**，不是桌面应用，也不是 npm 包。四个包各自有 `version`。`plugins-v*` tag 只标记「这次发布哪一个 commit」，不再要求四个包同一个号。
 
 ## 版本规则
 
-- tag 名是 `plugins-v<version>`，例如 `plugins-v0.2.0`；所有包的 `version` 必须与它完全一致。
-- 每个包 `engines.dsh` 精确等于 `compatibility/policy.json` 的 `baseline.version`（完整验证用的运行时）。
+- 只给改过的包升 `version`。没改的包保持原号，索引里也不会出现新条目。
+- tag 名仍是 `plugins-v<版本>`，例如只发布 Code `0.6.1` 时打 `plugins-v0.6.1`。tag 不必等于另外三个包的版本。
+- 每个包的每个版本只钉一次，钉在**第一次**带上这个版本的 tag。以后的 tag 即使还含着旧版本，也不改它的安装 commit。
+- 升版本但包目录没变化，或者包目录变了却不升版本，`node scripts/check-plugin-release.mjs` 会失败。`docs/` 和 `scripts/` 的改动不算包变化。
+- 每个包 `engines.dsh` 仍精确等于 `compatibility/policy.json` 的 `baseline.version`（这是运行时基线，不是插件版本）。
 - 每个包对官方 `@deepseek-ai/dsh*` 的 peer 范围必须与 `policy.json` 的 `supportedPeerRange` 一致。
 - 兼容版本不得为了发布放宽；新运行时需要先有真实证据。
 
@@ -17,10 +20,12 @@ pnpm install --frozen-lockfile
 pnpm run typecheck
 pnpm test
 
-# 更新三个包的 version 与需要的说明，然后提交
+# 只改动过的包升 version。例如这次只改了 Code：
+# packages/dsh-x-code/package.json  0.6.0 → 0.6.1
 git add -A
-git commit -m "release: 0.2.0"
-git tag plugins-v0.2.0
+git commit -m "release: dsh-x-code 0.6.1"
+node scripts/check-plugin-release.mjs
+git tag plugins-v0.6.1
 git push origin main --tags
 ```
 
@@ -28,7 +33,7 @@ git push origin main --tags
 
 | 工作流 | 内容 |
 | --- | --- |
-| `plugin-release.yml` | 安装锁定依赖、类型检查、构建、全量测试，生成 `market-index.json` artifact |
+| `plugin-release.yml` | 先核对各包版本有没有漏升或空升，再安装锁定依赖、类型检查、构建、全量测试，生成 `market-index.json` artifact |
 | `docs-pages.yml` | 重新构建文档站点；`prebuild` 生成市场索引并随 Pages 发布 |
 
 Docs 工作流在 `main` 与 `plugins-v*` 上都会运行，`fetch-depth: 0` 让它能读取全部 tag。发布完成后：
@@ -41,9 +46,9 @@ Docs 工作流在 `main` 与 `plugins-v*` 上都会运行，`fetch-depth: 0` 让
 
 `scripts/generate-market-index.mjs`：
 
-1. 读取所有 `plugins-v*` tag 的 commit、时间与包清单；
+1. 读取所有 `plugins-v*` tag 的 commit、时间与各包自己的 `package.json` version；
 2. 跳过低于 `0.2.0` 的旧 tag（旧包形状不同）；
-3. 为每个包生成 `source: { type: 'git', url, commit, path }`；
+3. 同一个包版本只保留最早的 tag，并生成 `source: { type: 'git', url, commit, path }`；
 4. 如果工作树已提交且没有未提交的包改动，也把当前 HEAD 版本加入索引；未提交的改动会被跳过，避免索引指向不含该版本的 commit；
 5. 输出 `docs/public/market-index.json`，由 Pages 发布。
 

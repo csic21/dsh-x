@@ -92,7 +92,7 @@ export interface InventoryArgs { mode?: string, base?: string, signal?: AbortSig
 /** One inspect/snapshot request from the tool or the client RPC. */
 export interface SnapshotArgs extends InventoryArgs { sessionId?: string }
 /** One source read request. */
-export interface SourceArgs extends SnapshotArgs { scope?: string, workspaceId?: string, path: string, reviewId?: string }
+export interface SourceArgs extends SnapshotArgs { scope?: string, workspaceId?: string, path: string, reviewId?: string, preview?: boolean }
 /** One review detail request. */
 export interface ReviewDetailArgs extends SnapshotArgs { scope?: string, reviewId?: string }
 /** One review request. Runtime and model remain accepted only for explicit refusal. */
@@ -154,7 +154,7 @@ export function createCodeController({store,spawn,contextOf,reviewerInfo=()=>({d
   }
   const inv=await inventory(id,args,exec)
   if(args.workspaceId!==inv.workspace.id)throw fail('CODE_STALE','Workspace revision changed. Refresh Code.')
-  const file=await repository.file(inv,args.path)
+  const file=await repository.file(inv,args.path,{preview:args.preview===true&&!exec})
   const after=await inventory(id,args,exec)
   if(after.workspace.id!==inv.workspace.id)throw fail('CODE_STALE','Workspace changed while reading source. Refresh Code.')
   return {...file,workspaceId:inv.workspace.id,immutable:false}

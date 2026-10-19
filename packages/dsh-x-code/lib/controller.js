@@ -63,7 +63,7 @@ export function createCodeController({ store, spawn, contextOf, reviewerInfo = (
         const inv = await inventory(id, args, exec);
         if (args.workspaceId !== inv.workspace.id)
             throw fail('CODE_STALE', 'Workspace revision changed. Refresh Code.');
-        const file = await repository.file(inv, args.path);
+        const file = await repository.file(inv, args.path, { preview: args.preview === true && !exec });
         const after = await inventory(id, args, exec);
         if (after.workspace.id !== inv.workspace.id)
             throw fail('CODE_STALE', 'Workspace changed while reading source. Refresh Code.');

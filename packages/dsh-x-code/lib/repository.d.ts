@@ -39,6 +39,7 @@ export interface FileEvidence {
     diff?: string;
     hunks?: Hunk[];
     truncated?: boolean;
+    diffTruncated?: boolean;
     selectable?: boolean;
     changed?: boolean;
 }
@@ -104,6 +105,8 @@ export interface InventoryOptions {
 export declare const validMode: (mode: unknown) => ReviewMode;
 export declare function createRepository(spawn: Spawn): {
     inventory: ({ cwd, policy, mode, base, signal }: InventoryOptions) => Promise<Inventory>;
-    file: (inv: Inventory, file: string) => Promise<FileEvidence>;
+    file: (inv: Inventory, file: string, options?: {
+        preview?: boolean;
+    }) => Promise<FileEvidence>;
     capture: (inv: Inventory, paths: string[]) => Promise<CapturedSnapshot>;
 };

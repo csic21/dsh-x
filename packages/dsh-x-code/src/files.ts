@@ -45,6 +45,8 @@ export interface EvidenceFile {
   mode?: '100644' | '100755'
   hash?: string
   text?: string
+  /** True when `text` is a prefix because the file exceeds the preview cap. */
+  truncated?: boolean
 }
 
 /** One structured reason why a selected path is incomplete. */
@@ -92,8 +94,20 @@ export function excludedFile(file: string, reason: string, kind: 'excluded' | 'u
   return { path: file, kind, reason }
 }
 
-/** Never follow a source-file symlink (including parent directories). */
-export async function readEvidenceFile(root: string, file: string): Promise<EvidenceFile> {
+/** Drop a trailing partial UTF-8 sequence. Returns null when the bytes are not valid text. */
+function decodePreview(contents: Buffer): string | null {
+  let end = contents.length
+  for (let trim = 0; trim < 4 && end > 0; trim += 1) {
+    try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(contents.subarray(0, end)) } catch { end -= 1 }
+  }
+  return null
+}
+
+/**
+ * Never follow a source-file symlink (including parent directories).
+ * Review reads stop at the evidence cap. A preview read may return a prefix.
+ */
+export async function readEvidenceFile(root: string, file: string, options?: { maxBytes?: number, truncate?: boolean }): Promise<EvidenceFile> {
   const reason = evidencePathReason(file)
   if (reason === 'unsafe path') return excludedFile(file, reason)
   let handle: FileHandle | undefined
@@ -115,8 +129,10 @@ export async function readEvidenceFile(root: string, file: string): Promise<Evid
     const before = await handle.stat()
     if (!before.isFile()) return excludedFile(file, 'not a regular file')
     if (before.dev !== metadata.dev || before.ino !== metadata.ino) return excludedFile(file, 'file identity changed before reading', 'unavailable')
-    if (before.size > MAX_EVIDENCE_FILE_BYTES) return opaqueFile(file, 'file exceeds evidence size limit', before)
-    const bytes = Buffer.alloc(Math.min(MAX_EVIDENCE_FILE_BYTES + 1, before.size + 1))
+    const limit = options?.maxBytes ?? MAX_EVIDENCE_FILE_BYTES
+    const truncate = options?.truncate === true && before.size > limit
+    if (before.size > limit && !options?.truncate) return opaqueFile(file, 'file exceeds evidence size limit', before)
+    const bytes = Buffer.alloc(truncate ? limit : Math.min(limit + 1, before.size + 1))
     let offset = 0
     while (offset < bytes.length) {
       const result = await handle.read(bytes, offset, bytes.length - offset, offset)
@@ -124,15 +140,15 @@ export async function readEvidenceFile(root: string, file: string): Promise<Evid
       offset += result.bytesRead
     }
     const after = await handle.stat()
-    if (before.size !== offset || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs || (!truncate && before.size !== offset) || (truncate && offset < limit)) {
       return excludedFile(file, 'file changed while collecting evidence', 'unavailable')
     }
     const contents = bytes.subarray(0, offset)
-    let text: string
-    try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(contents) } catch { return opaqueFile(file, 'not UTF-8 source text', before) }
+    const text = truncate ? decodePreview(contents) : (() => { try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(contents) } catch { return null } })()
+    if (text == null) return opaqueFile(file, 'not UTF-8 source text', before)
     if (/[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]/.test(text)) return opaqueFile(file, 'binary or unsupported source text', before)
     if (containsCredential(text)) return opaqueFile(file, 'possible credential content excluded', before)
-    return { path: file, kind: 'text', mode: (before.mode & 0o111) === 0 ? '100644' : '100755', hash: hashText(text), text }
+    return { path: file, kind: 'text', mode: (before.mode & 0o111) === 0 ? '100644' : '100755', hash: hashText(text), text, ...(truncate ? { truncated: true } : {}) }
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === 'ENOENT') return { path: file, kind: 'missing' }

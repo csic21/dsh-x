@@ -22,6 +22,20 @@ test('unknown/traversal paths, credential filenames, ignored content, symlinks a
  assert.equal(inv.files.some(f=>f.path==='.env'),false)
  for(const file of ['ignored.js','secret.js','binary.js','large.js','link.js']){const v=await h.repository.file(inv,file);assert.notEqual(v.kind,'text',file);assert.equal(v.text,undefined,file);await assert.rejects(()=>h.repository.capture(inv,[file]),{code:'CODE_EXCLUDED'})}
 })
+test('preview shows source above the review cap and still withholds it from capture',async t=>{
+ const h=fixture(t)
+ writeFileSync(path.join(h.root,'wide.js'),'head\n'+'x'.repeat(70_000)+'\ntail\n')
+ writeFileSync(path.join(h.root,'wide-secret.js'),'const api_key = "abcdefghijklmnopqrstuv";\n'+'y'.repeat(70_000))
+ const inv=await h.repository.inventory(h.options)
+ const shown=await h.repository.file(inv,'wide.js',{preview:true})
+ assert.equal(shown.kind,'text');assert.equal(shown.truncated,false);assert.match(shown.text!,/^head\n/);assert.match(shown.text!,/tail\n$/)
+ await assert.rejects(()=>h.repository.capture(inv,['wide.js']),{code:'CODE_EXCLUDED'})
+ const secret=await h.repository.file(inv,'wide-secret.js',{preview:true})
+ assert.notEqual(secret.kind,'text');assert.equal(secret.text,undefined)
+ writeFileSync(path.join(h.root,'huge.js'),'A'.repeat(1024*1024+80)+'TAIL')
+ const cut=await h.repository.file(await h.repository.inventory(h.options),'huge.js',{preview:true})
+ assert.equal(cut.kind,'text');assert.equal(cut.truncated,false);assert.ok(cut.text!.endsWith('TAIL'));assert.equal(Buffer.byteLength(cut.text!),1024*1024+80+4)
+})
 test('selected parent-directory symlink is rejected and repository outside host root is blocked',async t=>{
  const h=fixture(t);mkdirSync(path.join(h.root,'src'));writeFileSync(path.join(h.root,'src','a.js'),'export const x = 1\n');h.git('add','src/a.js');h.git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','nested');rmSync(path.join(h.root,'src'),{recursive:true});symlinkSync('/tmp',path.join(h.root,'src'))
  const inv=await h.repository.inventory(h.options);await assert.rejects(()=>h.repository.file(inv,'src/a.js'),{code:'CODE_GIT'})

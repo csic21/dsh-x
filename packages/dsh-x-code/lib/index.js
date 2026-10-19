@@ -46,6 +46,6 @@ export function apply(context) {
         host.connection.fetch.register(createCodeRoute('code/snapshot', args => controller.snapshot(args), ['sessionId', 'mode', 'base']));
         host.connection.fetch.register(createCodeRoute('code/review', args => controller.reviewDetail(args), ['sessionId', 'scope', 'reviewId']));
         host.connection.fetch.register(createCodeRoute('code/cancel', args => controller.cancel(args), ['sessionId', 'scope', 'operationId']));
-        host.connection.fetch.register(createCodeRoute('code/file', args => controller.source(args), ['sessionId', 'scope', 'workspaceId', 'path', 'mode', 'base', 'reviewId']));
+        host.connection.fetch.register(createCodeRoute('code/file', args => controller.source({ ...args, preview: true }), ['sessionId', 'scope', 'workspaceId', 'path', 'mode', 'base', 'reviewId']));
     });
 }

@@ -27,7 +27,7 @@ function SourceButton({ preference, t, large = false }: any) {
     setBusy(true); setFailed(false)
     try { await preference.setEnabled(true) } catch { setFailed(true) } finally { setBusy(false) }
   }
-  return <button type="button" className={large ? 'dxs-source-enable is-large' : 'dxs-source-enable'} disabled={busy || preference.forced} onClick={enable} title={failed ? t('source.enable-error') : t('source.enable-hint')}>{busy ? t('source.enabling') : t('source.enable')}</button>
+  return <button type="button" className={large ? 'dxs-source-enable dxs-primary is-large' : 'dxs-source-enable'} disabled={busy || preference.forced} onClick={enable} title={failed ? t('source.enable-error') : t('source.enable-hint')}>{busy ? t('source.enabling') : t('source.enable')}</button>
 }
 function StockChip({ item, quote, snapshot, open, t, format }: any) {
   const status = quoteStatus(quote)
@@ -63,7 +63,7 @@ export function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideB
       : <FixedStrip key={`${preference.enabled ? 'on' : 'off'}:${fixed.map((item: any) => item.symbol).join(',')}`} items={fixed} symbols={fixed.map((item: any) => item.symbol)} useResource={useResource} open={open} t={t} format={format} />)}
     <div className="dxs-bar-actions">
       {sourceOff ? null : <SourceButton preference={preference} t={t} />}
-      <button onClick={() => hideBar()} title={t('bar.hide-hint')} aria-label={t('bar.hide')}>✕</button>
+      <button type="button" className="dxs-icon-button" onClick={() => hideBar()} title={t('bar.hide-hint')} aria-label={t('bar.hide')}>✕</button>
       <button onClick={() => open(state.selectedSymbol)}>{t('title')}</button>
     </div>
   </section>
@@ -153,14 +153,15 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
   }
   const sourceOff = preference.status === 'ready' && !preference.enabled
   return <main className="dxs dxs-page">
-    <header className="dxs-heading">
-      <div><h1>{t('title')}</h1><p className="dxs-muted">{view === 'market' ? t('market.subtitle') : t('page.subtitle')}</p></div>
+    <header className="dxs-titlebar">
+      <div className="dxs-brand"><StockIcon size={16} /><h1>{t('title')}</h1><span className="dxs-context">{view === 'market' ? t('market.subtitle') : t('page.subtitle')}</span></div>
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
         <button type="button" aria-pressed={view === 'watchlist'} onClick={() => setView('watchlist')}>{t('page.view.watchlist')}</button>
         <button type="button" aria-pressed={view === 'market'} onClick={() => setView('market')}>{t('page.view.market')}</button>
       </nav>
-      <button onClick={back}>{t('page.back')}</button>
+      <div className="dxs-header-actions"><button type="button" onClick={back}>{t('page.back')}</button></div>
     </header>
+    <div className="dxs-body">
     {drillNotice ? <p role="status" className="dxs-notice">{drillNotice}</p> : null}
     {view === 'market' ? <><MarketView rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} onOpenStock={openStock} /><p className="dxs-muted">{t('market.drill.hint')}</p></> : <>
       <div className={sourceOff ? 'dxs-notice dxs-source-card' : 'dxs-notice'}>
@@ -181,8 +182,8 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
         <ol className="dxs-list">{state.items.map((entry: any, index: any) => <li key={entry.symbol}>
           <button className="dxs-select" aria-pressed={item?.symbol === entry.symbol} onClick={() => select(entry.symbol)}><strong>{entry.alias || entry.symbol}</strong>{entry.alias && <span className="dxs-muted"> · {entry.symbol}</span>}{entry.fixed && <span className="dxs-fixed-mark"> · {t('page.fixed')}</span>}</button>
           <div className="dxs-controls">
-            <button disabled={index === 0} aria-label={t('page.move-up', { symbol: entry.symbol })} onClick={() => move(entry.symbol, -1)}>↑</button>
-            <button disabled={index === state.items.length - 1} aria-label={t('page.move-down', { symbol: entry.symbol })} onClick={() => move(entry.symbol, 1)}>↓</button>
+            <button type="button" className="dxs-icon-button" disabled={index === 0} aria-label={t('page.move-up', { symbol: entry.symbol })} onClick={() => move(entry.symbol, -1)}>↑</button>
+            <button type="button" className="dxs-icon-button" disabled={index === state.items.length - 1} aria-label={t('page.move-down', { symbol: entry.symbol })} onClick={() => move(entry.symbol, 1)}>↓</button>
             <button aria-pressed={entry.fixed} aria-label={t(entry.fixed ? 'page.unfix-aria' : 'page.fix-aria', { symbol: entry.symbol })} onClick={() => toggleFix(entry)}>{entry.fixed ? t('page.unfix') : t('page.fix')}</button>
             <button aria-label={t('page.remove-aria', { symbol: entry.symbol })} onClick={() => remove(entry.symbol)}>{t('page.remove')}</button>
           </div>
@@ -193,5 +194,6 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
         {state.scopeStatus === 'ready' && (item ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} /> : <StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} rpc={rpc} />)}
       </div>
     </>}
+    </div>
   </main>
 }

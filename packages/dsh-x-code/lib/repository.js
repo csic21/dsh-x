@@ -124,22 +124,37 @@ export function createRepository(spawn) {
         const workspace = { ...core, id: hash({ ...core, paths, stamps }) };
         return { workspace, files, complete: !truncated, truncated, limits: LIMITS, before, after, signal, policy };
     }
-    async function blob(inv, entry, file) {
+    async function blob(inv, entry, file, preview = false) {
         if (!entry)
             return { path: file, kind: 'missing', text: '', hash: hashText('') };
         if (!['100644', '100755'].includes(entry.mode))
             return { path: file, kind: 'symlink', reason: 'symbolic link or unsupported Git object' };
+        const limit = preview ? Number.MAX_SAFE_INTEGER : LIMITS.maxFileBytes;
         const size = Number((await required(inv.workspace.repoRoot, ['cat-file', '-s', entry.oid], inv.signal, 100)).trim());
-        if (!Number.isSafeInteger(size) || size > LIMITS.maxFileBytes)
+        if (!Number.isSafeInteger(size))
             return { path: file, kind: 'oversized', reason: 'file exceeds source size limit' };
-        const text = await required(inv.workspace.repoRoot, ['cat-file', 'blob', entry.oid], inv.signal, LIMITS.maxFileBytes + 1);
+        if (size > limit) {
+            if (!preview)
+                return { path: file, kind: 'oversized', reason: 'file exceeds source size limit' };
+            const captured = await git(inv.workspace.repoRoot, ['cat-file', 'blob', entry.oid], inv.signal, limit);
+            if (!captured.ok && !captured.truncated)
+                throw fail('CODE_GIT', 'Git evidence is unavailable or exceeds its size limit.');
+            const prefix = captured.output.replace(/\uFFFD+$/u, '');
+            if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(prefix) || prefix.includes('\uFFFD'))
+                return { path: file, kind: 'binary', reason: 'binary or non-UTF-8 source' };
+            if (containsCredentialLikeText(prefix))
+                return { path: file, kind: 'excluded', reason: 'possible credential content excluded' };
+            return { path: file, kind: 'text', text: prefix, hash: hashText(prefix), truncated: true };
+        }
+        const text = await required(inv.workspace.repoRoot, ['cat-file', 'blob', entry.oid], inv.signal, limit + 1);
         if (/[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]/.test(text))
             return { path: file, kind: 'binary', reason: 'binary or non-UTF-8 source' };
         if (containsCredentialLikeText(text))
             return { path: file, kind: 'excluded', reason: 'possible credential content excluded' };
         return { path: file, kind: 'text', text, hash: hashText(text) };
     }
-    async function file(inv, file) {
+    async function file(inv, file, options) {
+        const preview = options?.preview === true;
         const meta = inv.files.find(item => item.path === file);
         if (!meta || evidencePathReason(file) === 'unsafe path')
             throw fail('CODE_PATH', 'The file is outside the enumerated repository scope.');
@@ -151,16 +166,30 @@ export function createRepository(spawn) {
             return { path: file, kind: 'excluded', status: meta.status, reason: 'ignored file', truncated: false };
         if (ignored.code !== 1)
             throw fail('CODE_GIT', 'Ignore rules could not be checked.');
-        const before = await blob(inv, inv.before.get(file), file);
-        let after = inv.workspace.mode === 'worktree' ? await readEvidenceFile(inv.workspace.repoRoot, file) : await blob(inv, inv.after.get(file), file);
+        const before = await blob(inv, inv.before.get(file), file, preview);
+        let after = inv.workspace.mode === 'worktree' ? await readEvidenceFile(inv.workspace.repoRoot, file, preview ? { maxBytes: Number.MAX_SAFE_INTEGER } : undefined) : await blob(inv, inv.after.get(file), file, preview);
         if (after.kind === 'missing')
             after = { ...after, text: '', hash: hashText('') };
-        const bad = [before, after].find(value => value.kind !== 'text' && value.kind !== 'missing');
         const version = inv.workspace.mode === 'worktree' ? 'Worktree' : inv.workspace.mode === 'staged' ? 'Index' : inv.workspace.head;
-        if (bad)
-            return { path: file, kind: bad.kind === 'opaque' ? /size/.test(bad.reason ?? '') ? 'oversized' : /binary|UTF-8/.test(bad.reason ?? '') ? 'binary' : 'excluded' : bad.kind, status: meta.status, reason: bad.reason, truncated: false, version, baseVersion: inv.workspace.base };
+        const withhold = (value) => ({ path: file, kind: value.kind === 'opaque' ? /size/.test(value.reason ?? '') ? 'oversized' : /binary|UTF-8/.test(value.reason ?? '') ? 'binary' : 'excluded' : value.kind, status: meta.status, reason: value.reason, truncated: false, version, baseVersion: inv.workspace.base });
+        const bad = [before, after].find(value => value.kind !== 'text' && value.kind !== 'missing');
+        if (bad && (!preview || after.kind !== 'text' && after.kind !== 'missing'))
+            return withhold(bad);
         const diffArgs = ['diff', '--text', '--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '--unified=3', ...(inv.workspace.mode === 'staged' ? ['--cached', inv.workspace.head] : inv.workspace.mode === 'range' ? [inv.workspace.base, inv.workspace.head] : [inv.workspace.head]), '--', file];
-        let diff = await required(inv.workspace.repoRoot, diffArgs, inv.signal, LIMITS.maxFileBytes * 3);
+        let diff = '', diffTruncated = false;
+        if (!preview)
+            diff = await required(inv.workspace.repoRoot, diffArgs, inv.signal, LIMITS.maxFileBytes * 3);
+        else {
+            const captured = await git(inv.workspace.repoRoot, diffArgs, inv.signal, Number.MAX_SAFE_INTEGER);
+            if (captured.truncated) {
+                diffTruncated = true;
+                diff = captured.output.replace(/\uFFFD+$/u, '');
+            }
+            else if (captured.ok)
+                diff = captured.output;
+            else
+                diffTruncated = true;
+        }
         if (!inv.before.has(file) && !inv.after.has(file) && after.kind === 'text') {
             const lines = (after.text ?? '').split('\n');
             if (lines.at(-1) === '')
@@ -180,7 +209,7 @@ export function createRepository(spawn) {
             else if (hunk && /^[ +\\-]/.test(line))
                 hunk.lines.push(line);
         }
-        return { path: file, kind: after.kind, status: meta.status, afterKind: after.kind, beforeKind: before.kind, text: after.text ?? '', beforeText: before.text ?? '', hash: after.hash, beforeHash: before.hash, version, baseVersion: inv.workspace.base, diff, hunks, truncated: false };
+        return { path: file, kind: after.kind, status: meta.status, afterKind: after.kind, beforeKind: before.kind === 'text' || before.kind === 'missing' ? before.kind : 'oversized', text: after.text ?? '', beforeText: before.kind === 'text' ? before.text ?? '' : '', hash: after.hash, beforeHash: before.hash, version, baseVersion: inv.workspace.base, diff, hunks, truncated: before.truncated === true || after.truncated === true, diffTruncated };
     }
     async function capture(inv, paths) {
         if (!inv.complete)

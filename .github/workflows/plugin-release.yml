@@ -39,6 +39,8 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
+      - name: Check each plugin version against its last release
+        run: node scripts/check-plugin-release.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm run build

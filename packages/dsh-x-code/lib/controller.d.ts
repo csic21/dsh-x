@@ -128,6 +128,7 @@ export interface SourceArgs extends SnapshotArgs {
     workspaceId?: string;
     path: string;
     reviewId?: string;
+    preview?: boolean;
 }
 /** One review detail request. */
 export interface ReviewDetailArgs extends SnapshotArgs {

@@ -23,6 +23,8 @@ export interface EvidenceFile {
     mode?: '100644' | '100755';
     hash?: string;
     text?: string;
+    /** True when `text` is a prefix because the file exceeds the preview cap. */
+    truncated?: boolean;
 }
 /** One structured reason why a selected path is incomplete. */
 export interface EvidenceIssue {
@@ -38,7 +40,13 @@ export declare function evidencePathReason(file: unknown): string | null;
 export declare function issue(code: string, message: string, file?: string): EvidenceIssue;
 export declare function opaqueFile(file: string, reason: string, stat: FileStamp): EvidenceFile;
 export declare function excludedFile(file: string, reason: string, kind?: 'excluded' | 'unavailable'): EvidenceFile;
-/** Never follow a source-file symlink (including parent directories). */
-export declare function readEvidenceFile(root: string, file: string): Promise<EvidenceFile>;
+/**
+ * Never follow a source-file symlink (including parent directories).
+ * Review reads stop at the evidence cap. A preview read may return a prefix.
+ */
+export declare function readEvidenceFile(root: string, file: string, options?: {
+    maxBytes?: number;
+    truncate?: boolean;
+}): Promise<EvidenceFile>;
 export declare function fileIssue(file: EvidenceFile): EvidenceIssue | null;
 export declare function sameFile(left: EvidenceFile, right: EvidenceFile): boolean;

@@ -1,13 +1,16 @@
 // Generate the plugin market index served from GitHub Pages.
 //
-// Every released `plugins-v*` tag contributes one version per package. The
-// install target is a commit-pinned Git directory, so no npm publication is
-// needed and users add a single index URL in Plugins → Discover.
+// A `plugins-v*` tag publishes one commit. Each package contributes its own
+// package.json version, pinned to the earliest tag that contains that version.
+// An unchanged package therefore keeps its old version and its old commit.
+// The install target is a commit-pinned Git directory, so no npm publication
+// is needed and users add a single index URL in Plugins → Discover.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import { PLUGIN_PACKAGES, compareSemver, parseReleaseTag } from './plugin-versions.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const { values } = parseArgs({ options: {
@@ -46,17 +49,12 @@ const packages = {
   },
 }
 
-const compare = (a, b) => {
-  const parse = value => value.split('-')[0].split('.').map(Number)
-  const [aMajor, aMinor, aPatch] = parse(a), [bMajor, bMinor, bPatch] = parse(b)
-  return aMajor - bMajor || aMinor - bMinor || aPatch - bPatch
+for (const name of PLUGIN_PACKAGES) {
+  if (!packages[name]) throw new Error(`missing market display metadata for ${name}`)
 }
 
-const tags = git('for-each-ref', '--sort=-creatordate', '--format=%(refname:short)%09%(objectname)%09%(creatordate:unix)', 'refs/tags/plugins-v*')
-  .split('\n').filter(Boolean).map(line => {
-    const [tag, commit, timestamp] = line.split('\t')
-    return { tag, version: tag.slice('plugins-v'.length), commit, timestamp: Number(timestamp) }
-  }).filter(item => compare(item.version, minimum) >= 0)
+const tags = git('for-each-ref', '--sort=creatordate', '--format=%(refname:short)%09%(objectname)%09%(creatordate:unix)', 'refs/tags/plugins-v*')
+  .split('\n').filter(Boolean).map(line => parseReleaseTag(line, minimum)).filter(Boolean)
 
 const versions = new Map(Object.keys(packages).map(name => [name, new Map()]))
 const add = (name, version, commit, timestamp, manifest) => {
@@ -70,7 +68,7 @@ const add = (name, version, commit, timestamp, manifest) => {
   })
 }
 const manifestAt = (name, commit) => {
-  try { return JSON.parse(execFileSync('git', ['show', `${commit}:packages/${name}/package.json`], { cwd: root, encoding: 'utf8' })) }
+  try { return JSON.parse(execFileSync('git', ['show', `${commit}:packages/${name}/package.json`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })) }
   catch { return null }
 }
 
@@ -95,7 +93,7 @@ const plugins = Object.entries(packages).flatMap(([name, display]) => {
   const manifestPath = path.join(root, 'packages', name, 'package.json')
   if (!existsSync(manifestPath)) return []
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  const list = [...versions.get(name).values()].sort((a, b) => compare(b.version, a.version))
+  const list = [...versions.get(name).values()].sort((a, b) => compareSemver(b.version, a.version))
   if (!list.length) return []
   return [{
     name,

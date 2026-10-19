@@ -63,7 +63,7 @@ DSH_HOME="$TEST_HOME" /path/to/dsh-runtime/node_modules/.bin/dsh web --no-open
 
 `scripts/generate-market-index.mjs` 从 `plugins-v*` tag 和当前工作树生成格式 1 的索引：
 
-- 每个版本钉到 40 位 commit，`source.path` 指向 `packages/<包名>`；
+- 每个包用自己的 `version`；同一个版本钉到第一次发布它的 40 位 commit，`source.path` 指向 `packages/<包名>`；
 - 当前工作树版本也会出现，便于在首个新 tag 前本地验证；
 - `docs/public/market-index.json` 由文档构建生成，不提交。
 

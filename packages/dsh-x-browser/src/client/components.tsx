@@ -54,16 +54,18 @@ export function BrowserBody({ sessionId, useTabInfo, createController, t }: Brow
   const status = ['loading', 'unavailable', 'running', 'ready', 'disconnected', 'hidden', 'stopped', 'closed', 'turn-ended', 'workspace-changed', 'native-run-ended', 'document-changed'].includes(state.status) ? state.status : 'manual'
   return <section className="dxb-pane" data-testid="dxb-pane" aria-label={t('title')}>
     <form className="dxb-toolbar" onSubmit={event => { event.preventDefault(); void controller.current?.navigate(address) }}>
-      <button type="button" title={t('back')} aria-label={t('back')} disabled={!state.ready || !state.canGoBack} onClick={() => controller.current?.manual('back')}>‹</button>
-      <button type="button" title={t('forward')} aria-label={t('forward')} disabled={!state.ready || !state.canGoForward} onClick={() => controller.current?.manual('forward')}>›</button>
-      <button type="button" title={t(state.loading ? 'stop' : 'reload')} aria-label={t(state.loading ? 'stop' : 'reload')} disabled={!state.ready} onClick={() => controller.current?.manual(state.loading ? 'stop' : 'reload')}>{state.loading ? '×' : '↻'}</button>
+      <div className="dxb-nav">
+        <button type="button" className="dxb-icon-button" title={t('back')} aria-label={t('back')} disabled={!state.ready || !state.canGoBack} onClick={() => controller.current?.manual('back')}>‹</button>
+        <button type="button" className="dxb-icon-button" title={t('forward')} aria-label={t('forward')} disabled={!state.ready || !state.canGoForward} onClick={() => controller.current?.manual('forward')}>›</button>
+        <button type="button" className="dxb-icon-button" title={t(state.loading ? 'stop' : 'reload')} aria-label={t(state.loading ? 'stop' : 'reload')} disabled={!state.ready} onClick={() => controller.current?.manual(state.loading ? 'stop' : 'reload')}>{state.loading ? '×' : '↻'}</button>
+      </div>
       <input data-testid="dxb-address" aria-label={t('address')} placeholder="https://" value={address} onChange={event => setAddress(event.target.value)} spellCheck={false}/>
       <button data-testid="dxb-go" type="submit" disabled={!state.ready || !address.trim()}>{t('go')}</button>
-      <button type="button" title={t('newTab')} aria-label={t('newTab')} onClick={() => tab.actions.openTab('dsh-x-browser', { revealIfOpened: false })}>＋</button>
+      <button type="button" className="dxb-icon-button" title={t('newTab')} aria-label={t('newTab')} onClick={() => tab.actions.openTab('dsh-x-browser', { revealIfOpened: false })}>＋</button>
     </form>
     <div className="dxb-control" data-active={state.granted || undefined}>
       <span role="status" data-testid="dxb-status" className="dxb-status"><span className="dxb-dot"/>{t(status)}</span>
-      {state.granted ? <button type="button" className="dxb-takeover" data-testid="dxb-takeover" onClick={() => { setConsent(false); void controller.current?.takeover() }}>{t('takeover')}</button> : <button type="button" data-testid="dxb-enable-ai" disabled={!state.ready || !tab.visible} onClick={() => setConsent(true)}>{t('enable')}</button>}
+      {state.granted ? <button type="button" className="dxb-takeover" data-testid="dxb-takeover" onClick={() => { setConsent(false); void controller.current?.takeover() }}>{t('takeover')}</button> : <button type="button" className="dxb-primary" data-testid="dxb-enable-ai" disabled={!state.ready || !tab.visible} onClick={() => setConsent(true)}>{t('enable')}</button>}
     </div>
     {consent && <section className="dxb-consent" role="dialog" aria-label={t('enable')}><p>{t('consent')}</p><div><button type="button" onClick={() => setConsent(false)}>{t('cancel')}</button><button type="button" className="dxb-primary" data-testid="dxb-confirm-ai" onClick={() => { setConsent(false); void controller.current?.grant() }}>{t('grant')}</button></div></section>}
     {state.error && <div className="dxb-error" role="alert"><p>{t(state.status === 'unavailable' ? 'desktopOnly' : 'error')}</p><details><summary>{t('details')}</summary><p>{state.error}</p></details></div>}
