@@ -50,6 +50,12 @@ export const CSS = `
 
 /* Workbench: activity bar, resizable sidebar, editor, resizable review panel. */
 .dxc-workbench{display:grid;grid-template-columns:40px 236px 4px minmax(240px,1fr) 4px 328px;flex:1;min-height:0;overflow:hidden}
+.dxc-track-activity{grid-column:1;grid-row:1;min-width:0;overflow:hidden}
+.dxc-sidebar{grid-column:2;grid-row:1}
+.dxc-track-sidebar-splitter{grid-column:3;grid-row:1}
+.dxc-editor{grid-column:4;grid-row:1}
+.dxc-track-panel-splitter{grid-column:5;grid-row:1}
+.dxc-panel{grid-column:6;grid-row:1}
 .dxc-activity{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border-right:1px solid var(--code-line);background:var(--code-sunken);flex:none;overflow:hidden}
 .dxc-activity-item{position:relative;display:grid;place-items:center;width:32px;height:32px;padding:0!important;border:0!important;background:transparent!important;border-radius:6px;color:var(--code-muted)}
 .dxc-activity-item:hover:not(:disabled){background:color-mix(in srgb,var(--code-fg) 7%,transparent)!important;color:var(--code-fg)}
@@ -246,6 +252,8 @@ export const CSS = `
 .dxc-splitter:focus-visible .dxc-splitter-grip{background:var(--code-accent)}
 .dxc-splitter[data-dragging=true]::before,.dxc-splitter:hover::before{background:var(--code-accent)}
 .dxc-splitter[data-dragging=true]{background:color-mix(in srgb,var(--code-accent) 8%,transparent)}
+.dxc-page[data-sidebar=false] .dxc-track-activity{grid-column:1}
+.dxc-page[data-panel=false] .dxc-panel,.dxc-page[data-panel=false] .dxc-track-panel-splitter{display:none}
 
 /* Composer dock entry and tool row keep the shared Harness look. */
 .dxc-mobile-tabs{display:none}
@@ -265,7 +273,7 @@ export const CSS = `
 .dxc-tool button{font-size:11px}
 
 /* Narrow workbench: one pane at a time, chosen by the mobile tabs. */
-@container(max-width:699px){.dxc-workbench{display:block;position:relative}.dxc-activity,.dxc-splitter,.dxc-statusbar{display:none}.dxc-mobile-tabs{display:flex;margin:8px 12px}.dxc-sidebar,.dxc-editor,.dxc-panel{display:none;height:100%;border:0;min-height:0}.dxc-page[data-pane=files] .dxc-sidebar{display:flex}.dxc-page[data-pane=code] .dxc-editor{display:flex}.dxc-page[data-pane=findings] .dxc-panel{display:flex}.dxc-file-list{padding-inline:8px}.dxc-findings-actions{flex-direction:row;justify-content:flex-end;flex-wrap:wrap}.dxc-findings-actions>p{width:100%}.dxc-findings-actions button{min-width:120px}}
+@container(max-width:699px){.dxc-workbench{display:block;position:relative}.dxc-track-activity,.dxc-splitter,.dxc-statusbar{display:none}.dxc-mobile-tabs{display:flex;margin:8px 12px}.dxc-sidebar,.dxc-editor,.dxc-panel{display:none;height:100%;border:0;min-height:0;grid-column:auto;grid-row:auto}.dxc-page[data-pane=files] .dxc-sidebar{display:flex}.dxc-page[data-pane=code] .dxc-editor{display:flex}.dxc-page[data-pane=findings] .dxc-panel{display:flex}.dxc-file-list{padding-inline:8px}.dxc-findings-actions{flex-direction:row;justify-content:flex-end;flex-wrap:wrap}.dxc-findings-actions>p{width:100%}.dxc-findings-actions button{min-width:120px}}
 @container(max-width:560px){.dxc-titlebar{padding:0 8px;gap:7px;height:40px}.dxc-header-actions{gap:3px}.dxc-header-actions>button{font-size:11px;padding:4px 6px}.dxc-brand{gap:6px}.dxc-brand h1{font-size:12px}.dxc-repo{max-width:110px;font-size:10px}.dxc-toolbar{padding:5px 8px;gap:6px}.dxc-toolbar select{font-size:11px}.dxc-scope{gap:5px;flex-wrap:wrap}.dxc-scope label{display:none}.dxc-scope input{width:110px;font-size:11px!important}.dxc-banner{padding:7px 10px;font-size:11px}.dxc-viewer-heading{padding:5px 8px}.dxc-readonly{font-size:8px}.dxc-split-control{display:none}.dxc-split-row{grid-template-columns:1fr}.dxc-diff-cell:first-child{border-right:0}.dxc-diff-cell.dxc-line-context:first-child{display:none}.dxc-diff-cell.dxc-line-empty{display:none}.dxc-code-scroll{font-size:11px}.dxc-findings-actions button{min-width:0;flex:1}.dxc-find>span{font-size:9px}.dxc-find{padding-inline:8px}.dxc-source-line{grid-template-columns:40px minmax(0,1fr)}.dxc-source-line .dxc-line-number{padding-right:9px}.dxc-tab{max-width:160px}}
 @media(max-height:520px){.dxc-page{overflow-y:auto}.dxc-workbench{flex:1 0 260px;min-height:260px}}
 @media(prefers-reduced-motion:reduce){.dxc *{scroll-behavior:auto!important;transition:none!important}}

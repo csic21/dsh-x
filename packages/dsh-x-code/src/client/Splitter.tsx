@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { COLLAPSE_SNAP, dragSize, type SizeBounds } from './layout.ts'
-interface SplitterProps { value: number, bounds: SizeBounds, label: string, orientation: 'vertical' | 'horizontal', direction: 1 | -1, onResize: (value: number) => void, onToggle: () => void }
+interface SplitterProps { value: number, bounds: SizeBounds, label: string, orientation: 'vertical' | 'horizontal', direction: 1 | -1, className?: string, onResize: (value: number) => void, onToggle: () => void }
 /**
  * A pointer/keyboard separator that previews a size while dragging and commits
  * once on release, so a drag never publishes dozens of layout writes.
  */
-export function Splitter({ value, bounds, label, orientation, direction, onResize, onToggle }: SplitterProps) {
+export function Splitter({ value, bounds, label, orientation, direction, className = '', onResize, onToggle }: SplitterProps) {
   const [preview, setPreview] = useState<number | null>(null)
   const drag = useRef<{ at: number, origin: number, pointer: number } | null>(null)
   const shown = preview ?? value, vertical = orientation === 'vertical'
@@ -25,7 +25,7 @@ export function Splitter({ value, bounds, label, orientation, direction, onResiz
     else onResize(value)
   }
   return <div
-    className="dxc-splitter" data-orientation={orientation} role="separator" aria-orientation={orientation}
+    className={`dxc-splitter ${className}`} data-orientation={orientation} role="separator" aria-orientation={orientation}
     aria-label={label} aria-valuemin={bounds.min} aria-valuemax={bounds.max} aria-valuenow={shown}
     data-dragging={preview != null || undefined} tabIndex={0}
     onPointerDown={event => {

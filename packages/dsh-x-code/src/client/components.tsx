@@ -253,6 +253,7 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
   const counts = { files: files.length, changes: files.filter(isChanged).length, history: snapshot?.history.length ?? 0 }
   const showSidebar = !layout.sidebarCollapsed
   const showPanel = !layout.panelCollapsed
+  // Explicit tracks keep every region in its own column when a neighbour unmounts.
   const columns = `40px ${showSidebar ? `${layout.sidebar}px 4px` : '0px 0px'} minmax(240px,1fr) ${showPanel ? `4px ${layout.panel}px` : '0px 0px'}`
   return <main className="dxc dxc-page" ref={page} data-code-session={sessionId} data-pane={pane} data-narrow={narrow || undefined} data-sidebar={showSidebar || undefined} data-panel={showPanel || undefined}>
     <header className="dxc-titlebar">
@@ -273,14 +274,14 @@ export function CodeWorkspace({ sessionId, useCode, inputActions, refresh, selec
     {!snapshot ? <div className="dxc-empty" role={state.status === 'failed' ? 'alert' : 'status'}><CodeIcon /><p>{t(state.status === 'failed' ? messageKey(state.error?.code) : 'loading')}</p>{state.status === 'failed' && <button type="button" onClick={refresh}>{t('retry')}</button>}</div> : <>
       {narrow && <Tabs className="dxc-mobile-tabs" label={t('title')} value={pane} onChange={setPane} items={[{ value: 'files', label: t('files') }, { value: 'code', label: t('code') }, { value: 'findings', label: `${t('findings')}${review?.findings.length ? ` · ${review.findings.length}` : ''}` }]} />}
       <div className="dxc-workbench" style={narrow ? undefined : { gridTemplateColumns: columns }}>
-        {!narrow && <ActivityBar activity={layout.activity} onChange={changeActivity} counts={counts} t={t} />}
+        {!narrow && <div className="dxc-track-activity"><ActivityBar activity={layout.activity} onChange={changeActivity} counts={counts} t={t} /></div>}
         {(narrow || showSidebar) && <Sidebar files={files} path={effectivePath} selected={selected} select={toggleFile} open={next => openFile(next)} t={t} limit={maxFiles} snapshot={snapshot} reviewed={context === 'review'} activity={layout.activity} history={snapshot.history} historyId={historyId} inspectHistory={inspectHistory} latest={latest} formatTime={formatTime} />}
-        {!narrow && showSidebar && <Splitter value={layout.sidebar} bounds={SIDEBAR_BOUNDS} label={t('resizeSidebar')} orientation="vertical" direction={1} onResize={value => setLayout({ sidebar: value })} onToggle={() => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed })} />}
+        {!narrow && showSidebar && <Splitter value={layout.sidebar} bounds={SIDEBAR_BOUNDS} label={t('resizeSidebar')} orientation="vertical" direction={1} className="dxc-track-sidebar-splitter" onResize={value => setLayout({ sidebar: value })} onToggle={() => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed })} />}
         <section className="dxc-editor">
           <EditorTabs path={effectivePath} tabs={tabs} select={next => setPath(next)} close={closeTabPath} reorder={(from, to) => setTabs(value => moveTab(value, from, to))} closeOthers={closeOthers} closeAll={closeAll} t={t} />
           <CodeViewer file={fileMatches ? state.file : null} status={fileMatches ? state.fileStatus : effectivePath ? 'loading' : 'idle'} error={fileMatches ? state.fileError : null} path={effectivePath} identity={identity} mode={snapshot.workspace.mode} context={context} focus={focus} retry={() => { clearFile(); if (request) loadFile(request) }} scrollPositions={scrollPositions} t={t} />
         </section>
-        {!narrow && showPanel && <Splitter value={layout.panel} bounds={PANEL_BOUNDS} label={t('resizePanel')} orientation="vertical" direction={-1} onResize={value => setLayout({ panel: value })} onToggle={() => setLayout({ panelCollapsed: !layout.panelCollapsed })} />}
+        {!narrow && showPanel && <Splitter value={layout.panel} bounds={PANEL_BOUNDS} label={t('resizePanel')} orientation="vertical" direction={-1} className="dxc-track-panel-splitter" onResize={value => setLayout({ panel: value })} onToggle={() => setLayout({ panelCollapsed: !layout.panelCollapsed })} />}
         {(narrow || showPanel) && <BottomPanel tab={layout.panelTab} setTab={tab => setLayout({ panelTab: tab })} review={review} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} />}
       </div>
     </>}
