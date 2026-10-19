@@ -233,6 +233,38 @@ function reviewRequest(snapshot, { paths, runtime = "dsh", previousReviewId }) {
   if (paths.some((path) => !allowed.includes(path)) || paths.length > (snapshot.limits?.maxSelectedFiles ?? 20)) throw new Error("selectionChanged");
   return { scope: snapshot.scope, workspaceId: snapshot.workspace.id, mode: snapshot.workspace.mode, ...snapshot.workspace.mode === "range" ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}, paths, runtime, ...previousReviewId ? { previousReviewId } : {} };
 }
+function chatSessionView(sessions, workspaces, currentId, cwd) {
+  const byId = sessions && typeof sessions === "object" && sessions.byId && typeof sessions.byId === "object" ? sessions.byId : {};
+  const record2 = workspaces && typeof workspaces === "object" ? workspaces : void 0;
+  const groups = Array.isArray(workspaces) ? workspaces : Array.isArray(record2?.workspaces) ? record2.workspaces : Array.isArray(record2?.items) ? record2.items : [];
+  const archived = new Set(Array.isArray(record2?.archivedSessionIds) ? record2.archivedSessionIds.filter((id) => typeof id === "string") : []);
+  const samePath = (value) => typeof value === "string" && !!cwd && (value === cwd || value.replace(/\/+$/, "") === cwd.replace(/\/+$/, ""));
+  const match = groups.find((group) => Array.isArray(group?.sessionIds) && !!currentId && group.sessionIds.includes(currentId)) ?? groups.find((group) => samePath(group?.cwd) || samePath(group?.path) || samePath(group?.repoRoot));
+  const listed = Array.isArray(match?.sessionIds) ? match.sessionIds : currentId ? [currentId] : Object.keys(byId);
+  const ids = [...new Set(listed.filter((id) => typeof id === "string"))];
+  if (currentId && byId[currentId] && !ids.includes(currentId)) ids.unshift(currentId);
+  const rows = ids.flatMap((id) => {
+    const row = byId[id];
+    if (!row || row.archived === true || archived.has(id) || row.origin === "subagent") return [];
+    if (row.blank === true && id !== currentId) return [];
+    const title = typeof row.title === "string" ? row.title.trim() : "";
+    return [{ id, title, blank: row.blank === true, running: row.running === true, updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : 0 }];
+  }).sort((left, right) => right.updatedAt - left.updatedAt || (left.id < right.id ? -1 : 1));
+  return { sessions: rows, ...typeof match?.workspaceId === "string" ? { workspaceId: match.workspaceId } : {} };
+}
+var ASK_TEXT_LIMIT = 4e3;
+function askPrompt(template, path, selection = "") {
+  const safePath = path.replace(/[`\r\n]/g, "").trim();
+  if (!safePath || safePath.length > 500 || /[\u0000-\u001f]/.test(safePath)) return "";
+  const body = selection.replace(/\r\n/g, "\n").replace(/\u0000/g, "").trim().slice(0, ASK_TEXT_LIMIT);
+  if (template.includes("{selection}") && !body) return "";
+  const ticks = Math.max(2, ...[...body.matchAll(/`+/g)].map((item) => item[0].length));
+  const fence = "`".repeat(ticks + 1);
+  const quoted = body ? `${fence}
+${body}
+${fence}` : "";
+  return template.replaceAll("{path}", safePath).replaceAll("{selection}", quoted).trim();
+}
 function insertRequest(inputActions, text2) {
   if (!inputActions?.captureInsertion || !inputActions?.insertText) return false;
   const span = inputActions.captureInsertion();
@@ -727,6 +759,17 @@ function MediaView({ kind, payload, encoding, mime, name, t }) {
 }
 
 // src/client/CodeViewer.tsx
+function viewerSelection(root) {
+  const selection = root?.ownerDocument.getSelection();
+  if (!root || !selection || selection.isCollapsed || selection.rangeCount === 0) return "";
+  const range = selection.getRangeAt(0);
+  const host = range.commonAncestorContainer;
+  const element = host.nodeType === 1 ? host : host.parentElement;
+  if (!element || !root.contains(element)) return "";
+  const fragment = range.cloneContents();
+  fragment.querySelectorAll(".dxc-line-number, .dxc-line-sign, .dxc-hunk-header").forEach((node) => node.remove());
+  return (fragment.textContent ?? "").replace(/\u00a0/g, " ");
+}
 function Tabs({ items, value, onChange, label, className = "" }) {
   const onKey = (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -783,7 +826,7 @@ function Breadcrumbs({ path }) {
   if (!segments.length) return null;
   return /* @__PURE__ */ import_react4.default.createElement("nav", { className: "dxc-breadcrumbs", "aria-label": "breadcrumbs" }, segments.map((segment, at) => /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, { key: at }, at > 0 && /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-crumb-sep", "aria-hidden": "true" }, /* @__PURE__ */ import_react4.default.createElement(ChevronIcon, { size: 11 })), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-crumb", "data-last": at === segments.length - 1 || void 0 }, at === segments.length - 1 ? /* @__PURE__ */ import_react4.default.createElement(FileTypeIcon, { path: path ?? segment, size: 14 }) : /* @__PURE__ */ import_react4.default.createElement(FolderIcon, { size: 14 }), segment))));
 }
-function CodeViewer({ file, status, error, path, identity, mode, context, focus, retry, scrollPositions, t }) {
+function CodeViewer({ file, status, error, path, identity, mode, context, focus, retry, scrollPositions, t, onAsk }) {
   const [tab, setTab] = (0, import_react4.useState)(() => defaultViewerTab(path, Boolean(focus))), [side, setSide] = (0, import_react4.useState)("new"), [split, setSplit] = (0, import_react4.useState)(false), [wrap, setWrap] = (0, import_react4.useState)(false);
   const [narrow, setNarrow] = (0, import_react4.useState)(false);
   const [findOpen, setFindOpen] = (0, import_react4.useState)(false), [query, setQuery] = (0, import_react4.useState)(""), [matchIndex, setMatchIndex] = (0, import_react4.useState)(0);
@@ -875,7 +918,11 @@ function CodeViewer({ file, status, error, path, identity, mode, context, focus,
       event.preventDefault();
       nextMatch(event.shiftKey ? -1 : 1);
     }
-  } }), /* @__PURE__ */ import_react4.default.createElement("span", { role: "status" }, matches.length ? t("matches", { current: normalizedIndex + 1, count: matches.length }) : t("noMatches")), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", "aria-label": t("previousMatch"), disabled: !matches.length, onClick: () => nextMatch(-1) }, "\u2191"), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", "aria-label": t("nextMatch"), disabled: !matches.length, onClick: () => nextMatch(1) }, "\u2193"), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", "aria-label": t("closeFind"), onClick: closeFind }, /* @__PURE__ */ import_react4.default.createElement(CloseIcon, { size: 12 }))), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxc-code-scroll", ref: scroll, "data-wrap": wrap || void 0, onScroll: (event) => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }) }, !path ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxc-empty dxc-code-empty" }, /* @__PURE__ */ import_react4.default.createElement("span", { "aria-hidden": "true" }, "{ }"), /* @__PURE__ */ import_react4.default.createElement("p", null, t("chooseFile"))) : status === "loading" || status === "ready" && !loadedPath ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state", role: "status" }, t("fileLoading")) : status === "failed" ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxc-state", role: "alert" }, /* @__PURE__ */ import_react4.default.createElement("p", null, t(/stale/i.test(error?.code ?? "") ? "fileChanged" : "fileFailed")), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: retry }, t("retry"))) : loadedPath ? /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, (file.truncated || file.diffTruncated) && /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-inline-warning" }, t("truncated")), nonText ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t(kind === "unavailable" ? "fileFailed" : kind ?? "unavailable")) : view === "diff" ? hunks.length ? /* @__PURE__ */ import_react4.default.createElement(Diff, { hunks, split: split && !narrow, wrap, oldHighlights, newHighlights, query, activeLine, focus, t }) : /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("noDiff")) : media && view === "preview" ? mediaSide === "missing" || side === "new" && kind === "missing" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("missing")) : mediaSide === "oversized" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("oversized")) : mediaSide === "symlink" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("symlink")) : !mediaPayload || !mime ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t(mediaPayload === "" ? "emptyFile" : "mediaFailed")) : /* @__PURE__ */ import_react4.default.createElement(MediaView, { kind: media, payload: mediaPayload, encoding: "base64", mime, name, t }) : source == null || side === "old" && file.beforeKind === "missing" || side === "new" && (file.afterKind === "missing" || kind === "missing") ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("missing")) : source === "" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("emptyFile")) : view === "preview" && rendered === "svg" ? /* @__PURE__ */ import_react4.default.createElement(MediaView, { kind: "svg", payload: source, encoding: "text", mime: "image/svg+xml", name, t }) : view === "preview" ? /* @__PURE__ */ import_react4.default.createElement(MarkdownPreview, { text: source, labels }) : /* @__PURE__ */ import_react4.default.createElement(Source, { text: source, highlights: side === "old" ? oldHighlights : newHighlights, query, activeLine, focus, side })) : null), /* @__PURE__ */ import_react4.default.createElement("footer", { className: "dxc-statusbar" }, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-item" }, view === "diff" ? t("diff") : side === "old" ? t("beforeVersion", { version: shortHash(file?.baseVersion) }) : t("afterVersion", { origin: context === "review" ? t("reviewed") : t(`origin.${mode}`), version: shortHash(["Worktree", "Index"].includes(file?.version ?? "") ? file?.hash : file?.version ?? file?.hash) })), loadedPath && totalLines > 0 && /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-item" }, t("lineCount", { count: totalLines })), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-spacer" }), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-item" }, t("readOnly"))));
+  } }), /* @__PURE__ */ import_react4.default.createElement("span", { role: "status" }, matches.length ? t("matches", { current: normalizedIndex + 1, count: matches.length }) : t("noMatches")), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", "aria-label": t("previousMatch"), disabled: !matches.length, onClick: () => nextMatch(-1) }, "\u2191"), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", "aria-label": t("nextMatch"), disabled: !matches.length, onClick: () => nextMatch(1) }, "\u2193"), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", "aria-label": t("closeFind"), onClick: closeFind }, /* @__PURE__ */ import_react4.default.createElement(CloseIcon, { size: 12 }))), /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxc-code-scroll", ref: scroll, "data-wrap": wrap || void 0, onScroll: (event) => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }), onContextMenu: (event) => {
+    if (!path || !onAsk || event.target.closest("input, textarea, button, a, select")) return;
+    event.preventDefault();
+    onAsk({ x: event.clientX, y: event.clientY, path, selection: viewerSelection(event.currentTarget) });
+  } }, !path ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxc-empty dxc-code-empty" }, /* @__PURE__ */ import_react4.default.createElement("span", { "aria-hidden": "true" }, "{ }"), /* @__PURE__ */ import_react4.default.createElement("p", null, t("chooseFile"))) : status === "loading" || status === "ready" && !loadedPath ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state", role: "status" }, t("fileLoading")) : status === "failed" ? /* @__PURE__ */ import_react4.default.createElement("div", { className: "dxc-state", role: "alert" }, /* @__PURE__ */ import_react4.default.createElement("p", null, t(/stale/i.test(error?.code ?? "") ? "fileChanged" : "fileFailed")), /* @__PURE__ */ import_react4.default.createElement("button", { type: "button", onClick: retry }, t("retry"))) : loadedPath ? /* @__PURE__ */ import_react4.default.createElement(import_react4.default.Fragment, null, (file.truncated || file.diffTruncated) && /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-inline-warning" }, t("truncated")), nonText ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t(kind === "unavailable" ? "fileFailed" : kind ?? "unavailable")) : view === "diff" ? hunks.length ? /* @__PURE__ */ import_react4.default.createElement(Diff, { hunks, split: split && !narrow, wrap, oldHighlights, newHighlights, query, activeLine, focus, t }) : /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("noDiff")) : media && view === "preview" ? mediaSide === "missing" || side === "new" && kind === "missing" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("missing")) : mediaSide === "oversized" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("oversized")) : mediaSide === "symlink" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("symlink")) : !mediaPayload || !mime ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t(mediaPayload === "" ? "emptyFile" : "mediaFailed")) : /* @__PURE__ */ import_react4.default.createElement(MediaView, { kind: media, payload: mediaPayload, encoding: "base64", mime, name, t }) : source == null || side === "old" && file.beforeKind === "missing" || side === "new" && (file.afterKind === "missing" || kind === "missing") ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("missing")) : source === "" ? /* @__PURE__ */ import_react4.default.createElement("p", { className: "dxc-state" }, t("emptyFile")) : view === "preview" && rendered === "svg" ? /* @__PURE__ */ import_react4.default.createElement(MediaView, { kind: "svg", payload: source, encoding: "text", mime: "image/svg+xml", name, t }) : view === "preview" ? /* @__PURE__ */ import_react4.default.createElement(MarkdownPreview, { text: source, labels }) : /* @__PURE__ */ import_react4.default.createElement(Source, { text: source, highlights: side === "old" ? oldHighlights : newHighlights, query, activeLine, focus, side })) : null), /* @__PURE__ */ import_react4.default.createElement("footer", { className: "dxc-statusbar" }, /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-item" }, view === "diff" ? t("diff") : side === "old" ? t("beforeVersion", { version: shortHash(file?.baseVersion) }) : t("afterVersion", { origin: context === "review" ? t("reviewed") : t(`origin.${mode}`), version: shortHash(["Worktree", "Index"].includes(file?.version ?? "") ? file?.hash : file?.version ?? file?.hash) })), loadedPath && totalLines > 0 && /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-item" }, t("lineCount", { count: totalLines })), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-spacer" }), /* @__PURE__ */ import_react4.default.createElement("span", { className: "dxc-status-item" }, t("readOnly"))));
 }
 
 // src/client/Splitter.tsx
@@ -1090,6 +1137,11 @@ var en = {
   reviewSummary: "Review",
   problems: "Problems",
   chat: "Chat",
+  chatSessions: "Sessions",
+  chatNew: "New session",
+  chatUntitled: "Untitled",
+  chatBlank: "New session",
+  chatCurrent: "Current",
   chatUnavailable: "The shared conversation is unavailable here. Open the main conversation instead.",
   noHistory: "No recorded reviews yet.",
   toggleSidebar: "Toggle sidebar",
@@ -1152,6 +1204,11 @@ var en = {
   noChanges: "No changes in this scope.",
   chooseFile: "Choose a file to read its source or diff.",
   openFile: "Open {path}",
+  askMenu: "Add to conversation",
+  askFile: "Ask about this file",
+  askSelection: "Ask about this selection",
+  askFilePrompt: "Please look at `{path}`.",
+  askSelectionPrompt: "About this part of `{path}`:\n\n{selection}",
   selectFile: "Select {path} for review",
   selectChanged: "Select changed",
   clearSelection: "Clear selection",
@@ -1325,6 +1382,11 @@ var zh = {
   reviewSummary: "\u5BA1\u67E5",
   problems: "\u95EE\u9898",
   chat: "\u5BF9\u8BDD",
+  chatSessions: "\u4F1A\u8BDD",
+  chatNew: "\u65B0\u5EFA\u4F1A\u8BDD",
+  chatUntitled: "\u672A\u547D\u540D",
+  chatBlank: "\u65B0\u4F1A\u8BDD",
+  chatCurrent: "\u5F53\u524D",
   chatUnavailable: "\u8FD9\u91CC\u6682\u65F6\u65E0\u6CD5\u5D4C\u5165\u5171\u4EAB\u5BF9\u8BDD\uFF0C\u8BF7\u6539\u7528\u4E3B\u5BF9\u8BDD\u3002",
   noHistory: "\u8FD8\u6CA1\u6709\u5BA1\u67E5\u8BB0\u5F55\u3002",
   toggleSidebar: "\u663E\u793A/\u9690\u85CF\u4FA7\u8FB9\u680F",
@@ -1387,6 +1449,11 @@ var zh = {
   noChanges: "\u6B64\u8303\u56F4\u5185\u6CA1\u6709\u66F4\u6539\u3002",
   chooseFile: "\u9009\u62E9\u6587\u4EF6\uFF0C\u67E5\u770B\u6E90\u7801\u6216\u5DEE\u5F02\u3002",
   openFile: "\u6253\u5F00 {path}",
+  askMenu: "\u52A0\u5165\u63D0\u95EE",
+  askFile: "\u5C31\u6B64\u6587\u4EF6\u63D0\u95EE",
+  askSelection: "\u628A\u9009\u4E2D\u5185\u5BB9\u52A0\u5165\u63D0\u95EE",
+  askFilePrompt: "\u8BF7\u770B\u8FD9\u4E2A\u6587\u4EF6\uFF1A`{path}`",
+  askSelectionPrompt: "\u5173\u4E8E `{path}` \u91CC\u7684\u8FD9\u6BB5\u5185\u5BB9\uFF1A\n\n{selection}",
   selectFile: "\u9009\u62E9 {path} \u8FDB\u884C\u5BA1\u67E5",
   selectChanged: "\u9009\u62E9\u66F4\u6539",
   clearSelection: "\u6E05\u7A7A\u9009\u62E9",
@@ -1558,27 +1625,30 @@ function ActivityBar({ activity, onChange, counts, t }) {
   ];
   return /* @__PURE__ */ import_react7.default.createElement("nav", { className: "dxc-activity", "aria-label": t("explorer") }, items.map((item) => /* @__PURE__ */ import_react7.default.createElement("button", { key: item.value, type: "button", className: "dxc-activity-item", "aria-pressed": activity === item.value, title: item.label, "aria-label": item.label, onClick: () => onChange(item.value) }, /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-activity-icon", "aria-hidden": "true" }, item.icon), item.count > 0 && /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-activity-count" }, item.count))));
 }
-function FileRow({ file, path, selected, select, open, t, limit, reviewed, depth }) {
-  return /* @__PURE__ */ import_react7.default.createElement("li", { className: "dxc-file-row", style: indent(depth), "data-selected": path === file.path || void 0 }, !reviewed && /* @__PURE__ */ import_react7.default.createElement("input", { type: "checkbox", "aria-label": t("selectFile", { path: file.path }), checked: selected.includes(file.path), disabled: !file.selectable || !selected.includes(file.path) && selected.length >= limit, onChange: () => select(file.path) }), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-file", "aria-current": path === file.path ? "true" : void 0, "aria-label": t("openFile", { path: file.path }), title: file.path, onClick: () => open(file.path) }, /* @__PURE__ */ import_react7.default.createElement(FileTypeIcon, { path: file.path }), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-file-name" }, basename(file.path)), /* @__PURE__ */ import_react7.default.createElement("span", { className: `dxc-file-status dxc-status-${file.status}`, title: t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : "file.modified") }, mark(file))));
+function FileRow({ file, path, selected, select, open, ask, t, limit, reviewed, depth }) {
+  return /* @__PURE__ */ import_react7.default.createElement("li", { className: "dxc-file-row", style: indent(depth), "data-selected": path === file.path || void 0, onContextMenu: (event) => {
+    event.preventDefault();
+    ask({ x: event.clientX, y: event.clientY, path: file.path, selection: "" });
+  } }, !reviewed && /* @__PURE__ */ import_react7.default.createElement("input", { type: "checkbox", "aria-label": t("selectFile", { path: file.path }), checked: selected.includes(file.path), disabled: !file.selectable || !selected.includes(file.path) && selected.length >= limit, onChange: () => select(file.path) }), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-file", "aria-current": path === file.path ? "true" : void 0, "aria-label": t("openFile", { path: file.path }), title: file.path, onClick: () => open(file.path) }, /* @__PURE__ */ import_react7.default.createElement(FileTypeIcon, { path: file.path }), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-file-name" }, basename(file.path)), /* @__PURE__ */ import_react7.default.createElement("span", { className: `dxc-file-status dxc-status-${file.status}`, title: t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : "file.modified") }, mark(file))));
 }
 function TreeBranch({ node, depth, ...rest }) {
   if (!node.directories.length && !node.files.length) return null;
   return /* @__PURE__ */ import_react7.default.createElement("li", { className: "dxc-branch" }, /* @__PURE__ */ import_react7.default.createElement("details", { className: "dxc-directory", open: true }, /* @__PURE__ */ import_react7.default.createElement("summary", { title: node.path, "aria-label": node.path, style: indent(depth) }, /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-disclosure", "aria-hidden": "true" }, /* @__PURE__ */ import_react7.default.createElement(ChevronIcon, { size: 12 })), /* @__PURE__ */ import_react7.default.createElement(FolderIcon, null), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-dir-name" }, node.name)), /* @__PURE__ */ import_react7.default.createElement("ul", { className: "dxc-children" }, node.directories.map((child) => /* @__PURE__ */ import_react7.default.createElement(TreeBranch, { key: child.path, node: child, depth: depth + 1, ...rest })), node.files.map((file) => /* @__PURE__ */ import_react7.default.createElement(FileRow, { key: file.path, file, depth: depth + 1, ...rest })))));
 }
-function FileList({ files, path, selected, select, open, t, limit, reviewed, filter }) {
+function FileList({ files, path, selected, select, open, ask, t, limit, reviewed, filter }) {
   const [query, setQuery] = (0, import_react7.useState)("");
   const tree = (0, import_react7.useMemo)(() => fileTree(files, query, reviewed ? "all" : filter), [files, query, filter, reviewed]);
-  const rows = { path, selected, select, open, t, limit, reviewed };
+  const rows = { path, selected, select, open, ask, t, limit, reviewed };
   return /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-file-search" }, /* @__PURE__ */ import_react7.default.createElement("span", { "aria-hidden": "true" }, /* @__PURE__ */ import_react7.default.createElement("svg", { viewBox: "0 0 16 16", width: "12", height: "12", fill: "none", stroke: "currentColor", strokeWidth: "1.4" }, /* @__PURE__ */ import_react7.default.createElement("circle", { cx: "7", cy: "7", r: "4" }), /* @__PURE__ */ import_react7.default.createElement("path", { d: "m10 10 3.5 3.5", strokeLinecap: "round" }))), /* @__PURE__ */ import_react7.default.createElement("input", { type: "search", value: query, onChange: (event) => setQuery(event.target.value), placeholder: t("searchFiles"), "aria-label": t("fileSearchLabel") })), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-file-list" }, tree.directories.length || tree.files.length ? /* @__PURE__ */ import_react7.default.createElement("ul", { className: "dxc-tree" }, tree.directories.map((node) => /* @__PURE__ */ import_react7.default.createElement(TreeBranch, { key: node.path, node, depth: 0, ...rows })), tree.files.map((file) => /* @__PURE__ */ import_react7.default.createElement(FileRow, { key: file.path, file, depth: 0, ...rows }))) : /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t(filter === "changed" && !query && !reviewed ? "noChanges" : "noFiles"))));
 }
-function Sidebar({ files, path, selected, select, open, t, limit, snapshot, reviewed, activity, history, historyId, inspectHistory, latest, formatTime }) {
+function Sidebar({ files, path, selected, select, open, ask, t, limit, snapshot, reviewed, activity, history, historyId, inspectHistory, latest, formatTime }) {
   const [filter, setFilter] = (0, import_react7.useState)("changed");
   const changed = files.filter(isChanged), scope = activity === "changes" ? filter : "all";
   const shown = scope === "changed" ? changed : files;
   const title = activity === "files" ? "explorer" : activity === "changes" ? "changed" : "history";
-  return /* @__PURE__ */ import_react7.default.createElement("aside", { className: "dxc-sidebar", "aria-label": t(title) }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-sidebar-title" }, /* @__PURE__ */ import_react7.default.createElement("strong", null, t(title)), activity !== "history" && /* @__PURE__ */ import_react7.default.createElement("span", null, t("fileCount", { count: shown.length }))), activity === "history" ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-history-pane" }, history.length ? /* @__PURE__ */ import_react7.default.createElement("ol", null, [...history].reverse().map((item) => /* @__PURE__ */ import_react7.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-history-item", "aria-pressed": historyId === item.id, onClick: () => inspectHistory(item.id) }, /* @__PURE__ */ import_react7.default.createElement("time", null, formatTime(item.createdAt)), /* @__PURE__ */ import_react7.default.createElement("span", null, t("openFindings", { count: item.findings }), " \xB7 ", shortHash(item.snapshotId)))))) : /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("noHistory")), historyId && /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-link", onClick: latest }, t("latestReview"))) : /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, activity === "changes" && !reviewed && /* @__PURE__ */ import_react7.default.createElement(Tabs, { className: "dxc-sidebar-tabs", label: t("files"), value: filter, onChange: setFilter, items: [{ value: "changed", label: t("changed") }, { value: "all", label: t("all") }] }), /* @__PURE__ */ import_react7.default.createElement(FileList, { files: shown, path, selected, select, open, t, limit, reviewed, filter: scope }), /* @__PURE__ */ import_react7.default.createElement("footer", { className: "dxc-file-footer" }, reviewed ? /* @__PURE__ */ import_react7.default.createElement("span", null, t("reviewedOnly")) : /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, /* @__PURE__ */ import_react7.default.createElement("span", null, t("selection", { count: selected.length })), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: () => select(selected.length ? null : "all") }, t(selected.length ? "clearSelection" : "selectChanged"))), snapshot.truncated && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-inline-warning" }, t("partialFiles")))));
+  return /* @__PURE__ */ import_react7.default.createElement("aside", { className: "dxc-sidebar", "aria-label": t(title) }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-sidebar-title" }, /* @__PURE__ */ import_react7.default.createElement("strong", null, t(title)), activity !== "history" && /* @__PURE__ */ import_react7.default.createElement("span", null, t("fileCount", { count: shown.length }))), activity === "history" ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-history-pane" }, history.length ? /* @__PURE__ */ import_react7.default.createElement("ol", null, [...history].reverse().map((item) => /* @__PURE__ */ import_react7.default.createElement("li", { key: item.id }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-history-item", "aria-pressed": historyId === item.id, onClick: () => inspectHistory(item.id) }, /* @__PURE__ */ import_react7.default.createElement("time", null, formatTime(item.createdAt)), /* @__PURE__ */ import_react7.default.createElement("span", null, t("openFindings", { count: item.findings }), " \xB7 ", shortHash(item.snapshotId)))))) : /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("noHistory")), historyId && /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-link", onClick: latest }, t("latestReview"))) : /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, activity === "changes" && !reviewed && /* @__PURE__ */ import_react7.default.createElement(Tabs, { className: "dxc-sidebar-tabs", label: t("files"), value: filter, onChange: setFilter, items: [{ value: "changed", label: t("changed") }, { value: "all", label: t("all") }] }), /* @__PURE__ */ import_react7.default.createElement(FileList, { files: shown, path, selected, select, open, ask, t, limit, reviewed, filter: scope }), /* @__PURE__ */ import_react7.default.createElement("footer", { className: "dxc-file-footer" }, reviewed ? /* @__PURE__ */ import_react7.default.createElement("span", null, t("reviewedOnly")) : /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, /* @__PURE__ */ import_react7.default.createElement("span", null, t("selection", { count: selected.length })), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: () => select(selected.length ? null : "all") }, t(selected.length ? "clearSelection" : "selectChanged"))), snapshot.truncated && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-inline-warning" }, t("partialFiles")))));
 }
-function EditorTabs({ path, tabs, select, close, reorder, closeOthers, closeAll, t }) {
+function EditorTabs({ path, tabs, select, close, reorder, closeOthers, closeAll, ask, t }) {
   const [menu, setMenu] = (0, import_react7.useState)(false), dragging = (0, import_react7.useRef)(null);
   if (!tabs.length) return null;
   return /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-editor-tabs", role: "tablist", "aria-label": t("openEditors") }, tabs.map((tab, at) => /* @__PURE__ */ import_react7.default.createElement(
@@ -1601,6 +1671,10 @@ function EditorTabs({ path, tabs, select, close, reorder, closeOthers, closeAll,
       },
       onDragEnd: () => {
         dragging.current = null;
+      },
+      onContextMenu: (event) => {
+        event.preventDefault();
+        ask({ x: event.clientX, y: event.clientY, path: tab.path, selection: "" });
       }
     },
     /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab.path === path, title: tab.path, onClick: () => select(tab.path), onAuxClick: (event) => {
@@ -1643,21 +1717,66 @@ function ConversationEmbed({ renderFactorySlot, sessionId, useSession, useConver
   if (typeof renderFactorySlot !== "function") return /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("chatUnavailable"));
   return /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-chat-embed" }, renderFactorySlot("conversation.content", { variant: "embedded", phase, hero }, { slots: { views: ChatView }, fallback: /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("chatUnavailable")) }));
 }
-function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, renderFactorySlot, sessionId, useSession, useConversation, useSessions }) {
+function sessionLabel(session, current, t) {
+  const name = session.title || (session.blank ? t("chatBlank") : t("chatUntitled"));
+  return current ? `${name} \xB7 ${t("chatCurrent")}` : name;
+}
+function SessionBar({ sessionId, cwd, useSessions, useWorkspaces, openSession, startSession, t }) {
+  const sessionList = useSessions?.((state) => state);
+  const workspaceList = useWorkspaces?.((state) => state);
+  const directory = (0, import_react7.useMemo)(() => chatSessionView(sessionList, workspaceList, sessionId, cwd), [sessionList, workspaceList, sessionId, cwd]);
+  const choices = directory.sessions.some((session) => session.id === sessionId) ? directory.sessions : [{ id: sessionId, title: "", blank: false, running: false, updatedAt: 0 }, ...directory.sessions];
+  return /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-session-bar" }, /* @__PURE__ */ import_react7.default.createElement("select", { "aria-label": t("chatSessions"), value: sessionId, disabled: !openSession, onChange: (event) => {
+    if (event.target.value && event.target.value !== sessionId) openSession?.(event.target.value);
+  } }, choices.map((session) => /* @__PURE__ */ import_react7.default.createElement("option", { key: session.id, value: session.id }, sessionLabel(session, session.id === sessionId, t)))), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", disabled: !startSession, onClick: () => startSession?.(directory.workspaceId) }, t("chatNew")));
+}
+function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, renderFactorySlot, sessionId, cwd, openSession, startSession, useSession, useConversation, useSessions, useWorkspaces }) {
   const problems = review?.findings.length ?? 0;
-  return /* @__PURE__ */ import_react7.default.createElement("aside", { className: "dxc-panel", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-tabs", role: "tablist", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "problems", onClick: () => setTab("problems") }, t("problems"), problems > 0 && /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-count" }, problems)), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "review", onClick: () => setTab("review") }, t("reviewSummary")), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "chat", onClick: () => setTab("chat") }, t("chat"))), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-body" }, tab === "chat" ? /* @__PURE__ */ import_react7.default.createElement(ConversationEmbed, { renderFactorySlot, sessionId, useSession, useConversation, useSessions, t }) : tab === "problems" ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-problems" }, !review ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("noReviewHint")) : review.findings.length === 0 ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, isComplete(review) ? t("noFindings") : t("incomplete")) : /* @__PURE__ */ import_react7.default.createElement("ul", { className: "dxc-problem-list" }, review.findings.map((finding) => /* @__PURE__ */ import_react7.default.createElement("li", { key: finding.id }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-problem", onClick: () => jump(finding) }, /* @__PURE__ */ import_react7.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-title" }, finding.title), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-path", title: finding.path }, basename(finding.path), /* @__PURE__ */ import_react7.default.createElement("span", null, ":", finding.startLine))))))) : /* @__PURE__ */ import_react7.default.createElement(ReviewPane, { review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory })));
+  return /* @__PURE__ */ import_react7.default.createElement("aside", { className: "dxc-panel", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-tabs", role: "tablist", "aria-label": t("panel") }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "problems", onClick: () => setTab("problems") }, t("problems"), problems > 0 && /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-count" }, problems)), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "review", onClick: () => setTab("review") }, t("reviewSummary")), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", role: "tab", "aria-selected": tab === "chat", onClick: () => setTab("chat") }, t("chat"))), /* @__PURE__ */ import_react7.default.createElement(SessionBar, { sessionId, cwd, useSessions, useWorkspaces, openSession, startSession, t }), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-panel-body" }, tab === "chat" ? /* @__PURE__ */ import_react7.default.createElement(ConversationEmbed, { renderFactorySlot, sessionId, useSession, useConversation, useSessions, t }) : tab === "problems" ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-problems" }, !review ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, t("noReviewHint")) : review.findings.length === 0 ? /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-state" }, isComplete(review) ? t("noFindings") : t("incomplete")) : /* @__PURE__ */ import_react7.default.createElement("ul", { className: "dxc-problem-list" }, review.findings.map((finding) => /* @__PURE__ */ import_react7.default.createElement("li", { key: finding.id }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-problem", onClick: () => jump(finding) }, /* @__PURE__ */ import_react7.default.createElement("span", { className: `dxc-severity dxc-severity-${finding.severity}` }, t(`severity.${finding.severity}`)), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-title" }, finding.title), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-problem-path", title: finding.path }, basename(finding.path), /* @__PURE__ */ import_react7.default.createElement("span", null, ":", finding.startLine))))))) : /* @__PURE__ */ import_react7.default.createElement(ReviewPane, { review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory })));
+}
+function AskMenu({ x, y, label, items, onClose }) {
+  const ref = (0, import_react7.useRef)(null);
+  (0, import_react7.useEffect)(() => {
+    const node = ref.current;
+    const view = node?.ownerDocument.defaultView;
+    const box = node?.getBoundingClientRect();
+    if (node && box && view) {
+      node.style.left = `${Math.max(8, Math.min(x, view.innerWidth - box.width - 8))}px`;
+      node.style.top = `${Math.max(8, Math.min(y, view.innerHeight - box.height - 8))}px`;
+    }
+    node?.querySelector("button")?.focus();
+    const onPointer = (event) => {
+      if (!node?.contains(event.target)) onClose();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    node?.ownerDocument.addEventListener("pointerdown", onPointer);
+    node?.ownerDocument.addEventListener("keydown", onKey);
+    return () => {
+      node?.ownerDocument.removeEventListener("pointerdown", onPointer);
+      node?.ownerDocument.removeEventListener("keydown", onKey);
+    };
+  }, [x, y, onClose]);
+  return /* @__PURE__ */ import_react7.default.createElement("div", { ref, className: "dxc-context-menu", role: "menu", "aria-label": label, style: { left: x, top: y } }, items.map((item) => /* @__PURE__ */ import_react7.default.createElement("button", { key: item.id, type: "button", role: "menuitem", onClick: () => {
+    item.run();
+    onClose();
+  } }, item.label)));
 }
 function CodeWorkspace(props) {
   return /* @__PURE__ */ import_react7.default.createElement(CodeWorkspaceBody, { ...props });
 }
-function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, renderFactorySlot, useSession, useConversation, useSessions, cancel, back, t, formatTime }) {
+function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, renderFactorySlot, useSession, useConversation, useSessions, useWorkspaces, openSession, startSession, cancel, back, t, formatTime }) {
   const state = useCode((value) => value), snapshot = state.snapshot;
   const page = (0, import_react7.useRef)(null);
   const workbench = (0, import_react7.useRef)(null);
   const { layout, update: setLayout } = useWorkbenchLayout(browserStorage());
   const [narrow, setNarrow] = (0, import_react7.useState)(false), [pane, setPane] = (0, import_react7.useState)("files");
   const [tabs, setTabs] = (0, import_react7.useState)([]), [path, setPath] = (0, import_react7.useState)(null);
-  const [selected, setSelected] = (0, import_react7.useState)([]), [context, setContext] = (0, import_react7.useState)("current"), [notice, setNotice] = (0, import_react7.useState)(null), [focus, setFocus] = (0, import_react7.useState)(null);
+  const [selected, setSelected] = (0, import_react7.useState)([]), [context, setContext] = (0, import_react7.useState)("current"), [notice, setNotice] = (0, import_react7.useState)(null), [focus, setFocus] = (0, import_react7.useState)(null), [askMenu, setAskMenu] = (0, import_react7.useState)(null);
   const [base2, setBase] = (0, import_react7.useState)(snapshot?.workspace.baseRef ?? "main"), [mode, setMode] = (0, import_react7.useState)(snapshot?.workspace.mode ?? "worktree");
   const scrollPositions = (0, import_react7.useRef)(/* @__PURE__ */ new Map()), previousWorkspace = (0, import_react7.useRef)(null), previousReview = (0, import_react7.useRef)(void 0), rereviewId = (0, import_react7.useRef)(null);
   (0, import_react7.useEffect)(() => {
@@ -1753,6 +1872,29 @@ function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTa
     setPath(null);
     clearFile();
   };
+  const openAsk = (target) => setAskMenu(target);
+  const quote = (path2, selection) => {
+    if (!files.some((file) => file.path === path2)) {
+      setNotice("unavailable");
+      return;
+    }
+    const text2 = askPrompt(selection.trim() ? t("askSelectionPrompt") : t("askFilePrompt"), path2, selection);
+    if (!text2) {
+      setNotice("unavailable");
+      return;
+    }
+    try {
+      if (!insertRequest(inputActions, text2)) {
+        setNotice("draftChanged");
+        return;
+      }
+      setNotice("inserted");
+      setLayout({ panelCollapsed: false, panelTab: "chat" });
+      if (narrow) setPane("findings");
+    } catch {
+      setNotice("insertionUnconfirmed");
+    }
+  };
   const put = (text2) => {
     try {
       if (!insertRequest(inputActions, text2)) {
@@ -1830,10 +1972,10 @@ ${JSON.stringify(args, null, 2)}`);
   } }, /* @__PURE__ */ import_react7.default.createElement("option", { value: "current" }, t("current")), /* @__PURE__ */ import_react7.default.createElement("option", { value: "review" }, t("reviewed"), " \xB7 ", shortHash(review.snapshotId)))), historyId && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-banner dxc-history-banner" }, /* @__PURE__ */ import_react7.default.createElement("span", null, t("viewingHistory"), " \xB7 ", shortHash(review?.snapshotId)), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: latest }, t("latestReview"))), !live && snapshot && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t("disconnected")), notice && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-banner dxc-warning", role: "alert" }, t(notice, { count: maxFiles }), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", "aria-label": t("close"), onClick: () => setNotice(null) }, "\xD7")), running && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-banner dxc-running", role: "status" }, /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-state-dot" }), /* @__PURE__ */ import_react7.default.createElement("span", null, t(operation && Object.hasOwn(en, `stage.${operation.state}`) ? `stage.${operation.state}` : "state.running")), /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: back }, t("openConversation")), canStop && /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", disabled: !live || state.pending || operation?.state === "cancelling", onClick: async () => {
     const result = await cancel();
     if (!result.ok) setNotice("cancelUnconfirmed");
-  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react7.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react7.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, narrow && /* @__PURE__ */ import_react7.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: pane, onChange: setPane, items: [{ value: "files", label: t("files") }, { value: "code", label: t("code") }, { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-workbench", ref: workbench, style: narrow ? void 0 : { gridTemplateColumns: columns } }, !narrow && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-track-activity" }, /* @__PURE__ */ import_react7.default.createElement(ActivityBar, { activity: layout.activity, onChange: changeActivity, counts, t })), (narrow || showSidebar) && /* @__PURE__ */ import_react7.default.createElement(Sidebar, { files, path: effectivePath, selected, select: toggleFile, open: (next) => openFile(next), t, limit: maxFiles, snapshot, reviewed: context === "review", activity: layout.activity, history: snapshot.history, historyId, inspectHistory, latest, formatTime }), !narrow && showSidebar && /* @__PURE__ */ import_react7.default.createElement(Splitter, { value: layout.sidebar, bounds: SIDEBAR_BOUNDS, label: t("resizeSidebar"), orientation: "vertical", direction: 1, className: "dxc-track-sidebar-splitter", onResize: (value) => setLayout({ sidebar: value }), onPreview: (value) => paintTrack(value, layout.panel), onToggle: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }), /* @__PURE__ */ import_react7.default.createElement("section", { className: "dxc-editor" }, /* @__PURE__ */ import_react7.default.createElement(EditorTabs, { path: effectivePath, tabs, select: (next) => setPath(next), close: closeTabPath, reorder: (from, to) => setTabs((value) => moveTab(value, from, to)), closeOthers, closeAll, t }), /* @__PURE__ */ import_react7.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
+  } }, t(state.pending || operation?.state === "cancelling" ? "stopping" : "stop"))), snapshot && !reviewAvailable && /* @__PURE__ */ import_react7.default.createElement("p", { className: "dxc-banner" }, t("reviewerMissing")), !snapshot ? /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-empty", role: state.status === "failed" ? "alert" : "status" }, /* @__PURE__ */ import_react7.default.createElement(CodeIcon, null), /* @__PURE__ */ import_react7.default.createElement("p", null, t(state.status === "failed" ? messageKey(state.error?.code) : "loading")), state.status === "failed" && /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", onClick: refresh }, t("retry"))) : /* @__PURE__ */ import_react7.default.createElement(import_react7.default.Fragment, null, narrow && /* @__PURE__ */ import_react7.default.createElement(Tabs, { className: "dxc-mobile-tabs", label: t("title"), value: pane, onChange: setPane, items: [{ value: "files", label: t("files") }, { value: "code", label: t("code") }, { value: "findings", label: `${t("findings")}${review?.findings.length ? ` \xB7 ${review.findings.length}` : ""}` }] }), /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-workbench", ref: workbench, style: narrow ? void 0 : { gridTemplateColumns: columns } }, !narrow && /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-track-activity" }, /* @__PURE__ */ import_react7.default.createElement(ActivityBar, { activity: layout.activity, onChange: changeActivity, counts, t })), (narrow || showSidebar) && /* @__PURE__ */ import_react7.default.createElement(Sidebar, { files, path: effectivePath, selected, select: toggleFile, open: (next) => openFile(next), ask: openAsk, t, limit: maxFiles, snapshot, reviewed: context === "review", activity: layout.activity, history: snapshot.history, historyId, inspectHistory, latest, formatTime }), !narrow && showSidebar && /* @__PURE__ */ import_react7.default.createElement(Splitter, { value: layout.sidebar, bounds: SIDEBAR_BOUNDS, label: t("resizeSidebar"), orientation: "vertical", direction: 1, className: "dxc-track-sidebar-splitter", onResize: (value) => setLayout({ sidebar: value }), onPreview: (value) => paintTrack(value, layout.panel), onToggle: () => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed }) }), /* @__PURE__ */ import_react7.default.createElement("section", { className: "dxc-editor" }, /* @__PURE__ */ import_react7.default.createElement(EditorTabs, { path: effectivePath, tabs, select: (next) => setPath(next), close: closeTabPath, reorder: (from, to) => setTabs((value) => moveTab(value, from, to)), closeOthers, closeAll, ask: openAsk, t }), /* @__PURE__ */ import_react7.default.createElement(CodeViewer, { file: fileMatches ? state.file : null, status: fileMatches ? state.fileStatus : effectivePath ? "loading" : "idle", error: fileMatches ? state.fileError : null, path: effectivePath, identity, mode: snapshot.workspace.mode, context, focus, retry: () => {
     clearFile();
     if (request) loadFile(request);
-  }, scrollPositions, t })), !narrow && showPanel && /* @__PURE__ */ import_react7.default.createElement(Splitter, { value: layout.panel, bounds: PANEL_BOUNDS, label: t("resizePanel"), orientation: "vertical", direction: -1, className: "dxc-track-panel-splitter", onResize: (value) => setLayout({ panel: value }), onPreview: (value) => paintTrack(layout.sidebar, value), onToggle: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }), (narrow || showPanel) && /* @__PURE__ */ import_react7.default.createElement(BottomPanel, { tab: layout.panelTab, setTab: (tab) => setLayout({ panelTab: tab }), review, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime, renderFactorySlot, sessionId, useSession, useConversation, useSessions }))));
+  }, scrollPositions, onAsk: openAsk, t })), !narrow && showPanel && /* @__PURE__ */ import_react7.default.createElement(Splitter, { value: layout.panel, bounds: PANEL_BOUNDS, label: t("resizePanel"), orientation: "vertical", direction: -1, className: "dxc-track-panel-splitter", onResize: (value) => setLayout({ panel: value }), onPreview: (value) => paintTrack(layout.sidebar, value), onToggle: () => setLayout({ panelCollapsed: !layout.panelCollapsed }) }), (narrow || showPanel) && /* @__PURE__ */ import_react7.default.createElement(BottomPanel, { tab: layout.panelTab, setTab: (tab) => setLayout({ panelTab: tab }), review, historyId, inspectHistory, historyStatus: state.historyStatus, jump, rereview: () => beginReview("rereview"), enabled: live && !running && !historyId, canRereview: review?.mode === "worktree" && snapshot.workspace.mode === "worktree", t, formatTime, renderFactorySlot, sessionId, cwd: snapshot.workspace.cwd ?? snapshot.workspace.repoRoot, openSession, startSession, useSession, useConversation, useSessions, useWorkspaces })), askMenu && /* @__PURE__ */ import_react7.default.createElement(AskMenu, { x: askMenu.x, y: askMenu.y, label: t("askMenu"), onClose: () => setAskMenu(null), items: [...askMenu.selection.trim() ? [{ id: "selection", label: t("askSelection"), run: () => quote(askMenu.path, askMenu.selection) }] : [], { id: "file", label: t("askFile"), run: () => quote(askMenu.path, "") }] })));
 }
 function CodeToolRow({ phase, block, open, t }) {
   const meta = block?.meta, valid = meta?.kind === "dsh-x-code.result" && meta.version === 1;
@@ -1852,7 +1994,7 @@ var CSS = `
 .dxc :is(button,input,select):not(.dxc-chat-embed *){font:inherit;color:inherit}
 .dxc :is(button,select,input[type=search],input:not([type])):not(.dxc-chat-embed *){border:1px solid var(--code-line);border-radius:6px;background:var(--code-bg)}
 .dxc button:not(.dxc-chat-embed *){cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 10px;font-size:12px;line-height:1;border-radius:6px;white-space:nowrap}
-.dxc :is(.dxc-file,.dxc-problem,.dxc-finding-title,.dxc-location,.dxc-link,.dxc-history-item,.dxc-tab-popup button,.dxc-file-footer button){height:auto;min-height:0}
+.dxc :is(.dxc-file,.dxc-problem,.dxc-finding-title,.dxc-location,.dxc-link,.dxc-history-item,.dxc-tab-popup button,.dxc-context-menu button,.dxc-file-footer button){height:auto;min-height:0}
 .dxc button:not(.dxc-chat-embed *):hover:not(:disabled){background:var(--code-soft)}
 .dxc :is(button,input,select):not(.dxc-chat-embed *):disabled{opacity:.45;cursor:not-allowed}
 .dxc :is(button,input,select,summary,[tabindex]):not(.dxc-chat-embed *):focus-visible{outline:2px solid var(--code-accent);outline-offset:2px}
@@ -1973,6 +2115,9 @@ var CSS = `
 .dxc-tab-popup{position:absolute;top:calc(100% + 2px);right:4px;z-index:20;display:flex;flex-direction:column;min-width:130px;padding:4px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--code-line);border-radius:7px;box-shadow:0 8px 22px #0000001f}
 .dxc-tab-popup button{border:0!important;background:transparent!important;text-align:left;font-size:11px!important;padding:5px 8px!important;border-radius:4px}
 .dxc-tab-popup button:hover:not(:disabled){background:var(--code-soft)!important}
+.dxc-context-menu{position:fixed;z-index:40;display:flex;flex-direction:column;min-width:168px;padding:4px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--code-line);border-radius:7px;box-shadow:0 8px 22px #0000001f}
+.dxc-context-menu button{border:0!important;background:transparent!important;justify-content:flex-start;text-align:left;font-size:12px!important;padding:6px 8px!important;border-radius:4px}
+.dxc-context-menu button:hover:not(:disabled){background:var(--code-soft)!important}
 .dxc-viewer{display:flex;flex-direction:column;overflow:hidden;min-height:0;flex:1;outline:none}
 .dxc-viewer-heading{display:flex;gap:10px;align-items:center;padding:6px 12px;flex:none;border-bottom:1px solid var(--code-line-soft);min-height:28px}
 .dxc-breadcrumbs{display:flex;align-items:center;gap:1px;overflow:hidden;flex:1;font-size:11px;color:var(--code-muted);white-space:nowrap}
@@ -2059,6 +2204,9 @@ var CSS = `
 .dxc-panel-tabs button[aria-selected=true]{color:var(--code-fg)}
 .dxc-panel-tabs button[aria-selected=true]::after{content:'';position:absolute;inset-inline:4px;bottom:0;height:1px;background:var(--code-accent)}
 .dxc-panel-tabs .dxc-count{margin-left:0;background:color-mix(in srgb,var(--code-fg) 12%,transparent);color:var(--code-fg)}
+.dxc-session-bar{display:flex;align-items:center;gap:6px;height:32px;padding:0 8px;border-bottom:1px solid var(--code-line);background:var(--code-bg);flex:none}
+.dxc-session-bar select{flex:1;min-width:0;height:24px;font-size:11px}
+.dxc-session-bar button{height:24px;padding:0 8px;font-size:11px;flex:none}
 .dxc-panel-body{flex:1;overflow:auto;min-height:0;padding-bottom:10px}
 .dxc-panel-body:has(.dxc-chat-embed){display:flex;flex-direction:column;overflow:hidden;padding-bottom:0}
 /* The embedded official Conversation owns its own scrollport, composer and draft. */
@@ -2153,7 +2301,7 @@ var CSS = `
 `;
 
 // src/client/index.ts
-var inject = ["slots", "connection", "layout", "locale"];
+var inject = ["slots", "connection", "layout", "locale", "uiWorkspace"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "code: dictionaries");
   const t = ctx.locale.bind(NS), controller = createCodeController(ctx.connection.rpc);
@@ -2185,7 +2333,9 @@ function apply(ctx) {
       loadReview: (reviewId) => sessionId && controller.loadReview(sessionId, reviewId),
       loadFile: (target) => sessionId && controller.loadFile(sessionId, target),
       clearFile: () => sessionId && controller.clearFile(sessionId),
-      cancel: () => controller.cancel(sessionId)
+      cancel: () => controller.cancel(sessionId),
+      openSession: ctx.uiWorkspace ? (id) => ctx.uiWorkspace.openSession(id) : void 0,
+      startSession: ctx.uiWorkspace ? (workspaceId) => ctx.uiWorkspace.startSession(workspaceId) : void 0
     }) }, CodeWorkspace);
     return () => {
       child();

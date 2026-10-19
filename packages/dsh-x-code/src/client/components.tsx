@@ -2,12 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { CodeFile, CodeSnapshot, CodeReview, FileTreeDirectory } from './model.ts'
 import type { CodeState, FileTarget } from './controller.ts'
 import type { Finding } from '../review.ts'
-import type { Translate, CodeFocus } from './CodeViewer.tsx'
+import type { Translate, CodeFocus, AskTarget } from './CodeViewer.tsx'
 import type { Activity, PanelTab, WorkbenchLayout } from './layout.ts'
 import { CodeViewer, Tabs } from './CodeViewer.tsx'
 import { Splitter } from './Splitter.tsx'
 import { PANEL_BOUNDS, SIDEBAR_BOUNDS, addTab, browserStorage, closeTab, moveTab, useWorkbenchLayout } from './layout.ts'
-import { activeReview, basename, fileTree, insertRequest, isChanged, isComplete, reviewRequest, SEVERITIES, shortHash } from './model.ts'
+import { activeReview, askPrompt, basename, chatSessionView, fileTree, insertRequest, isChanged, isComplete, reviewRequest, SEVERITIES, shortHash } from './model.ts'
 import { en, messageKey } from './locales.ts'
 import { ChangesIcon, ChevronIcon, CloseIcon, CodeGlyph, ExplorerIcon, HistoryIcon, PanelIcon, ReviewIcon, SidebarIcon } from './icons.tsx'
 import { FileTypeIcon, FolderIcon } from './FileIcon.tsx'
@@ -15,15 +15,16 @@ import { FileTypeIcon, FolderIcon } from './FileIcon.tsx'
 export interface EntryProps { open: () => void, t: Translate }
 export interface PanelProps { renderSlot(name: string, props: Record<string, unknown>): React.ReactNode }
 interface ActivityBarProps { activity: Activity, onChange: (activity: Activity) => void, counts: Record<Activity, number>, t: Translate }
-interface SidebarProps { files: CodeFile[], path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, snapshot: CodeSnapshot, reviewed: boolean, activity: Activity, history: CodeSnapshot['history'], historyId: string | null, inspectHistory: (id: string) => void, latest: () => void, formatTime: (value: string) => string }
-interface EditorTabsProps { path: string | null, tabs: { path: string, preview: boolean }[], select: (path: string) => void, close: (path: string) => void, reorder: (from: number, to: number) => void, closeOthers: (path: string) => void, closeAll: () => void, t: Translate }
+interface SidebarProps { files: CodeFile[], path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, ask: (target: AskTarget) => void, t: Translate, limit: number, snapshot: CodeSnapshot, reviewed: boolean, activity: Activity, history: CodeSnapshot['history'], historyId: string | null, inspectHistory: (id: string) => void, latest: () => void, formatTime: (value: string) => string }
+interface EditorTabsProps { path: string | null, tabs: { path: string, preview: boolean }[], select: (path: string) => void, close: (path: string) => void, reorder: (from: number, to: number) => void, closeOthers: (path: string) => void, closeAll: () => void, ask: (target: AskTarget) => void, t: Translate }
 interface ShellHooks {
   useSession?: (selector: (value: any) => any) => any
   useConversation?: (selector: (value: any) => any) => any
   useSessions?: (selector: (value: any) => any) => any
+  useWorkspaces?: (selector: (value: any) => any) => any
 }
-interface BottomPanelProps extends ShellHooks { tab: PanelTab, setTab: (tab: PanelTab) => void, review: CodeReview | null | undefined, historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, jump: (finding: Finding) => void, rereview: () => void, enabled: boolean, canRereview: boolean, t: Translate, formatTime: (value: string) => string, renderFactorySlot: WorkspaceProps['renderFactorySlot'], sessionId: string }
-export interface WorkspaceProps extends ShellHooks { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, renderFactorySlot: (name: string, props: Record<string, unknown>, options?: { slots?: Record<string, unknown>, fallback?: React.ReactNode }) => React.ReactNode, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
+interface BottomPanelProps extends ShellHooks { tab: PanelTab, setTab: (tab: PanelTab) => void, review: CodeReview | null | undefined, historyId: string | null, inspectHistory: (id: string) => void, historyStatus: string, jump: (finding: Finding) => void, rereview: () => void, enabled: boolean, canRereview: boolean, t: Translate, formatTime: (value: string) => string, renderFactorySlot: WorkspaceProps['renderFactorySlot'], sessionId: string, cwd?: string, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void }
+export interface WorkspaceProps extends ShellHooks { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, renderFactorySlot: (name: string, props: Record<string, unknown>, options?: { slots?: Record<string, unknown>, fallback?: React.ReactNode }) => React.ReactNode, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
 export interface ToolRowProps extends EntryProps { phase: string, block?: { isError?: boolean, meta?: { kind?: string, version?: number, review?: CodeReview } } }
 
 export function CodeIcon() { return <CodeGlyph size={20} /> }
@@ -52,8 +53,8 @@ function ActivityBar({ activity, onChange, counts, t }: ActivityBarProps) {
   </button>)}</nav>
 }
 
-function FileRow({ file, path, selected, select, open, t, limit, reviewed, depth }: { file: CodeFile, path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, t: Translate, limit: number, reviewed: boolean, depth: number }) {
-  return <li className="dxc-file-row" style={indent(depth)} data-selected={path === file.path || undefined}>
+function FileRow({ file, path, selected, select, open, ask, t, limit, reviewed, depth }: { file: CodeFile, path: string | null, selected: string[], select: (path: string | null) => void, open: (path: string) => void, ask: (target: AskTarget) => void, t: Translate, limit: number, reviewed: boolean, depth: number }) {
+  return <li className="dxc-file-row" style={indent(depth)} data-selected={path === file.path || undefined} onContextMenu={event => { event.preventDefault(); ask({ x: event.clientX, y: event.clientY, path: file.path, selection: '' }) }}>
     {!reviewed && <input type="checkbox" aria-label={t('selectFile', { path: file.path })} checked={selected.includes(file.path)} disabled={!file.selectable || !selected.includes(file.path) && selected.length >= limit} onChange={() => select(file.path)} />}
     <button type="button" className="dxc-file" aria-current={path === file.path ? 'true' : undefined} aria-label={t('openFile', { path: file.path })} title={file.path} onClick={() => open(file.path)}><FileTypeIcon path={file.path} /><span className="dxc-file-name">{basename(file.path)}</span><span className={`dxc-file-status dxc-status-${file.status}`} title={t(Object.hasOwn(en, `file.${file.status}`) ? `file.${file.status}` : 'file.modified')}>{mark(file)}</span></button>
   </li>
@@ -70,10 +71,10 @@ function TreeBranch({ node, depth, ...rest }: { node: FileTreeDirectory, depth: 
   </details></li>
 }
 
-function FileList({ files, path, selected, select, open, t, limit, reviewed, filter }: Omit<SidebarProps, 'snapshot' | 'activity' | 'history' | 'historyId' | 'inspectHistory' | 'latest' | 'formatTime'> & { filter: string }) {
+function FileList({ files, path, selected, select, open, ask, t, limit, reviewed, filter }: Omit<SidebarProps, 'snapshot' | 'activity' | 'history' | 'historyId' | 'inspectHistory' | 'latest' | 'formatTime'> & { filter: string }) {
   const [query, setQuery] = useState('')
   const tree = useMemo(() => fileTree(files, query, reviewed ? 'all' : filter), [files, query, filter, reviewed])
-  const rows = { path, selected, select, open, t, limit, reviewed }
+  const rows = { path, selected, select, open, ask, t, limit, reviewed }
   return <>
     <div className="dxc-file-search"><span aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="7" cy="7" r="4" /><path d="m10 10 3.5 3.5" strokeLinecap="round" /></svg></span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('searchFiles')} aria-label={t('fileSearchLabel')} /></div>
     <div className="dxc-file-list">{tree.directories.length || tree.files.length ? <ul className="dxc-tree">
@@ -83,7 +84,7 @@ function FileList({ files, path, selected, select, open, t, limit, reviewed, fil
   </>
 }
 
-function Sidebar({ files, path, selected, select, open, t, limit, snapshot, reviewed, activity, history, historyId, inspectHistory, latest, formatTime }: SidebarProps) {
+function Sidebar({ files, path, selected, select, open, ask, t, limit, snapshot, reviewed, activity, history, historyId, inspectHistory, latest, formatTime }: SidebarProps) {
   const [filter, setFilter] = useState('changed')
   // Explorer lists the whole snapshot; Changes starts on the changed subset and can widen.
   const changed = files.filter(isChanged), scope = activity === 'changes' ? filter : 'all'
@@ -96,19 +97,20 @@ function Sidebar({ files, path, selected, select, open, t, limit, snapshot, revi
       {historyId && <button type="button" className="dxc-link" onClick={latest}>{t('latestReview')}</button>}
     </div> : <>
       {activity === 'changes' && !reviewed && <Tabs className="dxc-sidebar-tabs" label={t('files')} value={filter} onChange={setFilter} items={[{ value: 'changed', label: t('changed') }, { value: 'all', label: t('all') }]} />}
-      <FileList files={shown} path={path} selected={selected} select={select} open={open} t={t} limit={limit} reviewed={reviewed} filter={scope} />
+      <FileList files={shown} path={path} selected={selected} select={select} open={open} ask={ask} t={t} limit={limit} reviewed={reviewed} filter={scope} />
       <footer className="dxc-file-footer">{reviewed ? <span>{t('reviewedOnly')}</span> : <><span>{t('selection', { count: selected.length })}</span><button type="button" onClick={() => select(selected.length ? null : 'all')}>{t(selected.length ? 'clearSelection' : 'selectChanged')}</button></>}{snapshot.truncated && <p className="dxc-inline-warning">{t('partialFiles')}</p>}</footer>
     </>}
   </aside>
 }
 
-function EditorTabs({ path, tabs, select, close, reorder, closeOthers, closeAll, t }: EditorTabsProps) {
+function EditorTabs({ path, tabs, select, close, reorder, closeOthers, closeAll, ask, t }: EditorTabsProps) {
   const [menu, setMenu] = useState(false), dragging = useRef<number | null>(null)
   if (!tabs.length) return null
   return <div className="dxc-editor-tabs" role="tablist" aria-label={t('openEditors')}>
     {tabs.map((tab, at) => <div key={tab.path} className="dxc-tab" role="presentation" data-active={tab.path === path || undefined} data-preview={tab.preview || undefined}
       draggable onDragStart={() => { dragging.current = at }} onDragOver={event => event.preventDefault()}
-      onDrop={event => { event.preventDefault(); if (dragging.current != null) reorder(dragging.current, at); dragging.current = null }} onDragEnd={() => { dragging.current = null }}>
+      onDrop={event => { event.preventDefault(); if (dragging.current != null) reorder(dragging.current, at); dragging.current = null }} onDragEnd={() => { dragging.current = null }}
+      onContextMenu={event => { event.preventDefault(); ask({ x: event.clientX, y: event.clientY, path: tab.path, selection: '' }) }}>
       <button type="button" role="tab" aria-selected={tab.path === path} title={tab.path} onClick={() => select(tab.path)} onAuxClick={event => { if (event.button === 1) close(tab.path) }}><FileTypeIcon path={tab.path} size={14} /><span className="dxc-tab-name">{basename(tab.path)}</span></button>
       <button type="button" className="dxc-tab-close" aria-label={t('closeTab', { name: basename(tab.path) })} onClick={() => close(tab.path)}><CloseIcon size={12} /></button>
     </div>)}
@@ -132,7 +134,7 @@ function FindingCard({ finding, jump, t }: { finding: Finding, jump: () => void,
   </article>
 }
 
-function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }: Omit<BottomPanelProps, 'tab' | 'setTab' | 'renderFactorySlot' | 'sessionId' | keyof ShellHooks>) {
+function ReviewPane({ review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory }: Omit<BottomPanelProps, 'tab' | 'setTab' | 'renderFactorySlot' | 'sessionId' | 'cwd' | 'openSession' | 'startSession' | keyof ShellHooks>) {
   const [severity, setSeverity] = useState('all')
   const filtered = review?.findings.filter(finding => severity === 'all' || finding.severity === severity) ?? []
   const complete = isComplete(review)
@@ -179,7 +181,25 @@ function ConversationEmbed({ renderFactorySlot, sessionId, useSession, useConver
   </div>
 }
 
-function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, renderFactorySlot, sessionId, useSession, useConversation, useSessions }: BottomPanelProps) {
+function sessionLabel(session: { title: string, blank: boolean }, current: boolean, t: Translate) {
+  const name = session.title || (session.blank ? t('chatBlank') : t('chatUntitled'))
+  return current ? `${name} · ${t('chatCurrent')}` : name
+}
+
+function SessionBar({ sessionId, cwd, useSessions, useWorkspaces, openSession, startSession, t }: { sessionId: string, cwd?: string, useSessions?: ShellHooks['useSessions'], useWorkspaces?: ShellHooks['useWorkspaces'], openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, t: Translate }) {
+  const sessionList = useSessions?.(state => state)
+  const workspaceList = useWorkspaces?.(state => state)
+  const directory = useMemo(() => chatSessionView(sessionList, workspaceList, sessionId, cwd), [sessionList, workspaceList, sessionId, cwd])
+  const choices = directory.sessions.some(session => session.id === sessionId) ? directory.sessions : [{ id: sessionId, title: '', blank: false, running: false, updatedAt: 0 }, ...directory.sessions]
+  return <div className="dxc-session-bar">
+    <select aria-label={t('chatSessions')} value={sessionId} disabled={!openSession} onChange={event => { if (event.target.value && event.target.value !== sessionId) openSession?.(event.target.value) }}>
+      {choices.map(session => <option key={session.id} value={session.id}>{sessionLabel(session, session.id === sessionId, t)}</option>)}
+    </select>
+    <button type="button" disabled={!startSession} onClick={() => startSession?.(directory.workspaceId)}>{t('chatNew')}</button>
+  </div>
+}
+
+function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview, t, formatTime, historyStatus, historyId, inspectHistory, renderFactorySlot, sessionId, cwd, openSession, startSession, useSession, useConversation, useSessions, useWorkspaces }: BottomPanelProps) {
   const problems = review?.findings.length ?? 0
   return <aside className="dxc-panel" aria-label={t('panel')}>
     <div className="dxc-panel-tabs" role="tablist" aria-label={t('panel')}>
@@ -187,6 +207,7 @@ function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview
       <button type="button" role="tab" aria-selected={tab === 'review'} onClick={() => setTab('review')}>{t('reviewSummary')}</button>
       <button type="button" role="tab" aria-selected={tab === 'chat'} onClick={() => setTab('chat')}>{t('chat')}</button>
     </div>
+    <SessionBar sessionId={sessionId} cwd={cwd} useSessions={useSessions} useWorkspaces={useWorkspaces} openSession={openSession} startSession={startSession} t={t} />
     <div className="dxc-panel-body">{tab === 'chat' ? <ConversationEmbed renderFactorySlot={renderFactorySlot} sessionId={sessionId} useSession={useSession} useConversation={useConversation} useSessions={useSessions} t={t} /> : tab === 'problems' ? <div className="dxc-problems">
       {!review ? <p className="dxc-state">{t('noReviewHint')}</p> : review.findings.length === 0 ? <p className="dxc-state">{isComplete(review) ? t('noFindings') : t('incomplete')}</p> : <ul className="dxc-problem-list">{review.findings.map(finding => <li key={finding.id}><button type="button" className="dxc-problem" onClick={() => jump(finding)}>
         <span className={`dxc-severity dxc-severity-${finding.severity}`}>{t(`severity.${finding.severity}`)}</span>
@@ -197,16 +218,36 @@ function BottomPanel({ tab, setTab, review, jump, rereview, enabled, canRereview
   </aside>
 }
 
+function AskMenu({ x, y, label, items, onClose }: { x: number, y: number, label: string, items: { id: string, label: string, run: () => void }[], onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const node = ref.current
+    const view = node?.ownerDocument.defaultView
+    const box = node?.getBoundingClientRect()
+    if (node && box && view) {
+      node.style.left = `${Math.max(8, Math.min(x, view.innerWidth - box.width - 8))}px`
+      node.style.top = `${Math.max(8, Math.min(y, view.innerHeight - box.height - 8))}px`
+    }
+    node?.querySelector('button')?.focus()
+    const onPointer = (event: PointerEvent) => { if (!node?.contains(event.target as Node)) onClose() }
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
+    node?.ownerDocument.addEventListener('pointerdown', onPointer)
+    node?.ownerDocument.addEventListener('keydown', onKey)
+    return () => { node?.ownerDocument.removeEventListener('pointerdown', onPointer); node?.ownerDocument.removeEventListener('keydown', onKey) }
+  }, [x, y, onClose])
+  return <div ref={ref} className="dxc-context-menu" role="menu" aria-label={label} style={{ left: x, top: y }}>{items.map(item => <button key={item.id} type="button" role="menuitem" onClick={() => { item.run(); onClose() }}>{item.label}</button>)}</div>
+}
+
 export function CodeWorkspace(props: WorkspaceProps) { return <CodeWorkspaceBody {...props} /> }
 
-function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, renderFactorySlot, useSession, useConversation, useSessions, cancel, back, t, formatTime }: WorkspaceProps) {
+function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTarget, loadFile, clearFile, loadReview, renderFactorySlot, useSession, useConversation, useSessions, useWorkspaces, openSession, startSession, cancel, back, t, formatTime }: WorkspaceProps) {
   const state = useCode(value => value), snapshot = state.snapshot
   const page = useRef<HTMLElement>(null)
   const workbench = useRef<HTMLDivElement>(null)
   const { layout, update: setLayout } = useWorkbenchLayout(browserStorage())
   const [narrow, setNarrow] = useState(false), [pane, setPane] = useState('files')
   const [tabs, setTabs] = useState<{ path: string, preview: boolean }[]>([]), [path, setPath] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string[]>([]), [context, setContext] = useState('current'), [notice, setNotice] = useState<string | null>(null), [focus, setFocus] = useState<CodeFocus | null>(null)
+  const [selected, setSelected] = useState<string[]>([]), [context, setContext] = useState('current'), [notice, setNotice] = useState<string | null>(null), [focus, setFocus] = useState<CodeFocus | null>(null), [askMenu, setAskMenu] = useState<AskTarget | null>(null)
   const [base, setBase] = useState(snapshot?.workspace.baseRef ?? 'main'), [mode, setMode] = useState<string>(snapshot?.workspace.mode ?? 'worktree')
   const scrollPositions = useRef(new Map<string, { top: number, left: number }>()), previousWorkspace = useRef<string | null>(null), previousReview = useRef<string | undefined>(undefined), rereviewId = useRef<string | null>(null)
   useEffect(() => {
@@ -257,6 +298,18 @@ function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTa
   }
   const closeOthers = (keep: string) => { setTabs(value => value.filter(tab => tab.path === keep)); setPath(keep) }
   const closeAll = () => { setTabs([]); setPath(null); clearFile() }
+  const openAsk = (target: AskTarget) => setAskMenu(target)
+  const quote = (path: string, selection: string) => {
+    if (!files.some(file => file.path === path)) { setNotice('unavailable'); return }
+    const text = askPrompt(selection.trim() ? t('askSelectionPrompt') : t('askFilePrompt'), path, selection)
+    if (!text) { setNotice('unavailable'); return }
+    try {
+      if (!insertRequest(inputActions, text)) { setNotice('draftChanged'); return }
+      setNotice('inserted')
+      setLayout({ panelCollapsed: false, panelTab: 'chat' })
+      if (narrow) setPane('findings')
+    } catch { setNotice('insertionUnconfirmed') }
+  }
   const put = (text: string) => {
     try {
       if (!insertRequest(inputActions, text)) { setNotice('draftChanged'); return }
@@ -315,15 +368,16 @@ function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTa
       {narrow && <Tabs className="dxc-mobile-tabs" label={t('title')} value={pane} onChange={setPane} items={[{ value: 'files', label: t('files') }, { value: 'code', label: t('code') }, { value: 'findings', label: `${t('findings')}${review?.findings.length ? ` · ${review.findings.length}` : ''}` }]} />}
       <div className="dxc-workbench" ref={workbench} style={narrow ? undefined : { gridTemplateColumns: columns }}>
         {!narrow && <div className="dxc-track-activity"><ActivityBar activity={layout.activity} onChange={changeActivity} counts={counts} t={t} /></div>}
-        {(narrow || showSidebar) && <Sidebar files={files} path={effectivePath} selected={selected} select={toggleFile} open={next => openFile(next)} t={t} limit={maxFiles} snapshot={snapshot} reviewed={context === 'review'} activity={layout.activity} history={snapshot.history} historyId={historyId} inspectHistory={inspectHistory} latest={latest} formatTime={formatTime} />}
+        {(narrow || showSidebar) && <Sidebar files={files} path={effectivePath} selected={selected} select={toggleFile} open={next => openFile(next)} ask={openAsk} t={t} limit={maxFiles} snapshot={snapshot} reviewed={context === 'review'} activity={layout.activity} history={snapshot.history} historyId={historyId} inspectHistory={inspectHistory} latest={latest} formatTime={formatTime} />}
         {!narrow && showSidebar && <Splitter value={layout.sidebar} bounds={SIDEBAR_BOUNDS} label={t('resizeSidebar')} orientation="vertical" direction={1} className="dxc-track-sidebar-splitter" onResize={value => setLayout({ sidebar: value })} onPreview={value => paintTrack(value, layout.panel)} onToggle={() => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed })} />}
         <section className="dxc-editor">
-          <EditorTabs path={effectivePath} tabs={tabs} select={next => setPath(next)} close={closeTabPath} reorder={(from, to) => setTabs(value => moveTab(value, from, to))} closeOthers={closeOthers} closeAll={closeAll} t={t} />
-          <CodeViewer file={fileMatches ? state.file : null} status={fileMatches ? state.fileStatus : effectivePath ? 'loading' : 'idle'} error={fileMatches ? state.fileError : null} path={effectivePath} identity={identity} mode={snapshot.workspace.mode} context={context} focus={focus} retry={() => { clearFile(); if (request) loadFile(request) }} scrollPositions={scrollPositions} t={t} />
+          <EditorTabs path={effectivePath} tabs={tabs} select={next => setPath(next)} close={closeTabPath} reorder={(from, to) => setTabs(value => moveTab(value, from, to))} closeOthers={closeOthers} closeAll={closeAll} ask={openAsk} t={t} />
+          <CodeViewer file={fileMatches ? state.file : null} status={fileMatches ? state.fileStatus : effectivePath ? 'loading' : 'idle'} error={fileMatches ? state.fileError : null} path={effectivePath} identity={identity} mode={snapshot.workspace.mode} context={context} focus={focus} retry={() => { clearFile(); if (request) loadFile(request) }} scrollPositions={scrollPositions} onAsk={openAsk} t={t} />
         </section>
         {!narrow && showPanel && <Splitter value={layout.panel} bounds={PANEL_BOUNDS} label={t('resizePanel')} orientation="vertical" direction={-1} className="dxc-track-panel-splitter" onResize={value => setLayout({ panel: value })} onPreview={value => paintTrack(layout.sidebar, value)} onToggle={() => setLayout({ panelCollapsed: !layout.panelCollapsed })} />}
-        {(narrow || showPanel) && <BottomPanel tab={layout.panelTab} setTab={tab => setLayout({ panelTab: tab })} review={review} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} renderFactorySlot={renderFactorySlot} sessionId={sessionId} useSession={useSession} useConversation={useConversation} useSessions={useSessions} />}
+        {(narrow || showPanel) && <BottomPanel tab={layout.panelTab} setTab={tab => setLayout({ panelTab: tab })} review={review} historyId={historyId} inspectHistory={inspectHistory} historyStatus={state.historyStatus} jump={jump} rereview={() => beginReview('rereview')} enabled={live && !running && !historyId} canRereview={review?.mode === 'worktree' && snapshot.workspace.mode === 'worktree'} t={t} formatTime={formatTime} renderFactorySlot={renderFactorySlot} sessionId={sessionId} cwd={snapshot.workspace.cwd ?? snapshot.workspace.repoRoot} openSession={openSession} startSession={startSession} useSession={useSession} useConversation={useConversation} useSessions={useSessions} useWorkspaces={useWorkspaces} />}
       </div>
+      {askMenu && <AskMenu x={askMenu.x} y={askMenu.y} label={t('askMenu')} onClose={() => setAskMenu(null)} items={[...(askMenu.selection.trim() ? [{ id: 'selection', label: t('askSelection'), run: () => quote(askMenu.path, askMenu.selection) }] : []), { id: 'file', label: t('askFile'), run: () => quote(askMenu.path, '') }]} />}
     </>}
   </main>
 }

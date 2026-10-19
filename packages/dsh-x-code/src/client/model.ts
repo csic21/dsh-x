@@ -181,6 +181,44 @@ export function reviewRequest(snapshot: CodeSnapshot | null, { paths, runtime = 
   return { scope: snapshot.scope, workspaceId: snapshot.workspace.id, mode: snapshot.workspace.mode, ...(snapshot.workspace.mode === 'range' ? { base: snapshot.workspace.baseRef ?? snapshot.workspace.base } : {}), paths, runtime, ...(previousReviewId ? { previousReviewId } : {}) }
 }
 
+export interface ChatSession { id: string, title: string, blank: boolean, running: boolean, updatedAt: number }
+
+/** Sessions in the current workspace, newest first. The open session stays even if the list has not caught up. */
+export function chatSessionView(sessions: unknown, workspaces: unknown, currentId: string | null, cwd?: string): { sessions: ChatSession[], workspaceId?: string } {
+  const byId = sessions && typeof sessions === 'object' && (sessions as { byId?: unknown }).byId && typeof (sessions as { byId?: unknown }).byId === 'object' ? (sessions as { byId: Record<string, any> }).byId : {}
+  const record = workspaces && typeof workspaces === 'object' ? workspaces as { workspaces?: unknown, items?: unknown, archivedSessionIds?: unknown } : undefined
+  const groups = Array.isArray(workspaces) ? workspaces : Array.isArray(record?.workspaces) ? record.workspaces : Array.isArray(record?.items) ? record.items : []
+  const archived = new Set(Array.isArray(record?.archivedSessionIds) ? record.archivedSessionIds.filter((id): id is string => typeof id === 'string') : [])
+  const samePath = (value: unknown) => typeof value === 'string' && !!cwd && (value === cwd || value.replace(/\/+$/, '') === cwd.replace(/\/+$/, ''))
+  const match = groups.find(group => Array.isArray(group?.sessionIds) && !!currentId && group.sessionIds.includes(currentId))
+    ?? groups.find(group => samePath(group?.cwd) || samePath(group?.path) || samePath(group?.repoRoot))
+  const listed: unknown[] = Array.isArray(match?.sessionIds) ? match.sessionIds : currentId ? [currentId] : Object.keys(byId)
+  const ids = [...new Set(listed.filter((id): id is string => typeof id === 'string'))]
+  if (currentId && byId[currentId] && !ids.includes(currentId)) ids.unshift(currentId)
+  const rows: ChatSession[] = ids.flatMap(id => {
+    const row = byId[id]
+    if (!row || row.archived === true || archived.has(id) || row.origin === 'subagent') return []
+    if (row.blank === true && id !== currentId) return []
+    const title = typeof row.title === 'string' ? row.title.trim() : ''
+    return [{ id, title, blank: row.blank === true, running: row.running === true, updatedAt: typeof row.updatedAt === 'number' ? row.updatedAt : 0 }]
+  }).sort((left, right) => right.updatedAt - left.updatedAt || (left.id < right.id ? -1 : 1))
+  return { sessions: rows, ...(typeof match?.workspaceId === 'string' ? { workspaceId: match.workspaceId } : {}) }
+}
+
+export const ASK_TEXT_LIMIT = 4_000
+
+/** A draft that cites one workspace path, optionally with a fenced excerpt. Nothing is sent. */
+export function askPrompt(template: string, path: string, selection = '') {
+  const safePath = path.replace(/[`\r\n]/g, '').trim()
+  if (!safePath || safePath.length > 500 || /[\u0000-\u001f]/.test(safePath)) return ''
+  const body = selection.replace(/\r\n/g, '\n').replace(/\u0000/g, '').trim().slice(0, ASK_TEXT_LIMIT)
+  if (template.includes('{selection}') && !body) return ''
+  const ticks = Math.max(2, ...[...body.matchAll(/`+/g)].map(item => item[0].length))
+  const fence = '`'.repeat(ticks + 1)
+  const quoted = body ? `${fence}\n${body}\n${fence}` : ''
+  return template.replaceAll('{path}', safePath).replaceAll('{selection}', quoted).trim()
+}
+
 /** Insert a prepared request into the current composer without overwriting the draft. */
 export function insertRequest(inputActions: any, text: any) {
   if (!inputActions?.captureInsertion || !inputActions?.insertText) return false

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, isMarkdownPath, previewKind, viewerTabs, defaultViewerTab, readFile, readSnapshot, reviewRequest } from '../src/client/model.ts'
+import { diffHunks, hunkRows, pairedRows, searchMatches, sourceLines, fileTree, isMarkdownPath, previewKind, viewerTabs, defaultViewerTab, readFile, readSnapshot, reviewRequest, askPrompt, chatSessionView } from '../src/client/model.ts'
 import { fileIconKind } from '../src/client/file-icon.ts'
 import { en, zh, messageKey } from '../src/client/locales.ts'
 const snapshot = (): any => ({ scope:'profile',sessionId:'session',revision:1,workspace:{id:'version',mode:'worktree',base:'abc',baseRef:'main'},files:[{path:'src/b.js',status:'modified',selectable:true,changed:true},{path:'README.md',status:'unchanged',selectable:true,changed:false}],limits:{maxSelectedFiles:20},review:null })
@@ -37,6 +37,21 @@ test('svg keeps source and image preview, while raster media is preview only',()
 })
 test('source terminators and literal search preserve exact offsets',()=>{
  assert.deepEqual(sourceLines(''),[]);assert.deepEqual(sourceLines('a\n\n'),['a','']);assert.deepEqual(searchMatches(['A[a A[a','other'],'a[a'),[{line:1,start:0,end:3},{line:1,start:4,end:7}]);assert.deepEqual(searchMatches(['x'],''),[])
+})
+test('session history keeps the current workspace and hides blanks, archives and subagents',()=>{
+  const sessions={byId:{now:{title:'Code review',blank:false,updatedAt:3},old:{title:'Earlier',blank:false,updatedAt:1},blank:{title:'',blank:true,updatedAt:4},gone:{title:'Archived',archived:true,updatedAt:5},child:{title:'Child',origin:'subagent',updatedAt:6}}}
+  const workspaces={workspaces:[{workspaceId:'ws',cwd:'/repo/example',sessionIds:['now','old','blank','gone','child']}],archivedSessionIds:['gone']}
+  const view=chatSessionView(sessions,workspaces,'now','/repo/example/')
+  assert.equal(view.workspaceId,'ws')
+  assert.deepEqual(view.sessions.map(session=>session.id),['now','old'])
+})
+test('an ask draft cites a path or a fenced excerpt and never sends by itself',()=>{
+  assert.equal(askPrompt('Please look at `{path}`.','docs/dev/release.md'),'Please look at `docs/dev/release.md`.')
+  assert.equal(askPrompt('About `{path}`:\n\n{selection}','docs/dev/release.md','tag plugins-v0.6.1'),'About `docs/dev/release.md`:\n\n```\ntag plugins-v0.6.1\n```')
+  assert.equal(askPrompt('About `{path}`:\n\n{selection}','a.md','use ```js'),'About `a.md`:\n\n````\nuse ```js\n````')
+  assert.equal(askPrompt('Please look at `{path}`.','bad`\npath'),'Please look at `badpath`.')
+  assert.equal(askPrompt('Please look at `{path}`.','  '),'')
+  assert.equal(askPrompt('About `{path}`:\n\n{selection}','a.md','  '),'')
 })
 test('filename filtering does not turn source opening into review selection',()=>{
  const value=snapshot();const changed=fileTree(value.files,'','changed');assert.deepEqual(changed.directories.map(node=>node.path),['src']);assert.deepEqual(changed.files,[]);assert.deepEqual(changed.directories[0].files.map(file=>file.path),['src/b.js'])

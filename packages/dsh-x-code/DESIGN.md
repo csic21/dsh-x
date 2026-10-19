@@ -38,6 +38,10 @@ Below 700px the grid becomes a single pane chosen by Files / Code / Findings tab
 
 The review panel also carries a Chat tab. It embeds the official Conversation through its `conversation.content` Component Factory with the `embedded` variant and a fixed Chat view, so the panel shows the same transcript, running state and composer as the main conversation: images, `/` commands, `@` references, attachments, busy-Enter behavior and the shared per-Session draft all come from the shell instead of a second implementation. One draft and one submission path mean a message written in either place appears in both, and nothing is sent automatically. Code keeps no transcript copy, no polling read and no `code/transcript` endpoint; when the Factory is absent the tab states that the shared conversation is unavailable rather than falling back to a reduced input.
 
+Right-clicking a file in the Explorer or on an editor tab, or right-clicking the source, diff or preview, appends a question about that file — or about the current text selection, when there is one — to the shared draft. The Chat tab opens so the question can be edited. The draft is not replaced and nothing is sent.
+
+Directly under the panel tabs, the workspace's sessions are listed newest first, with the open session kept even when the list is still catching up. Choosing one opens it through the official workspace navigation, and New starts a session in the same workspace. Blank, archived and subagent sessions stay out of the list. Neither action sends the draft.
+
 The UI provides Stop for an exact Code operation ID. Stop first shows Stopping; completion waits for authoritative settlement. Leaving the panel never cancels work. Cancelled, failed and interrupted runs retain readable findings/history and never gain a green pass. Nothing replays silently after reconnection.
 
 ## State and trust model

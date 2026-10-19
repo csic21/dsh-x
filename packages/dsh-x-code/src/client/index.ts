@@ -5,6 +5,7 @@ export interface CodeClientContext {
   on(event: string, listener: () => void): unknown
   connection: { rpc: CodeRpc }
   layout: { selectPanel(id: string | null): unknown }
+  uiWorkspace?: { openSession(target: string): void, startSession(workspaceId?: string): void }
   locale: { register(namespace: string, dictionaries: { zh: typeof zh, en: typeof en }): unknown, bind(namespace: string): (key: string, params?: Record<string, unknown>) => string, getLocale(): { active: string } }
   slots: {
     inject(name: string, fn: () => () => void): unknown
@@ -16,7 +17,7 @@ import { CodeEntry, CodeIcon, CodePanel, CodeToolRow, CodeWorkspace } from './co
 import { NS, zh, en } from './locales.ts'
 import { CSS } from './styles.ts'
 
-export const inject = ['slots', 'connection', 'layout', 'locale']
+export const inject = ['slots', 'connection', 'layout', 'locale', 'uiWorkspace']
 export function apply(ctx: CodeClientContext) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'code: dictionaries')
   const t = ctx.locale.bind(NS), controller = createCodeController(ctx.connection.rpc)
@@ -43,6 +44,8 @@ export function apply(ctx: CodeClientContext) {
       loadFile: (target: FileTarget) => sessionId && controller.loadFile(sessionId, target),
       clearFile: () => sessionId && controller.clearFile(sessionId),
       cancel: () => controller.cancel(sessionId!),
+      openSession: ctx.uiWorkspace ? (id: string) => ctx.uiWorkspace!.openSession(id) : undefined,
+      startSession: ctx.uiWorkspace ? (workspaceId?: string) => ctx.uiWorkspace!.startSession(workspaceId) : undefined,
     }) }, CodeWorkspace)
     return () => { child(); parent() }
   })

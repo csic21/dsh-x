@@ -18,9 +18,9 @@ test('compiled Code client browses, searches, switches locales and prepares exac
  ;(globalThis as any).ResizeObserver=ResizeObserver
  const resize=async(selector: any,width: any)=>act(async()=>{const target=document.querySelector<HTMLElement & HTMLInputElement>(selector);const observer=[...observers].find(item=>item.target===target);assert.ok(observer,`observed ${selector}`);observer.callback([{target,contentRect:{width}}]);await wait()})
  const locale=await createOfficialLocale();await locale.setLocale('en')
- const entries=new Map(),effects: any[]=[],disposers: any[]=[],calls: any[]=[];let exported: any,panel='dsh-x-code',snapshot=fixture(),historical: any=null,draft='Existing user text',sendCount=0
+ const entries=new Map(),effects: any[]=[],disposers: any[]=[],calls: any[]=[];let exported: any,panel='dsh-x-code',navigations=0,snapshot=fixture(),historical: any=null,draft='Existing user text',sendCount=0
  const slots={inject(key: any,fn: any){const dispose=fn();disposers.push(dispose);return dispose},register(options: any,component: any){const entry={options,component};entries.set(options.name,[...(entries.get(options.name)??[]),entry]);return()=>entries.set(options.name,(entries.get(options.name)??[]).filter((item: any) =>item!==entry))}}
- const ctx={slots,locale,layout:{selectPanel(value: any){panel=value}},on(){return()=>{}},effect(fn: any){const dispose=fn();effects.push(dispose);return dispose},connection:{rpc:{call:async(_api: any,name: any,args: any)=>{calls.push({name,args});const svgFile={path:'zmedia/icon.svg',kind:'text',text:'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="4" height="4"/></svg>\n',beforeText:'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n',hunks:[],version:'Worktree',hash:'3'.repeat(64)}
+ const ctx={slots,locale,layout:{selectPanel(value: any){panel=value;navigations++}},on(){return()=>{}},effect(fn: any){const dispose=fn();effects.push(dispose);return dispose},connection:{rpc:{call:async(_api: any,name: any,args: any)=>{calls.push({name,args});const svgFile={path:'zmedia/icon.svg',kind:'text',text:'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="4" height="4"/></svg>\n',beforeText:'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n',hunks:[],version:'Worktree',hash:'3'.repeat(64)}
     const pngFile={path:'zmedia/pixel.png',kind:'image',mediaType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',beforeData:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',afterKind:'image',beforeKind:'image',text:'',beforeText:'',version:'Worktree',hash:'4'.repeat(64)}
     return {ok:true,value:name==='code/snapshot'?structuredClone(snapshot):name==='code/review'?structuredClone(historical):args.path==='README.md'?{path:'README.md',kind:'text',text:'# Example\n',beforeText:'# Example\n',hunks:[],version:'Worktree',hash:'2'.repeat(64)}:args.path==='zmedia/icon.svg'?svgFile:args.path==='zmedia/pixel.png'?pngFile:structuredClone(contents)}}}}}
  const highlighter=()=>undefined
@@ -41,8 +41,10 @@ test('compiled Code client browses, searches, switches locales and prepares exac
  const shell={blank:false}
  const useSession=(selector: any)=>selector({blank:shell.blank,openState:'open',awaitingFirstTurn:false,running:false,promptAttempted:false})
  const useConversation=(selector: any)=>selector({activeTargets:new Set()})
- const useSessions=(selector: any)=>selector({byId:{session:{blank:shell.blank}}})
- function Render({sessionId='session'}: {sessionId?: string | null}){useSyncExternalStore(locale.subscribe.bind(locale),locale.getSnapshot.bind(locale),locale.getSnapshot.bind(locale));face=entry.options.inject(sessionId);const source=face.hooks.code;const useCode=(selector: any)=>selector(useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot));return React.createElement(entry.component,{...face,sessionId,inputActions,useCode,renderFactorySlot,useSession,useConversation,useSessions,t:locale.bind(entry.options.locale)})}
+ const opened: string[]=[],started: Array<string | undefined>=[]
+  const useSessions=(selector: any)=>selector({byId:{session:{blank:shell.blank,title:'Code review',updatedAt:2},older:{title:'Earlier',blank:false,updatedAt:1}}})
+  const useWorkspaces=(selector: any)=>selector({workspaces:[{workspaceId:'workspace-v1',cwd:'/repo/example',sessionIds:['session','older']}]})
+ function Render({sessionId='session'}: {sessionId?: string | null}){useSyncExternalStore(locale.subscribe.bind(locale),locale.getSnapshot.bind(locale),locale.getSnapshot.bind(locale));face=entry.options.inject(sessionId);const source=face.hooks.code;const useCode=(selector: any)=>selector(useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot));return React.createElement(entry.component,{...face,sessionId,inputActions,useCode,renderFactorySlot,useSession,useConversation,useSessions,useWorkspaces,openSession:(id: string)=>opened.push(id),startSession:(workspaceId?: string)=>started.push(workspaceId),t:locale.bind(entry.options.locale)})}
  const click=async (node: any)=>{assert.ok(node,'expected clickable element');await act(async()=>{node.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));await wait()})}
  const byText=(text: any)=>[...document.querySelectorAll('button')].find(button=>button.textContent===text)
  const change=async(node: any,value: any)=>act(async()=>{const proto=node.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value')!.set!.call(node,value);node.dispatchEvent(new dom.window.Event(node.tagName==='SELECT'?'change':'input',{bubbles:true}));await wait()})
@@ -195,6 +197,35 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   assert.equal(factories.at(-1).props.phase,'active')
   assert.match(draft,/dsh_x_code_review/,'the main composer draft is untouched by the embedded Chat tab')
   assert.equal(sendCount,0)
+  // Right-click adds a file or the selected text to the shared draft and leaves sending to the composer.
+  const menuAt=async(node: Element)=>{await act(async()=>{node.dispatchEvent(new dom.window.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:30,clientY:40}));await wait()})}
+  const stayed=navigations
+  await click([...document.querySelectorAll('.dxc-activity-item')].find(button=>button.getAttribute('aria-label')==='Explorer'))
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Open README.md"]'))
+  await click(byText('Source'))
+  await menuAt(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Open README.md"]')!)
+  assert.equal(document.querySelector('.dxc-context-menu')!.getAttribute('aria-label'),'Add to conversation')
+  await click([...document.querySelectorAll('.dxc-context-menu [role=menuitem]')].find(button=>button.textContent==='Ask about this file'))
+  assert.equal(document.querySelector('.dxc-context-menu'),null)
+  assert.match(draft,/Please look at `README\.md`/)
+  assert.equal(sendCount,0)
+  assert.equal(navigations,stayed,'asking does not leave the workbench')
+  assert.equal([...document.querySelectorAll('.dxc-panel-tabs [role=tab]')].find(button=>button.getAttribute('aria-selected')==='true')!.textContent,'Chat')
+  const line=document.querySelector('.dxc-line-text')!
+  const range=document.createRange();range.selectNodeContents(line);const selection=document.getSelection()!;selection.removeAllRanges();selection.addRange(range)
+  await menuAt(document.querySelector('.dxc-code-scroll')!)
+  await click([...document.querySelectorAll('.dxc-context-menu [role=menuitem]')].find(button=>button.textContent==='Ask about this selection'))
+  assert.match(draft,/# Example/)
+  assert.equal(sendCount,0)
+  selection.removeAllRanges()
+  const sessionBar=document.querySelector<HTMLSelectElement>('.dxc-session-bar select')!
+  assert.equal(sessionBar.value,'session')
+  assert.deepEqual([...sessionBar.options].map(option=>option.text),['Code review · Current','Earlier'])
+  await change(sessionBar,'older')
+  assert.deepEqual(opened,['older'])
+  await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxc-session-bar button'))
+  assert.deepEqual(started,['workspace-v1'])
+  assert.equal(sendCount,0,'switching or creating a session does not send the draft')
   await click([...document.querySelectorAll('.dxc-panel-tabs button')].find(button=>button.textContent==='Review'))
   await act(async()=>{root.render(React.createElement(Render,{sessionId:null}));await wait()})
   assert.match(document.body.textContent,/Open a conversation to browse/)

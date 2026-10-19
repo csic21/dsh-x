@@ -5,7 +5,21 @@ export type ScrollPositions = React.MutableRefObject<Map<string, { top: number, 
 type Highlights = ReturnType<ReturnType<typeof useCodeHighlighter>>
 interface SourceProps { text: string, highlights: Highlights, query: string, activeLine: string | null, focus: CodeFocus | null, side: string }
 interface DiffProps { hunks: DiffHunk[], split: boolean, wrap: boolean, oldHighlights: Highlights, newHighlights: Highlights, query: string, activeLine: string | null, focus: CodeFocus | null, t: Translate }
-export interface CodeViewerProps { file: CodeSource | null, status: string, error: { code?: string } | null, path: string | null, identity: string, mode: string, context: string, focus: CodeFocus | null, retry: () => void, scrollPositions: ScrollPositions, t: Translate }
+export interface AskTarget { x: number, y: number, path: string, selection: string }
+export interface CodeViewerProps { file: CodeSource | null, status: string, error: { code?: string } | null, path: string | null, identity: string, mode: string, context: string, focus: CodeFocus | null, retry: () => void, scrollPositions: ScrollPositions, t: Translate, onAsk?: (target: AskTarget) => void }
+
+/** Selected viewer text, without line-number or diff-sign chrome. Empty when the selection is elsewhere. */
+export function viewerSelection(root: HTMLElement | null) {
+  const selection = root?.ownerDocument.getSelection()
+  if (!root || !selection || selection.isCollapsed || selection.rangeCount === 0) return ''
+  const range = selection.getRangeAt(0)
+  const host = range.commonAncestorContainer
+  const element = host.nodeType === 1 ? host as Element : host.parentElement
+  if (!element || !root.contains(element)) return ''
+  const fragment = range.cloneContents()
+  fragment.querySelectorAll('.dxc-line-number, .dxc-line-sign, .dxc-hunk-header').forEach(node => node.remove())
+  return (fragment.textContent ?? '').replace(/\u00a0/g, ' ')
+}
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { languageForPath, MarkdownText, useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -84,7 +98,7 @@ function Breadcrumbs({ path }: { path: string | null }) {
 }
 
 /** Read-only source/diff built from captured server text and the shared DSH highlighter. */
-export function CodeViewer({ file, status, error, path, identity, mode, context, focus, retry, scrollPositions, t }: CodeViewerProps) {
+export function CodeViewer({ file, status, error, path, identity, mode, context, focus, retry, scrollPositions, t, onAsk }: CodeViewerProps) {
   const [tab, setTab] = useState<string>(() => defaultViewerTab(path, Boolean(focus))), [side, setSide] = useState('new'), [split, setSplit] = useState(false), [wrap, setWrap] = useState(false)
   const [narrow, setNarrow] = useState(false)
   const [findOpen, setFindOpen] = useState(false), [query, setQuery] = useState(''), [matchIndex, setMatchIndex] = useState(0)
@@ -160,7 +174,11 @@ export function CodeViewer({ file, status, error, path, identity, mode, context,
       </div>
     </div>
     {textual && findOpen && <div className="dxc-find" role="search"><input ref={findInput} value={query} placeholder={t('findPlaceholder')} aria-label={t('find')} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); nextMatch(event.shiftKey ? -1 : 1) } }} /><span role="status">{matches.length ? t('matches', { current: normalizedIndex + 1, count: matches.length }) : t('noMatches')}</span><button type="button" aria-label={t('previousMatch')} disabled={!matches.length} onClick={() => nextMatch(-1)}>↑</button><button type="button" aria-label={t('nextMatch')} disabled={!matches.length} onClick={() => nextMatch(1)}>↓</button><button type="button" aria-label={t('closeFind')} onClick={closeFind}><CloseIcon size={12} /></button></div>}
-    <div className="dxc-code-scroll" ref={scroll} data-wrap={wrap || undefined} onScroll={event => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })}>
+    <div className="dxc-code-scroll" ref={scroll} data-wrap={wrap || undefined} onScroll={event => scrollPositions.current.set(scrollKey, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })} onContextMenu={event => {
+      if (!path || !onAsk || (event.target as HTMLElement).closest('input, textarea, button, a, select')) return
+      event.preventDefault()
+      onAsk({ x: event.clientX, y: event.clientY, path, selection: viewerSelection(event.currentTarget) })
+    }}>
       {!path ? <div className="dxc-empty dxc-code-empty"><span aria-hidden="true">{'{ }'}</span><p>{t('chooseFile')}</p></div> : status === 'loading' || status === 'ready' && !loadedPath ? <p className="dxc-state" role="status">{t('fileLoading')}</p> : status === 'failed' ? <div className="dxc-state" role="alert"><p>{t(/stale/i.test(error?.code ?? '') ? 'fileChanged' : 'fileFailed')}</p><button type="button" onClick={retry}>{t('retry')}</button></div> : loadedPath ? <>
         {(file.truncated || file.diffTruncated) && <p className="dxc-inline-warning">{t('truncated')}</p>}
         {nonText ? <p className="dxc-state">{t(kind === 'unavailable' ? 'fileFailed' : kind ?? 'unavailable')}</p> : view === 'diff' ? hunks.length ? <Diff hunks={hunks} split={split && !narrow} wrap={wrap} oldHighlights={oldHighlights} newHighlights={newHighlights} query={query} activeLine={activeLine} focus={focus} t={t} /> : <p className="dxc-state">{t('noDiff')}</p> : media && view === 'preview' ? mediaSide === 'missing' || side === 'new' && kind === 'missing' ? <p className="dxc-state">{t('missing')}</p> : mediaSide === 'oversized' ? <p className="dxc-state">{t('oversized')}</p> : mediaSide === 'symlink' ? <p className="dxc-state">{t('symlink')}</p> : !mediaPayload || !mime ? <p className="dxc-state">{t(mediaPayload === '' ? 'emptyFile' : 'mediaFailed')}</p> : <MediaView kind={media} payload={mediaPayload} encoding="base64" mime={mime} name={name} t={t} /> : source == null || side === 'old' && file.beforeKind === 'missing' || side === 'new' && (file.afterKind === 'missing' || kind === 'missing') ? <p className="dxc-state">{t('missing')}</p> : source === '' ? <p className="dxc-state">{t('emptyFile')}</p> : view === 'preview' && rendered === 'svg' ? <MediaView kind="svg" payload={source} encoding="text" mime="image/svg+xml" name={name} t={t} /> : view === 'preview' ? <MarkdownPreview text={source} labels={labels} /> : <Source text={source} highlights={side === 'old' ? oldHighlights : newHighlights} query={query} activeLine={activeLine} focus={focus} side={side} />}

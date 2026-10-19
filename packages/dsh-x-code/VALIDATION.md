@@ -2,7 +2,7 @@
 
 ## Current scope
 
-Validated with official DSH `0.2.1-rc.2`, Cordis `4.0.5`, Node 24. Current repository run: 276 tests, 276 passed, 0 skipped; the Code package contributes 35 of them. Code registers three tools: `dsh_x_code_inspect`, `dsh_x_code_file` and `dsh_x_code_review`; `dsh_x_code_repair` no longer exists.
+Validated with official DSH `0.2.1-rc.2`, Cordis `4.0.5`, Node 24. Current repository run: 278 tests, 278 passed, 0 skipped; the Code package contributes 37 of them. Code registers three tools: `dsh_x_code_inspect`, `dsh_x_code_file` and `dsh_x_code_review`; `dsh_x_code_repair` no longer exists.
 
 Covered through official Cordis, ToolRuntime, LlmRuntime, managed subprocess, approval bridges, and durable records:
 
@@ -14,7 +14,9 @@ Covered through official Cordis, ToolRuntime, LlmRuntime, managed subprocess, ap
 - Exact Code-operation cancellation, wrong-operation rejection, immutable history inspection, and bounded byte/count retention.
 - Traversal, symlink ancestors, external/shared Git metadata, alternate/symbolic object stores, ignored/global-ignored content, private filenames, credential-shaped text, binary/non-UTF-8 source, oversized files, and unsupported Git states.
 - Compiled frontend source/before/diff views, highlighting seam, filename search, explicit scope, finding navigation, historical evidence, locale coverage, late response rejection, session reset, and operation cancellation without changing the selected browsing mode.
-- The Chat tab renders one `conversation.content` occurrence with `variant: 'embedded'` and a Chat view selection, keeps the main composer draft and send count unchanged, and contains no hand-written composer.
+- The Chat tab renders one `conversation.content` occurrence with `variant: 'embedded'` and a Chat view selection, keeps the main composer draft and send count unchanged until the user asks, and contains no hand-written composer.
+- Right-clicking a file or a source selection appends that file or passage to the shared composer draft, opens Chat, and does not send or leave the workbench.
+- The panel lists the current workspace's sessions and can open one or start a new session without sending the draft.
 - Generation and official `parseMarketIndex` validation of a Git-pinned plugin market index.
 
 Run `pnpm --filter dsh-x-code test` and `pnpm test` for the current counts. Do not treat historical suite-era numbers as current evidence.
