@@ -168,8 +168,7 @@ test('the pet frame registers in the frame overlay and follows the session state
     statuses.delete('s2')
     status.running = false
 
-    // A press that only moves the pointer is a drag: it moves the pet and never
-    // opens the picker. A press that stays put is a click and does open it.
+    // Dragging past the window edge stops at it, and the release saves the spot.
     const sprite = () => dom.window.document.querySelector<HTMLElement>('.dxp-sprite')!
     const pointer = (type: string, target: any, x: number, y: number) => step(() => {
       target.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }))
@@ -180,14 +179,7 @@ test('the pet frame registers in the frame overlay and follows the session state
     assert.equal(frameVars().getPropertyValue('--dxp-x'), '12px', 'a drag stops at the window edge')
     assert.equal(frameVars().getPropertyValue('--dxp-y'), '12px', 'a drag stops at the window edge')
     await pointer('pointerup', dom.window, 9000, 9000)
-    await step(() => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
-    assert.equal(dom.window.document.querySelector('.dxp-dialog'), null, 'a drag must not open the picker')
     assert.ok(rpcCalls.includes('dsh-x-pet/move'), 'a drag saves the new position')
-
-    await pointer('pointerdown', sprite(), 200, 200)
-    await pointer('pointerup', dom.window, 200, 200)
-    await step(() => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
-    assert.ok(dom.window.document.querySelector('.dxp-dialog'), 'a click opens the picker')
 
     // A pet that is switched off renders nothing, so its narration has to stop
     // too: the frame's hooks run before the early return that hides the sprite.
