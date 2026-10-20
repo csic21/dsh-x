@@ -19,8 +19,9 @@ The Codex rows, frame counts, per-frame durations, the slowed idle loop, the thr
 - Compiled Client registration: the frame registers in `shell.overlay` with its own id, and the rendered state follows the session facts (running, waiting, review, idle).
 - Gestures: a press that moves is a drag (it saves the position and never opens the picker); a press that stays put is a click and opens the picker.
 - Narration: the bubble reports a running turn, a pending approval, and a finished turn, and the pet waves once when a turn completes.
+- Bubble layout: the published stylesheet was rendered in headless Chrome and measured. Every bubble in a stack takes one shared width (232px); the close button carries a 24px (was 18px) touch target and the bubble stays 48px tall; the stack's `scrollHeight` equals its `clientHeight`, so the tail no longer produces scrollable overflow; the container paints no scrollbar in either engine path; and only the last bubble shows its tail.
 
 ## Not verified here
 
 - Packaged Desktop behaviour: the plugin is verified as Web-side source, unit tests and a JSDOM mount of the built client. A packaged Desktop run has not been recorded in this repository.
-- Rendering appearance in a real browser: no browser control was available in this environment, so the visual result of the frame, the picker and the sprite sheet is not claimed as verified.
+- Rendering appearance inside the assembled Harness window: the bubble measurements above come from the real stylesheet in headless Chrome, with the shell's own scrollbar rules and the resolved light/dark theme tokens applied, not from a live Harness session.

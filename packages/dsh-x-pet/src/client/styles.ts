@@ -12,12 +12,27 @@ export const CSS = `
 .dxp-controls button{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
 .dxp-controls button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
 .dxp-controls button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:1px}
-.dxp-bubbles{display:flex;flex-direction:column;align-items:center;gap:6px;max-height:260px;overflow-y:auto;overflow-x:hidden;margin-bottom:2px}
+/* Every line of a stack shares one width, so the bubbles read as a column
+   instead of a ragged pile of different sizes. The padding leaves room for the
+   shadows and the negative margin cancels it again, so they stay aligned with
+   the sprite above the controls. */
+.dxp-bubbles{--dxp-bubble-w:232px;display:flex;flex-direction:column;align-items:stretch;gap:6px;width:calc(var(--dxp-bubble-w) + 16px);max-height:min(300px,44vh);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:none;-ms-overflow-style:none;padding:6px 8px;margin:-6px -8px 2px}
+/* A scrollbar in this corner would be a gray gutter wedged beside the bubbles.
+   The stack still scrolls by wheel and trackpad, with no bar to look at. */
+.dxp-bubbles::-webkit-scrollbar{display:none;width:0;height:0}
+/* With nothing to say the stack must not leave a click-blocking strip above the
+   pet: the padding that holds the shadows would otherwise be hit-testable. */
+.dxp-bubbles:empty{display:none}
+/* Only the bubble nearest the pet keeps its tail; the rest of the stack is one
+   card after another. The 6px bottom padding above holds the tail, so it never
+   turns into scrollable overflow. */
 .dxp-bubbles .dxp-bubble::after{display:none}
 .dxp-bubbles .dxp-bubble:last-of-type::after{display:block}
-.dxp-bubble{position:relative;display:flex;align-items:center;gap:6px;max-width:240px;padding:7px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);box-shadow:0 8px 20px rgba(15,23,42,.16);font-size:12px;line-height:1.35;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease}
+/* A raised surface reads as a card here; the overlay token is a darker gray and
+   made the bubbles look like dimmed panels floating over the page. */
+.dxp-bubble{position:relative;display:flex;align-items:center;gap:6px;padding:7px 8px 7px 10px;border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);box-shadow:0 1px 2px rgba(15,23,42,.05),0 3px 8px rgba(15,23,42,.07);font-size:12px;line-height:1.35;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease}
 .dxp-bubble-text{display:flex;flex-direction:column;gap:1px;min-width:0;text-align:left}
-.dxp-bubble-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+.dxp-bubble-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .dxp-bubble-detail{font-size:12px;overflow-wrap:anywhere}
 .dxp-bubble[data-tone=waiting]{border-color:var(--dsw-alias-link,#4176e6)}
 .dxp-bubble[data-tone=done]{border-color:var(--dsw-alias-state-success-primary,#12805c)}
@@ -29,7 +44,7 @@ export const CSS = `
 .dxp-bubble-open{flex:1;border:0;background:transparent;font:inherit;color:inherit;padding:0;text-align:left;cursor:pointer;pointer-events:auto}
 .dxp-bubble-open:hover .dxp-bubble-title{color:var(--dsw-alias-label-primary,#20252e)}
 .dxp-error{margin:2px 0 0;padding:0 6px;font-size:11px;line-height:1.35;color:var(--dsw-alias-state-error-primary,#c2410c);overflow-wrap:anywhere}
-.dxp-bubble-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a919c);font:inherit;font-size:13px;line-height:1;cursor:pointer;pointer-events:auto}
+.dxp-bubble-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a919c);font:inherit;font-size:14px;line-height:1;cursor:pointer;pointer-events:auto}
 .dxp-bubble-close:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef);color:var(--dsw-alias-label-primary,#20252e)}
 .dxp-bubble-close:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
 .dxp-bubble[data-show=true]{opacity:1;transform:none}
