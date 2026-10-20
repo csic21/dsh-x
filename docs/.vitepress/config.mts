@@ -41,7 +41,6 @@ export default defineConfig({
           text: '开发',
           items: [
             { text: '仓库与本地开发', link: '/dev/workspace' },
-            { text: '桌面宠物窗口', link: '/dev/desktop-pet-window' },
             { text: '发布流程', link: '/dev/release' },
           ],
         },

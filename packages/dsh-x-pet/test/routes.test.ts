@@ -1,7 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createAtlasRoute, createPetPageRoute, createPetRoute } from '../src/routes.ts'
-import { petFramePage } from '../src/frame.ts'
+import { createAtlasRoute, createPetRoute } from '../src/routes.ts'
 
 const envelope = (method: string, payload: unknown) => JSON.stringify({
   type: 'client-request', rpcId: 'rpc-1', method, payload,
@@ -58,31 +57,4 @@ test('a missing sheet answers 404 rather than an empty image', async () => {
   const route = createAtlasRoute('dsh-x-pet/atlas', async () => { throw new Error('PET_UNKNOWN') })
   const response = await post(route, envelope('dsh-x-pet/atlas', { id: 'gone' }))
   assert.equal(response.status, 404)
-})
-
-test('the detached frame is a GET document, not an RPC envelope', async () => {
-  const route = createPetPageRoute('dsh-x-pet/frame', petFramePage)
-  assert.equal(route.methods.join(','), 'GET')
-  const response = await route.fetch(new Request('http://localhost/api/dsh-x-pet/frame'))
-  assert.equal(response.status, 200)
-  assert.match(response.headers.get('content-type') ?? '', /text\/html/)
-  const html = await response.text()
-  assert.match(html, /dsh-x-pet\/state/)
-  assert.match(html, /dsh-x-pet\/atlas/)
-  assert.match(html, /<script>/)
-})
-
-test('the page carries no interpolated data, so nothing can break out of it', () => {
-  const html = petFramePage()
-  assert.equal(html, petFramePage())
-  assert.doesNotMatch(html, /<\/script><script>/)
-})
-
-test('the page unwraps the connection envelope before reading ok', () => {
-  // The route answers { type, rpcId, result }, and the page used to read
-  // `body.ok`, which is undefined: every poll failed silently and the window
-  // stayed blank with no error anywhere.
-  const html = petFramePage()
-  assert.match(html, /const result = body && body\.result \? body\.result : body/)
-  assert.match(html, /result\.ok !== true/)
 })

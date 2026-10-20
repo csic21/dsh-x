@@ -239,15 +239,23 @@ export interface NarrationLine {
   tone: 'working' | 'waiting' | 'done'
 }
 
+/** One conversation in the stacked bubble. */
+export interface NarrationRow {
+  id: string
+  title: string
+  detail: string
+  tone: 'working' | 'waiting' | 'done'
+}
+
 export interface Narration {
   line: NarrationLine | null
+  /** Every conversation that wants attention, newest first. */
+  rows: NarrationRow[]
   /** How many conversations want attention right now. */
   count: number
   /** True for a short while after a turn finishes, when the pet waves. */
   celebrate: boolean
   busy: boolean
-  /** Move the pet's attention to the next conversation that is working. */
-  next: () => void
   /** Hide this line until the same conversation says something new. */
   dismiss: () => void
 }
@@ -342,7 +350,6 @@ export function usePetNarration(
     ? [...statuses].map(([id, value]) => `${id}:${value.running ? 1 : 0}:${value.pendingInteraction?.kind ?? ''}`).join(',')
     : ''
   const candidates = useMemo(() => activeCandidates(list, statuses), [list, statuses, statusKey])
-  const [focusId, setFocusId] = useState<string | null>(null)
   const [activities, setActivities] = useState<Record<string, SessionActivity>>({})
   const [finished, setFinished] = useState<{ title: string | null, id: number } | null>(null)
   const [celebrate, setCelebrate] = useState(false)
@@ -354,7 +361,7 @@ export function usePetNarration(
   const turns = useRef<Map<string, number>>(new Map())
   const finishedSeq = useRef(0)
 
-  const primary = candidates.find(candidate => candidate.id === focusId) ?? candidates[0] ?? null
+  const primary = candidates[0] ?? null
   const anyRunning = candidates.some(candidate => candidate.running)
   const ids = candidates.map(candidate => candidate.id)
   const idKey = ids.join(',')
@@ -443,12 +450,21 @@ export function usePetNarration(
     }
   }, [controller, idKey, anyRunning, enabled])
 
-  const next = useCallback(() => {
-    if (candidates.length < 2) return
-    const index = candidates.findIndex(candidate => candidate.id === primary?.id)
-    const target = candidates[(index + 1) % candidates.length]
-    setFocusId(target.id)
-  }, [candidates, primary?.id])
+  // Every conversation that wants attention, in the same order the pet ranks
+  // them: one stacked line each, so the whole picture is visible at once.
+  const rows: NarrationRow[] = candidates.map(candidate => {
+    const title = candidate.title ?? t('bubble.untitled')
+    if (candidate.pending) {
+      const detail = t(candidate.pending === 'question' ? 'bubble.question' : 'bubble.blocked')
+      return { id: candidate.id, title, detail, tone: 'waiting' as const }
+    }
+    const activity = activities[candidate.id]
+    const activityText = activity?.phase === 'tool'
+      ? t('bubble.tool', { tool: activity.tool ?? '—' })
+      : activity?.phase === 'thinking' ? t('bubble.thinking') : t('bubble.busy')
+    const elapsed = formatElapsed(Date.now() - (since.current.get(candidate.id) ?? Date.now()))
+    return { id: candidate.id, title, detail: t('bubble.detail', { activity: activityText, elapsed }), tone: 'working' as const }
+  })
 
   let line: NarrationLine | null = null
   if (primary) {
@@ -477,46 +493,23 @@ export function usePetNarration(
 
   return {
     line: visible ? line : null,
+    rows,
     count: candidates.length,
     celebrate,
     busy: primary?.running === true,
-    next,
     dismiss: () => setDismissed(lineKey),
   }
-}
-
-/**
- * Open the detached pet document in a window of its own.
- *
- * That page reads `/api/dsh-x-pet/state`, so it needs no Client store and no
- * bundle. The Desktop shell denies `window.open` for its main window, so there
- * this stays a quiet no-op until the shell ships a pet window; a browser opens
- * it right away.
- */
-async function openDetachedFrame(controller: PetController): Promise<boolean> {
-  // 1. A Desktop shell that ships a pet window owns placement and stacking.
-  try {
-    const bridge = (globalThis as any).dshDesktop?.petWindow
-    if (bridge !== undefined && typeof bridge.open === 'function') { void bridge.open(); return false }
-  } catch { /* Fall through to the plugin's own window. */ }
-  // 2. The plugin's native shell: a floating panel the app window cannot clip.
-  try { if (await controller.detach()) return true } catch { /* Fall through to a popup. */ }
-  // 3. A browser tab, which at least leaves the app window.
-  try {
-    globalThis.open?.('/api/dsh-x-pet/frame', 'dsh-x-pet-frame', 'width=280,height=340,menubar=no,toolbar=no,location=no,status=no')
-  } catch { /* A denied popup never breaks the frame. */ }
-  return false
 }
 
 export function PetFrame(props: PetStandardProps & {
   controller: PetController
   t: Translate
+  /** Jump to one conversation when its row is clicked. */
+  openSession?: (id: string) => void
 }) {
   const { controller, t } = props
   const standard = props
   const [pickerOpen, setPickerOpen] = useState(false)
-  /** True while the native panel is up: one pet, not two. */
-  const [detached, setDetached] = useState(false)
   const [failed, setFailed] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
   const [offset, setOffset] = useState<{ x: number, y: number } | null>(null)
@@ -535,24 +528,10 @@ export function PetFrame(props: PetStandardProps & {
   const active = view?.active ?? 'off'
   // The frame renders `null` while the pet is off, so the narration behind it
   // must not keep a clock or poll the host either.
-  const narration = usePetNarration(list, statuses, controller, t, active !== 'off' && !detached)
+  const narration = usePetNarration(list, statuses, controller, t, active !== 'off')
   const animation = narration.celebrate ? 'waving' : state
 
   useEffect(() => { void controller.load() }, [controller])
-
-  // A reload keeps the panel alive, and closing the panel from its own corner
-  // brings the in-app pet back.
-  useEffect(() => {
-    if (!detached) {
-      let cancelled = false
-      void controller.detached().then(open => { if (!cancelled && open) setDetached(true) })
-      return () => { cancelled = true }
-    }
-    const timer = globalThis.setInterval(() => {
-      void controller.detached().then(open => { if (!open) setDetached(false) })
-    }, 3_000)
-    return () => globalThis.clearInterval(timer)
-  }, [controller, detached])
 
   useEffect(() => {
     controller.release(active === 'off' ? [] : [active])
@@ -631,7 +610,7 @@ export function PetFrame(props: PetStandardProps & {
     setPickerOpen(true)
   }, [])
 
-  if (active === 'off' || detached) return null
+  if (active === 'off') return null
 
   const label = `${t('frame.label')} · ${t(STATE_LABEL[animation])}`
   const style = offset ? ({ '--dxp-x': `${offset.x}px`, '--dxp-y': `${offset.y}px` } as any) : undefined
@@ -639,25 +618,33 @@ export function PetFrame(props: PetStandardProps & {
   return <>
     <div className="dxp" style={style} data-pet-state={animation}>
       <div className="dxp-stage">
-        <div className="dxp-bubble" data-show={narration.line !== null} data-tone={narration.line?.tone}>
-          <span className="dxp-bubble-text" role="status" aria-live="polite">
-            <strong className="dxp-bubble-title">
-              {narration.line?.tone === 'done'
-                ? <span className="dxp-bubble-check" aria-hidden="true">✓</span>
-                : null}
-              {narration.line?.title}
-            </strong>
-            <span className="dxp-bubble-detail">{narration.line?.detail}</span>
-          </span>
-          {narration.count > 1
-            ? <button
-              type="button"
-              className="dxp-bubble-more"
-              title={t('bubble.more', { count: narration.count })}
-              aria-label={t('bubble.switch', { count: narration.count })}
-              onClick={narration.next}
-            >+{narration.count - 1}</button>
-            : null}
+        <div className="dxp-bubble" data-show={narration.line !== null} data-tone={narration.line?.tone} data-stacked={narration.rows.length > 1 || undefined}>
+          {narration.rows.length > 1
+            ? <ul className="dxp-list" aria-label={t('bubble.list', { count: narration.rows.length })}>
+              {narration.rows.map(row => (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    className="dxp-list-item"
+                    data-tone={row.tone}
+                    title={t('bubble.open', { title: row.title })}
+                    onClick={() => { props.openSession?.(row.id) }}
+                  >
+                    <strong className="dxp-list-title">{row.title}</strong>
+                    <span className="dxp-list-detail">{row.detail}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            : <span className="dxp-bubble-text" role="status" aria-live="polite">
+              <strong className="dxp-bubble-title">
+                {narration.line?.tone === 'done'
+                  ? <span className="dxp-bubble-check" aria-hidden="true">✓</span>
+                  : null}
+                {narration.line?.title}
+              </strong>
+              <span className="dxp-bubble-detail">{narration.line?.detail}</span>
+            </span>}
           <button
             type="button"
             className="dxp-bubble-close"
@@ -682,7 +669,6 @@ export function PetFrame(props: PetStandardProps & {
         <div className="dxp-status">{t(STATE_LABEL[state])}</div>
         <div className="dxp-controls">
           <button type="button" onClick={() => setPickerOpen(true)}>{t('frame.open')}</button>
-          <button type="button" onClick={() => { void openDetachedFrame(controller).then(open => { if (open) setDetached(true) }) }}>{t('frame.popout')}</button>
           <button type="button" onClick={() => { void controller.select('off').catch(() => {}) }}>{t('frame.hide')}</button>
         </div>
       </div>

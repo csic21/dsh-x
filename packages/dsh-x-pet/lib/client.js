@@ -42,7 +42,6 @@ var SELECT_ENDPOINT = "dsh-x-pet/select";
 var MOVE_ENDPOINT = "dsh-x-pet/move";
 var ATLAS_ENDPOINT = "dsh-x-pet/atlas";
 var ACTIVITY_ENDPOINT = "dsh-x-pet/activity";
-var WINDOW_ENDPOINT = "dsh-x-pet/window";
 var unwrap = (result) => {
   if (!result?.ok) throw new Error(String(result?.error?.code ?? "PET_UNAVAILABLE"));
   return result.value;
@@ -104,22 +103,6 @@ function createPetController(rpc, fetchObject = globalThis.fetch) {
         return value?.activities ?? {};
       } catch {
         return {};
-      }
-    },
-    async detach() {
-      try {
-        const value = await call(WINDOW_ENDPOINT, { action: "open" });
-        return value?.open === true;
-      } catch {
-        return false;
-      }
-    },
-    async detached() {
-      try {
-        const value = await call(WINDOW_ENDPOINT, { action: "status" });
-        return value?.open === true;
-      } catch {
-        return false;
       }
     },
     atlasUrl(id) {
@@ -531,7 +514,6 @@ function activeCandidates(list, statuses) {
 function usePetNarration(list, statuses, controller, t, enabled = true) {
   const statusKey = statuses ? [...statuses].map(([id, value]) => `${id}:${value.running ? 1 : 0}:${value.pendingInteraction?.kind ?? ""}`).join(",") : "";
   const candidates = (0, import_react.useMemo)(() => activeCandidates(list, statuses), [list, statuses, statusKey]);
-  const [focusId, setFocusId] = (0, import_react.useState)(null);
   const [activities, setActivities] = (0, import_react.useState)({});
   const [finished, setFinished] = (0, import_react.useState)(null);
   const [celebrate, setCelebrate] = (0, import_react.useState)(false);
@@ -541,20 +523,20 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
   const previous = (0, import_react.useRef)(/* @__PURE__ */ new Map());
   const turns = (0, import_react.useRef)(/* @__PURE__ */ new Map());
   const finishedSeq = (0, import_react.useRef)(0);
-  const primary = candidates.find((candidate) => candidate.id === focusId) ?? candidates[0] ?? null;
+  const primary = candidates[0] ?? null;
   const anyRunning = candidates.some((candidate) => candidate.running);
   const ids = candidates.map((candidate) => candidate.id);
   const idKey = ids.join(",");
   (0, import_react.useEffect)(() => {
     if (!statuses) return;
     const done = [];
-    const rows = list?.byId ?? {};
+    const rows2 = list?.byId ?? {};
     for (const [id, value] of statuses) {
       const was = previous.current.get(id);
       const now = value.running === true;
       if (now && was !== true) turns.current.set(id, (turns.current.get(id) ?? 0) + 1);
       if (was === true && !now) {
-        const title = rows[id]?.title;
+        const title = rows2[id]?.title;
         done.push({ title: typeof title === "string" && title.trim() ? title.trim() : null });
       }
       previous.current.set(id, now);
@@ -599,8 +581,8 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
       if (inFlight) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       inFlight = true;
-      void controller.activity(ids).then((next2) => {
-        if (!cancelled) setActivities(next2);
+      void controller.activity(ids).then((next) => {
+        if (!cancelled) setActivities(next);
       }).catch(() => {
       }).finally(() => {
         inFlight = false;
@@ -613,12 +595,17 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
       if (timer !== void 0) globalThis.clearInterval(timer);
     };
   }, [controller, idKey, anyRunning, enabled]);
-  const next = (0, import_react.useCallback)(() => {
-    if (candidates.length < 2) return;
-    const index = candidates.findIndex((candidate) => candidate.id === primary?.id);
-    const target = candidates[(index + 1) % candidates.length];
-    setFocusId(target.id);
-  }, [candidates, primary?.id]);
+  const rows = candidates.map((candidate) => {
+    const title = candidate.title ?? t("bubble.untitled");
+    if (candidate.pending) {
+      const detail = t(candidate.pending === "question" ? "bubble.question" : "bubble.blocked");
+      return { id: candidate.id, title, detail, tone: "waiting" };
+    }
+    const activity = activities[candidate.id];
+    const activityText = activity?.phase === "tool" ? t("bubble.tool", { tool: activity.tool ?? "\u2014" }) : activity?.phase === "thinking" ? t("bubble.thinking") : t("bubble.busy");
+    const elapsed = formatElapsed(Date.now() - (since.current.get(candidate.id) ?? Date.now()));
+    return { id: candidate.id, title, detail: t("bubble.detail", { activity: activityText, elapsed }), tone: "working" };
+  });
   let line = null;
   if (primary) {
     const title = primary.title ?? t("bubble.untitled");
@@ -637,37 +624,17 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
   const visible = line !== null && lineKey !== dismissed;
   return {
     line: visible ? line : null,
+    rows,
     count: candidates.length,
     celebrate,
     busy: primary?.running === true,
-    next,
     dismiss: () => setDismissed(lineKey)
   };
-}
-async function openDetachedFrame(controller) {
-  try {
-    const bridge = globalThis.dshDesktop?.petWindow;
-    if (bridge !== void 0 && typeof bridge.open === "function") {
-      void bridge.open();
-      return false;
-    }
-  } catch {
-  }
-  try {
-    if (await controller.detach()) return true;
-  } catch {
-  }
-  try {
-    globalThis.open?.("/api/dsh-x-pet/frame", "dsh-x-pet-frame", "width=280,height=340,menubar=no,toolbar=no,location=no,status=no");
-  } catch {
-  }
-  return false;
 }
 function PetFrame(props) {
   const { controller, t } = props;
   const standard = props;
   const [pickerOpen, setPickerOpen] = (0, import_react.useState)(false);
-  const [detached, setDetached] = (0, import_react.useState)(false);
   const [failed, setFailed] = (0, import_react.useState)(false);
   const [url, setUrl] = (0, import_react.useState)(null);
   const [offset, setOffset] = (0, import_react.useState)(null);
@@ -686,28 +653,11 @@ function PetFrame(props) {
     (0, import_react.useCallback)(() => controller.getSnapshot(), [controller])
   );
   const active = view?.active ?? "off";
-  const narration = usePetNarration(list, statuses, controller, t, active !== "off" && !detached);
+  const narration = usePetNarration(list, statuses, controller, t, active !== "off");
   const animation = narration.celebrate ? "waving" : state;
   (0, import_react.useEffect)(() => {
     void controller.load();
   }, [controller]);
-  (0, import_react.useEffect)(() => {
-    if (!detached) {
-      let cancelled = false;
-      void controller.detached().then((open) => {
-        if (!cancelled && open) setDetached(true);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    const timer = globalThis.setInterval(() => {
-      void controller.detached().then((open) => {
-        if (!open) setDetached(false);
-      });
-    }, 3e3);
-    return () => globalThis.clearInterval(timer);
-  }, [controller, detached]);
   (0, import_react.useEffect)(() => {
     controller.release(active === "off" ? [] : [active]);
   }, [controller, active]);
@@ -791,21 +741,23 @@ function PetFrame(props) {
     }
     setPickerOpen(true);
   }, []);
-  if (active === "off" || detached) return null;
+  if (active === "off") return null;
   const label = `${t("frame.label")} \xB7 ${t(STATE_LABEL[animation])}`;
   const style = offset ? { "--dxp-x": `${offset.x}px`, "--dxp-y": `${offset.y}px` } : void 0;
-  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": narration.line !== null, "data-tone": narration.line?.tone }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-text", role: "status", "aria-live": "polite" }, /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, narration.line?.tone === "done" ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713") : null, narration.line?.title), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line?.detail)), narration.count > 1 ? /* @__PURE__ */ import_react.default.createElement(
+  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": narration.line !== null, "data-tone": narration.line?.tone, "data-stacked": narration.rows.length > 1 || void 0 }, narration.rows.length > 1 ? /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxp-list", "aria-label": t("bubble.list", { count: narration.rows.length }) }, narration.rows.map((row2) => /* @__PURE__ */ import_react.default.createElement("li", { key: row2.id }, /* @__PURE__ */ import_react.default.createElement(
     "button",
     {
       type: "button",
-      className: "dxp-bubble-more",
-      title: t("bubble.more", { count: narration.count }),
-      "aria-label": t("bubble.switch", { count: narration.count }),
-      onClick: narration.next
+      className: "dxp-list-item",
+      "data-tone": row2.tone,
+      title: t("bubble.open", { title: row2.title }),
+      onClick: () => {
+        props.openSession?.(row2.id);
+      }
     },
-    "+",
-    narration.count - 1
-  ) : null, /* @__PURE__ */ import_react.default.createElement(
+    /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-list-title" }, row2.title),
+    /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-list-detail" }, row2.detail)
+  )))) : /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-text", role: "status", "aria-live": "polite" }, /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, narration.line?.tone === "done" ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713") : null, narration.line?.title), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line?.detail)), /* @__PURE__ */ import_react.default.createElement(
     "button",
     {
       type: "button",
@@ -834,10 +786,6 @@ function PetFrame(props) {
       }
     }
   ), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-status" }, t(STATE_LABEL[state])), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setPickerOpen(true) }, t("frame.open")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
-    void openDetachedFrame(controller).then((open) => {
-      if (open) setDetached(true);
-    });
-  } }, t("frame.popout")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
     void controller.select("off").catch(() => {
     });
   } }, t("frame.hide"))))), pickerOpen ? /* @__PURE__ */ import_react.default.createElement(
@@ -997,8 +945,8 @@ var zh = {
   "bubble.question": "\u7B49\u4F60\u56DE\u7B54",
   "bubble.done": "\u8FD9\u8F6E\u505A\u5B8C\u4E86",
   "bubble.doneTitle": "\u300C{title}\u300D\u505A\u5B8C\u4E86",
-  "bubble.more": "{count} \u4E2A\u5BF9\u8BDD\u5728\u8FDB\u884C",
-  "bubble.switch": "\u5207\u5230\u4E0B\u4E00\u4E2A\u5BF9\u8BDD\uFF0C\u5171 {count} \u4E2A\u5728\u8FDB\u884C",
+  "bubble.list": "{count} \u4E2A\u5BF9\u8BDD\u5728\u8FDB\u884C",
+  "bubble.open": "\u6253\u5F00\u300C{title}\u300D",
   "bubble.close": "\u6536\u8D77\u8FD9\u6761\u63D0\u793A\uFF08\u4E0D\u5F71\u54CD\u5BF9\u8BDD\uFF09",
   "picker.title": "\u9009\u62E9\u684C\u5BA0",
   "picker.close": "\u5173\u95ED",
@@ -1053,8 +1001,8 @@ var en = {
   "bubble.question": "Waiting for your answer",
   "bubble.done": "This turn is done",
   "bubble.doneTitle": '"{title}" is done',
-  "bubble.more": "{count} conversations are active",
-  "bubble.switch": "Switch to the next conversation, {count} active",
+  "bubble.list": "{count} conversations are active",
+  "bubble.open": 'Open "{title}"',
   "bubble.close": "Hide this bubble (the conversation keeps running)",
   "picker.title": "Choose a pet",
   "picker.close": "Close",
@@ -1110,6 +1058,14 @@ var CSS = `
 .dxp-bubble-more:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef)}
 .dxp-bubble-more:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
 .dxp-bubble-check{color:var(--dsw-alias-state-success-primary,#12805c);margin-right:3px;font-weight:700}
+.dxp-bubble[data-stacked]{flex-direction:column;align-items:stretch;max-width:260px;padding:6px}
+.dxp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:180px;overflow-y:auto}
+.dxp-list-item{display:flex;flex-direction:column;gap:1px;width:100%;padding:4px 6px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;pointer-events:auto}
+.dxp-list-item:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
+.dxp-list-item:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:-1px}
+.dxp-list-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.dxp-list-detail{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dxp-list-item[data-tone=waiting] .dxp-list-title{color:var(--dsw-alias-link,#4176e6)}
 .dxp-bubble-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a919c);font:inherit;font-size:13px;line-height:1;cursor:pointer;pointer-events:auto}
 .dxp-bubble-close:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef);color:var(--dsw-alias-label-primary,#20252e)}
 .dxp-bubble-close:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
@@ -1161,7 +1117,7 @@ var CSS = `
 `;
 
 // src/client/index.ts
-var inject = ["slots", "connection", "locale"];
+var inject = ["slots", "connection", "locale", "uiWorkspace"];
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), "pet: dictionaries");
   const t = ctx.locale.bind(NS);
@@ -1181,7 +1137,7 @@ function apply(ctx) {
     order: 40,
     locale: NS,
     label: () => t("title"),
-    inject: () => ({ controller })
+    inject: () => ({ controller, openSession: (id) => ctx.uiWorkspace.openSession(id) })
   }, PetFrame));
   ctx.slots.inject("settings.section", () => ctx.slots.register({
     name: "settings.section",
@@ -1189,7 +1145,7 @@ function apply(ctx) {
     order: 12,
     locale: NS,
     label: () => t("settings.nav"),
-    inject: () => ({ controller })
+    inject: () => ({ controller, openSession: (id) => ctx.uiWorkspace.openSession(id) })
   }, PetSettings));
 }
 return module.exports; } });

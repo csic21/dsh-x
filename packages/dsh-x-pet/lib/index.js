@@ -3,10 +3,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { createAtlasRoute, createPetPageRoute, createPetRoute } from './routes.js';
-import { petFramePage } from './frame.js';
-import { createShell, frameURL } from './native.js';
-import { playbackFor, readFrameFacts } from './frame-state.js';
+import { createAtlasRoute, createPetRoute } from './routes.js';
 import { DEFAULT_PET_ID, PET_OFF, createPetStore } from './store.js';
 export const name = 'dsh-x-pet';
 export const inject = ['tools', 'profileContext'];
@@ -15,11 +12,6 @@ const PET_SELECT = 'dsh-x-pet/select';
 const PET_MOVE = 'dsh-x-pet/move';
 const PET_ATLAS = 'dsh-x-pet/atlas';
 const PET_ACTIVITY = 'dsh-x-pet/activity';
-/** The detached window's document and the facts it polls. */
-const PET_FRAME = 'dsh-x-pet/frame';
-const PET_STATE = 'dsh-x-pet/state';
-/** Start or stop the native shell window. */
-const PET_WINDOW = 'dsh-x-pet/window';
 /**
  * Read the tail of a session log and name the step it is on. A tool whose
  * result has not been written yet is still running; anything else is the model
@@ -156,10 +148,8 @@ export function apply(ctx, config = {}) {
             }
         },
     }));
-    ctx.inject(['connection', 'sessions', 'webApp'], injected => {
+    ctx.inject(['connection', 'sessions'], injected => {
         const host = injected;
-        const shell = createShell();
-        host.effect(() => () => shell.close());
         host.connection.fetch.register(createPetRoute(PET_ACTIVITY, async (payload) => {
             const ids = payload.ids;
             if (!Array.isArray(ids) || ids.length > 20 || ids.some(id => typeof id !== 'string' || id.length === 0 || id.length > 128)) {
@@ -192,37 +182,6 @@ export function apply(ctx, config = {}) {
             const { entry, bytes } = await store.atlas(id);
             return { bytes, mime: entry.mime };
         }));
-        // The detached window cannot see the Client store, so it reads one folded
-        // snapshot from the Host: the pet is the same, the data path is not.
-        host.connection.fetch.register(createPetRoute(PET_STATE, async () => {
-            const current = await view();
-            const active = current.active;
-            const rows = current.pets.find(pet => pet.id === active)?.rows ?? 11;
-            const facts = readFrameFacts(host.sessions.list(), Date.now());
-            return { active, rows, facts, playback: playbackFor(facts.state) };
-        }, []));
-        host.connection.fetch.register(createPetPageRoute(PET_FRAME, petFramePage));
-        // The pet's own window: compiled from the shipped Swift source on first use.
-        host.connection.fetch.register(createPetRoute(PET_WINDOW, async (payload) => {
-            if (payload.action === 'close') {
-                shell.close();
-                return { open: false };
-            }
-            if (payload.action === 'status')
-                return { open: shell.running() };
-            if (payload.action !== 'open')
-                throw new Error('PET_WINDOW');
-            const base = host.webApp.getAdvertisedUrl();
-            const opened = await shell.open({
-                profileDir: host.profileContext.dir,
-                source: path.join(packageDirectory, 'native', 'pet-window.swift'),
-                frameURL: frameURL(base),
-                bootstrapURL: host.connection.authenticatedUrl(base),
-            });
-            if (!opened)
-                throw new Error('PET_NATIVE_UNAVAILABLE');
-            return { open: true };
-        }, ['action']));
     });
 }
-export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE, PET_WINDOW };
+export { PET_ACTIVITY, PET_ATLAS, PET_LIST, PET_MOVE, PET_SELECT };

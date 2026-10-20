@@ -85,6 +85,7 @@ test('the pet frame registers in the frame overlay and follows the session state
     assert.equal(entry.options.id, 'dsh-x-pet')
 
     // The host owns the session facts the pet reads.
+    const opened: string[] = []
     const status: any = { running: false, pendingInteraction: undefined, completionUnread: false }
     const list: any = { byId: { s1: { id: 's1', title: 'Refactor login', updatedAt: 2, retainedBy: { mainView: 1 } } } }
     const statuses = new Map<string, any>([['s1', status]])
@@ -95,12 +96,13 @@ test('the pet frame registers in the frame overlay and follows the session state
       const usePanelInfo = (selector: any) => selector({ activePanelId: null })
       return React.createElement(entry.component, {
         ...face, useSessions, useSessionStatus, usePanelInfo,
+        openSession: (id: string) => { opened.push(id) },
         t: (key: string, params?: Record<string, unknown>) => params ? `${key} ${Object.values(params).join(' ')}` : key,
       })
     }
     const render = async () => step(() => root.render(React.createElement(Render, { entry })))
     await render()
-    assert.deepEqual(rpcCalls.filter(endpoint => endpoint !== 'dsh-x-pet/window'), ['dsh-x-pet/list'])
+    assert.deepEqual(rpcCalls, ['dsh-x-pet/list'])
     const frame = dom.window.document.querySelector<HTMLElement>('.dxp')
     assert.ok(frame, 'the pet frame is rendered')
     assert.equal(frame!.dataset.petState, 'idle')
@@ -142,17 +144,18 @@ test('the pet frame registers in the frame overlay and follows the session state
     await render()
     assert.equal(bubble().dataset.show, 'true', 'the next turn speaks again')
 
-    // Two conversations: the pet watches one and counts the other.
+    // Two conversations stack as rows, and a row jumps to its conversation.
     status.running = true
     list.byId.s2 = { id: 's2', title: 'Review diff', updatedAt: 1 }
     statuses.set('s2', { running: true, pendingInteraction: undefined, completionUnread: false })
     await render()
-    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-title')!.textContent, 'Refactor login')
-    const chip = dom.window.document.querySelector<HTMLElement & HTMLButtonElement>('.dxp-bubble-more')!
-    assert.equal(chip.textContent, '+1')
-    await step(() => { chip.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
-    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-title')!.textContent, 'Review diff')
-    assert.match(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-detail')!.textContent!, /bubble\.thinking/)
+    const rows = () => Array.from(dom.window.document.querySelectorAll<HTMLElement>('.dxp-list-item'))
+    assert.equal(rows().length, 2, 'both conversations are listed')
+    assert.equal(rows()[0].querySelector('.dxp-list-title')!.textContent, 'Refactor login')
+    assert.equal(rows()[1].querySelector('.dxp-list-title')!.textContent, 'Review diff')
+    assert.match(rows()[1].querySelector('.dxp-list-detail')!.textContent!, /bubble\.thinking/)
+    await step(() => { rows()[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    assert.deepEqual(opened, ['s2'], 'clicking a row opens that conversation')
     statuses.delete('s2')
     status.running = false
 

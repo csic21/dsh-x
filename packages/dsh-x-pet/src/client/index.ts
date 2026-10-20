@@ -8,6 +8,8 @@ import { CSS } from './styles.ts'
 
 export interface PetClientContext {
   effect(fn: () => unknown, label?: string): unknown
+  /** Opens a conversation in the main view; the pet only navigates. */
+  uiWorkspace: { openSession(id: string): void }
   on(event: string, listener: () => void): unknown
   connection: { rpc: { call(channel: string, endpoint: string, payload: unknown, signal?: AbortSignal): Promise<any> } }
   locale: {
@@ -20,7 +22,7 @@ export interface PetClientContext {
   }
 }
 
-export const inject = ['slots', 'connection', 'locale']
+export const inject = ['slots', 'connection', 'locale', 'uiWorkspace']
 
 export function apply(ctx: PetClientContext) {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'pet: dictionaries')
@@ -46,7 +48,7 @@ export function apply(ctx: PetClientContext) {
     order: 40,
     locale: NS,
     label: () => t('title'),
-    inject: () => ({ controller }),
+    inject: () => ({ controller, openSession: (id: string) => ctx.uiWorkspace.openSession(id) }),
   }, PetFrame as ComponentType<any>))
 
   // The account menu's Settings entry is where the switch and the character
@@ -57,6 +59,6 @@ export function apply(ctx: PetClientContext) {
     order: 12,
     locale: NS,
     label: () => t('settings.nav'),
-    inject: () => ({ controller }),
+    inject: () => ({ controller, openSession: (id: string) => ctx.uiWorkspace.openSession(id) }),
   }, PetSettings as ComponentType<any>))
 }
