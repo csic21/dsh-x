@@ -33,8 +33,11 @@ const API = (endpoint, payload) => fetch('/api/' + endpoint, {
   body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method: endpoint, payload }),
 }).then(async response => {
   const body = await response.json()
-  if (!body || body.ok !== true) throw new Error((body && body.error && body.error.code) || 'PET_RPC')
-  return body.value
+  // The connection frames every answer as { type, rpcId, result }; the route's
+  // own { ok, value } lives one level down.
+  const result = body && body.result ? body.result : body
+  if (!result || result.ok !== true) throw new Error((result && result.error && result.error.code) || 'PET_RPC')
+  return result.value
 })
 
 const zh = (navigator.language || '').toLowerCase().startsWith('zh')

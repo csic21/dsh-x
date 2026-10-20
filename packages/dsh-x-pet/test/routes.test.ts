@@ -77,3 +77,12 @@ test('the page carries no interpolated data, so nothing can break out of it', ()
   assert.equal(html, petFramePage())
   assert.doesNotMatch(html, /<\/script><script>/)
 })
+
+test('the page unwraps the connection envelope before reading ok', () => {
+  // The route answers { type, rpcId, result }, and the page used to read
+  // `body.ok`, which is undefined: every poll failed silently and the window
+  // stayed blank with no error anywhere.
+  const html = petFramePage()
+  assert.match(html, /const result = body && body\.result \? body\.result : body/)
+  assert.match(html, /result\.ok !== true/)
+})
