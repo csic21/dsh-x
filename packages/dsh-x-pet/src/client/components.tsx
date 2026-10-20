@@ -251,6 +251,8 @@ export interface Narration {
   line: NarrationLine | null
   /** Every conversation that wants attention, newest first. */
   rows: NarrationRow[]
+  /** The conversation the single line is about, when there is one. */
+  primaryId: string | null
   /** How many conversations want attention right now. */
   count: number
   /** True for a short while after a turn finishes, when the pet waves. */
@@ -494,6 +496,7 @@ export function usePetNarration(
   return {
     line: visible ? line : null,
     rows,
+    primaryId: primary?.id ?? null,
     count: candidates.length,
     celebrate,
     busy: primary?.running === true,
@@ -510,6 +513,8 @@ export function PetFrame(props: PetStandardProps & {
   const { controller, t } = props
   const standard = props
   const [pickerOpen, setPickerOpen] = useState(false)
+  /** Why the last click could not open its conversation, if it could not. */
+  const [openError, setOpenError] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
   const [offset, setOffset] = useState<{ x: number, y: number } | null>(null)
@@ -548,6 +553,22 @@ export function PetFrame(props: PetStandardProps & {
   }, [controller, active])
 
   useEffect(() => { setOffset(view?.selection?.position ?? null) }, [view?.selection?.position?.x, view?.selection?.position?.y])
+
+  const openConversation = useCallback((id: string | null) => {
+    if (id === null) return
+    try {
+      if (typeof props.openSession !== 'function') throw new Error('no opener')
+      props.openSession(id)
+      setOpenError(null)
+    } catch (error) {
+      // Errors thrown by the host bundle live in another realm, so `instanceof`
+      // is not enough to read their message.
+      const message = error !== null && typeof error === 'object' && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : String(error)
+      setOpenError(message)
+    }
+  }, [props.openSession])
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
@@ -628,7 +649,7 @@ export function PetFrame(props: PetStandardProps & {
                     className="dxp-list-item"
                     data-tone={row.tone}
                     title={t('bubble.open', { title: row.title })}
-                    onClick={() => { props.openSession?.(row.id) }}
+                    onClick={() => { openConversation(row.id) }}
                   >
                     <strong className="dxp-list-title">{row.title}</strong>
                     <span className="dxp-list-detail">{row.detail}</span>
@@ -636,7 +657,13 @@ export function PetFrame(props: PetStandardProps & {
                 </li>
               ))}
             </ul>
-            : <span className="dxp-bubble-text" role="status" aria-live="polite">
+            : <button
+              type="button"
+              className="dxp-bubble-text dxp-bubble-open"
+              role="status"
+              title={t('bubble.open', { title: narration.line?.title ?? '' })}
+              onClick={() => { openConversation(narration.primaryId) }}
+            >
               <strong className="dxp-bubble-title">
                 {narration.line?.tone === 'done'
                   ? <span className="dxp-bubble-check" aria-hidden="true">✓</span>
@@ -644,7 +671,10 @@ export function PetFrame(props: PetStandardProps & {
                 {narration.line?.title}
               </strong>
               <span className="dxp-bubble-detail">{narration.line?.detail}</span>
-            </span>}
+            </button>}
+          {openError !== null
+            ? <p className="dxp-error" role="alert">{t('bubble.navigateFailed', { message: openError })}</p>
+            : null}
           <button
             type="button"
             className="dxp-bubble-close"

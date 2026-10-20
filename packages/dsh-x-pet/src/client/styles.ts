@@ -30,6 +30,9 @@ export const CSS = `
 .dxp-list-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
 .dxp-list-detail{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dxp-list-item[data-tone=waiting] .dxp-list-title{color:var(--dsw-alias-link,#4176e6)}
+.dxp-bubble-open{flex:1;border:0;background:transparent;font:inherit;color:inherit;padding:0;text-align:left;cursor:pointer;pointer-events:auto}
+.dxp-bubble-open:hover .dxp-bubble-title{color:var(--dsw-alias-label-primary,#20252e)}
+.dxp-error{margin:2px 0 0;padding:0 6px;font-size:11px;line-height:1.35;color:var(--dsw-alias-state-error-primary,#c2410c);overflow-wrap:anywhere}
 .dxp-bubble-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a919c);font:inherit;font-size:13px;line-height:1;cursor:pointer;pointer-events:auto}
 .dxp-bubble-close:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef);color:var(--dsw-alias-label-primary,#20252e)}
 .dxp-bubble-close:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}

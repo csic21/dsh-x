@@ -625,6 +625,7 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
   return {
     line: visible ? line : null,
     rows,
+    primaryId: primary?.id ?? null,
     count: candidates.length,
     celebrate,
     busy: primary?.running === true,
@@ -635,6 +636,7 @@ function PetFrame(props) {
   const { controller, t } = props;
   const standard = props;
   const [pickerOpen, setPickerOpen] = (0, import_react.useState)(false);
+  const [openError, setOpenError] = (0, import_react.useState)(null);
   const [failed, setFailed] = (0, import_react.useState)(false);
   const [url, setUrl] = (0, import_react.useState)(null);
   const [offset, setOffset] = (0, import_react.useState)(null);
@@ -683,6 +685,17 @@ function PetFrame(props) {
   (0, import_react.useEffect)(() => {
     setOffset(view?.selection?.position ?? null);
   }, [view?.selection?.position?.x, view?.selection?.position?.y]);
+  const openConversation = (0, import_react.useCallback)((id) => {
+    if (id === null) return;
+    try {
+      if (typeof props.openSession !== "function") throw new Error("no opener");
+      props.openSession(id);
+      setOpenError(null);
+    } catch (error) {
+      const message = error !== null && typeof error === "object" && "message" in error ? String(error.message) : String(error);
+      setOpenError(message);
+    }
+  }, [props.openSession]);
   const onPointerDown = (0, import_react.useCallback)((event) => {
     if (event.button !== 0) return;
     const target = event.currentTarget;
@@ -752,12 +765,25 @@ function PetFrame(props) {
       "data-tone": row2.tone,
       title: t("bubble.open", { title: row2.title }),
       onClick: () => {
-        props.openSession?.(row2.id);
+        openConversation(row2.id);
       }
     },
     /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-list-title" }, row2.title),
     /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-list-detail" }, row2.detail)
-  )))) : /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-text", role: "status", "aria-live": "polite" }, /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, narration.line?.tone === "done" ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713") : null, narration.line?.title), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line?.detail)), /* @__PURE__ */ import_react.default.createElement(
+  )))) : /* @__PURE__ */ import_react.default.createElement(
+    "button",
+    {
+      type: "button",
+      className: "dxp-bubble-text dxp-bubble-open",
+      role: "status",
+      title: t("bubble.open", { title: narration.line?.title ?? "" }),
+      onClick: () => {
+        openConversation(narration.primaryId);
+      }
+    },
+    /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, narration.line?.tone === "done" ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713") : null, narration.line?.title),
+    /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line?.detail)
+  ), openError !== null ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-error", role: "alert" }, t("bubble.navigateFailed", { message: openError })) : null, /* @__PURE__ */ import_react.default.createElement(
     "button",
     {
       type: "button",
@@ -948,6 +974,7 @@ var zh = {
   "bubble.list": "{count} \u4E2A\u5BF9\u8BDD\u5728\u8FDB\u884C",
   "bubble.open": "\u6253\u5F00\u300C{title}\u300D",
   "bubble.close": "\u6536\u8D77\u8FD9\u6761\u63D0\u793A\uFF08\u4E0D\u5F71\u54CD\u5BF9\u8BDD\uFF09",
+  "bubble.navigateFailed": "\u8DF3\u8F6C\u5931\u8D25\uFF1A{message}",
   "picker.title": "\u9009\u62E9\u684C\u5BA0",
   "picker.close": "\u5173\u95ED",
   "picker.bundled": "\u5185\u7F6E",
@@ -1004,6 +1031,7 @@ var en = {
   "bubble.list": "{count} conversations are active",
   "bubble.open": 'Open "{title}"',
   "bubble.close": "Hide this bubble (the conversation keeps running)",
+  "bubble.navigateFailed": "Could not open it: {message}",
   "picker.title": "Choose a pet",
   "picker.close": "Close",
   "picker.bundled": "Bundled",
@@ -1066,6 +1094,9 @@ var CSS = `
 .dxp-list-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
 .dxp-list-detail{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dxp-list-item[data-tone=waiting] .dxp-list-title{color:var(--dsw-alias-link,#4176e6)}
+.dxp-bubble-open{flex:1;border:0;background:transparent;font:inherit;color:inherit;padding:0;text-align:left;cursor:pointer;pointer-events:auto}
+.dxp-bubble-open:hover .dxp-bubble-title{color:var(--dsw-alias-label-primary,#20252e)}
+.dxp-error{margin:2px 0 0;padding:0 6px;font-size:11px;line-height:1.35;color:var(--dsw-alias-state-error-primary,#c2410c);overflow-wrap:anywhere}
 .dxp-bubble-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a919c);font:inherit;font-size:13px;line-height:1;cursor:pointer;pointer-events:auto}
 .dxp-bubble-close:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef);color:var(--dsw-alias-label-primary,#20252e)}
 .dxp-bubble-close:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
@@ -1137,7 +1168,11 @@ function apply(ctx) {
     order: 40,
     locale: NS,
     label: () => t("title"),
-    inject: () => ({ controller, openSession: (id) => ctx.uiWorkspace.openSession(id) })
+    inject: () => ({ controller, openSession: (id) => {
+      const workspace = ctx.uiWorkspace;
+      if (workspace === void 0 || typeof workspace.openSession !== "function") throw new Error("uiWorkspace.openSession is unavailable");
+      workspace.openSession(id);
+    } })
   }, PetFrame));
   ctx.slots.inject("settings.section", () => ctx.slots.register({
     name: "settings.section",
@@ -1145,7 +1180,11 @@ function apply(ctx) {
     order: 12,
     locale: NS,
     label: () => t("settings.nav"),
-    inject: () => ({ controller, openSession: (id) => ctx.uiWorkspace.openSession(id) })
+    inject: () => ({ controller, openSession: (id) => {
+      const workspace = ctx.uiWorkspace;
+      if (workspace === void 0 || typeof workspace.openSession !== "function") throw new Error("uiWorkspace.openSession is unavailable");
+      workspace.openSession(id);
+    } })
   }, PetSettings));
 }
 return module.exports; } });

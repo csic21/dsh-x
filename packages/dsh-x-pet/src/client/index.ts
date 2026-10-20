@@ -48,7 +48,13 @@ export function apply(ctx: PetClientContext) {
     order: 40,
     locale: NS,
     label: () => t('title'),
-    inject: () => ({ controller, openSession: (id: string) => ctx.uiWorkspace.openSession(id) }),
+    inject: () => ({ controller, openSession: (id: string) => {
+      // A missing service must say so in the bubble, not vanish into a
+      // rejected click handler nobody can see.
+      const workspace = ctx.uiWorkspace
+      if (workspace === undefined || typeof workspace.openSession !== 'function') throw new Error('uiWorkspace.openSession is unavailable')
+      workspace.openSession(id)
+    } }),
   }, PetFrame as ComponentType<any>))
 
   // The account menu's Settings entry is where the switch and the character
@@ -59,6 +65,12 @@ export function apply(ctx: PetClientContext) {
     order: 12,
     locale: NS,
     label: () => t('settings.nav'),
-    inject: () => ({ controller, openSession: (id: string) => ctx.uiWorkspace.openSession(id) }),
+    inject: () => ({ controller, openSession: (id: string) => {
+      // A missing service must say so in the bubble, not vanish into a
+      // rejected click handler nobody can see.
+      const workspace = ctx.uiWorkspace
+      if (workspace === undefined || typeof workspace.openSession !== 'function') throw new Error('uiWorkspace.openSession is unavailable')
+      workspace.openSession(id)
+    } }),
   }, PetSettings as ComponentType<any>))
 }

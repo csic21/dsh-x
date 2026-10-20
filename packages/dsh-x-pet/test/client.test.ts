@@ -95,6 +95,7 @@ test('the pet frame registers in the frame overlay and follows the session state
 
     // The host owns the session facts the pet reads.
     const opened: string[] = []
+    let openingFails = false
     const status: any = { running: false, pendingInteraction: undefined, completionUnread: false }
     const list: any = { byId: { s1: { id: 's1', title: 'Refactor login', updatedAt: 2, retainedBy: { mainView: 1 } } } }
     const statuses = new Map<string, any>([['s1', status]])
@@ -105,7 +106,10 @@ test('the pet frame registers in the frame overlay and follows the session state
       const usePanelInfo = (selector: any) => selector({ activePanelId: null })
       return React.createElement(entry.component, {
         ...face, useSessions, useSessionStatus, usePanelInfo,
-        openSession: (id: string) => { opened.push(id) },
+        openSession: (id: string) => {
+          if (openingFails) throw new Error('boom')
+          opened.push(id)
+        },
         t: (key: string, params?: Record<string, unknown>) => params ? `${key} ${Object.values(params).join(' ')}` : key,
       })
     }
@@ -165,7 +169,19 @@ test('the pet frame registers in the frame overlay and follows the session state
     assert.match(rows()[1].querySelector('.dxp-list-detail')!.textContent!, /bubble\.thinking/)
     await step(() => { rows()[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
     assert.deepEqual(opened, ['s2'], 'clicking a row opens that conversation')
+
+    // One conversation keeps a single line, and that line is clickable too.
     statuses.delete('s2')
+    await render()
+    assert.equal(dom.window.document.querySelectorAll('.dxp-list-item').length, 0)
+    await step(() => { dom.window.document.querySelector<HTMLElement>('.dxp-bubble-open')!.click() })
+    assert.deepEqual(opened, ['s2', 's1'], 'clicking the line opens its conversation')
+
+    // A navigator that throws must say so instead of swallowing the click.
+    openingFails = true
+    await step(() => { dom.window.document.querySelector<HTMLElement>('.dxp-bubble-open')!.click() })
+    assert.match(dom.window.document.querySelector('.dxp-error')!.textContent!, /bubble\.navigateFailed boom/)
+    openingFails = false
     status.running = false
 
     // Dragging past the window edge stops at it, and the release saves the spot.
