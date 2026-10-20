@@ -163,8 +163,11 @@ test('the pet frame registers in the frame overlay and follows the session state
       target.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }))
     })
     await pointer('pointerdown', sprite(), 100, 100)
-    await pointer('pointermove', dom.window, 150, 130)
-    await pointer('pointerup', dom.window, 150, 130)
+    await pointer('pointermove', dom.window, 9000, 9000)
+    const frameVars = () => dom.window.document.querySelector<HTMLElement>('.dxp')!.style
+    assert.equal(frameVars().getPropertyValue('--dxp-x'), '12px', 'a drag stops at the window edge')
+    assert.equal(frameVars().getPropertyValue('--dxp-y'), '12px', 'a drag stops at the window edge')
+    await pointer('pointerup', dom.window, 9000, 9000)
     await step(() => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
     assert.equal(dom.window.document.querySelector('.dxp-dialog'), null, 'a drag must not open the picker')
     assert.ok(rpcCalls.includes('dsh-x-pet/move'), 'a drag saves the new position')

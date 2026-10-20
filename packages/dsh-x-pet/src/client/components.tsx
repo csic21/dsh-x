@@ -554,6 +554,15 @@ export function PetFrame(props: PetStandardProps & {
     const startX = event.clientX
     const startY = event.clientY
     const origin = offset ?? { x: 0, y: 0 }
+    // Offset zero parks the sprite 20px inside the corner, so the clamp only
+    // has to absorb the sprite itself: an offset past 12px would push its edge
+    // beyond the window, where the OS clips it and the pet half-disappears.
+    const box = target.getBoundingClientRect()
+    const limit = (size: number, viewport: number) => Math.min(12, Math.round(size) + 28 - viewport)
+    const minX = limit(box.width, host.innerWidth ?? 0)
+    const minY = limit(box.height, host.innerHeight ?? 0)
+    const clampX = (value: number) => Math.max(minX, Math.min(12, value))
+    const clampY = (value: number) => Math.max(minY, Math.min(12, value))
     const latest = { x: origin.x, y: origin.y }
     let moved = false
     dragged.current = false
@@ -565,8 +574,8 @@ export function PetFrame(props: PetStandardProps & {
       moved = true
       dragged.current = true
       target.setPointerCapture?.(move.pointerId)
-      latest.x = origin.x + dx
-      latest.y = origin.y + dy
+      latest.x = clampX(origin.x + dx)
+      latest.y = clampY(origin.y + dy)
       setOffset({ x: latest.x, y: latest.y })
     }
     const teardown = () => {
