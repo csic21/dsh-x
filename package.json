@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test packages/*/test/*.test.ts test/*.test.js",
+    "test": "node --test --test-concurrency=1 packages/*/test/*.test.ts test/*.test.js",
     "test:unit": "node --test packages/*/test/*.test.ts",
     "test:integration": "node --test test/*.test.js",
     "typecheck": "pnpm -r run typecheck",
     "link:plugins": "node scripts/link-plugins.mjs",
-    "build": "pnpm -r run build",
+    "build": "pnpm -r --workspace-concurrency=1 run build",
     "pretest": "pnpm run build"
   },
   "devDependencies": {

@@ -41,6 +41,7 @@ var LIST_ENDPOINT = "dsh-x-pet/list";
 var SELECT_ENDPOINT = "dsh-x-pet/select";
 var MOVE_ENDPOINT = "dsh-x-pet/move";
 var ATLAS_ENDPOINT = "dsh-x-pet/atlas";
+var ACTIVITY_ENDPOINT = "dsh-x-pet/activity";
 var unwrap = (result) => {
   if (!result?.ok) throw new Error(String(result?.error?.code ?? "PET_UNAVAILABLE"));
   return result.value;
@@ -57,7 +58,10 @@ function createPetController(rpc, fetchObject = globalThis.fetch) {
   const listeners = /* @__PURE__ */ new Set();
   const urls = /* @__PURE__ */ new Map();
   const pending = /* @__PURE__ */ new Map();
+  const thumbnails = /* @__PURE__ */ new Map();
+  let keepIds = [];
   let disposed = false;
+  const MAX_CACHED_ATLASES = 3;
   const publish = (next) => {
     view = next;
     for (const listener of listeners) listener();
@@ -92,6 +96,15 @@ function createPetController(rpc, fetchObject = globalThis.fetch) {
       const next = await call(MOVE_ENDPOINT, { x, y });
       if (!disposed) publish(next);
     },
+    async activity(ids) {
+      if (ids.length === 0) return {};
+      try {
+        const value = await call(ACTIVITY_ENDPOINT, { ids });
+        return value?.activities ?? {};
+      } catch {
+        return {};
+      }
+    },
     atlasUrl(id) {
       const cached = urls.get(id);
       if (cached) return Promise.resolve(cached);
@@ -109,12 +122,73 @@ function createPetController(rpc, fetchObject = globalThis.fetch) {
         if (disposed) throw new Error("PET_DISPOSED");
         const url = URL.createObjectURL(blob);
         urls.set(id, url);
+        for (const [key, value] of urls) {
+          if (urls.size <= MAX_CACHED_ATLASES) break;
+          if (key === id || keepIds.includes(key)) continue;
+          URL.revokeObjectURL(value);
+          urls.delete(key);
+        }
         return url;
       })().finally(() => {
         pending.delete(id);
       });
       pending.set(id, request);
       return request;
+    },
+    async thumbnail(id, rows) {
+      const cached = thumbnails.get(id);
+      if (cached) return { src: cached, cropped: true };
+      const full = await this.atlasUrl(id);
+      try {
+        const canvas = globalThis.document.createElement("canvas");
+        const width = 96;
+        const height = Math.round(width * 208 / 192);
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("PET_CANVAS");
+        const view2 = globalThis.document?.defaultView ?? globalThis;
+        const image = new view2.Image();
+        image.src = full;
+        try {
+          await new Promise((resolve, reject) => {
+            const timer = globalThis.setTimeout(() => reject(new Error("PET_DECODE")), 5e3);
+            const settle = (run) => {
+              globalThis.clearTimeout(timer);
+              run();
+            };
+            image.onload = () => settle(resolve);
+            image.onerror = () => settle(() => reject(new Error("PET_DECODE")));
+            if (typeof image.decode === "function") image.decode().then(() => settle(resolve)).catch(() => settle(() => reject(new Error("PET_DECODE"))));
+          });
+          context.imageSmoothingEnabled = false;
+          context.drawImage(image, 0, 0, 192, 208, 0, 0, width, height);
+        } finally {
+          image.onload = null;
+          image.onerror = null;
+          image.src = "";
+        }
+        const data = canvas.toDataURL("image/png");
+        thumbnails.set(id, data);
+        if (keepIds.length > 0 && !keepIds.includes(id) && urls.has(id)) {
+          const url = urls.get(id);
+          URL.revokeObjectURL(url);
+          urls.delete(id);
+        }
+        return { src: data, cropped: true };
+      } catch {
+        return { src: full, cropped: false };
+      }
+    },
+    release(keep) {
+      keepIds = [...keep];
+      const allowed = new Set(keepIds);
+      for (const [id, url] of urls) {
+        if (allowed.has(id)) continue;
+        URL.revokeObjectURL(url);
+        urls.delete(id);
+      }
+      for (const id of [...thumbnails.keys()]) if (!allowed.has(id)) thumbnails.delete(id);
     },
     reset() {
       publish(null);
@@ -126,6 +200,7 @@ function createPetController(rpc, fetchObject = globalThis.fetch) {
       for (const url of urls.values()) URL.revokeObjectURL(url);
       urls.clear();
       pending.clear();
+      thumbnails.clear();
     }
   };
 }
@@ -296,7 +371,8 @@ function PetSprite(props) {
         if (linger !== void 0) host.clearTimeout(linger);
         linger = host.setTimeout(cancel, LOOK_LINGER_MS);
       } else if (linger === void 0) return;
-      setLook(lookFrame(event.clientX - (bounds.left + bounds.width / 2), event.clientY - (bounds.top + bounds.height / 2)));
+      const next = lookFrame(event.clientX - (bounds.left + bounds.width / 2), event.clientY - (bounds.top + bounds.height / 2));
+      setLook((current) => current && next && current.row === next.row && current.column === next.column ? current : next);
     };
     host.addEventListener?.("pointermove", onMove, { passive: true });
     return () => {
@@ -333,16 +409,23 @@ function PetSprite(props) {
   );
 }
 function PetPicker(props) {
-  const { view, t, onSelect, onHide, onClose, failed } = props;
+  const { view, t, controller, onSelect, onHide, onClose, failed } = props;
   const dialog = (0, import_react.useRef)(null);
   const pets = view?.pets ?? [];
+  const activeRef = (0, import_react.useRef)(view?.active ?? "off");
+  activeRef.current = view?.active ?? "off";
+  (0, import_react.useEffect)(() => () => {
+    const active = activeRef.current;
+    controller.release(active === "off" ? [] : [active]);
+  }, [controller]);
   (0, import_react.useEffect)(() => {
+    const host = dialog.current?.ownerDocument?.defaultView ?? globalThis;
     const onKey = (event) => {
       if (event.key === "Escape") onClose();
     };
-    globalThis.addEventListener?.("keydown", onKey);
+    host.addEventListener?.("keydown", onKey);
     dialog.current?.focus();
-    return () => globalThis.removeEventListener?.("keydown", onKey);
+    return () => host.removeEventListener?.("keydown", onKey);
   }, [onClose]);
   return /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-scrim", onClick: (event) => {
     if (event.target === event.currentTarget) onClose();
@@ -350,13 +433,14 @@ function PetPicker(props) {
 }
 function PetRow(props) {
   const { pet, active, t, onSelect, controller } = props;
-  const [url, setUrl] = (0, import_react.useState)(null);
+  const [thumb, setThumb] = (0, import_react.useState)(null);
+  const url = thumb?.src ?? null;
   (0, import_react.useEffect)(() => {
     let cancelled = false;
-    controller.atlasUrl(pet.id).then((next) => {
-      if (!cancelled) setUrl(next);
+    controller.thumbnail(pet.id, pet.rows).then((next) => {
+      if (!cancelled) setThumb(next);
     }).catch(() => {
-      if (!cancelled) setUrl(null);
+      if (!cancelled) setThumb(null);
     });
     return () => {
       cancelled = true;
@@ -367,11 +451,12 @@ function PetRow(props) {
     {
       className: "dxp-thumb",
       "aria-hidden": "true",
-      style: url ? { backgroundImage: `url(${url})`, backgroundPosition: "0% 0%" } : void 0
+      style: url ? thumb?.cropped ? { backgroundImage: `url(${url})`, backgroundSize: "100% 100%" } : { backgroundImage: `url(${url})`, backgroundSize: "800% 1100%", backgroundPosition: "0% 0%" } : void 0
     }
   ), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-row-text" }, /* @__PURE__ */ import_react.default.createElement("strong", null, pet.displayName), /* @__PURE__ */ import_react.default.createElement("span", null, pet.description || t("picker.rows", { rows: pet.rows }))), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-tag" }, t(pet.source === "codex" ? "picker.codex" : pet.source === "local" ? "picker.local" : "picker.bundled"))));
 }
 var NOTIFY_KEY = "dsh-x-pet:notify";
+var ACTIVITY_POLL_MS = 4e3;
 function notificationsAllowed() {
   try {
     if (globalThis.localStorage?.getItem(NOTIFY_KEY) === "off") return false;
@@ -405,33 +490,63 @@ var formatElapsed = (ms) => {
   const pad = (value) => String(value).padStart(2, "0");
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 };
-function usePetNarration(list, statuses, t) {
+function activeCandidates(list, statuses) {
+  if (!statuses) return [];
   const rows = list?.byId ?? {};
-  const current = Object.values(rows).find((row2) => (row2?.retainedBy?.mainView ?? 0) > 0);
-  const currentId = current?.id;
-  const status = currentId ? statuses?.get(currentId) : void 0;
-  const busy = status?.running === true;
-  const pending = status?.pendingInteraction?.kind;
-  const [elapsed, setElapsed] = (0, import_react.useState)(0);
+  const candidates = [];
+  for (const [id, value] of statuses) {
+    const pending = value.pendingInteraction?.kind ?? null;
+    if (!value.running && pending === null) continue;
+    const row2 = rows[id] ?? {};
+    const title = typeof row2.title === "string" && row2.title.trim() ? row2.title.trim().slice(0, 80) : null;
+    candidates.push({
+      id,
+      title,
+      running: value.running === true,
+      pending,
+      main: (row2.retainedBy?.mainView ?? 0) > 0,
+      updatedAt: Number(row2.updatedAt ?? 0)
+    });
+  }
+  candidates.sort((left, right) => Number(right.main) - Number(left.main) || right.updatedAt - left.updatedAt);
+  return candidates;
+}
+function usePetNarration(list, statuses, controller, t, enabled = true) {
+  const statusKey = statuses ? [...statuses].map(([id, value]) => `${id}:${value.running ? 1 : 0}:${value.pendingInteraction?.kind ?? ""}`).join(",") : "";
+  const candidates = (0, import_react.useMemo)(() => activeCandidates(list, statuses), [list, statuses, statusKey]);
+  const [focusId, setFocusId] = (0, import_react.useState)(null);
+  const [activities, setActivities] = (0, import_react.useState)({});
   const [finished, setFinished] = (0, import_react.useState)(null);
   const [celebrate, setCelebrate] = (0, import_react.useState)(false);
-  const since = (0, import_react.useRef)(null);
+  const [dismissed, setDismissed] = (0, import_react.useState)(null);
+  const [, setTick] = (0, import_react.useState)(0);
+  const since = (0, import_react.useRef)(/* @__PURE__ */ new Map());
   const previous = (0, import_react.useRef)(/* @__PURE__ */ new Map());
+  const turns = (0, import_react.useRef)(/* @__PURE__ */ new Map());
+  const finishedSeq = (0, import_react.useRef)(0);
+  const primary = candidates.find((candidate) => candidate.id === focusId) ?? candidates[0] ?? null;
+  const anyRunning = candidates.some((candidate) => candidate.running);
+  const ids = candidates.map((candidate) => candidate.id);
+  const idKey = ids.join(",");
   (0, import_react.useEffect)(() => {
     if (!statuses) return;
     const done = [];
+    const rows = list?.byId ?? {};
     for (const [id, value] of statuses) {
       const was = previous.current.get(id);
       const now = value.running === true;
+      if (now && was !== true) turns.current.set(id, (turns.current.get(id) ?? 0) + 1);
       if (was === true && !now) {
         const title = rows[id]?.title;
         done.push({ title: typeof title === "string" && title.trim() ? title.trim() : null });
       }
       previous.current.set(id, now);
     }
+    for (const id of [...previous.current.keys()]) if (!statuses.has(id)) previous.current.delete(id);
+    for (const id of [...turns.current.keys()]) if (!statuses.has(id)) turns.current.delete(id);
     if (done.length === 0) return;
     if ([...statuses.values()].some((item) => item.pendingInteraction)) return;
-    setFinished(done[0]);
+    setFinished({ ...done[0], id: ++finishedSeq.current });
     setCelebrate(true);
     notifyFinished(done[0].title, t);
   }, [statuses, list, t]);
@@ -446,20 +561,82 @@ function usePetNarration(list, statuses, t) {
     return () => globalThis.clearTimeout(timer);
   }, [finished]);
   (0, import_react.useEffect)(() => {
-    if (!busy) {
-      since.current = null;
-      setElapsed(0);
+    const map = since.current;
+    const now = Date.now();
+    for (const candidate of candidates) if (candidate.running && !map.has(candidate.id)) map.set(candidate.id, now);
+    for (const id of [...map.keys()]) if (!candidates.some((candidate) => candidate.id === id && candidate.running)) map.delete(id);
+  }, [candidates]);
+  (0, import_react.useEffect)(() => {
+    if (!enabled || !anyRunning) return;
+    const timer = globalThis.setInterval(() => setTick((value) => value + 1), 1e3);
+    return () => globalThis.clearInterval(timer);
+  }, [enabled, anyRunning]);
+  (0, import_react.useEffect)(() => {
+    if (!enabled || ids.length === 0) {
+      setActivities((current) => Object.keys(current).length === 0 ? current : {});
       return;
     }
-    if (since.current === null) since.current = Date.now();
-    const timer = globalThis.setInterval(() => setElapsed(Date.now() - (since.current ?? Date.now())), 1e3);
-    return () => globalThis.clearInterval(timer);
-  }, [busy]);
-  let text = null;
-  if (pending) text = t(pending === "question" ? "bubble.question" : "bubble.blocked");
-  else if (busy && status) text = t("bubble.working", { elapsed: formatElapsed(elapsed) });
-  else if (finished) text = finished.title ? t("bubble.doneTitle", { title: finished.title }) : t("bubble.done");
-  return { text, busy, celebrate };
+    let cancelled = false;
+    let inFlight = false;
+    const load = () => {
+      if (inFlight) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      inFlight = true;
+      void controller.activity(ids).then((next2) => {
+        if (!cancelled) setActivities(next2);
+      }).catch(() => {
+      }).finally(() => {
+        inFlight = false;
+      });
+    };
+    load();
+    const timer = anyRunning ? globalThis.setInterval(load, ACTIVITY_POLL_MS) : void 0;
+    return () => {
+      cancelled = true;
+      if (timer !== void 0) globalThis.clearInterval(timer);
+    };
+  }, [controller, idKey, anyRunning, enabled]);
+  const next = (0, import_react.useCallback)(() => {
+    if (candidates.length < 2) return;
+    const index = candidates.findIndex((candidate) => candidate.id === primary?.id);
+    const target = candidates[(index + 1) % candidates.length];
+    setFocusId(target.id);
+  }, [candidates, primary?.id]);
+  let line = null;
+  if (primary) {
+    const title = primary.title ?? t("bubble.untitled");
+    if (primary.pending) {
+      line = { title, detail: t(primary.pending === "question" ? "bubble.question" : "bubble.blocked"), tone: "waiting" };
+    } else {
+      const activity = activities[primary.id];
+      const activityText = activity?.phase === "tool" ? t("bubble.tool", { tool: activity.tool ?? "\u2014" }) : activity?.phase === "thinking" ? t("bubble.thinking") : t("bubble.busy");
+      const elapsed = formatElapsed(Date.now() - (since.current.get(primary.id) ?? Date.now()));
+      line = { title, detail: t("bubble.detail", { activity: activityText, elapsed }), tone: "working" };
+    }
+  } else if (finished) {
+    line = { title: finished.title ?? t("bubble.untitled"), detail: t("bubble.done"), tone: "done" };
+  }
+  const lineKey = primary ? `${primary.id}:${line?.tone ?? "working"}:${turns.current.get(primary.id) ?? 0}` : finished ? `done:${finished.id}` : "";
+  const visible = line !== null && lineKey !== dismissed;
+  return {
+    line: visible ? line : null,
+    count: candidates.length,
+    celebrate,
+    busy: primary?.running === true,
+    next,
+    dismiss: () => setDismissed(lineKey)
+  };
+}
+function openDetachedFrame() {
+  try {
+    const bridge = globalThis.dshDesktop?.petWindow;
+    if (bridge !== void 0 && typeof bridge.open === "function") {
+      void bridge.open();
+      return;
+    }
+    globalThis.open?.("/api/dsh-x-pet/frame", "dsh-x-pet-frame", "width=280,height=340,menubar=no,toolbar=no,location=no,status=no");
+  } catch {
+  }
 }
 function PetFrame(props) {
   const { controller, t } = props;
@@ -469,21 +646,28 @@ function PetFrame(props) {
   const [url, setUrl] = (0, import_react.useState)(null);
   const [offset, setOffset] = (0, import_react.useState)(null);
   const dragged = (0, import_react.useRef)(false);
+  const dragTeardown = (0, import_react.useRef)(null);
+  (0, import_react.useEffect)(() => () => {
+    dragTeardown.current?.();
+  }, []);
   const reducedMotion = (0, import_react.useMemo)(() => prefersReducedMotion(globalThis.window), []);
   const list = standard.useSessions((state2) => state2);
   const statuses = standard.useSessionStatus((state2) => state2);
   const panelActive = standard.usePanelInfo((info) => info.activePanelId !== null);
   const state = derivePetState(list, statuses, panelActive === true);
-  const narration = usePetNarration(list, statuses, t);
   const view = (0, import_react.useSyncExternalStore)(
     (0, import_react.useCallback)((listener) => controller.subscribe(listener), [controller]),
     (0, import_react.useCallback)(() => controller.getSnapshot(), [controller])
   );
   const active = view?.active ?? "off";
+  const narration = usePetNarration(list, statuses, controller, t, active !== "off");
   const animation = narration.celebrate ? "waving" : state;
   (0, import_react.useEffect)(() => {
     void controller.load();
   }, [controller]);
+  (0, import_react.useEffect)(() => {
+    controller.release(active === "off" ? [] : [active]);
+  }, [controller, active]);
   (0, import_react.useEffect)(() => {
     if (active === "off") {
       setUrl(null);
@@ -527,10 +711,17 @@ function PetFrame(props) {
       latest.y = origin.y + dy;
       setOffset({ x: latest.x, y: latest.y });
     };
-    const onUp = () => {
+    const teardown = () => {
       host.removeEventListener?.("pointermove", onMove);
       host.removeEventListener?.("pointerup", onUp);
       host.removeEventListener?.("pointercancel", onUp);
+      host.removeEventListener?.("blur", teardown);
+      if (dragTeardown.current === teardown) dragTeardown.current = null;
+    };
+    dragTeardown.current?.();
+    dragTeardown.current = teardown;
+    const onUp = () => {
+      teardown();
       if (!moved) return;
       void controller.move(latest.x, latest.y).catch(() => {
       });
@@ -541,6 +732,7 @@ function PetFrame(props) {
     host.addEventListener?.("pointermove", onMove);
     host.addEventListener?.("pointerup", onUp);
     host.addEventListener?.("pointercancel", onUp);
+    host.addEventListener?.("blur", teardown);
   }, [controller, offset]);
   const onClick = (0, import_react.useCallback)((event) => {
     if (dragged.current) {
@@ -553,7 +745,28 @@ function PetFrame(props) {
   if (active === "off") return null;
   const label = `${t("frame.label")} \xB7 ${t(STATE_LABEL[animation])}`;
   const style = offset ? { "--dxp-x": `${offset.x}px`, "--dxp-y": `${offset.y}px` } : void 0;
-  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": narration.text !== null, role: "status", "aria-live": "polite" }, narration.text), /* @__PURE__ */ import_react.default.createElement(
+  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": narration.line !== null, "data-tone": narration.line?.tone }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-text", role: "status", "aria-live": "polite" }, /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, narration.line?.tone === "done" ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713") : null, narration.line?.title), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line?.detail)), narration.count > 1 ? /* @__PURE__ */ import_react.default.createElement(
+    "button",
+    {
+      type: "button",
+      className: "dxp-bubble-more",
+      title: t("bubble.more", { count: narration.count }),
+      "aria-label": t("bubble.switch", { count: narration.count }),
+      onClick: narration.next
+    },
+    "+",
+    narration.count - 1
+  ) : null, /* @__PURE__ */ import_react.default.createElement(
+    "button",
+    {
+      type: "button",
+      className: "dxp-bubble-close",
+      title: t("bubble.close"),
+      "aria-label": t("bubble.close"),
+      onClick: narration.dismiss
+    },
+    "\xD7"
+  )), /* @__PURE__ */ import_react.default.createElement(
     PetSprite,
     {
       url,
@@ -572,6 +785,8 @@ function PetFrame(props) {
       }
     }
   ), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-status" }, t(STATE_LABEL[state])), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setPickerOpen(true) }, t("frame.open")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
+    openDetachedFrame();
+  } }, t("frame.popout")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
     void controller.select("off").catch(() => {
     });
   } }, t("frame.hide"))))), pickerOpen ? /* @__PURE__ */ import_react.default.createElement(
@@ -606,6 +821,12 @@ function PetSettings(props) {
   );
   (0, import_react.useEffect)(() => {
     void controller.load();
+  }, [controller]);
+  const activeRef = (0, import_react.useRef)(view?.active ?? "off");
+  activeRef.current = view?.active ?? "off";
+  (0, import_react.useEffect)(() => () => {
+    const active = activeRef.current;
+    controller.release(active === "off" ? [] : [active]);
   }, [controller]);
   const pets = view?.pets ?? [];
   const shown = (view?.active ?? "off") !== "off";
@@ -682,19 +903,20 @@ function NotifyRow(props) {
 }
 function SettingsCard(props) {
   const { pet, active, t, controller, onSelect } = props;
-  const [url, setUrl] = (0, import_react.useState)(null);
+  const [thumb, setThumb] = (0, import_react.useState)(null);
   (0, import_react.useEffect)(() => {
     let cancelled = false;
-    controller.atlasUrl(pet.id).then((next) => {
-      if (!cancelled) setUrl(next);
+    controller.thumbnail(pet.id, pet.rows).then((next) => {
+      if (!cancelled) setThumb(next);
     }).catch(() => {
-      if (!cancelled) setUrl(null);
+      if (!cancelled) setThumb(null);
     });
     return () => {
       cancelled = true;
     };
   }, [controller, pet.id]);
-  return /* @__PURE__ */ import_react.default.createElement("li", null, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxp-card", "aria-current": active, onClick: () => onSelect(pet.id) }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-card-art", "aria-hidden": "true", style: url ? { backgroundImage: `url(${url})`, backgroundSize: `800% ${pet.rows * 100}%` } : void 0 }), /* @__PURE__ */ import_react.default.createElement("strong", null, pet.displayName), /* @__PURE__ */ import_react.default.createElement("span", null, pet.description || t("picker.rows", { rows: pet.rows }))));
+  const art = thumb ? thumb.cropped ? { backgroundImage: `url(${thumb.src})`, backgroundSize: "100% 100%" } : { backgroundImage: `url(${thumb.src})`, backgroundSize: `800% ${pet.rows * 100}%` } : void 0;
+  return /* @__PURE__ */ import_react.default.createElement("li", null, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxp-card", "aria-current": active, onClick: () => onSelect(pet.id) }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-card-art", "aria-hidden": "true", style: art }), /* @__PURE__ */ import_react.default.createElement("strong", null, pet.displayName), /* @__PURE__ */ import_react.default.createElement("span", null, pet.description || t("picker.rows", { rows: pet.rows }))));
 }
 
 // src/client/locales.ts
@@ -705,6 +927,7 @@ var zh = {
   "frame.open": "\u9009\u62E9\u684C\u5BA0",
   "frame.drag": "\u62D6\u52A8\u684C\u5BA0",
   "frame.hide": "\u9690\u85CF\u684C\u5BA0",
+  "frame.popout": "\u72EC\u7ACB\u7A97\u53E3",
   "frame.loading": "\u6B63\u5728\u8F7D\u5165\u684C\u5BA0\u2026",
   "frame.failed": "\u684C\u5BA0\u7CBE\u7075\u8868\u65E0\u6CD5\u8F7D\u5165",
   "frame.failedHint": "\u68C0\u67E5\u56FE\u7247\u662F\u5426\u662F Codex \u89C4\u683C\uFF1A1536\xD71872\uFF089 \u884C\uFF09\u6216 1536\xD72288\uFF0811 \u884C\uFF09\uFF0C\u6BCF\u683C 192\xD7208\u3002",
@@ -714,11 +937,18 @@ var zh = {
   "state.waiting": "\u7B49\u5F85\u4F60\u7684\u8F93\u5165",
   "state.failed": "\u51FA\u9519\u4E86",
   "state.review": "\u67E5\u770B\u7ED3\u679C",
-  "bubble.working": "\u8FDB\u884C\u4E2D \xB7 {elapsed}",
+  "bubble.untitled": "\u65B0\u5BF9\u8BDD",
+  "bubble.busy": "\u5904\u7406\u4E2D",
+  "bubble.thinking": "\u601D\u8003\u4E2D",
+  "bubble.tool": "\u6B63\u5728\u7528 {tool}",
+  "bubble.detail": "{activity} \xB7 {elapsed}",
   "bubble.blocked": "\u7B49\u4F60\u786E\u8BA4\u4E00\u4E0B",
   "bubble.question": "\u7B49\u4F60\u56DE\u7B54",
   "bubble.done": "\u8FD9\u8F6E\u505A\u5B8C\u4E86",
   "bubble.doneTitle": "\u300C{title}\u300D\u505A\u5B8C\u4E86",
+  "bubble.more": "{count} \u4E2A\u5BF9\u8BDD\u5728\u8FDB\u884C",
+  "bubble.switch": "\u5207\u5230\u4E0B\u4E00\u4E2A\u5BF9\u8BDD\uFF0C\u5171 {count} \u4E2A\u5728\u8FDB\u884C",
+  "bubble.close": "\u6536\u8D77\u8FD9\u6761\u63D0\u793A\uFF08\u4E0D\u5F71\u54CD\u5BF9\u8BDD\uFF09",
   "picker.title": "\u9009\u62E9\u684C\u5BA0",
   "picker.close": "\u5173\u95ED",
   "picker.bundled": "\u5185\u7F6E",
@@ -753,6 +983,7 @@ var en = {
   "frame.open": "Choose a pet",
   "frame.drag": "Drag the pet",
   "frame.hide": "Hide the pet",
+  "frame.popout": "Detached window",
   "frame.loading": "Loading the pet\u2026",
   "frame.failed": "This pet spritesheet cannot be loaded",
   "frame.failedHint": "Expected a Codex sheet: 1536\xD71872 (9 rows) or 1536\xD72288 (11 rows), 192\xD7208 per cell.",
@@ -762,11 +993,18 @@ var en = {
   "state.waiting": "Waiting for you",
   "state.failed": "Failed",
   "state.review": "Review",
-  "bubble.working": "Working \xB7 {elapsed}",
+  "bubble.untitled": "New conversation",
+  "bubble.busy": "Working",
+  "bubble.thinking": "Thinking",
+  "bubble.tool": "Running {tool}",
+  "bubble.detail": "{activity} \xB7 {elapsed}",
   "bubble.blocked": "Waiting for your approval",
   "bubble.question": "Waiting for your answer",
   "bubble.done": "This turn is done",
   "bubble.doneTitle": '"{title}" is done',
+  "bubble.more": "{count} conversations are active",
+  "bubble.switch": "Switch to the next conversation, {count} active",
+  "bubble.close": "Hide this bubble (the conversation keeps running)",
   "picker.title": "Choose a pet",
   "picker.close": "Close",
   "picker.bundled": "Bundled",
@@ -811,7 +1049,19 @@ var CSS = `
 .dxp-controls button{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
 .dxp-controls button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
 .dxp-controls button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:1px}
-.dxp-bubble{position:relative;max-width:220px;padding:7px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);box-shadow:0 8px 20px rgba(15,23,42,.16);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease;overflow-wrap:anywhere}
+.dxp-bubble{position:relative;display:flex;align-items:center;gap:6px;max-width:240px;padding:7px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);box-shadow:0 8px 20px rgba(15,23,42,.16);font-size:12px;line-height:1.35;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease}
+.dxp-bubble-text{display:flex;flex-direction:column;gap:1px;min-width:0;text-align:left}
+.dxp-bubble-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+.dxp-bubble-detail{font-size:12px;overflow-wrap:anywhere}
+.dxp-bubble[data-tone=waiting]{border-color:var(--dsw-alias-link,#4176e6)}
+.dxp-bubble[data-tone=done]{border-color:var(--dsw-alias-state-success-primary,#12805c)}
+.dxp-bubble-more{flex:none;min-width:24px;height:20px;padding:0 5px;border:1px solid var(--dsw-alias-border-l2,#d7dbe2);border-radius:999px;background:var(--dsw-alias-bg-layer-2,#f4f5f7);color:var(--dsw-alias-label-secondary,#717885);font:inherit;font-size:10px;cursor:pointer;pointer-events:auto}
+.dxp-bubble-more:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef)}
+.dxp-bubble-more:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
+.dxp-bubble-check{color:var(--dsw-alias-state-success-primary,#12805c);margin-right:3px;font-weight:700}
+.dxp-bubble-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary,#8a919c);font:inherit;font-size:13px;line-height:1;cursor:pointer;pointer-events:auto}
+.dxp-bubble-close:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef);color:var(--dsw-alias-label-primary,#20252e)}
+.dxp-bubble-close:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
 .dxp-bubble[data-show=true]{opacity:1;transform:none}
 .dxp-bubble::after{content:"";position:absolute;left:50%;bottom:-5px;width:8px;height:8px;margin-left:-4px;transform:rotate(45deg);background:inherit;border-right:1px solid var(--dsw-alias-border-l2,#d7dbe2);border-bottom:1px solid var(--dsw-alias-border-l2,#d7dbe2)}
 .dxp-stage:hover .dxp-status,.dxp-stage:focus-within .dxp-status{opacity:1}

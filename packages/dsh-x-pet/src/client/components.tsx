@@ -3,7 +3,7 @@ import { lookFrame } from '../frames.ts'
 import type { LookFrame } from '../frames.ts'
 import type { PetState } from '../frames.ts'
 import { playSprite, prefersReducedMotion, showLookFrame } from './playback.ts'
-import type { PetController, PetView } from './controller.ts'
+import type { PetController, PetView, SessionActivity } from './controller.ts'
 
 type Translate = (key: string, params?: Record<string, unknown>) => string
 
@@ -125,7 +125,8 @@ export function PetSprite(props: {
         if (linger !== undefined) host.clearTimeout(linger)
         linger = host.setTimeout(cancel, LOOK_LINGER_MS)
       } else if (linger === undefined) return
-      setLook(lookFrame(event.clientX - (bounds.left + bounds.width / 2), event.clientY - (bounds.top + bounds.height / 2)))
+      const next = lookFrame(event.clientX - (bounds.left + bounds.width / 2), event.clientY - (bounds.top + bounds.height / 2))
+      setLook(current => current && next && current.row === next.row && current.column === next.column ? current : next)
     }
     host.addEventListener?.('pointermove', onMove, { passive: true })
     return () => {
@@ -164,14 +165,21 @@ export function PetPicker(props: {
   onRetry: () => void
   failed: boolean
 }) {
-  const { view, t, onSelect, onHide, onClose, failed } = props
+  const { view, t, controller, onSelect, onHide, onClose, failed } = props
   const dialog = useRef<HTMLDivElement>(null)
   const pets = view?.pets ?? []
+  const activeRef = useRef(view?.active ?? 'off')
+  activeRef.current = view?.active ?? 'off'
+  useEffect(() => () => {
+    const active = activeRef.current
+    controller.release(active === 'off' ? [] : [active])
+  }, [controller])
   useEffect(() => {
+    const host = dialog.current?.ownerDocument?.defaultView ?? globalThis
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
-    globalThis.addEventListener?.('keydown', onKey)
+    host.addEventListener?.('keydown', onKey)
     dialog.current?.focus()
-    return () => globalThis.removeEventListener?.('keydown', onKey)
+    return () => host.removeEventListener?.('keydown', onKey)
   }, [onClose])
   return <div className="dxp-scrim" onClick={event => { if (event.target === event.currentTarget) onClose() }}>
     <div className="dxp-dialog" role="dialog" aria-modal="true" aria-label={t('picker.title')} ref={dialog} tabIndex={-1}>
@@ -195,14 +203,15 @@ export function PetPicker(props: {
 
 function PetRow(props: { pet: any, active: boolean, t: Translate, onSelect: (id: string) => void, controller: PetController }) {
   const { pet, active, t, onSelect, controller } = props
-  const [url, setUrl] = useState<string | null>(null)
+  const [thumb, setThumb] = useState<{ src: string, cropped: boolean } | null>(null)
+  const url = thumb?.src ?? null
   useEffect(() => {
     let cancelled = false
     // Thumbnails load only while the picker is open; the controller caches one
-    // atlas per pet, so switching back and forth costs nothing more.
-    controller.atlasUrl(pet.id)
-      .then(next => { if (!cancelled) setUrl(next) })
-      .catch(() => { if (!cancelled) setUrl(null) })
+    // cropped cell per pet, so switching back and forth costs nothing more.
+    controller.thumbnail(pet.id, pet.rows)
+      .then(next => { if (!cancelled) setThumb(next) })
+      .catch(() => { if (!cancelled) setThumb(null) })
     return () => { cancelled = true }
   }, [controller, pet.id])
   return <li>
@@ -210,7 +219,9 @@ function PetRow(props: { pet: any, active: boolean, t: Translate, onSelect: (id:
       <span
         className="dxp-thumb"
         aria-hidden="true"
-        style={url ? { backgroundImage: `url(${url})`, backgroundPosition: '0% 0%' } : undefined}
+        style={url ? (thumb?.cropped
+          ? { backgroundImage: `url(${url})`, backgroundSize: '100% 100%' }
+          : { backgroundImage: `url(${url})`, backgroundSize: '800% 1100%', backgroundPosition: '0% 0%' }) : undefined}
       />
       <span className="dxp-row-text">
         <strong>{pet.displayName}</strong>
@@ -221,17 +232,28 @@ function PetRow(props: { pet: any, active: boolean, t: Translate, onSelect: (id:
   </li>
 }
 
-/** A run of work the pet can narrate: elapsed time, a block, or a finish. */
+/** One line the pet says about the conversation it is watching. */
+export interface NarrationLine {
+  title: string
+  detail: string
+  tone: 'working' | 'waiting' | 'done'
+}
+
 export interface Narration {
-  /** What the bubble says, or null when the pet stays quiet. */
-  text: string | null
-  /** True while a turn is running, so the bubble can keep counting. */
-  busy: boolean
+  line: NarrationLine | null
+  /** How many conversations want attention right now. */
+  count: number
   /** True for a short while after a turn finishes, when the pet waves. */
   celebrate: boolean
+  busy: boolean
+  /** Move the pet's attention to the next conversation that is working. */
+  next: () => void
+  /** Hide this line until the same conversation says something new. */
+  dismiss: () => void
 }
 
 const NOTIFY_KEY = 'dsh-x-pet:notify'
+const ACTIVITY_POLL_MS = 4_000
 
 function notificationsAllowed(): boolean {
   try {
@@ -264,46 +286,103 @@ const formatElapsed = (ms: number): string => {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`
 }
 
+interface Candidate {
+  id: string
+  title: string | null
+  running: boolean
+  pending: string | null
+  main: boolean
+  updatedAt: number
+}
+
+/** The conversations that are working or waiting, the one being read first. */
+function activeCandidates(list: any, statuses: Map<string, SessionStatus> | undefined): Candidate[] {
+  if (!statuses) return []
+  const rows = (list?.byId ?? {}) as Record<string, any>
+  const candidates: Candidate[] = []
+  for (const [id, value] of statuses) {
+    const pending = value.pendingInteraction?.kind ?? null
+    if (!value.running && pending === null) continue
+    const row = rows[id] ?? {}
+    const title = typeof row.title === 'string' && row.title.trim() ? row.title.trim().slice(0, 80) : null
+    candidates.push({
+      id,
+      title,
+      running: value.running === true,
+      pending,
+      main: (row.retainedBy?.mainView ?? 0) > 0,
+      updatedAt: Number(row.updatedAt ?? 0),
+    })
+  }
+  // The conversation on screen first, then the most recently touched one.
+  candidates.sort((left, right) => Number(right.main) - Number(left.main) || right.updatedAt - left.updatedAt)
+  return candidates
+}
+
 /**
- * Read the conversation the frame is showing and turn it into one line the pet
- * can say: what is running, what it is waiting for, or what just finished.
+ * Turn the live session facts into one spoken line: which conversation, what it
+ * is doing, and how long it has been at it. With more than one conversation the
+ * pet watches one at a time and `next` hands it to the following one.
  */
 export function usePetNarration(
   list: any,
   statuses: Map<string, SessionStatus> | undefined,
+  controller: PetController,
   t: Translate,
+  /**
+   * Whether anyone is looking at the narration. A hidden pet still tracks turn
+   * endings (notifications are the point of that), but it must not keep a clock
+   * or poll the host for a bubble nobody renders.
+   */
+  enabled = true,
 ): Narration {
-  const rows = (list?.byId ?? {}) as Record<string, any>
-  const current = Object.values(rows).find((row: any) => (row?.retainedBy?.mainView ?? 0) > 0)
-  const currentId: string | undefined = current?.id
-  const status = currentId ? statuses?.get(currentId) : undefined
-  const busy = status?.running === true
-  const pending = status?.pendingInteraction?.kind
-
-  const [elapsed, setElapsed] = useState(0)
-  const [finished, setFinished] = useState<{ title: string | null } | null>(null)
+  // The host publishes a fresh status Map on every change; the derived key keeps
+  // the memo honest even when a caller hands back the same Map instance.
+  const statusKey = statuses
+    ? [...statuses].map(([id, value]) => `${id}:${value.running ? 1 : 0}:${value.pendingInteraction?.kind ?? ''}`).join(',')
+    : ''
+  const candidates = useMemo(() => activeCandidates(list, statuses), [list, statuses, statusKey])
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [activities, setActivities] = useState<Record<string, SessionActivity>>({})
+  const [finished, setFinished] = useState<{ title: string | null, id: number } | null>(null)
   const [celebrate, setCelebrate] = useState(false)
-  const since = useRef<number | null>(null)
+  /** The line the user closed, so only that exact line stays quiet. */
+  const [dismissed, setDismissed] = useState<string | null>(null)
+  const [, setTick] = useState(0)
+  const since = useRef<Map<string, number>>(new Map())
   const previous = useRef<Map<string, boolean>>(new Map())
+  const turns = useRef<Map<string, number>>(new Map())
+  const finishedSeq = useRef(0)
+
+  const primary = candidates.find(candidate => candidate.id === focusId) ?? candidates[0] ?? null
+  const anyRunning = candidates.some(candidate => candidate.running)
+  const ids = candidates.map(candidate => candidate.id)
+  const idKey = ids.join(',')
 
   // Watch every session so a turn finishing in the background still counts.
   useEffect(() => {
     if (!statuses) return
     const done: { title: string | null }[] = []
+    const rows = (list?.byId ?? {}) as Record<string, any>
     for (const [id, value] of statuses) {
       const was = previous.current.get(id)
       const now = value.running === true
+      // Each new turn gets its own identity, so a line the user closed stays
+      // closed for that turn and comes back on the next one.
+      if (now && was !== true) turns.current.set(id, (turns.current.get(id) ?? 0) + 1)
       if (was === true && !now) {
         const title = rows[id]?.title
         done.push({ title: typeof title === 'string' && title.trim() ? title.trim() : null })
       }
       previous.current.set(id, now)
     }
+    for (const id of [...previous.current.keys()]) if (!statuses.has(id)) previous.current.delete(id)
+    for (const id of [...turns.current.keys()]) if (!statuses.has(id)) turns.current.delete(id)
     if (done.length === 0) return
     // A turn that already wants the user's attention is not a celebration:
     // the waiting state says more than a finished one.
     if ([...statuses.values()].some(item => item.pendingInteraction)) return
-    setFinished(done[0])
+    setFinished({ ...done[0], id: ++finishedSeq.current })
     setCelebrate(true)
     notifyFinished(done[0].title, t)
   }, [statuses, list, t])
@@ -320,18 +399,106 @@ export function usePetNarration(
     return () => globalThis.clearTimeout(timer)
   }, [finished])
 
+  // One clock for every conversation, so switching focus keeps each elapsed
+  // time truthful instead of restarting it.
   useEffect(() => {
-    if (!busy) { since.current = null; setElapsed(0); return }
-    if (since.current === null) since.current = Date.now()
-    const timer = globalThis.setInterval(() => setElapsed(Date.now() - (since.current ?? Date.now())), 1000)
-    return () => globalThis.clearInterval(timer)
-  }, [busy])
+    const map = since.current
+    const now = Date.now()
+    for (const candidate of candidates) if (candidate.running && !map.has(candidate.id)) map.set(candidate.id, now)
+    for (const id of [...map.keys()]) if (!candidates.some(candidate => candidate.id === id && candidate.running)) map.delete(id)
+  }, [candidates])
 
-  let text: string | null = null
-  if (pending) text = t(pending === 'question' ? 'bubble.question' : 'bubble.blocked')
-  else if (busy && status) text = t('bubble.working', { elapsed: formatElapsed(elapsed) })
-  else if (finished) text = finished.title ? t('bubble.doneTitle', { title: finished.title }) : t('bubble.done')
-  return { text, busy, celebrate }
+  useEffect(() => {
+    if (!enabled || !anyRunning) return
+    const timer = globalThis.setInterval(() => setTick(value => value + 1), 1_000)
+    return () => globalThis.clearInterval(timer)
+  }, [enabled, anyRunning])
+
+  // Ask the host what the running conversations are doing, while they run.
+  useEffect(() => {
+    if (!enabled || ids.length === 0) {
+      // Keep the previous object when there is nothing to clear: a fresh `{}`
+      // would re-render for no new information.
+      setActivities(current => Object.keys(current).length === 0 ? current : {})
+      return
+    }
+    let cancelled = false
+    let inFlight = false
+    const load = () => {
+      // One request at a time: a slow host must not queue a backlog of polls.
+      if (inFlight) return
+      // A hidden window has no reader; skip the round trip until it returns.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      inFlight = true
+      void controller.activity(ids)
+        .then(next => { if (!cancelled) setActivities(next) })
+        .catch(() => {})
+        .finally(() => { inFlight = false })
+    }
+    load()
+    const timer = anyRunning ? globalThis.setInterval(load, ACTIVITY_POLL_MS) : undefined
+    return () => {
+      cancelled = true
+      if (timer !== undefined) globalThis.clearInterval(timer)
+    }
+  }, [controller, idKey, anyRunning, enabled])
+
+  const next = useCallback(() => {
+    if (candidates.length < 2) return
+    const index = candidates.findIndex(candidate => candidate.id === primary?.id)
+    const target = candidates[(index + 1) % candidates.length]
+    setFocusId(target.id)
+  }, [candidates, primary?.id])
+
+  let line: NarrationLine | null = null
+  if (primary) {
+    const title = primary.title ?? t('bubble.untitled')
+    if (primary.pending) {
+      line = { title, detail: t(primary.pending === 'question' ? 'bubble.question' : 'bubble.blocked'), tone: 'waiting' }
+    } else {
+      const activity = activities[primary.id]
+      const activityText = activity?.phase === 'tool'
+        ? t('bubble.tool', { tool: activity.tool ?? '—' })
+        : activity?.phase === 'thinking' ? t('bubble.thinking') : t('bubble.busy')
+      const elapsed = formatElapsed(Date.now() - (since.current.get(primary.id) ?? Date.now()))
+      line = { title, detail: t('bubble.detail', { activity: activityText, elapsed }), tone: 'working' }
+    }
+  } else if (finished) {
+    line = { title: finished.title ?? t('bubble.untitled'), detail: t('bubble.done'), tone: 'done' }
+  }
+
+  // What identifies this exact line. Closing the bubble silences only this key:
+  // a new turn (new `turns` entry), a state change, or switching conversations
+  // all produce a different one and speak again.
+  const lineKey = primary
+    ? `${primary.id}:${line?.tone ?? 'working'}:${turns.current.get(primary.id) ?? 0}`
+    : finished ? `done:${finished.id}` : ''
+  const visible = line !== null && lineKey !== dismissed
+
+  return {
+    line: visible ? line : null,
+    count: candidates.length,
+    celebrate,
+    busy: primary?.running === true,
+    next,
+    dismiss: () => setDismissed(lineKey),
+  }
+}
+
+/**
+ * Open the detached pet document in a window of its own.
+ *
+ * That page reads `/api/dsh-x-pet/state`, so it needs no Client store and no
+ * bundle. The Desktop shell denies `window.open` for its main window, so there
+ * this stays a quiet no-op until the shell ships a pet window; a browser opens
+ * it right away.
+ */
+function openDetachedFrame(): void {
+  try {
+    const bridge = (globalThis as any).dshDesktop?.petWindow
+    if (bridge !== undefined && typeof bridge.open === 'function') { void bridge.open(); return }
+    globalThis.open?.('/api/dsh-x-pet/frame', 'dsh-x-pet-frame', 'width=280,height=340,menubar=no,toolbar=no,location=no,status=no')
+  } catch { /* A denied popup never breaks the frame. */ }
 }
 
 export function PetFrame(props: PetStandardProps & {
@@ -345,20 +512,28 @@ export function PetFrame(props: PetStandardProps & {
   const [url, setUrl] = useState<string | null>(null)
   const [offset, setOffset] = useState<{ x: number, y: number } | null>(null)
   const dragged = useRef(false)
+  const dragTeardown = useRef<(() => void) | null>(null)
+  useEffect(() => () => { dragTeardown.current?.() }, [])
   const reducedMotion = useMemo(() => prefersReducedMotion(globalThis.window), [])
   const list = standard.useSessions((state: any) => state)
   const statuses = standard.useSessionStatus((state: any) => state)
   const panelActive = standard.usePanelInfo((info: any) => info.activePanelId !== null)
   const state = derivePetState(list, statuses, panelActive === true)
-  const narration = usePetNarration(list, statuses, t)
   const view = useSyncExternalStore(
     useCallback(listener => controller.subscribe(listener), [controller]),
     useCallback(() => controller.getSnapshot(), [controller]),
   )
   const active = view?.active ?? 'off'
+  // The frame renders `null` while the pet is off, so the narration behind it
+  // must not keep a clock or poll the host either.
+  const narration = usePetNarration(list, statuses, controller, t, active !== 'off')
   const animation = narration.celebrate ? 'waving' : state
 
   useEffect(() => { void controller.load() }, [controller])
+
+  useEffect(() => {
+    controller.release(active === 'off' ? [] : [active])
+  }, [controller, active])
 
   useEffect(() => {
     if (active === 'off') { setUrl(null); return }
@@ -394,10 +569,19 @@ export function PetFrame(props: PetStandardProps & {
       latest.y = origin.y + dy
       setOffset({ x: latest.x, y: latest.y })
     }
-    const onUp = () => {
+    const teardown = () => {
       host.removeEventListener?.('pointermove', onMove)
       host.removeEventListener?.('pointerup', onUp)
       host.removeEventListener?.('pointercancel', onUp)
+      host.removeEventListener?.('blur', teardown)
+      if (dragTeardown.current === teardown) dragTeardown.current = null
+    }
+    // A press that never saw its release (the pointer left the window, the OS
+    // ate the event) would otherwise leave this drag's listeners on the host.
+    dragTeardown.current?.()
+    dragTeardown.current = teardown
+    const onUp = () => {
+      teardown()
       if (!moved) return
       void controller.move(latest.x, latest.y).catch(() => {})
       // The click that follows this release is the tail of the drag, not a
@@ -407,6 +591,7 @@ export function PetFrame(props: PetStandardProps & {
     host.addEventListener?.('pointermove', onMove)
     host.addEventListener?.('pointerup', onUp)
     host.addEventListener?.('pointercancel', onUp)
+    host.addEventListener?.('blur', teardown)
   }, [controller, offset])
 
   const onClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
@@ -422,7 +607,33 @@ export function PetFrame(props: PetStandardProps & {
   return <>
     <div className="dxp" style={style} data-pet-state={animation}>
       <div className="dxp-stage">
-        <div className="dxp-bubble" data-show={narration.text !== null} role="status" aria-live="polite">{narration.text}</div>
+        <div className="dxp-bubble" data-show={narration.line !== null} data-tone={narration.line?.tone}>
+          <span className="dxp-bubble-text" role="status" aria-live="polite">
+            <strong className="dxp-bubble-title">
+              {narration.line?.tone === 'done'
+                ? <span className="dxp-bubble-check" aria-hidden="true">✓</span>
+                : null}
+              {narration.line?.title}
+            </strong>
+            <span className="dxp-bubble-detail">{narration.line?.detail}</span>
+          </span>
+          {narration.count > 1
+            ? <button
+              type="button"
+              className="dxp-bubble-more"
+              title={t('bubble.more', { count: narration.count })}
+              aria-label={t('bubble.switch', { count: narration.count })}
+              onClick={narration.next}
+            >+{narration.count - 1}</button>
+            : null}
+          <button
+            type="button"
+            className="dxp-bubble-close"
+            title={t('bubble.close')}
+            aria-label={t('bubble.close')}
+            onClick={narration.dismiss}
+          >×</button>
+        </div>
         <PetSprite
           url={url}
           rows={view?.pets.find(pet => pet.id === active)?.rows ?? 11}
@@ -439,6 +650,7 @@ export function PetFrame(props: PetStandardProps & {
         <div className="dxp-status">{t(STATE_LABEL[state])}</div>
         <div className="dxp-controls">
           <button type="button" onClick={() => setPickerOpen(true)}>{t('frame.open')}</button>
+          <button type="button" onClick={() => { openDetachedFrame() }}>{t('frame.popout')}</button>
           <button type="button" onClick={() => { void controller.select('off').catch(() => {}) }}>{t('frame.hide')}</button>
         </div>
       </div>
@@ -466,6 +678,12 @@ export function PetSettings(props: { controller: PetController, t: Translate }) 
     useCallback(() => controller.getSnapshot(), [controller]),
   )
   useEffect(() => { void controller.load() }, [controller])
+  const activeRef = useRef(view?.active ?? 'off')
+  activeRef.current = view?.active ?? 'off'
+  useEffect(() => () => {
+    const active = activeRef.current
+    controller.release(active === 'off' ? [] : [active])
+  }, [controller])
   const pets = view?.pets ?? []
   const shown = (view?.active ?? 'off') !== 'off'
   const restore = view?.selection.chosen && view.selection.chosen !== 'off' ? view.selection.chosen : pets[0]?.id
@@ -539,15 +757,20 @@ function NotifyRow(props: { t: Translate }) {
 
 function SettingsCard(props: { pet: any, active: boolean, t: Translate, controller: PetController, onSelect: (id: string) => void }) {
   const { pet, active, t, controller, onSelect } = props
-  const [url, setUrl] = useState<string | null>(null)
+  const [thumb, setThumb] = useState<{ src: string, cropped: boolean } | null>(null)
   useEffect(() => {
     let cancelled = false
-    controller.atlasUrl(pet.id).then(next => { if (!cancelled) setUrl(next) }).catch(() => { if (!cancelled) setUrl(null) })
+    controller.thumbnail(pet.id, pet.rows).then(next => { if (!cancelled) setThumb(next) }).catch(() => { if (!cancelled) setThumb(null) })
     return () => { cancelled = true }
   }, [controller, pet.id])
+  const art = thumb
+    ? (thumb.cropped
+      ? { backgroundImage: `url(${thumb.src})`, backgroundSize: '100% 100%' }
+      : { backgroundImage: `url(${thumb.src})`, backgroundSize: `800% ${pet.rows * 100}%` })
+    : undefined
   return <li>
     <button type="button" className="dxp-card" aria-current={active} onClick={() => onSelect(pet.id)}>
-      <span className="dxp-card-art" aria-hidden="true" style={url ? { backgroundImage: `url(${url})`, backgroundSize: `800% ${pet.rows * 100}%` } : undefined} />
+      <span className="dxp-card-art" aria-hidden="true" style={art} />
       <strong>{pet.displayName}</strong>
       <span>{pet.description || t('picker.rows', { rows: pet.rows })}</span>
     </button>

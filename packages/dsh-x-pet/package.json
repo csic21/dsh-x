@@ -29,7 +29,7 @@
     "build": "node ../../scripts/build-package.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "pretest": "pnpm run build",
-    "test": "node --test test/*.test.ts"
+    "test": "node --test --test-concurrency=1 test/*.test.ts"
   },
   "dsh": {
     "bundle": {

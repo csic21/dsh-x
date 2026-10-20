@@ -3,7 +3,9 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { createAtlasRoute, createPetRoute } from './routes.js';
+import { createAtlasRoute, createPetPageRoute, createPetRoute } from './routes.js';
+import { petFramePage } from './frame.js';
+import { playbackFor, readFrameFacts } from './frame-state.js';
 import { DEFAULT_PET_ID, PET_OFF, createPetStore } from './store.js';
 export const name = 'dsh-x-pet';
 export const inject = ['tools', 'profileContext'];
@@ -11,6 +13,46 @@ const PET_LIST = 'dsh-x-pet/list';
 const PET_SELECT = 'dsh-x-pet/select';
 const PET_MOVE = 'dsh-x-pet/move';
 const PET_ATLAS = 'dsh-x-pet/atlas';
+const PET_ACTIVITY = 'dsh-x-pet/activity';
+/** The detached window's document and the facts it polls. */
+const PET_FRAME = 'dsh-x-pet/frame';
+const PET_STATE = 'dsh-x-pet/state';
+/**
+ * Read the tail of a session log and name the step it is on. A tool whose
+ * result has not been written yet is still running; anything else is the model
+ * thinking. Unknown or unreadable logs degrade to the generic phase.
+ */
+export function readActivity(session) {
+    try {
+        const last = Number(session.seq ?? 0);
+        const events = session.snapshotEvents(Math.max(0, last - 48));
+        const record = (value) => typeof value === 'object' && value !== null ? value : undefined;
+        let call = null;
+        let resultSeq = -1;
+        for (let index = events.length - 1; index >= 0; index -= 1) {
+            const event = events[index];
+            if (event.type === 'tool/result') {
+                resultSeq = Number(event.seq ?? -1);
+                break;
+            }
+            if (event.type === 'tool/call') {
+                call = { seq: Number(event.seq ?? -1), data: record(event.data) };
+                break;
+            }
+        }
+        const stepOf = (value) => typeof value === 'number' && Number.isFinite(value) ? value : null;
+        if (call && call.seq > resultSeq) {
+            const name = call.data?.name;
+            return { phase: 'tool', tool: typeof name === 'string' ? name.slice(0, 64) : null, step: stepOf(call.data?.step) };
+        }
+        const tail = events[events.length - 1];
+        const thinking = tail?.type === 'assistant/attempt' || tail?.type === 'step/start' || tail?.type === 'tool/result';
+        return { phase: thinking ? 'thinking' : 'working', tool: null, step: stepOf(record(tail?.data)?.step) };
+    }
+    catch {
+        return { phase: 'working', tool: null, step: null };
+    }
+}
 /** The package directory, so the bundled atlas resolves wherever the plugin is installed. */
 const packageDirectory = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const bundledDirectory = path.join(packageDirectory, 'assets', 'default-pet');
@@ -111,8 +153,21 @@ export function apply(ctx, config = {}) {
             }
         },
     }));
-    ctx.inject(['connection'], injected => {
+    ctx.inject(['connection', 'sessions'], injected => {
         const host = injected;
+        host.connection.fetch.register(createPetRoute(PET_ACTIVITY, async (payload) => {
+            const ids = payload.ids;
+            if (!Array.isArray(ids) || ids.length > 20 || ids.some(id => typeof id !== 'string' || id.length === 0 || id.length > 128)) {
+                throw new Error('PET_ACTIVITY');
+            }
+            const activities = {};
+            for (const id of ids) {
+                const session = host.sessions.get(id);
+                if (session)
+                    activities[id] = readActivity(session);
+            }
+            return { activities };
+        }, ['ids']));
         host.connection.fetch.register(createPetRoute(PET_LIST, async () => await view(), []));
         host.connection.fetch.register(createPetRoute(PET_SELECT, async (payload) => {
             const id = payload.id;
@@ -132,6 +187,16 @@ export function apply(ctx, config = {}) {
             const { entry, bytes } = await store.atlas(id);
             return { bytes, mime: entry.mime };
         }));
+        // The detached window cannot see the Client store, so it reads one folded
+        // snapshot from the Host: the pet is the same, the data path is not.
+        host.connection.fetch.register(createPetRoute(PET_STATE, async () => {
+            const current = await view();
+            const active = current.active;
+            const rows = current.pets.find(pet => pet.id === active)?.rows ?? 11;
+            const facts = readFrameFacts(host.sessions.list(), Date.now());
+            return { active, rows, facts, playback: playbackFor(facts.state) };
+        }, []));
+        host.connection.fetch.register(createPetPageRoute(PET_FRAME, petFramePage));
     });
 }
-export { PET_ATLAS, PET_LIST, PET_MOVE, PET_SELECT };
+export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE };

@@ -33,6 +33,9 @@ test('the pet frame registers in the frame overlay and follows the session state
       if (endpoint === 'dsh-x-pet/list') {
         return { ok: true, value: { pets: [pet], selection: { version: 1, active: pet.id, position: null }, active: pet.id, source: '/home/.codex/pets' } }
       }
+      if (endpoint === 'dsh-x-pet/activity') {
+        return { ok: true, value: { activities: { s1: { phase: 'tool', tool: 'bash', step: 2 }, s2: { phase: 'thinking', tool: null, step: 1 } } } }
+      }
       if (endpoint === 'dsh-x-pet/select') {
         return { ok: true, value: { pets: [pet], selection: { version: 1, active: 'off', position: null }, active: 'off', source: null } }
       }
@@ -62,6 +65,17 @@ test('the pet frame registers in the frame overlay and follows the session state
   ;(globalThis as any).fetch = async () => ({ ok: true, blob: async () => new dom.window.Blob(['sheet']) })
   ;(URL as any).createObjectURL = () => 'blob:dsh-x-pet'
   ;(URL as any).revokeObjectURL = () => {}
+  // A stalled flush must fail the test, not wedge the whole suite: jsdom has no
+  // canvas, and a decode that never settles would otherwise hold the runner.
+  const step = async (run: () => unknown): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        act(async () => { await run() }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('act stalled')), 8_000) }),
+      ])
+    } finally { if (timer !== undefined) clearTimeout(timer) }
+  }
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('app')!)
   try {
@@ -72,16 +86,19 @@ test('the pet frame registers in the frame overlay and follows the session state
 
     // The host owns the session facts the pet reads.
     const status: any = { running: false, pendingInteraction: undefined, completionUnread: false }
-    const list = { byId: { s1: { id: 's1', retainedBy: { mainView: 1 } } } }
+    const list: any = { byId: { s1: { id: 's1', title: 'Refactor login', updatedAt: 2, retainedBy: { mainView: 1 } } } }
     const statuses = new Map<string, any>([['s1', status]])
     function Render({ entry }: any) {
       const face = entry.options.inject()
       const useSessions = (selector: any) => selector(list)
       const useSessionStatus = (selector: any) => selector(statuses)
       const usePanelInfo = (selector: any) => selector({ activePanelId: null })
-      return React.createElement(entry.component, { ...face, useSessions, useSessionStatus, usePanelInfo, t: (key: string) => key })
+      return React.createElement(entry.component, {
+        ...face, useSessions, useSessionStatus, usePanelInfo,
+        t: (key: string, params?: Record<string, unknown>) => params ? `${key} ${Object.values(params).join(' ')}` : key,
+      })
     }
-    const render = async () => act(async () => root.render(React.createElement(Render, { entry })))
+    const render = async () => step(() => root.render(React.createElement(Render, { entry })))
     await render()
     assert.deepEqual(rpcCalls, ['dsh-x-pet/list'])
     const frame = dom.window.document.querySelector<HTMLElement>('.dxp')
@@ -105,35 +122,77 @@ test('the pet frame registers in the frame overlay and follows the session state
     status.completionUnread = false
     status.running = true
     await render()
-    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble')!.textContent, 'bubble.working')
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-title')!.textContent, 'Refactor login')
+    assert.match(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-detail')!.textContent!, /bash/)
     status.running = false
     await render()
     assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp')!.dataset.petState, 'waving')
-    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble')!.textContent, 'bubble.done')
+    assert.match(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-detail')!.textContent!, /bubble\.done/)
+    assert.ok(dom.window.document.querySelector('.dxp-bubble-check'), 'a finished turn is ticked')
+
+    // Closing the bubble hides that one line only: the pet stays, the session
+    // is untouched, and the next turn speaks again.
+    const bubble = () => dom.window.document.querySelector<HTMLElement>('.dxp-bubble')!
+    const close = bubble().querySelector<HTMLElement>('.dxp-bubble-close')!
+    await step(() => { close.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    assert.equal(bubble().dataset.show, 'false', 'closing the bubble hides it')
+    assert.ok(dom.window.document.querySelector('.dxp'), 'closing the bubble leaves the pet')
+    assert.equal(rpcCalls.filter(endpoint => endpoint === 'dsh-x-pet/select').length, 0, 'closing the bubble never changes the selection')
+    status.running = true
+    await render()
+    assert.equal(bubble().dataset.show, 'true', 'the next turn speaks again')
+
+    // Two conversations: the pet watches one and counts the other.
+    status.running = true
+    list.byId.s2 = { id: 's2', title: 'Review diff', updatedAt: 1 }
+    statuses.set('s2', { running: true, pendingInteraction: undefined, completionUnread: false })
+    await render()
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-title')!.textContent, 'Refactor login')
+    const chip = dom.window.document.querySelector<HTMLElement & HTMLButtonElement>('.dxp-bubble-more')!
+    assert.equal(chip.textContent, '+1')
+    await step(() => { chip.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-title')!.textContent, 'Review diff')
+    assert.match(dom.window.document.querySelector<HTMLElement>('.dxp-bubble-detail')!.textContent!, /bubble\.thinking/)
+    statuses.delete('s2')
+    status.running = false
 
     // A press that only moves the pointer is a drag: it moves the pet and never
     // opens the picker. A press that stays put is a click and does open it.
     const sprite = () => dom.window.document.querySelector<HTMLElement>('.dxp-sprite')!
-    const pointer = (type: string, target: any, x: number, y: number) => act(async () => {
+    const pointer = (type: string, target: any, x: number, y: number) => step(() => {
       target.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }))
     })
     await pointer('pointerdown', sprite(), 100, 100)
     await pointer('pointermove', dom.window, 150, 130)
     await pointer('pointerup', dom.window, 150, 130)
-    await act(async () => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
+    await step(() => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
     assert.equal(dom.window.document.querySelector('.dxp-dialog'), null, 'a drag must not open the picker')
     assert.ok(rpcCalls.includes('dsh-x-pet/move'), 'a drag saves the new position')
 
     await pointer('pointerdown', sprite(), 200, 200)
     await pointer('pointerup', dom.window, 200, 200)
-    await act(async () => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
+    await step(() => { sprite().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })) })
     assert.ok(dom.window.document.querySelector('.dxp-dialog'), 'a click opens the picker')
+
+    // A pet that is switched off renders nothing, so its narration has to stop
+    // too: the frame's hooks run before the early return that hides the sprite.
+    const activityCalls = () => rpcCalls.filter(endpoint => endpoint === 'dsh-x-pet/activity').length
+    const injected = entry.options.inject()
+    await step(async () => { await injected.controller.select('off') })
+    status.running = true
+    const before = activityCalls()
+    await render()
+    await step(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+    assert.equal(activityCalls(), before, 'a hidden pet stops polling the host')
+    assert.equal(dom.window.document.querySelector('.dxp'), null, 'a hidden pet renders nothing')
   } finally {
-    await act(async () => root.unmount())
+    await step(() => root.unmount())
     for (const dispose of disposers) dispose?.()
     ;(globalThis as any).fetch = originalFetch
     ;(URL as any).createObjectURL = originalCreate
     ;(URL as any).revokeObjectURL = originalRevoke
+    dom.window.close()
+    console.log('ACTIVE', JSON.stringify(process.getActiveResourcesInfo()))
     ;(globalThis as any).window = original.window
     ;(globalThis as any).document = original.document
     ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = original.IS_REACT_ACT_ENVIRONMENT

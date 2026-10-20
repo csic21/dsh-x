@@ -63,6 +63,23 @@ export function createPetRoute(
 }
 
 /**
+ * The detached pet document: no JSON envelope, no Client runtime. The page is
+ * opened in its own window and reads `/api/dsh-x-pet/state` from the Host.
+ */
+export function createPetPageRoute(endpoint: string, render: () => string): PetRoute {
+  return {
+    path: `/api/${endpoint}`,
+    methods: ['GET'],
+    requestBody: 'buffered',
+    async fetch() {
+      return new Response(render(), {
+        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+      })
+    },
+  }
+}
+
+/**
  * The atlas route returns the sheet itself as image bytes, so the browser can
  * hand it straight to `Image`/CSS without base64 expansion. It accepts the
  * same authenticated envelope, but answers with `image/*` rather than JSON.
