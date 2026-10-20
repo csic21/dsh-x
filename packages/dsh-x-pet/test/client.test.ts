@@ -65,17 +65,26 @@ test('the pet frame registers in the frame overlay and follows the session state
   ;(globalThis as any).fetch = async () => ({ ok: true, blob: async () => new dom.window.Blob(['sheet']) })
   ;(URL as any).createObjectURL = () => 'blob:dsh-x-pet'
   ;(URL as any).revokeObjectURL = () => {}
-  // A stalled flush must fail the test, not wedge the whole suite: jsdom has no
-  // canvas, and a decode that never settles would otherwise hold the runner.
+  // React's async act races the runner: a flush that is still queued when the
+  // jsdom window closes leaves a promise that never settles, which the test
+  // runner reports as "Promise resolution is still pending but the event loop
+  // has already resolved". So keep act synchronous — every render here is — and
+  // await genuinely asynchronous work outside act, then flush once.
   const step = async (run: () => unknown): Promise<void> => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      await Promise.race([
-        act(async () => { await run() }),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('act stalled')), 8_000) }),
-      ])
-    } finally { if (timer !== undefined) clearTimeout(timer) }
+    const result = run()
+    if (result !== undefined && result !== null && typeof (result as any).then === 'function') await (result as Promise<unknown>)
+    act(() => {})
+    // Effects start promises: `list` resolves the selection, and only then does
+    // the activity poll have ids. Two hops, so flush a couple of macrotasks and
+    // commit after each — still synchronously, never through async act.
+    for (let round = 0; round < 3; round += 1) {
+      await new Promise(resolve => setImmediate(resolve))
+      act(() => {})
+    }
   }
+  // A wedged test must fail, not hang the job for its whole timeout. This timer
+  // is cleared in the teardown, so it never keeps the process alive.
+  const watchdog = setTimeout(() => { throw new Error('client test exceeded 60s') }, 60_000)
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('app')!)
   try {
@@ -192,18 +201,22 @@ test('the pet frame registers in the frame overlay and follows the session state
     assert.equal(activityCalls(), before, 'a hidden pet stops polling the host')
     assert.equal(dom.window.document.querySelector('.dxp'), null, 'a hidden pet renders nothing')
   } finally {
-    await step(() => root.unmount())
-    // Let any promise the tree left pending settle before the loop drains:
-    // the runner reports one as a failure on a slow machine, not a real one.
-    await new Promise(resolve => setTimeout(resolve, 0))
-    for (const dispose of disposers) dispose?.()
+    clearTimeout(watchdog)
+    try {
+      await step(() => { root.unmount() })
+      // One empty flush after unmount: effects that scheduled a setState land
+      // here, synchronously, before anything is torn down.
+      act(() => {})
+    } finally {
+      for (const dispose of disposers) dispose?.()
     ;(globalThis as any).fetch = originalFetch
     ;(URL as any).createObjectURL = originalCreate
     ;(URL as any).revokeObjectURL = originalRevoke
     dom.window.close()
     console.log('ACTIVE', JSON.stringify(process.getActiveResourcesInfo()))
-    ;(globalThis as any).window = original.window
-    ;(globalThis as any).document = original.document
-    ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = original.IS_REACT_ACT_ENVIRONMENT
+      ;(globalThis as any).window = original.window
+      ;(globalThis as any).document = original.document
+      ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = original.IS_REACT_ACT_ENVIRONMENT
+    }
   }
 })
