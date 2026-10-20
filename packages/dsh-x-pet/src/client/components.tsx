@@ -493,10 +493,16 @@ export function usePetNarration(
  * this stays a quiet no-op until the shell ships a pet window; a browser opens
  * it right away.
  */
-function openDetachedFrame(): void {
+async function openDetachedFrame(controller: PetController): Promise<void> {
+  // 1. A Desktop shell that ships a pet window owns placement and stacking.
   try {
     const bridge = (globalThis as any).dshDesktop?.petWindow
     if (bridge !== undefined && typeof bridge.open === 'function') { void bridge.open(); return }
+  } catch { /* Fall through to the plugin's own window. */ }
+  // 2. The plugin's native shell: a floating panel the app window cannot clip.
+  try { if (await controller.detach()) return } catch { /* Fall through to a popup. */ }
+  // 3. A browser tab, which at least leaves the app window.
+  try {
     globalThis.open?.('/api/dsh-x-pet/frame', 'dsh-x-pet-frame', 'width=280,height=340,menubar=no,toolbar=no,location=no,status=no')
   } catch { /* A denied popup never breaks the frame. */ }
 }
@@ -659,7 +665,7 @@ export function PetFrame(props: PetStandardProps & {
         <div className="dxp-status">{t(STATE_LABEL[state])}</div>
         <div className="dxp-controls">
           <button type="button" onClick={() => setPickerOpen(true)}>{t('frame.open')}</button>
-          <button type="button" onClick={() => { openDetachedFrame() }}>{t('frame.popout')}</button>
+          <button type="button" onClick={() => { void openDetachedFrame(controller) }}>{t('frame.popout')}</button>
           <button type="button" onClick={() => { void controller.select('off').catch(() => {}) }}>{t('frame.hide')}</button>
         </div>
       </div>

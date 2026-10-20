@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createAtlasRoute, createPetPageRoute, createPetRoute } from './routes.js';
 import { petFramePage } from './frame.js';
+import { createShell, frameURL } from './native.js';
 import { playbackFor, readFrameFacts } from './frame-state.js';
 import { DEFAULT_PET_ID, PET_OFF, createPetStore } from './store.js';
 export const name = 'dsh-x-pet';
@@ -17,6 +18,8 @@ const PET_ACTIVITY = 'dsh-x-pet/activity';
 /** The detached window's document and the facts it polls. */
 const PET_FRAME = 'dsh-x-pet/frame';
 const PET_STATE = 'dsh-x-pet/state';
+/** Start or stop the native shell window. */
+const PET_WINDOW = 'dsh-x-pet/window';
 /**
  * Read the tail of a session log and name the step it is on. A tool whose
  * result has not been written yet is still running; anything else is the model
@@ -153,8 +156,10 @@ export function apply(ctx, config = {}) {
             }
         },
     }));
-    ctx.inject(['connection', 'sessions'], injected => {
+    ctx.inject(['connection', 'sessions', 'webApp'], injected => {
         const host = injected;
+        const shell = createShell();
+        host.effect(() => () => shell.close());
         host.connection.fetch.register(createPetRoute(PET_ACTIVITY, async (payload) => {
             const ids = payload.ids;
             if (!Array.isArray(ids) || ids.length > 20 || ids.some(id => typeof id !== 'string' || id.length === 0 || id.length > 128)) {
@@ -197,6 +202,25 @@ export function apply(ctx, config = {}) {
             return { active, rows, facts, playback: playbackFor(facts.state) };
         }, []));
         host.connection.fetch.register(createPetPageRoute(PET_FRAME, petFramePage));
+        // The pet's own window: compiled from the shipped Swift source on first use.
+        host.connection.fetch.register(createPetRoute(PET_WINDOW, async (payload) => {
+            if (payload.action === 'close') {
+                shell.close();
+                return { open: false };
+            }
+            if (payload.action !== 'open')
+                throw new Error('PET_WINDOW');
+            const base = host.webApp.getAdvertisedUrl();
+            const opened = await shell.open({
+                profileDir: host.profileContext.dir,
+                source: path.join(packageDirectory, 'native', 'pet-window.swift'),
+                frameURL: frameURL(base),
+                bootstrapURL: host.connection.authenticatedUrl(base),
+            });
+            if (!opened)
+                throw new Error('PET_NATIVE_UNAVAILABLE');
+            return { open: true };
+        }, ['action']));
     });
 }
-export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE };
+export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE, PET_WINDOW };

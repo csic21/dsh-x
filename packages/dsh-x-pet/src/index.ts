@@ -7,6 +7,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createAtlasRoute, createPetPageRoute, createPetRoute } from './routes.ts'
 import type { PetRoute } from './routes.ts'
 import { petFramePage } from './frame.ts'
+import { createShell, frameURL } from './native.ts'
 import { playbackFor, readFrameFacts } from './frame-state.ts'
 import { DEFAULT_PET_ID, PET_OFF, createPetStore } from './store.ts'
 import type { PetStore } from './store.ts'
@@ -14,7 +15,13 @@ import type { PetStore } from './store.ts'
 /** Official host services this plugin consumes, without a shipped type dependency. */
 interface PetHostServices {
   profileContext: { dir: string }
-  connection: { fetch: { register(route: PetRoute): () => void } }
+  connection: {
+    fetch: { register(route: PetRoute): () => void }
+    /** Adds this process's launch token to an application URL. */
+    authenticatedUrl(baseUrl: string): string
+  }
+  /** The Web GUI this process serves; its advertised root is the clean URL. */
+  webApp: { getAdvertisedUrl(): string }
   /** Official live-session registry; read-only here. */
   sessions: {
     get(id: string): LiveSession | undefined
@@ -56,6 +63,8 @@ const PET_ACTIVITY = 'dsh-x-pet/activity'
 /** The detached window's document and the facts it polls. */
 const PET_FRAME = 'dsh-x-pet/frame'
 const PET_STATE = 'dsh-x-pet/state'
+/** Start or stop the native shell window. */
+const PET_WINDOW = 'dsh-x-pet/window'
 
 /** What a running conversation is doing right now, in one short word. */
 export interface SessionActivity {
@@ -200,8 +209,10 @@ export function apply(ctx: Context, config: PetConfig = {}) {
     },
   }))
 
-  ctx.inject(['connection', 'sessions'], injected => {
+  ctx.inject(['connection', 'sessions', 'webApp'], injected => {
     const host = injected as Context & PetHostServices
+    const shell = createShell()
+    host.effect(() => () => shell.close())
     host.connection.fetch.register(createPetRoute(PET_ACTIVITY, async payload => {
       const ids = payload.ids
       if (!Array.isArray(ids) || ids.length > 20 || ids.some(id => typeof id !== 'string' || id.length === 0 || id.length > 128)) {
@@ -241,7 +252,21 @@ export function apply(ctx: Context, config: PetConfig = {}) {
       return { active, rows, facts, playback: playbackFor(facts.state) }
     }, []))
     host.connection.fetch.register(createPetPageRoute(PET_FRAME, petFramePage))
+    // The pet's own window: compiled from the shipped Swift source on first use.
+    host.connection.fetch.register(createPetRoute(PET_WINDOW, async payload => {
+      if (payload.action === 'close') { shell.close(); return { open: false } }
+      if (payload.action !== 'open') throw new Error('PET_WINDOW')
+      const base = host.webApp.getAdvertisedUrl()
+      const opened = await shell.open({
+        profileDir: host.profileContext.dir,
+        source: path.join(packageDirectory, 'native', 'pet-window.swift'),
+        frameURL: frameURL(base),
+        bootstrapURL: host.connection.authenticatedUrl(base),
+      })
+      if (!opened) throw new Error('PET_NATIVE_UNAVAILABLE')
+      return { open: true }
+    }, ['action']))
   })
 }
 
-export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE }
+export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE, PET_WINDOW }

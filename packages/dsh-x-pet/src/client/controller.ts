@@ -19,6 +19,7 @@ export const SELECT_ENDPOINT = 'dsh-x-pet/select'
 export const MOVE_ENDPOINT = 'dsh-x-pet/move'
 export const ATLAS_ENDPOINT = 'dsh-x-pet/atlas'
 export const ACTIVITY_ENDPOINT = 'dsh-x-pet/activity'
+export const WINDOW_ENDPOINT = 'dsh-x-pet/window'
 
 /** What a running conversation is doing right now. */
 export interface SessionActivity {
@@ -42,6 +43,8 @@ export interface PetController {
   atlasUrl(id: string): Promise<string>
   /** Current activity of the named live sessions, keyed by session id. */
   activity(ids: string[]): Promise<Record<string, SessionActivity>>
+  /** Ask the Host to open the native pet window; false when it cannot. */
+  detach(): Promise<boolean>
   /**
    * A small first-frame preview. `cropped` tells the caller whether the image
    * is one cell (draw it whole) or the full sheet (draw it as a sprite).
@@ -126,6 +129,12 @@ export function createPetController(rpc: PetRpc, fetchObject: typeof fetch | und
         const value = await call(ACTIVITY_ENDPOINT, { ids })
         return (value?.activities ?? {}) as Record<string, SessionActivity>
       } catch { return {} }
+    },
+    async detach() {
+      try {
+        const value = await call(WINDOW_ENDPOINT, { action: 'open' })
+        return value?.open === true
+      } catch { return false }
     },
     atlasUrl(id) {
       const cached = urls.get(id)

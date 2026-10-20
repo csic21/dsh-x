@@ -42,6 +42,7 @@ var SELECT_ENDPOINT = "dsh-x-pet/select";
 var MOVE_ENDPOINT = "dsh-x-pet/move";
 var ATLAS_ENDPOINT = "dsh-x-pet/atlas";
 var ACTIVITY_ENDPOINT = "dsh-x-pet/activity";
+var WINDOW_ENDPOINT = "dsh-x-pet/window";
 var unwrap = (result) => {
   if (!result?.ok) throw new Error(String(result?.error?.code ?? "PET_UNAVAILABLE"));
   return result.value;
@@ -103,6 +104,14 @@ function createPetController(rpc, fetchObject = globalThis.fetch) {
         return value?.activities ?? {};
       } catch {
         return {};
+      }
+    },
+    async detach() {
+      try {
+        const value = await call(WINDOW_ENDPOINT, { action: "open" });
+        return value?.open === true;
+      } catch {
+        return false;
       }
     },
     atlasUrl(id) {
@@ -627,13 +636,20 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
     dismiss: () => setDismissed(lineKey)
   };
 }
-function openDetachedFrame() {
+async function openDetachedFrame(controller) {
   try {
     const bridge = globalThis.dshDesktop?.petWindow;
     if (bridge !== void 0 && typeof bridge.open === "function") {
       void bridge.open();
       return;
     }
+  } catch {
+  }
+  try {
+    if (await controller.detach()) return;
+  } catch {
+  }
+  try {
     globalThis.open?.("/api/dsh-x-pet/frame", "dsh-x-pet-frame", "width=280,height=340,menubar=no,toolbar=no,location=no,status=no");
   } catch {
   }
@@ -791,7 +807,7 @@ function PetFrame(props) {
       }
     }
   ), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-status" }, t(STATE_LABEL[state])), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setPickerOpen(true) }, t("frame.open")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
-    openDetachedFrame();
+    void openDetachedFrame(controller);
   } }, t("frame.popout")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
     void controller.select("off").catch(() => {
     });

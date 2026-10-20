@@ -1,6 +1,6 @@
 {
   "name": "dsh-x-pet",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "type": "module",
   "main": "./lib/index.js",
   "engines": {
@@ -12,7 +12,8 @@
     "assets",
     "cordis.patch.yml",
     "README.md",
-    "VALIDATION.md"
+    "VALIDATION.md",
+    "native"
   ],
   "exports": {
     ".": "./lib/index.js",

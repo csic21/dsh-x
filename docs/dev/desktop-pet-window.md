@@ -1,8 +1,14 @@
 # 桌面宠物窗口（桌面端改动）
 
-`dsh-x-pet` 已经能把宠物渲染成独立页 `GET /api/dsh-x-pet/frame`，但真正的「悬浮在桌面、
-不被 DSH 主窗口裁剪」需要桌面端开一个窗口。桌面应用（`@deepseek-ai/dsh-desktop`）不在本仓库，
-这里给出可直接落地的三处改动。
+`dsh-x-pet` 已经能把宠物渲染成独立页 `GET /api/dsh-x-pet/frame`。
+
+插件自带了一条不依赖桌面端的路：`native/pet-window.swift` 会编译成一个 AppKit 浮动面板
+（透明、置顶、跨 Space、不抢焦点），由 Host 的 `POST /api/dsh-x-pet/window` 拉起。它够用，
+但终究是插件在自己造窗口：克隆出来的进程没有外壳的生命周期、更新和辅助功能支持。
+
+桌面端自己开窗口仍是正解。桌面应用（`@deepseek-ai/dsh-desktop`）不在本仓库，
+下面给出可直接落地的三处改动，落地后插件会自动优先走外壳的窗口（`window.dshDesktop.petWindow`），
+原生面板退为兜底。
 
 ## 已确认的前置事实
 

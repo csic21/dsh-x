@@ -35,6 +35,8 @@ declare const PET_ACTIVITY = "dsh-x-pet/activity";
 /** The detached window's document and the facts it polls. */
 declare const PET_FRAME = "dsh-x-pet/frame";
 declare const PET_STATE = "dsh-x-pet/state";
+/** Start or stop the native shell window. */
+declare const PET_WINDOW = "dsh-x-pet/window";
 /** What a running conversation is doing right now, in one short word. */
 export interface SessionActivity {
     phase: 'tool' | 'thinking' | 'working';
@@ -49,4 +51,4 @@ export interface SessionActivity {
  */
 export declare function readActivity(session: LiveSession): SessionActivity;
 export declare function apply(ctx: Context, config?: PetConfig): void;
-export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE };
+export { PET_ACTIVITY, PET_ATLAS, PET_FRAME, PET_LIST, PET_MOVE, PET_SELECT, PET_STATE, PET_WINDOW };
