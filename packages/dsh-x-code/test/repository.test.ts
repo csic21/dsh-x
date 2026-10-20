@@ -23,6 +23,22 @@ test('unknown/traversal paths, credential filenames, ignored content, symlinks a
  assert.equal(inv.files.some(f=>f.path==='.env'),false)
  for(const file of ['ignored.js','secret.js','binary.js','large.js','link.js']){const v=await h.repository.file(inv,file);assert.notEqual(v.kind,'text',file);assert.equal(v.text,undefined,file);await assert.rejects(()=>h.repository.capture(inv,[file]),{code:'CODE_EXCLUDED'})}
 })
+test('a credential-named source folder stays browseable while its data files stay private',async t=>{
+ const h=fixture(t)
+ mkdirSync(path.join(h.root,'frontend','src','components','credentials'),{recursive:true})
+ writeFileSync(path.join(h.root,'frontend','src','components','credentials','TaskCredentialDialog.tsx'),'export const Dialog = () => null\n')
+ mkdirSync(path.join(h.root,'credentials'))
+ writeFileSync(path.join(h.root,'credentials','prod.json'),'{"user":"fixture"}\n')
+ writeFileSync(path.join(h.root,'credentials','schema.ts'),'export const schema = true\n')
+ h.git('add','.')
+ const inv=await h.repository.inventory(h.options)
+ const component=inv.files.find(file=>file.path.endsWith('TaskCredentialDialog.tsx'))!
+ assert.equal(component.selectable,true,'an ordinary source file under a credentials folder is not private')
+ assert.match((await h.repository.file(inv,component.path)).text!,/Dialog/)
+ assert.equal(inv.files.find(file=>file.path==='credentials/prod.json')!.selectable,false,'credential data stays private')
+ assert.equal(inv.files.find(file=>file.path==='credentials/schema.ts')!.selectable,true,'program source stays ordinary code')
+ assert.equal((await h.repository.file(inv,'credentials/prod.json')).kind,'excluded')
+})
 test('svg stays source text and images, audio, and video preview without entering review',async t=>{
  const h=fixture(t)
  const svg='<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="10" height="10"/></svg>\n'
