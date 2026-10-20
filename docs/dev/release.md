@@ -1,11 +1,11 @@
 # 发布流程
 
-发布的是**插件 Git 版本**，不是桌面应用，也不是 npm 包。四个包各自有 `version`。`plugins-v*` tag 只标记「这次发布哪一个 commit」，不再要求四个包同一个号。
+发布的是**插件 Git 版本**，不是桌面应用，也不是 npm 包。五个包各自有 `version`。`plugins-v*` tag 只标记「这次发布哪一个 commit」，不再要求五个包同一个号。
 
 ## 版本规则
 
 - 只给改过的包升 `version`。没改的包保持原号，索引里也不会出现新条目。
-- tag 名仍是 `plugins-v<版本>`，例如只发布 Code `0.6.1` 时打 `plugins-v0.6.1`。tag 不必等于另外三个包的版本。
+- tag 名仍是 `plugins-v<版本>`，例如只发布 Code `0.6.1` 时打 `plugins-v0.6.1`。tag 不必等于另外四个包的版本。
 - 每个包的每个版本只钉一次，钉在**第一次**带上这个版本的 tag。以后的 tag 即使还含着旧版本，也不改它的安装 commit。
 - 升版本但包目录没变化，或者包目录变了却不升版本，`node scripts/check-plugin-release.mjs` 会失败。`docs/` 和 `scripts/` 的改动不算包变化。
 - 每个包 `engines.dsh` 仍精确等于 `compatibility/policy.json` 的 `baseline.version`（这是运行时基线，不是插件版本）。

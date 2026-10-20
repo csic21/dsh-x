@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseAddress, validateCommand, boundedResult } from '../src/protocol.ts'
-import { createBrowserRoute } from '../src/routes.ts'
+import { createBrowserRoute } from '../src/backends/embedded/routes.ts'
 test('only bounded finite commands and safe HTTP(S) destinations are admitted', () => {
   assert.equal(parseAddress('example.test'), 'https://example.test/')
   assert.equal(parseAddress('http://127.0.0.1:9999/', 'null'), 'http://127.0.0.1:9999/')

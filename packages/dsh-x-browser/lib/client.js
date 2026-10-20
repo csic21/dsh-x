@@ -36,16 +36,108 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 
-// src/protocol.ts
-var ACTIONS = Object.freeze(["observe", "navigate", "click", "type", "scroll", "press", "back", "forward", "reload"]);
-var NAVIGATION = /* @__PURE__ */ new Set(["navigate", "back", "forward", "reload"]);
-var MAX_RESULT_BYTES = 64 * 1024;
-function plainObject(value) {
-  return Boolean(value) && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype;
-}
+// src/contract/commands.ts
+var ACTIONS = [
+  "observe",
+  "navigate",
+  "click",
+  "type",
+  "scroll",
+  "press",
+  "back",
+  "forward",
+  "reload",
+  "select",
+  "read",
+  "screenshot"
+];
+var EMBEDDED_ACTIONS = [
+  "observe",
+  "navigate",
+  "click",
+  "type",
+  "scroll",
+  "press",
+  "back",
+  "forward",
+  "reload"
+];
+var ACTION_SPEC = {
+  observe: { fields: [], navigation: false, mutates: false },
+  navigate: { fields: ["url"], navigation: true, mutates: true },
+  click: { fields: ["target"], navigation: false, mutates: true },
+  type: { fields: ["target", "text"], navigation: false, mutates: true },
+  scroll: { fields: ["x", "y"], navigation: false, mutates: false },
+  press: { fields: ["key"], navigation: false, mutates: true },
+  back: { fields: [], navigation: true, mutates: true },
+  forward: { fields: [], navigation: true, mutates: true },
+  reload: { fields: [], navigation: true, mutates: false },
+  select: { fields: ["target", "value"], navigation: false, mutates: true },
+  read: { fields: ["url"], navigation: false, mutates: false },
+  screenshot: { fields: [], navigation: false, mutates: false }
+};
+var NAVIGATION = new Set(ACTIONS.filter((action) => ACTION_SPEC[action].navigation));
+var EMBEDDED_REF_PATTERN = /^e\d+:s\d+:n\d+$/;
+
+// src/contract/errors.ts
+var BROWSER_ERROR_CODES = [
+  "BROWSER_API",
+  "BROWSER_APPROVAL",
+  "BROWSER_BINARY_MISSING",
+  "BROWSER_BUSY",
+  "BROWSER_CLOSED",
+  "BROWSER_DAEMON",
+  "BROWSER_DESKTOP",
+  "BROWSER_GRANT",
+  "BROWSER_GUEST",
+  "BROWSER_HIDDEN",
+  "BROWSER_HOST",
+  "BROWSER_INPUT",
+  "BROWSER_LIMIT",
+  "BROWSER_OFFLINE",
+  "BROWSER_OWNER",
+  "BROWSER_PROTOCOL",
+  "BROWSER_RESULT",
+  "BROWSER_REVOKED",
+  "BROWSER_RPC",
+  "BROWSER_RUN",
+  "BROWSER_SCOPE",
+  "BROWSER_SECRET",
+  "BROWSER_SESSION",
+  "BROWSER_STALE",
+  "BROWSER_TARGET",
+  "BROWSER_TIMEOUT",
+  "BROWSER_UNAVAILABLE",
+  "BROWSER_UNSUPPORTED",
+  "BROWSER_URL",
+  "BROWSER_VERSION",
+  "BROWSER_WORKSPACE"
+];
+var KNOWN = new Set(BROWSER_ERROR_CODES);
 function fail(code, message) {
   return Object.assign(new Error(message), { code });
 }
+
+// src/contract/limits.ts
+var MAX_RESULT_BYTES = 64 * 1024;
+var MAX_OBSERVATION_TEXT_BYTES = 24 * 1024;
+
+// src/contract/observation.ts
+function modelUrl(value) {
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) return "";
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+// src/contract/url.ts
 function parseAddress(value, applicationOrigin) {
   if (typeof value !== "string" || value.length > 4096 || !value.trim()) throw fail("BROWSER_URL", "Enter a bounded HTTP(S) URL.");
   let url;
@@ -65,15 +157,27 @@ function parseAddress(value, applicationOrigin) {
   }
   return url.href;
 }
-function validateCommand(raw, applicationOrigin) {
-  if (!plainObject(raw) || typeof raw.action !== "string" || !ACTIONS.includes(raw.action)) throw fail("BROWSER_INPUT", "Choose a supported browser action.");
-  const fields = { observe: [], navigate: ["url"], click: ["target"], type: ["target", "text"], scroll: ["x", "y"], press: ["key"], back: [], forward: [], reload: [] }[raw.action];
+
+// src/protocol.ts
+var ACTIONS2 = Object.freeze([...EMBEDDED_ACTIONS]);
+function plainObject(value) {
+  return Boolean(value) && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype;
+}
+function validateCommand(raw, applicationOrigin, refPattern = EMBEDDED_REF_PATTERN, actions = ACTIONS2) {
+  if (!plainObject(raw) || typeof raw.action !== "string" || !actions.includes(raw.action)) throw fail("BROWSER_INPUT", "Choose a supported browser action.");
+  const fields = ACTION_SPEC[raw.action].fields;
   if (Object.keys(raw).some((key) => key !== "action" && !fields.includes(key))) throw fail("BROWSER_INPUT", "Unknown browser command field.");
   const result = { action: raw.action };
   if (raw.action === "navigate") result.url = parseAddress(raw.url, applicationOrigin);
   if (["click", "type"].includes(raw.action)) {
-    if (typeof raw.target !== "string" || !/^e\d+:s\d+:n\d+$/.test(raw.target)) throw fail("BROWSER_TARGET", "Use an exact target from the latest observation.");
+    if (typeof raw.target !== "string" || !refPattern.test(raw.target)) throw fail("BROWSER_TARGET", "Use an exact target from the latest observation.");
     result.target = raw.target;
+  }
+  if (raw.action === "select") {
+    if (typeof raw.target !== "string" || !refPattern.test(raw.target)) throw fail("BROWSER_TARGET", "Use an exact target from the latest observation.");
+    if (typeof raw.value !== "string" || !raw.value || raw.value.length > 500 || /\u0000/.test(raw.value)) throw fail("BROWSER_INPUT", "Select value must contain 1\u2013500 characters.");
+    result.target = raw.target;
+    result.value = raw.value;
   }
   if (raw.action === "type") {
     if (typeof raw.text !== "string" || !raw.text || raw.text.length > 2e3 || /\u0000/.test(raw.text)) throw fail("BROWSER_INPUT", "Text must contain 1\u20132000 characters.");
@@ -92,19 +196,6 @@ function validateCommand(raw, applicationOrigin) {
     result.key = raw.key;
   }
   return result;
-}
-function modelUrl(value) {
-  try {
-    const url = new URL(value);
-    if (!["http:", "https:"].includes(url.protocol)) return "";
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.href;
-  } catch {
-    return "";
-  }
 }
 
 // src/client/dom-helper.ts

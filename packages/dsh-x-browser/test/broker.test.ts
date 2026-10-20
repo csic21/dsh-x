@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createBrowserBroker } from '../src/broker.ts'
+import { createBrowserBroker } from '../src/backends/embedded/broker.ts'
 import { createBrowserOwnership } from '../src/ownership.ts'
-import type { BrowserTraceEvent, BrowserTurn } from '../src/broker.ts'
+import type { BrowserTraceEvent, BrowserTurn } from '../src/backends/embedded/broker.ts'
 type BrowserBroker = ReturnType<typeof createBrowserBroker>
 type BrokerOptions = Partial<Parameters<typeof createBrowserBroker>[0]>
 type DispatchOwner = NonNullable<Parameters<BrowserBroker['execute']>[2]>

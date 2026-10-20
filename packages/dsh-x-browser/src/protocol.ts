@@ -1,55 +1,39 @@
-/** Bounded JSON value crossing the browser bridge; identical to the official `JsonValue`. */
-export type BrowserJson = null | boolean | number | string | BrowserJson[] | { [key: string]: BrowserJson }
+import { ACTION_SPEC, EMBEDDED_ACTIONS, EMBEDDED_REF_PATTERN, NAVIGATION, type Action, type BrowserCommand } from './contract/commands.ts'
+import { fail } from './contract/errors.ts'
+import type { BrowserFailure } from './contract/errors.ts'
+import { identifier } from './contract/ids.ts'
+import { boundedJson } from './contract/json.ts'
+import type { BrowserJson } from './contract/json.ts'
+import { modelUrl } from './contract/observation.ts'
+import { parseAddress } from './contract/url.ts'
+
+export type { BrowserCommand, BrowserFailure, BrowserJson }
+export { boundedJson as boundedResult, fail, identifier, modelUrl, NAVIGATION, parseAddress }
+export { MAX_RESULT_BYTES } from './contract/limits.ts'
+
 /** Shared finite protocol. Never accepts JavaScript, selectors, CDP or arbitrary IPC. */
-export const ACTIONS = Object.freeze(['observe', 'navigate', 'click', 'type', 'scroll', 'press', 'back', 'forward', 'reload'])
-export const NAVIGATION = new Set(['navigate', 'back', 'forward', 'reload'])
-export const MAX_RESULT_BYTES = 64 * 1024
-/** Error carrying a stable browser protocol code; the host maps it to a tool failure. */
-export interface BrowserFailure extends Error { code: string }
-/** One validated finite browser command; only the fields its action allows are present. */
-export interface BrowserCommand {
-  action: string
-  url?: string
-  target?: string
-  text?: string
-  x?: number
-  y?: number
-  key?: string
-}
-/** Admitted field names per action; every other payload key is rejected. */
-type CommandFields = Readonly<Record<string, readonly string[]>>
+export const ACTIONS: readonly string[] = Object.freeze([...EMBEDDED_ACTIONS])
+
 /** Untrusted value restricted to a plain object; class instances, arrays and primitives fail. */
 function plainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype
 }
-export function fail(code: string, message: string): BrowserFailure { return Object.assign(new Error(message), { code }) }
-export function identifier(value: unknown, label = 'identifier'): string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9:_-]{1,160}$/.test(value)) throw fail('BROWSER_INPUT', `Invalid ${label}.`)
-  return value
-}
-export function parseAddress(value: unknown, applicationOrigin?: string | null): string {
-  if (typeof value !== 'string' || value.length > 4096 || !value.trim()) throw fail('BROWSER_URL', 'Enter a bounded HTTP(S) URL.')
-  let url: URL
-  try { url = new URL(value.includes('://') ? value : `https://${value}`) } catch { throw fail('BROWSER_URL', 'Enter a valid HTTP(S) URL.') }
-  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw fail('BROWSER_URL', 'Only HTTP(S) URLs without embedded credentials are allowed.')
-  if (applicationOrigin && applicationOrigin !== 'null') {
-    let host: URL | undefined
-    try { host = new URL(applicationOrigin) } catch {}
-    if (host && ['http:', 'https:'].includes(host.protocol) && url.port === host.port && (url.hostname === host.hostname || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw fail('BROWSER_HOST', 'The application host cannot be opened in a browser guest.')
-    // Desktop's dsh-app origin is not its HTTP host. The official main-process
-    // guest network hook independently blocks the actual authenticated host.
-  }
-  return url.href
-}
-export function validateCommand(raw: unknown, applicationOrigin?: string | null): BrowserCommand {
-  if (!plainObject(raw) || typeof raw.action !== 'string' || !ACTIONS.includes(raw.action)) throw fail('BROWSER_INPUT', 'Choose a supported browser action.')
-  const fields = ({ observe: [], navigate: ['url'], click: ['target'], type: ['target', 'text'], scroll: ['x', 'y'], press: ['key'], back: [], forward: [], reload: [] } as CommandFields)[raw.action]
+
+export function validateCommand(raw: unknown, applicationOrigin?: string | null, refPattern: RegExp = EMBEDDED_REF_PATTERN, actions: readonly string[] = ACTIONS): BrowserCommand {
+  if (!plainObject(raw) || typeof raw.action !== 'string' || !actions.includes(raw.action)) throw fail('BROWSER_INPUT', 'Choose a supported browser action.')
+  const fields = ACTION_SPEC[raw.action as Action].fields
   if (Object.keys(raw).some(key => key !== 'action' && !fields.includes(key))) throw fail('BROWSER_INPUT', 'Unknown browser command field.')
-  const result: BrowserCommand = { action: raw.action }
+  const result: BrowserCommand = { action: raw.action as Action }
   if (raw.action === 'navigate') result.url = parseAddress(raw.url, applicationOrigin)
   if (['click', 'type'].includes(raw.action)) {
-    if (typeof raw.target !== 'string' || !/^e\d+:s\d+:n\d+$/.test(raw.target)) throw fail('BROWSER_TARGET', 'Use an exact target from the latest observation.')
+    if (typeof raw.target !== 'string' || !refPattern.test(raw.target)) throw fail('BROWSER_TARGET', 'Use an exact target from the latest observation.')
     result.target = raw.target
+  }
+  if (raw.action === 'select') {
+    if (typeof raw.target !== 'string' || !refPattern.test(raw.target)) throw fail('BROWSER_TARGET', 'Use an exact target from the latest observation.')
+    if (typeof raw.value !== 'string' || !raw.value || raw.value.length > 500 || /\u0000/.test(raw.value)) throw fail('BROWSER_INPUT', 'Select value must contain 1–500 characters.')
+    result.target = raw.target
+    result.value = raw.value
   }
   if (raw.action === 'type') {
     if (typeof raw.text !== 'string' || !raw.text || raw.text.length > 2000 || /\u0000/.test(raw.text)) throw fail('BROWSER_INPUT', 'Text must contain 1–2000 characters.')
@@ -66,12 +50,3 @@ export function validateCommand(raw: unknown, applicationOrigin?: string | null)
   }
   return result
 }
-export function boundedResult(value: unknown): BrowserJson {
-  let json
-  try { json = JSON.stringify(value) } catch { throw fail('BROWSER_RESULT', 'Invalid browser result.') }
-  if (!json || new TextEncoder().encode(json).length > MAX_RESULT_BYTES) throw fail('BROWSER_RESULT', 'Browser result exceeds the size limit.')
-  return JSON.parse(json)
-}
-
-/** Only origin/path may cross into a model result; query/hash can contain login secrets. */
-export function modelUrl(value: unknown): string { try { const url = new URL(value as string); if (!['http:', 'https:'].includes(url.protocol)) return ''; url.username = ''; url.password = ''; url.search = ''; url.hash = ''; return url.href } catch { return '' } }

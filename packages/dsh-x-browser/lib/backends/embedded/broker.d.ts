@@ -1,21 +1,14 @@
-import type { BrowserJson } from './protocol.ts';
+import type { BrowserJson } from '../../protocol.ts';
+import type { BrowserScope, BrowserTurn } from '../types.ts';
 declare module '@deepseek-ai/cordis' {
     interface Events {
         /** Bounded browser diagnostics consumed by tests and packaged smoke tooling. */
         'dsh-x-browser/trace'(event: BrowserTraceEvent): void;
     }
 }
-/** One profile/session/workspace binding; a tab only ever acts inside its own. */
-export type BrowserScope = {
-    profile: string;
-    sessionId: string;
-    workspace: string;
-};
-/** Current turn boundary reported by the host session projections. */
-export type BrowserTurn = {
-    runId: string | null;
-    turn: number;
-};
+export type { BrowserScope, BrowserTurn };
+/** Concrete embedded backend the composition root wires into the tool surface. */
+export type EmbeddedBroker = ReturnType<typeof createBrowserBroker>;
 /** Model-facing tab snapshot; the capability never leaves the trusted renderer closure. */
 export type BrowserPublicTab = {
     tabId: string;
@@ -162,13 +155,14 @@ export declare function createBrowserBroker({ profile, contextOf, turnOf, now, t
         busy: boolean;
         status: string;
         command: {
-            action: string;
+            action: import("../../contract/commands.ts").Action;
             url?: string;
             target?: string;
             text?: string;
             x?: number;
             y?: number;
             key?: string;
+            value?: string;
             id: string;
             epoch: number;
             grantRevision: number;
@@ -188,4 +182,3 @@ export declare function createBrowserBroker({ profile, contextOf, turnOf, now, t
     }, { signal, runId, turnNumber, assertCurrent, ownerToken }?: BrowserDispatchOwner): Promise<BrowserExecutionResult>;
     dispose(): void;
 };
-export {};

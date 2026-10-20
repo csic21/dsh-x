@@ -43,6 +43,30 @@ Only a synthetic nested-owner path is exercised in tests. No Codex, Claude, Grok
 
 Direct DSH tool calls are supported. Other nested wrappers, including unregistered PTC calls, fail closed; an unknown or previously closed parent never falls back to direct DSH authority.
 
+## CDP backend (opt-in, experimental)
+
+`backend: 'cdp'` swaps the execution layer from the embedded webview to an external Chrome driven by [agent-browser](https://github.com/vercel-labs/agent-browser) (0.39.x). The model still sees the same tools — `dsh_x_browser_tabs`, `dsh_x_browser_open`, `dsh_x_browser_action` — and never supplies JavaScript, CSS selectors or CDP commands.
+
+```yaml
+- id: dsh-x-browser
+  config:
+    backend: cdp
+    cdp:
+      command: agent-browser   # CLI on PATH; install it yourself
+      headed: true             # visible by default; headless must be explicit
+      allowedDomains: [example.com]
+```
+
+Boundaries:
+
+- `grantRevision` is always `0`; `epoch` is the target revision, and every action rotates it, so observe again before the next ref.
+- Each non-observe action still goes through official approval. Enabling `backend: 'cdp'` is the consent to use an external Chrome; the renderer grant model does not apply.
+- The domain allowlist is enforced by the plugin and passed to the CLI as `--allowed-domains`.
+- `type` replaces the field value (it maps to `fill`); `select` needs a `value`. `read` and `screenshot` exist in the CLI but are not exposed as tools yet.
+- Current form values are stripped from snapshots before they reach the model.
+- Missing CLI or an unsupported series fails with `BROWSER_BINARY_MISSING` / `BROWSER_VERSION`; the plugin does not install anything.
+- Real Chrome (agent-browser 0.39.1, Chrome stable) has run `open → observe → click` and two parallel tabs through this backend on macOS. Packaged Desktop behavior is still unverified.
+
 ## Development checks
 
 `pnpm --filter dsh-x-browser run build`

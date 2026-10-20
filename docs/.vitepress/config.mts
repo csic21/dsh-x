@@ -41,6 +41,8 @@ export default defineConfig({
           text: '开发',
           items: [
             { text: '仓库与本地开发', link: '/dev/workspace' },
+            { text: '插件路线', link: '/dev/roadmap' },
+            { text: '浏览器与 CDP', link: '/dev/browser-cdp' },
             { text: '发布流程', link: '/dev/release' },
           ],
         },

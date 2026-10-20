@@ -37,7 +37,7 @@ const packages = {
   },
   'dsh-x-browser': {
     title: { en: 'AI Browser', zh: 'AI 浏览器' },
-    description: { en: 'Experimental, opt-in embedded browser with bounded DSH tools and per-turn grants.', zh: '实验性内嵌浏览器，提供受控 DSH 工具与按轮授权。' },
+    description: { en: 'Experimental browser tools: an embedded Desktop tab or an external Chrome driven over CDP, with per-turn grants.', zh: '实验性浏览器工具：Desktop 内嵌 tab，或经 CDP 驱动外部 Chrome；按轮授权。' },
     category: 'web',
     icon: 'icons/dsh-x-browser.svg',
   },

@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from './protocol.js';
+import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from '../../protocol.js';
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
 export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, onRevoke = () => { }, onTrace = () => { } }) {
     const tabs = new Map();

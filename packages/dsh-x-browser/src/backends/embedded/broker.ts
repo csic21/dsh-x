@@ -1,6 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from './protocol.ts'
-import type { BrowserCommand, BrowserFailure, BrowserJson } from './protocol.ts'
+import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from '../../protocol.ts'
+import type { BrowserCommand, BrowserFailure, BrowserJson } from '../../protocol.ts'
+import type { BrowserScope, BrowserTurn } from '../types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
@@ -9,10 +10,10 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** One profile/session/workspace binding; a tab only ever acts inside its own. */
-export type BrowserScope = { profile: string, sessionId: string, workspace: string }
-/** Current turn boundary reported by the host session projections. */
-export type BrowserTurn = { runId: string | null, turn: number }
+export type { BrowserScope, BrowserTurn }
+
+/** Concrete embedded backend the composition root wires into the tool surface. */
+export type EmbeddedBroker = ReturnType<typeof createBrowserBroker>
 /** Model-facing tab snapshot; the capability never leaves the trusted renderer closure. */
 export type BrowserPublicTab = { tabId: string, sessionId: string, epoch: number, grantRevision: number, visible: boolean, granted: boolean, title: string, url: string, busy: boolean, status: string }
 /** Bounded diagnostics emitted as `dsh-x-browser/trace` for tests and packaged smoke tooling. */

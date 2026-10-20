@@ -2,11 +2,11 @@
 
 ## Compatibility target
 
-- Plugin: `dsh-x-browser@0.1.0` (experimental, explicit opt-in)
-- Official DSH npm runtime: `0.2.1-alpha.5`
-- Inspected upstream source: `deepseek-ai/deepseek-harness`, commit `1517a4dbca0a2789ff1d41ba439600f8547d23fa`
+- Plugin: `dsh-x-browser@0.7.0` (experimental, explicit opt-in)
+- Official DSH npm runtime: `0.2.1-rc.2` (`compatibility/policy.json` baseline)
+- Inspected upstream source: commit `687f282e8625c6b8d11ff58211a90524be2e4317`
 - Official Desktop browser protocol: `dshDesktop.protocolVersion === 1`
-- Official source lockfile Electron target: `44.7.0`
+- Historical packaged runs below name their own runtime and Electron target.
 
 No upstream source is modified, copied into this package or patched at runtime. The plugin relies on public primary-preload browser lease methods and the standard owned-webview APIs.
 
@@ -20,6 +20,25 @@ No upstream source is modified, copied into this package or patched at runtime. 
 - Compiled UI registration with the real published locale runtime, English/Chinese copy, honest web-only limitation, desktop-only disabled control and responsive styles.
 - Real published official ToolRuntime integration through the plugin's route/broker path, official approval acceptance/rejection and cancellation. The renderer/agent state is synthetic, not a real Electron runtime or paid model.
 - Native owner registration with real nested ToolRuntime children: one genuine parent per grant, no cross-parent metadata access, stable native-run cancellation after a child settles, and no claim after an owner closes during metadata lookup. These are synthetic ownership tests, not real OpenCode/provider proof.
+
+## CDP backend evidence (0.7.0)
+
+- Environment: `agent-browser` 0.39.1 from npm, Chrome stable, macOS arm64, 2026-10-20. The CLI was launched with `--args --no-sandbox --executable-path ...` only because this repository's agent sandbox blocks Chrome's own sandbox; that is a probe workaround, not a plugin default.
+- Captured wire contract: one JSON envelope per call (`{success, data, error}`); failures still exit 0, so only `success` is authoritative; every `data` carries an ignored `lifecycle` block; `snapshot` returns `{origin, refs, snapshot}`; `tab list` returns `{tabs}`; `open` returns `{targetId,title,url}`; `tab new` returns `{tabId,targetId,url}`.
+- Real runs through `cdpRuntime → agent-browser backend → CLI`:
+  - `open → observe(e1) → press PageDown → observe → click`, epochs 2 → 3 → 4 → 5 → 6, on `https://example.com/` (the gated test runs this exact sequence).
+  - Two tabs (`t1`, `t2`) via `tab new`, observing the second and closing the first while the second stays alive.
+- Automated coverage: scripted CLI tests cover argv construction, envelope parsing, version gating, stale refs, action mapping, domain allowlists, approval rejection, cancellation, missing binary, timeouts, oversized output and dispose idempotency. The same conformance suite runs against the fake, embedded and scripted CDP backends.
+- Not covered: packaged Desktop, window/headless lifecycle, proxy/CA settings, downloads, popups, permissions, Windows, real DSH UI sessions, and any provider or paid-model call.
+- Reproduce with an installed CLI (default `agent-browser` on PATH):
+
+  ```sh
+  DSH_X_BROWSER_REAL=1 node --test packages/dsh-x-browser/test/browser-real.test.ts
+  # or a printed summary without the test runner
+  node scripts/browser-cdp-smoke.mjs
+  ```
+
+  Optional env: `DSH_X_BROWSER_CLI` (executable), `DSH_X_BROWSER_URL` (default `https://example.com/`), `DSH_X_BROWSER_ARGS` (JSON array of global CLI args), `DSH_X_BROWSER_HOME` (child HOME, keeps sessions out of your real home). The test skips unless `DSH_X_BROWSER_REAL=1`.
 
 ## Passed packaged Windows smoke (published baseline)
 
@@ -67,12 +86,12 @@ The dedicated Windows Desktop smoke previously lived in this repository's packag
 4. Guest permissions/popups/download restrictions remain in force.
 5. Screenshot and runtime identity evidence from the packaged application, not a web preview.
 
-Current status: **experimental, Web-side unit and integration evidence only**. No Codex, Claude, Grok or OpenCode bridge ships in this repository, and no packaged Desktop run is recorded here. AI-requested navigation, multiple tabs, download/popup/permission behavior, native guest lifecycle and macOS are not established by this repository's automation.
+Current status: **experimental**. The embedded backend has Web-side unit and integration evidence in this checkout plus historical packaged Windows smokes; the CDP backend has local real-Chrome adapter evidence only. No packaged Desktop run for either backend is recorded here, and no Codex, Claude, Grok or OpenCode browser bridge ships. Downloads, popups, permissions, proxy/CA behavior, Windows CDP and real DSH UI sessions are not established by this repository's automation.
 
 ## Current validation
 
 - Host and client sources and package tests use the shared strict TypeScript configuration. `pnpm run typecheck` and `pnpm run build` pass.
-- Browser unit and integration tests cover the broker, ownership, runtime, grant/approval, takeover and synthetic guest paths.
+- Browser unit and integration tests cover the broker, ownership, runtime, grant/approval, takeover, synthetic guest paths, and the CDP CLI contract/backend/runtime/tool layers (94 tests at the time of writing: 93 pass, 1 opt-in real-browser test skipped by default).
 - Root tests load the built `lib/` entries and check the three-package artifacts, peer ranges and the generated market index.
 - No Electron UI, packaged application, provider login, real model call or paid market-data request is claimed.
 

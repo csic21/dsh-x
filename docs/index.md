@@ -4,7 +4,7 @@ layout: home
 hero:
   name: DSH-X
   text: DeepSeek Harness 的可选插件库
-  tagline: 在官方 DSH 上增加代码审查、A 股行情与内嵌浏览器。不替换内核，不打包桌面应用。
+  tagline: 在官方 DSH 上增加代码审查、A 股行情与浏览器控制（内嵌 tab 或外部 Chrome）。不替换内核，不打包桌面应用。
   actions:
     - theme: brand
       text: 快速开始
@@ -20,7 +20,7 @@ features:
     details: 在 Plugins → Discover 添加一个索引地址，或用官方 `dsh plugin` 安装；审批、凭据与语言都复用官方能力。
   - title: 可核对的版本口径
     details: 加载准入由 peer 范围决定，市场索引按 engines.dsh 计算兼容性，完整验证绑定精确运行时。
-  - title: 一个索引，三个插件
+  - title: 一个索引，五个插件
     details: GitHub Pages 生成格式 1 的市场索引；每个版本钉在发布 commit 上，不依赖 npm 发布。
 ---
 

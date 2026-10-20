@@ -1,12 +1,12 @@
 # 插件一览
 
-三个插件，全部通过官方 Plugins 页面或 `dsh plugin` 安装。没有默认套件，也没有必须一起安装的组合。
+五个插件，全部通过官方 Plugins 页面或 `dsh plugin` 安装。没有默认套件，也没有必须一起安装的组合。
 
 | 包 | 作用 | 默认安装 | 状态 |
 | --- | --- | --- | --- |
 | `dsh-x-code` | 代码工作区：文件树、源码/差异、快照审查与 findings | 按需 | 可用 |
 | `dsh-x-stock` | A 股自选（含名称搜索）、市场全景、独立详情页、底部固定栏；另含只读报价工具 | 按需 | 可用，行情源需显式开启 |
-| `dsh-x-browser` | 受控浏览器操作与权限边界 | 不装（实验性） | 实验性，Electron 行为不在本仓库验证 |
+| `dsh-x-browser` | 受控浏览器操作与权限边界；可选内嵌 tab 或外部 Chrome（CDP） | 不装（实验性） | 实验性，Electron 与打包行为不在本仓库验证 |
 | `dsh-x-delegate` | 把一个任务委派给本机 Codex、Grok 或 OpenCode | 按需 | 可用；真实 CLI 回合不在仓库内验证 |
 | `dsh-x-pet` | 窗口里的 Codex 兼容桌宠 | 按需 | 可用；打包应用表现不在仓库内验证 |
 
@@ -46,12 +46,12 @@
 
 ## dsh-x-browser
 
-实验性，默认不安装，只能用于 Desktop：
+实验性，默认不安装。两种后端，默认仍是 Desktop 内嵌 tab：
 
-- 在官方右侧栏增加 AI Browser tab，使用 Electron `webview` 与官方 lease，不接管内置浏览器的私有 tab。
-- 提供 `dsh_x_browser_tabs` 和 `dsh_x_browser_action`；模型观察与操作受按轮授权、逐动作审批和接管约束。
-- 不使用模型提供的 JavaScript、CSS 选择器、CDP 或原始 IPC。
-- Web 端只显示不支持提示；仓库内只有 Web 侧单元与集成测试，Electron / 打包应用行为需要单独验证。
+- **内嵌（默认）**：在官方右侧栏增加 AI Browser tab，使用 Electron `webview` 与官方 lease，不接管内置浏览器的私有 tab；模型观察与操作受按轮授权、逐动作审批和接管约束。
+- **CDP（可选）**：配置 `backend: cdp` 后，由本机的 [agent-browser](https://github.com/vercel-labs/agent-browser)（0.39.x）驱动外部 Chrome。需要自己安装 CLI；默认有窗口可见，`allowedDomains` 可限制域名。模型拿到的仍是 `dsh_x_browser_tabs`、`dsh_x_browser_open`、`dsh_x_browser_action`，`grantRevision` 恒为 0，`epoch` 是目标修订号，动作后必须重新观察。
+- 两种后端都不接受模型提供的 JavaScript、CSS 选择器、CDP 命令或原始 IPC；CDP 只是插件内部的传输。每个非 observe 动作都要官方审批。
+- 内嵌后端的 Electron / 打包应用行为需要单独验证；CDP 后端在本机真实 Chrome 上跑通过打开、观察、点击和双标签，但没有打包 Desktop 记录。
 
 ## dsh-x-pet
 

@@ -1,5 +1,8 @@
 import { fail, identifier } from './protocol.ts'
 
+/** Concrete ownership registry the composition root wires into the tool surface. */
+export type BrowserOwnership = ReturnType<typeof createBrowserOwnership>
+
 /** Native owner registration offered by an approved OpenCode parent execution. */
 export type BrowserOwnerBinding = { runtime?: string, nativeRunId?: unknown, signal?: AbortSignal }
 /** In-process lifetime record for one native parent execution; `close` is attached before it enters the registry. */

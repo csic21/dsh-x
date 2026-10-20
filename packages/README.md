@@ -27,7 +27,7 @@ packages/<包名>/
 
 - `dsh-x-code`：只读代码工作区；文件树、源码/差异、快照审查与 findings。审查使用当前配置的 DSH 模型，不含原生 Agent 审查或修复。
 - `dsh-x-stock`：A 股自选管理、独立详情页与冲突退让底条；可替换行情接口，另含 Finnhub 只读报价工具。
-- `dsh-x-browser`：实验性；Desktop 内嵌浏览器、受控操作与按轮授权。Electron 行为不在本仓库验证。
+- `dsh-x-browser`：实验性；Desktop 内嵌浏览器（受控操作与按轮授权），可选经 agent-browser 驱动外部 Chrome（CDP）。打包行为不在本仓库验证。
 - `dsh-x-delegate`：把一个任务委派给本机 Codex、Grok 或 OpenCode。ACP 客户端和 Codex `exec --json` 折叠器都在本包内，不依赖官方 subagent 包。
 
 全部源码与包内测试均为 TypeScript，`strict` 覆盖源码与测试。Code 不再读取已删除的 Agents 源码。

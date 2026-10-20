@@ -1,3 +1,5 @@
+/** Concrete ownership registry the composition root wires into the tool surface. */
+export type BrowserOwnership = ReturnType<typeof createBrowserOwnership>;
 /** Native owner registration offered by an approved OpenCode parent execution. */
 export type BrowserOwnerBinding = {
     runtime?: string;
