@@ -12,6 +12,9 @@ export const CSS = `
 .dxp-controls button{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
 .dxp-controls button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
 .dxp-controls button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:1px}
+.dxp-bubbles{display:flex;flex-direction:column;align-items:center;gap:6px;max-height:260px;overflow-y:auto;overflow-x:hidden;margin-bottom:2px}
+.dxp-bubbles .dxp-bubble::after{display:none}
+.dxp-bubbles .dxp-bubble:last-of-type::after{display:block}
 .dxp-bubble{position:relative;display:flex;align-items:center;gap:6px;max-width:240px;padding:7px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);box-shadow:0 8px 20px rgba(15,23,42,.16);font-size:12px;line-height:1.35;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease}
 .dxp-bubble-text{display:flex;flex-direction:column;gap:1px;min-width:0;text-align:left}
 .dxp-bubble-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
@@ -22,14 +25,7 @@ export const CSS = `
 .dxp-bubble-more:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef)}
 .dxp-bubble-more:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
 .dxp-bubble-check{color:var(--dsw-alias-state-success-primary,#12805c);margin-right:3px;font-weight:700}
-.dxp-bubble[data-stacked]{flex-direction:column;align-items:stretch;max-width:260px;padding:6px}
-.dxp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:180px;overflow-y:auto}
-.dxp-list-item{display:flex;flex-direction:column;gap:1px;width:100%;padding:4px 6px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;pointer-events:auto}
-.dxp-list-item:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
-.dxp-list-item:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:-1px}
-.dxp-list-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
-.dxp-list-detail{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dxp-list-item[data-tone=waiting] .dxp-list-title{color:var(--dsw-alias-link,#4176e6)}
+.dxp-bubble[data-tone=waiting] .dxp-bubble-title{color:var(--dsw-alias-link,#4176e6)}
 .dxp-bubble-open{flex:1;border:0;background:transparent;font:inherit;color:inherit;padding:0;text-align:left;cursor:pointer;pointer-events:auto}
 .dxp-bubble-open:hover .dxp-bubble-title{color:var(--dsw-alias-label-primary,#20252e)}
 .dxp-error{margin:2px 0 0;padding:0 6px;font-size:11px;line-height:1.35;color:var(--dsw-alias-state-error-primary,#c2410c);overflow-wrap:anywhere}
@@ -46,7 +42,6 @@ export const CSS = `
 .dxp-dialog h2{margin:0;font-size:14px;font-weight:600}
 .dxp-dialog header button{border:0;background:transparent;color:var(--dsw-alias-label-secondary,#717885);border-radius:8px;height:28px;padding:0 10px;font:inherit;cursor:pointer}
 .dxp-dialog header button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
-.dxp-list{list-style:none;margin:0;padding:8px;overflow:auto;display:flex;flex-direction:column;gap:2px}
 .dxp-row{display:flex;align-items:center;gap:12px;width:100%;padding:8px;border:1px solid transparent;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .dxp-row:hover{background:var(--dsw-alias-bg-layer-2,#f4f5f7)}
 .dxp-row[aria-current=true]{border-color:var(--dsw-alias-brand-primary,#4666d5);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4666d5) 8%,transparent)}

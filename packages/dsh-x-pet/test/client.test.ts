@@ -147,33 +147,35 @@ test('the pet frame registers in the frame overlay and follows the session state
 
     // Closing the bubble hides that one line only: the pet stays, the session
     // is untouched, and the next turn speaks again.
-    const bubble = () => dom.window.document.querySelector<HTMLElement>('.dxp-bubble')!
-    const close = bubble().querySelector<HTMLElement>('.dxp-bubble-close')!
-    await step(() => { close.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
-    assert.equal(bubble().dataset.show, 'false', 'closing the bubble hides it')
+    const bubbles = () => Array.from(dom.window.document.querySelectorAll<HTMLElement>('.dxp-bubble'))
+    await step(() => { bubbles()[0].querySelector<HTMLElement>('.dxp-bubble-close')!.click() })
+    assert.equal(bubbles().length, 0, 'closing the bubble removes it')
     assert.ok(dom.window.document.querySelector('.dxp'), 'closing the bubble leaves the pet')
     assert.equal(rpcCalls.filter(endpoint => endpoint === 'dsh-x-pet/select').length, 0, 'closing the bubble never changes the selection')
     status.running = true
     await render()
-    assert.equal(bubble().dataset.show, 'true', 'the next turn speaks again')
+    assert.equal(bubbles().length, 1, 'the next turn speaks again')
 
     // Two conversations stack as rows, and a row jumps to its conversation.
     status.running = true
     list.byId.s2 = { id: 's2', title: 'Review diff', updatedAt: 1 }
     statuses.set('s2', { running: true, pendingInteraction: undefined, completionUnread: false })
     await render()
-    const rows = () => Array.from(dom.window.document.querySelectorAll<HTMLElement>('.dxp-list-item'))
-    assert.equal(rows().length, 2, 'both conversations are listed')
-    assert.equal(rows()[0].querySelector('.dxp-list-title')!.textContent, 'Refactor login')
-    assert.equal(rows()[1].querySelector('.dxp-list-title')!.textContent, 'Review diff')
-    assert.match(rows()[1].querySelector('.dxp-list-detail')!.textContent!, /bubble\.thinking/)
-    await step(() => { rows()[1].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
-    assert.deepEqual(opened, ['s2'], 'clicking a row opens that conversation')
+    assert.equal(bubbles().length, 2, 'each conversation gets its own bubble')
+    assert.equal(bubbles()[0].querySelector('.dxp-bubble-title')!.textContent, 'Refactor login')
+    assert.equal(bubbles()[1].querySelector('.dxp-bubble-title')!.textContent, 'Review diff')
+    assert.match(bubbles()[1].querySelector('.dxp-bubble-detail')!.textContent!, /bubble\.thinking/)
+    await step(() => { bubbles()[1].querySelector<HTMLElement>('.dxp-bubble-open')!.click() })
+    assert.deepEqual(opened, ['s2'], 'clicking a bubble opens that conversation')
+    // Closing one bubble leaves the other in place.
+    await step(() => { bubbles()[1].querySelector<HTMLElement>('.dxp-bubble-close')!.click() })
+    assert.equal(bubbles().length, 1, 'only the closed bubble goes away')
+    assert.equal(bubbles()[0].querySelector('.dxp-bubble-title')!.textContent, 'Refactor login')
 
     // One conversation keeps a single line, and that line is clickable too.
     statuses.delete('s2')
     await render()
-    assert.equal(dom.window.document.querySelectorAll('.dxp-list-item').length, 0)
+    assert.equal(dom.window.document.querySelectorAll('.dxp-bubble').length, 1)
     await step(() => { dom.window.document.querySelector<HTMLElement>('.dxp-bubble-open')!.click() })
     assert.deepEqual(opened, ['s2', 's1'], 'clicking the line opens its conversation')
 

@@ -239,12 +239,14 @@ export interface NarrationLine {
   tone: 'working' | 'waiting' | 'done'
 }
 
-/** One conversation in the stacked bubble. */
+/** One conversation, rendered as its own bubble. */
 export interface NarrationRow {
   id: string
   title: string
   detail: string
   tone: 'working' | 'waiting' | 'done'
+  /** Identity of this exact line, so closing one bubble leaves the rest. */
+  key: string
 }
 
 export interface Narration {
@@ -253,13 +255,15 @@ export interface Narration {
   rows: NarrationRow[]
   /** The conversation the single line is about, when there is one. */
   primaryId: string | null
+  /** Identity of `line`, so its own × closes only that bubble. */
+  lineKey: string | null
   /** How many conversations want attention right now. */
   count: number
   /** True for a short while after a turn finishes, when the pet waves. */
   celebrate: boolean
   busy: boolean
-  /** Hide this line until the same conversation says something new. */
-  dismiss: () => void
+  /** Hide one line until that conversation says something new. */
+  dismiss: (key: string) => void
 }
 
 const NOTIFY_KEY = 'dsh-x-pet:notify'
@@ -356,7 +360,7 @@ export function usePetNarration(
   const [finished, setFinished] = useState<{ title: string | null, id: number } | null>(null)
   const [celebrate, setCelebrate] = useState(false)
   /** The line the user closed, so only that exact line stays quiet. */
-  const [dismissed, setDismissed] = useState<string | null>(null)
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set())
   const [, setTick] = useState(0)
   const since = useRef<Map<string, number>>(new Map())
   const previous = useRef<Map<string, boolean>>(new Map())
@@ -456,16 +460,23 @@ export function usePetNarration(
   // them: one stacked line each, so the whole picture is visible at once.
   const rows: NarrationRow[] = candidates.map(candidate => {
     const title = candidate.title ?? t('bubble.untitled')
+    const turn = turns.current.get(candidate.id) ?? 0
     if (candidate.pending) {
       const detail = t(candidate.pending === 'question' ? 'bubble.question' : 'bubble.blocked')
-      return { id: candidate.id, title, detail, tone: 'waiting' as const }
+      return { id: candidate.id, title, detail, tone: 'waiting' as const, key: `${candidate.id}:waiting:${turn}` }
     }
     const activity = activities[candidate.id]
     const activityText = activity?.phase === 'tool'
       ? t('bubble.tool', { tool: activity.tool ?? '—' })
       : activity?.phase === 'thinking' ? t('bubble.thinking') : t('bubble.busy')
     const elapsed = formatElapsed(Date.now() - (since.current.get(candidate.id) ?? Date.now()))
-    return { id: candidate.id, title, detail: t('bubble.detail', { activity: activityText, elapsed }), tone: 'working' as const }
+    return {
+      id: candidate.id,
+      title,
+      detail: t('bubble.detail', { activity: activityText, elapsed }),
+      tone: 'working' as const,
+      key: `${candidate.id}:working:${turn}`,
+    }
   })
 
   let line: NarrationLine | null = null
@@ -485,22 +496,35 @@ export function usePetNarration(
     line = { title: finished.title ?? t('bubble.untitled'), detail: t('bubble.done'), tone: 'done' }
   }
 
-  // What identifies this exact line. Closing the bubble silences only this key:
-  // a new turn (new `turns` entry), a state change, or switching conversations
-  // all produce a different one and speak again.
-  const lineKey = primary
-    ? `${primary.id}:${line?.tone ?? 'working'}:${turns.current.get(primary.id) ?? 0}`
-    : finished ? `done:${finished.id}` : ''
-  const visible = line !== null && lineKey !== dismissed
+  // The finished line has no conversation behind it, so it gets its own key.
+  const finishedKey = finished ? `done:${finished.id}` : ''
+  const visibleRows = rows.filter(row => !dismissed.has(row.key))
+  const visibleLine = line !== null && finishedKey !== '' && !dismissed.has(finishedKey) ? line : null
+
+  // Drop keys that no longer describe anything: a closed bubble must not pin
+  // its row in memory for the life of the window.
+  const live = rows.map(row => row.key).join('|') + (finishedKey === '' ? '' : `|${finishedKey}`)
+  useEffect(() => {
+    setDismissed(previous => {
+      const keep = new Set<string>()
+      for (const row of rows) keep.add(row.key)
+      if (finishedKey !== '') keep.add(finishedKey)
+      if (previous.size === 0) return previous
+      const next = new Set([...previous].filter(key => keep.has(key)))
+      return next.size === previous.size ? previous : next
+    })
+    // `live` covers every key the set may hold.
+  }, [live])
 
   return {
-    line: visible ? line : null,
-    rows,
+    line: visibleLine,
+    rows: visibleRows,
+    lineKey: visibleLine === null ? null : finishedKey,
     primaryId: primary?.id ?? null,
     count: candidates.length,
     celebrate,
     busy: primary?.running === true,
-    dismiss: () => setDismissed(lineKey),
+    dismiss: (key: string) => setDismissed(previous => new Set(previous).add(key)),
   }
 }
 
@@ -639,49 +663,53 @@ export function PetFrame(props: PetStandardProps & {
   return <>
     <div className="dxp" style={style} data-pet-state={animation}>
       <div className="dxp-stage">
-        <div className="dxp-bubble" data-show={narration.line !== null} data-tone={narration.line?.tone} data-stacked={narration.rows.length > 1 || undefined}>
-          {narration.rows.length > 1
-            ? <ul className="dxp-list" aria-label={t('bubble.list', { count: narration.rows.length })}>
-              {narration.rows.map(row => (
-                <li key={row.id}>
-                  <button
-                    type="button"
-                    className="dxp-list-item"
-                    data-tone={row.tone}
-                    title={t('bubble.open', { title: row.title })}
-                    onClick={() => { openConversation(row.id) }}
-                  >
-                    <strong className="dxp-list-title">{row.title}</strong>
-                    <span className="dxp-list-detail">{row.detail}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            : <button
-              type="button"
-              className="dxp-bubble-text dxp-bubble-open"
-              role="status"
-              title={t('bubble.open', { title: narration.line?.title ?? '' })}
-              onClick={() => { openConversation(narration.primaryId) }}
-            >
-              <strong className="dxp-bubble-title">
-                {narration.line?.tone === 'done'
-                  ? <span className="dxp-bubble-check" aria-hidden="true">✓</span>
-                  : null}
-                {narration.line?.title}
-              </strong>
-              <span className="dxp-bubble-detail">{narration.line?.detail}</span>
-            </button>}
+        <div className="dxp-bubbles">
+          {narration.rows.map(row => (
+            <div className="dxp-bubble" key={row.key} data-show="true" data-tone={row.tone}>
+              <button
+                type="button"
+                className="dxp-bubble-text dxp-bubble-open"
+                title={t('bubble.open', { title: row.title })}
+                onClick={() => { openConversation(row.id) }}
+              >
+                <strong className="dxp-bubble-title">{row.title}</strong>
+                <span className="dxp-bubble-detail">{row.detail}</span>
+              </button>
+              <button
+                type="button"
+                className="dxp-bubble-close"
+                title={t('bubble.close')}
+                aria-label={t('bubble.close')}
+                onClick={() => { narration.dismiss(row.key) }}
+              >×</button>
+            </div>
+          ))}
+          {narration.line !== null
+            ? <div className="dxp-bubble" data-show="true" data-tone={narration.line.tone}>
+              <button
+                type="button"
+                className="dxp-bubble-text dxp-bubble-open"
+                title={t('bubble.open', { title: narration.line.title })}
+                onClick={() => { openConversation(narration.primaryId) }}
+              >
+                <strong className="dxp-bubble-title">
+                  <span className="dxp-bubble-check" aria-hidden="true">✓</span>
+                  {narration.line.title}
+                </strong>
+                <span className="dxp-bubble-detail">{narration.line.detail}</span>
+              </button>
+              <button
+                type="button"
+                className="dxp-bubble-close"
+                title={t('bubble.close')}
+                aria-label={t('bubble.close')}
+                onClick={() => { if (narration.lineKey !== null) narration.dismiss(narration.lineKey) }}
+              >×</button>
+            </div>
+            : null}
           {openError !== null
             ? <p className="dxp-error" role="alert">{t('bubble.navigateFailed', { message: openError })}</p>
             : null}
-          <button
-            type="button"
-            className="dxp-bubble-close"
-            title={t('bubble.close')}
-            aria-label={t('bubble.close')}
-            onClick={narration.dismiss}
-          >×</button>
         </div>
         <PetSprite
           url={url}

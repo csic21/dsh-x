@@ -517,7 +517,7 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
   const [activities, setActivities] = (0, import_react.useState)({});
   const [finished, setFinished] = (0, import_react.useState)(null);
   const [celebrate, setCelebrate] = (0, import_react.useState)(false);
-  const [dismissed, setDismissed] = (0, import_react.useState)(null);
+  const [dismissed, setDismissed] = (0, import_react.useState)(() => /* @__PURE__ */ new Set());
   const [, setTick] = (0, import_react.useState)(0);
   const since = (0, import_react.useRef)(/* @__PURE__ */ new Map());
   const previous = (0, import_react.useRef)(/* @__PURE__ */ new Map());
@@ -597,14 +597,21 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
   }, [controller, idKey, anyRunning, enabled]);
   const rows = candidates.map((candidate) => {
     const title = candidate.title ?? t("bubble.untitled");
+    const turn = turns.current.get(candidate.id) ?? 0;
     if (candidate.pending) {
       const detail = t(candidate.pending === "question" ? "bubble.question" : "bubble.blocked");
-      return { id: candidate.id, title, detail, tone: "waiting" };
+      return { id: candidate.id, title, detail, tone: "waiting", key: `${candidate.id}:waiting:${turn}` };
     }
     const activity = activities[candidate.id];
     const activityText = activity?.phase === "tool" ? t("bubble.tool", { tool: activity.tool ?? "\u2014" }) : activity?.phase === "thinking" ? t("bubble.thinking") : t("bubble.busy");
     const elapsed = formatElapsed(Date.now() - (since.current.get(candidate.id) ?? Date.now()));
-    return { id: candidate.id, title, detail: t("bubble.detail", { activity: activityText, elapsed }), tone: "working" };
+    return {
+      id: candidate.id,
+      title,
+      detail: t("bubble.detail", { activity: activityText, elapsed }),
+      tone: "working",
+      key: `${candidate.id}:working:${turn}`
+    };
   });
   let line = null;
   if (primary) {
@@ -620,16 +627,29 @@ function usePetNarration(list, statuses, controller, t, enabled = true) {
   } else if (finished) {
     line = { title: finished.title ?? t("bubble.untitled"), detail: t("bubble.done"), tone: "done" };
   }
-  const lineKey = primary ? `${primary.id}:${line?.tone ?? "working"}:${turns.current.get(primary.id) ?? 0}` : finished ? `done:${finished.id}` : "";
-  const visible = line !== null && lineKey !== dismissed;
+  const finishedKey = finished ? `done:${finished.id}` : "";
+  const visibleRows = rows.filter((row2) => !dismissed.has(row2.key));
+  const visibleLine = line !== null && finishedKey !== "" && !dismissed.has(finishedKey) ? line : null;
+  const live = rows.map((row2) => row2.key).join("|") + (finishedKey === "" ? "" : `|${finishedKey}`);
+  (0, import_react.useEffect)(() => {
+    setDismissed((previous2) => {
+      const keep = /* @__PURE__ */ new Set();
+      for (const row2 of rows) keep.add(row2.key);
+      if (finishedKey !== "") keep.add(finishedKey);
+      if (previous2.size === 0) return previous2;
+      const next = new Set([...previous2].filter((key) => keep.has(key)));
+      return next.size === previous2.size ? previous2 : next;
+    });
+  }, [live]);
   return {
-    line: visible ? line : null,
-    rows,
+    line: visibleLine,
+    rows: visibleRows,
+    lineKey: visibleLine === null ? null : finishedKey,
     primaryId: primary?.id ?? null,
     count: candidates.length,
     celebrate,
     busy: primary?.running === true,
-    dismiss: () => setDismissed(lineKey)
+    dismiss: (key) => setDismissed((previous2) => new Set(previous2).add(key))
   };
 }
 function PetFrame(props) {
@@ -757,43 +777,55 @@ function PetFrame(props) {
   if (active === "off") return null;
   const label = `${t("frame.label")} \xB7 ${t(STATE_LABEL[animation])}`;
   const style = offset ? { "--dxp-x": `${offset.x}px`, "--dxp-y": `${offset.y}px` } : void 0;
-  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": narration.line !== null, "data-tone": narration.line?.tone, "data-stacked": narration.rows.length > 1 || void 0 }, narration.rows.length > 1 ? /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxp-list", "aria-label": t("bubble.list", { count: narration.rows.length }) }, narration.rows.map((row2) => /* @__PURE__ */ import_react.default.createElement("li", { key: row2.id }, /* @__PURE__ */ import_react.default.createElement(
+  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubbles" }, narration.rows.map((row2) => /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", key: row2.key, "data-show": "true", "data-tone": row2.tone }, /* @__PURE__ */ import_react.default.createElement(
     "button",
     {
       type: "button",
-      className: "dxp-list-item",
-      "data-tone": row2.tone,
+      className: "dxp-bubble-text dxp-bubble-open",
       title: t("bubble.open", { title: row2.title }),
       onClick: () => {
         openConversation(row2.id);
       }
     },
-    /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-list-title" }, row2.title),
-    /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-list-detail" }, row2.detail)
-  )))) : /* @__PURE__ */ import_react.default.createElement(
-    "button",
-    {
-      type: "button",
-      className: "dxp-bubble-text dxp-bubble-open",
-      role: "status",
-      title: t("bubble.open", { title: narration.line?.title ?? "" }),
-      onClick: () => {
-        openConversation(narration.primaryId);
-      }
-    },
-    /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, narration.line?.tone === "done" ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713") : null, narration.line?.title),
-    /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line?.detail)
-  ), openError !== null ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-error", role: "alert" }, t("bubble.navigateFailed", { message: openError })) : null, /* @__PURE__ */ import_react.default.createElement(
+    /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, row2.title),
+    /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, row2.detail)
+  ), /* @__PURE__ */ import_react.default.createElement(
     "button",
     {
       type: "button",
       className: "dxp-bubble-close",
       title: t("bubble.close"),
       "aria-label": t("bubble.close"),
-      onClick: narration.dismiss
+      onClick: () => {
+        narration.dismiss(row2.key);
+      }
     },
     "\xD7"
-  )), /* @__PURE__ */ import_react.default.createElement(
+  ))), narration.line !== null ? /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": "true", "data-tone": narration.line.tone }, /* @__PURE__ */ import_react.default.createElement(
+    "button",
+    {
+      type: "button",
+      className: "dxp-bubble-text dxp-bubble-open",
+      title: t("bubble.open", { title: narration.line.title }),
+      onClick: () => {
+        openConversation(narration.primaryId);
+      }
+    },
+    /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713"), narration.line.title),
+    /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line.detail)
+  ), /* @__PURE__ */ import_react.default.createElement(
+    "button",
+    {
+      type: "button",
+      className: "dxp-bubble-close",
+      title: t("bubble.close"),
+      "aria-label": t("bubble.close"),
+      onClick: () => {
+        if (narration.lineKey !== null) narration.dismiss(narration.lineKey);
+      }
+    },
+    "\xD7"
+  )) : null, openError !== null ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-error", role: "alert" }, t("bubble.navigateFailed", { message: openError })) : null), /* @__PURE__ */ import_react.default.createElement(
     PetSprite,
     {
       url,
@@ -971,7 +1003,6 @@ var zh = {
   "bubble.question": "\u7B49\u4F60\u56DE\u7B54",
   "bubble.done": "\u8FD9\u8F6E\u505A\u5B8C\u4E86",
   "bubble.doneTitle": "\u300C{title}\u300D\u505A\u5B8C\u4E86",
-  "bubble.list": "{count} \u4E2A\u5BF9\u8BDD\u5728\u8FDB\u884C",
   "bubble.open": "\u6253\u5F00\u300C{title}\u300D",
   "bubble.close": "\u6536\u8D77\u8FD9\u6761\u63D0\u793A\uFF08\u4E0D\u5F71\u54CD\u5BF9\u8BDD\uFF09",
   "bubble.navigateFailed": "\u8DF3\u8F6C\u5931\u8D25\uFF1A{message}",
@@ -1028,7 +1059,6 @@ var en = {
   "bubble.question": "Waiting for your answer",
   "bubble.done": "This turn is done",
   "bubble.doneTitle": '"{title}" is done',
-  "bubble.list": "{count} conversations are active",
   "bubble.open": 'Open "{title}"',
   "bubble.close": "Hide this bubble (the conversation keeps running)",
   "bubble.navigateFailed": "Could not open it: {message}",
@@ -1076,6 +1106,9 @@ var CSS = `
 .dxp-controls button{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 8px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
 .dxp-controls button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
 .dxp-controls button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:1px}
+.dxp-bubbles{display:flex;flex-direction:column;align-items:center;gap:6px;max-height:260px;overflow-y:auto;overflow-x:hidden;margin-bottom:2px}
+.dxp-bubbles .dxp-bubble::after{display:none}
+.dxp-bubbles .dxp-bubble:last-of-type::after{display:block}
 .dxp-bubble{position:relative;display:flex;align-items:center;gap:6px;max-width:240px;padding:7px 10px;border-radius:12px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#20252e);border:1px solid var(--dsw-alias-border-l2,#d7dbe2);box-shadow:0 8px 20px rgba(15,23,42,.16);font-size:12px;line-height:1.35;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .18s ease,transform .18s ease}
 .dxp-bubble-text{display:flex;flex-direction:column;gap:1px;min-width:0;text-align:left}
 .dxp-bubble-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
@@ -1086,14 +1119,7 @@ var CSS = `
 .dxp-bubble-more:hover{background:var(--dsw-alias-bg-layer-3,#e9ebef)}
 .dxp-bubble-more:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:1px}
 .dxp-bubble-check{color:var(--dsw-alias-state-success-primary,#12805c);margin-right:3px;font-weight:700}
-.dxp-bubble[data-stacked]{flex-direction:column;align-items:stretch;max-width:260px;padding:6px}
-.dxp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:180px;overflow-y:auto}
-.dxp-list-item{display:flex;flex-direction:column;gap:1px;width:100%;padding:4px 6px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;pointer-events:auto}
-.dxp-list-item:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
-.dxp-list-item:focus-visible{outline:2px solid var(--dsw-alias-link,#4176e6);outline-offset:-1px}
-.dxp-list-title{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
-.dxp-list-detail{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dxp-list-item[data-tone=waiting] .dxp-list-title{color:var(--dsw-alias-link,#4176e6)}
+.dxp-bubble[data-tone=waiting] .dxp-bubble-title{color:var(--dsw-alias-link,#4176e6)}
 .dxp-bubble-open{flex:1;border:0;background:transparent;font:inherit;color:inherit;padding:0;text-align:left;cursor:pointer;pointer-events:auto}
 .dxp-bubble-open:hover .dxp-bubble-title{color:var(--dsw-alias-label-primary,#20252e)}
 .dxp-error{margin:2px 0 0;padding:0 6px;font-size:11px;line-height:1.35;color:var(--dsw-alias-state-error-primary,#c2410c);overflow-wrap:anywhere}
@@ -1110,7 +1136,6 @@ var CSS = `
 .dxp-dialog h2{margin:0;font-size:14px;font-weight:600}
 .dxp-dialog header button{border:0;background:transparent;color:var(--dsw-alias-label-secondary,#717885);border-radius:8px;height:28px;padding:0 10px;font:inherit;cursor:pointer}
 .dxp-dialog header button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
-.dxp-list{list-style:none;margin:0;padding:8px;overflow:auto;display:flex;flex-direction:column;gap:2px}
 .dxp-row{display:flex;align-items:center;gap:12px;width:100%;padding:8px;border:1px solid transparent;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .dxp-row:hover{background:var(--dsw-alias-bg-layer-2,#f4f5f7)}
 .dxp-row[aria-current=true]{border-color:var(--dsw-alias-brand-primary,#4666d5);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4666d5) 8%,transparent)}
