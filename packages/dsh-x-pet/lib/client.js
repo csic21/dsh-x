@@ -429,7 +429,7 @@ function PetPicker(props) {
   }, [onClose]);
   return /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-scrim", onClick: (event) => {
     if (event.target === event.currentTarget) onClose();
-  } }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-dialog", role: "dialog", "aria-modal": "true", "aria-label": t("picker.title"), ref: dialog, tabIndex: -1 }, /* @__PURE__ */ import_react.default.createElement("header", null, /* @__PURE__ */ import_react.default.createElement("h2", null, t("picker.title")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: onClose }, t("picker.close"))), failed ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-notice" }, t("frame.failed")) : null, pets.length === 0 && !failed ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-empty" }, t("picker.empty", { path: view?.source ?? "~/.codex/pets" })) : /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxp-list" }, pets.map((pet) => /* @__PURE__ */ import_react.default.createElement(PetRow, { key: pet.id, pet, active: view?.active === pet.id, t, onSelect, controller: props.controller }))), /* @__PURE__ */ import_react.default.createElement("footer", null, /* @__PURE__ */ import_react.default.createElement("p", null, t("picker.hint")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: onHide }, t("picker.hide")))));
+  } }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-dialog", role: "dialog", "aria-modal": "true", "aria-label": t("picker.title"), ref: dialog, tabIndex: -1 }, /* @__PURE__ */ import_react.default.createElement("header", null, /* @__PURE__ */ import_react.default.createElement("h2", null, t("picker.title")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: onClose }, t("picker.close"))), failed ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-notice" }, t("frame.failed")) : null, pets.length === 0 && !failed ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxp-empty" }, t("picker.empty", { path: view?.source ?? "~/.codex/pets" })) : /* @__PURE__ */ import_react.default.createElement("ul", { className: "dxp-list", tabIndex: 0 }, pets.map((pet) => /* @__PURE__ */ import_react.default.createElement(PetRow, { key: pet.id, pet, active: view?.active === pet.id, t, onSelect, controller: props.controller }))), /* @__PURE__ */ import_react.default.createElement("footer", null, /* @__PURE__ */ import_react.default.createElement("p", null, t("picker.hint")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: onHide }, t("picker.hide")))));
 }
 function PetRow(props) {
   const { pet, active, t, onSelect, controller } = props;
@@ -1151,6 +1151,21 @@ var CSS = `
 .dxp-dialog h2{margin:0;font-size:14px;font-weight:600}
 .dxp-dialog header button{border:0;background:transparent;color:var(--dsw-alias-label-secondary,#717885);border-radius:8px;height:28px;padding:0 10px;font:inherit;cursor:pointer}
 .dxp-dialog header button:hover{background:var(--dsw-alias-bg-layer-2,#f1f2f4)}
+/* The list is a flex child of the dialog, so it needs min-height:0 to be allowed
+   to shrink below its content and scroll; without it the rows overflow the
+   dialog and are simply clipped by its overflow:hidden. */
+.dxp-list{flex:1 1 auto;min-height:0;list-style:none;display:flex;flex-direction:column;gap:2px;margin:0;padding:8px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+/* The rows scroll; the bar itself only fades in on hover, so a long list does
+   not leave a permanent gray strip down the dialog's edge. */
+.dxp-list::-webkit-scrollbar{width:8px;height:8px}
+.dxp-list::-webkit-scrollbar-track{background:transparent}
+.dxp-list::-webkit-scrollbar-thumb{background:transparent;border-radius:999px;transition:background .15s ease}
+.dxp-list:hover::-webkit-scrollbar-thumb,.dxp-list:focus-within::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--dsw-alias-label-tertiary,#8a919c) 55%,transparent)}
+.dxp-list>li{flex:none;margin:0;padding:0;list-style:none}
+/* The list is focusable so the keyboard can scroll it; the ring belongs on the
+   rows, not around the whole scroll area. */
+.dxp-list:focus{outline:none}
+.dxp-list:focus-visible{outline:none}
 .dxp-row{display:flex;align-items:center;gap:12px;width:100%;padding:8px;border:1px solid transparent;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .dxp-row:hover{background:var(--dsw-alias-bg-layer-2,#f4f5f7)}
 .dxp-row[aria-current=true]{border-color:var(--dsw-alias-brand-primary,#4666d5);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4666d5) 8%,transparent)}
@@ -1175,14 +1190,22 @@ var CSS = `
 .dxp-switch[aria-checked=true]{background:var(--dsw-alias-link,#4176e6)}
 .dxp-switch[aria-checked=true]::after{transform:translateX(16px)}
 .dxp-switch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:2px}
-.dxp-grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin:0;padding:0}
-.dxp-card{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;min-height:168px;padding:12px 10px;border:1px solid var(--dsw-alias-border-l2,#d7dbe2);border-radius:14px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font:inherit;cursor:pointer;text-align:center}
+/* Equal-height cards: the row height follows the tallest description, and every
+   card in that row stretches to it instead of ending wherever its own text does.
+   The description clamps to a few lines so one long blurb cannot push the whole
+   grid tall. */
+.dxp-grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));grid-auto-rows:1fr;gap:10px;margin:0;padding:0}
+.dxp-grid>li{display:flex;min-height:0}
+.dxp-card{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;height:100%;min-height:168px;padding:12px 10px;border:1px solid var(--dsw-alias-border-l2,#d7dbe2);border-radius:14px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font:inherit;cursor:pointer;text-align:center}
 .dxp-card:hover{background:var(--dsw-alias-bg-layer-2,#f4f5f7)}
 .dxp-card[aria-current=true]{border-color:var(--dsw-alias-link,#4176e6);box-shadow:inset 0 0 0 1px var(--dsw-alias-link,#4176e6)}
 .dxp-card:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4666d5);outline-offset:2px}
-.dxp-card strong{font-size:13px}
-.dxp-card span{font-size:11px;line-height:1.4;color:var(--dsw-alias-label-secondary,#717885)}
-.dxp-card-art{width:72px;height:78px;background-repeat:no-repeat;background-position:0 0;image-rendering:pixelated}
+/* The art and the name keep their size, and the description follows directly
+   under the name; the slack from the tallest card in the row stays at the
+   bottom, so short descriptions do not float away from their titles. */
+.dxp-card strong{font-size:13px;flex:none}
+.dxp-card span:not(.dxp-card-art){font-size:11px;line-height:1.4;color:var(--dsw-alias-label-secondary,#717885);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;text-align:left;width:100%;flex:none}
+.dxp-card-art{width:72px;height:78px;flex:none;background-repeat:no-repeat;background-position:0 0;image-rendering:pixelated}
 @media (prefers-reduced-motion:reduce){.dxp-sprite,.dxp-switch::after{transition:none}}
 @media (max-width:720px){.dxp{--dxp-size:88px}}
 `;

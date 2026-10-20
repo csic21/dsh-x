@@ -190,7 +190,7 @@ export function PetPicker(props: {
       {failed ? <p className="dxp-notice">{t('frame.failed')}</p> : null}
       {pets.length === 0 && !failed
         ? <p className="dxp-empty">{t('picker.empty', { path: view?.source ?? '~/.codex/pets' })}</p>
-        : <ul className="dxp-list">
+        : <ul className="dxp-list" tabIndex={0}>
           {pets.map(pet => <PetRow key={pet.id} pet={pet} active={view?.active === pet.id} t={t} onSelect={onSelect} controller={props.controller} />)}
         </ul>}
       <footer>

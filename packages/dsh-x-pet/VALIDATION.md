@@ -19,6 +19,7 @@ The Codex rows, frame counts, per-frame durations, the slowed idle loop, the thr
 - Compiled Client registration: the frame registers in `shell.overlay` with its own id, and the rendered state follows the session facts (running, waiting, review, idle).
 - Gestures: a press that moves is a drag (it saves the position and never opens the picker); a press that stays put is a click and opens the picker.
 - Narration: the bubble reports a running turn, a pending approval, and a finished turn, and the pet waves once when a turn completes.
+- Picker and settings: the stylesheet was rendered in headless Chrome and measured. The picker list scrolls (762px of rows inside a 330px viewport, with the footer still visible) instead of being clipped by the dialog, and it renders no default list markers; keyboard focus reaches the list so arrow keys and PageUp/PageDown scroll it. In the settings grid every card in a row takes the same height (measured 196px for all nine, where the old layout mixed 168/196/211/242), and a long description clamps to four lines.
 - Bubble layout: the published stylesheet was rendered in headless Chrome and measured. Every bubble in a stack takes one shared width (232px); the close button carries a 24px (was 18px) touch target and the bubble stays 48px tall; the stack's `scrollHeight` equals its `clientHeight`, so the tail no longer produces scrollable overflow; the container paints no scrollbar in either engine path; and only the last bubble shows its tail.
 
 ## Not verified here
