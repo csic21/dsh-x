@@ -193,6 +193,9 @@ test('the pet frame registers in the frame overlay and follows the session state
     assert.equal(dom.window.document.querySelector('.dxp'), null, 'a hidden pet renders nothing')
   } finally {
     await step(() => root.unmount())
+    // Let any promise the tree left pending settle before the loop drains:
+    // the runner reports one as a failure on a slow machine, not a real one.
+    await new Promise(resolve => setTimeout(resolve, 0))
     for (const dispose of disposers) dispose?.()
     ;(globalThis as any).fetch = originalFetch
     ;(URL as any).createObjectURL = originalCreate
