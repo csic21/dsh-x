@@ -18,11 +18,19 @@ export function createCodeController({ store, spawn, contextOf, reviewerInfo = (
         value.reason = 'Native repair was retired. Review the current source again.';
     } return value; };
     const inventory = async (id, options = {}, exec) => { const context = await contextOf(id, exec); return repository.inventory({ ...context, mode: options.mode ?? 'worktree', base: options.base, signal: exec?.signal ?? options.signal }); };
-    async function freshness(id, review, exec, signal) {
+    async function freshness(id, review, exec, signal, known) {
         if (!review)
             return { stale: false, staleReason: null };
         try {
-            const inv = await inventory(id, { mode: review.mode, base: review.baseRef, signal }, exec);
+            // A recorded snapshot id hashes its workspace together with the selected source,
+            // so an unchanged workspace identity is already an exact freshness proof. Only a
+            // changed workspace has to be re-read file by file, and then only once.
+            const reusable = known && known.workspace.mode === review.mode && (review.mode !== 'range' || known.workspace.baseRef === review.baseRef);
+            const inv = reusable ? known : await inventory(id, { mode: review.mode, base: review.baseRef, signal }, exec);
+            const captured = review.snapshot?.workspace;
+            if (captured)
+                return inv.workspace.id === captured.id ? { stale: false, staleReason: null } : { stale: true, staleReason: 'Selected source, Git revision, index, or workspace changed after this review.' };
+            // A record from an older build carries no captured workspace; compare source exactly.
             const current = await repository.capture(inv, review.paths);
             return current.snapshotId === review.snapshotId ? { stale: false, staleReason: null } : { stale: true, staleReason: 'Selected source, Git revision, index, or workspace changed after this review.' };
         }
@@ -39,7 +47,7 @@ export function createCodeController({ store, spawn, contextOf, reviewerInfo = (
         const bound = (record) => ['cwd', 'repoRoot', 'gitDir', 'repositoryId'].every(key => inv.workspace[key] === record.snapshot.workspace[key]);
         const latest = data.reviews.at(-1), saved = latest && bound(latest) ? latest : null, review = publicReview(saved);
         if (review)
-            Object.assign(review, await freshness(id, saved, exec, args.signal));
+            Object.assign(review, await freshness(id, saved, exec, args.signal, inv));
         const operation = running.get(id);
         return { scope: store.scope, sessionId: id, revision: data.revision, workspace: inv.workspace, files: inv.files, limits: LIMITS, complete: inv.complete, truncated: inv.truncated, ...reviewerInfo(id, exec), operation: operation ? { id: operation.id, kind: operation.kind, reviewId: operation.reviewId, state: operation.state, startedAt: operation.startedAt } : null, review, history: data.reviews.slice(0, -1).filter(bound).map(r => ({ id: r.id, state: publicReview(r).state, createdAt: r.createdAt, snapshotId: r.snapshotId, summary: r.summary, runtime: r.runtime, findings: r.findings.length, previousReviewId: r.previousReviewId ?? null })) };
     }
@@ -64,9 +72,9 @@ export function createCodeController({ store, spawn, contextOf, reviewerInfo = (
         if (args.workspaceId !== inv.workspace.id)
             throw fail('CODE_STALE', 'Workspace revision changed. Refresh Code.');
         const file = await repository.file(inv, args.path, { preview: args.preview === true && !exec });
-        const after = await inventory(id, args, exec);
-        if (after.workspace.id !== inv.workspace.id)
-            throw fail('CODE_STALE', 'Workspace changed while reading source. Refresh Code.');
+        // The read verifies its own file identity; the commit and index it was read from
+        // are re-checked exactly, instead of re-enumerating the whole worktree again.
+        await repository.revalidate(inv);
         return { ...file, workspaceId: inv.workspace.id, immutable: false };
     }
     async function reviewDetail(args, exec) {

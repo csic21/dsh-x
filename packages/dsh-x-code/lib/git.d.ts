@@ -30,5 +30,26 @@ export interface GitCapture {
     truncated: boolean;
     bytes?: Buffer;
 }
+/** One independent fixed-argv read. */
+export interface GitCommand {
+    args: string[];
+    maxBytes?: number;
+    binary?: boolean;
+}
+/** Safety lookups one operation needs before it starts reading. */
+export interface GitNeeds {
+    ignore?: boolean;
+    filters?: boolean;
+}
+/** A group of reads that share one safety lookup round and may run together. */
+export interface GitPrepared {
+    read(command: GitCommand): Promise<GitCapture>;
+    parallel(commands: GitCommand[]): Promise<GitCapture[]>;
+}
+/** A Git reader with one fast path for reads that belong to the same operation. */
+export interface GitReader {
+    (cwd: string, args: string[], signal?: AbortSignal | undefined, maxBytes?: number, binary?: boolean): Promise<GitCapture>;
+    prepare(cwd: string, signal: AbortSignal | undefined, needs?: GitNeeds): Promise<GitPrepared>;
+}
 /** Fixed argv only; never invoke a shell, textconv, hooks, or configured filters. */
-export declare function createGit(spawn: Spawn): (cwd: string, args: string[], signal: AbortSignal | undefined, maxBytes?: number, binary?: boolean) => Promise<GitCapture>;
+export declare function createGit(spawn: Spawn): GitReader;

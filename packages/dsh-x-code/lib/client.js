@@ -111,6 +111,17 @@ function readSnapshot(value, sessionId) {
   }
   return value;
 }
+function sameSnapshot(left, right) {
+  if (!left) return false;
+  if (left.scope !== right.scope || left.revision !== right.revision || left.workspace.id !== right.workspace.id) return false;
+  if (left.complete !== right.complete || left.truncated !== right.truncated || left.dshAvailable !== right.dshAvailable) return false;
+  if (JSON.stringify(left.dshModel ?? null) !== JSON.stringify(right.dshModel ?? null)) return false;
+  if ((left.operation?.id ?? null) !== (right.operation?.id ?? null) || (left.operation?.state ?? null) !== (right.operation?.state ?? null)) return false;
+  const before = left.review, after = right.review;
+  if ((before?.id ?? null) !== (after?.id ?? null) || (before?.state ?? null) !== (after?.state ?? null) || (before?.stale ?? null) !== (after?.stale ?? null) || (before?.summary ?? null) !== (after?.summary ?? null)) return false;
+  if ((before?.findings.length ?? 0) !== (after?.findings.length ?? 0) || (before?.paths.length ?? 0) !== (after?.paths.length ?? 0)) return false;
+  return left.history.length === right.history.length && left.history.every((item, index) => item.id === right.history[index]?.id);
+}
 function readFile(value, path) {
   if (!record(value) || value.path !== path || !text(value.status ?? value.kind ?? "text")) return null;
   if (["image", "audio", "video"].includes(value.kind)) {
@@ -285,6 +296,18 @@ ${text2}
 // src/client/controller.ts
 var errorInfo = (error) => error && typeof error === "object" ? error : {};
 var empty = () => ({ status: "loading", snapshot: null, error: null, file: null, fileStatus: "idle", fileKey: null, fileError: null, inspectedReview: null, historyStatus: "idle", historyError: null, historyId: null, pending: false });
+var FILE_CACHE_LIMIT = 12;
+var fileCacheWeight = (file) => (file.data?.length ?? 0) + (file.beforeData?.length ?? 0);
+var cacheFile = (entry, key, file) => {
+  entry.files.delete(key);
+  if (fileCacheWeight(file) > 2e6) return;
+  entry.files.set(key, file);
+  while (entry.files.size > FILE_CACHE_LIMIT) {
+    const oldest = entry.files.keys().next().value;
+    if (oldest === void 0) break;
+    entry.files.delete(oldest);
+  }
+};
 var problem = (code, message = "") => ({ code: typeof code === "string" ? code : "code/unavailable", message: typeof message === "string" ? message : "" });
 function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObject = globalThis.document } = {}) {
   const entries = /* @__PURE__ */ new Map();
@@ -339,6 +362,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       if (!snapshot) throw problem("code/invalid-snapshot");
       const previous = entry.state.snapshot;
       if (previous?.scope === snapshot.scope && snapshot.revision < previous.revision) return;
+      if (previous && entry.state.status === "live" && sameSnapshot(previous, snapshot)) return;
       const bindingChanged = previous && (previous.scope !== snapshot.scope || previous.workspace.cwd !== snapshot.workspace.cwd || previous.workspace.repoRoot !== snapshot.workspace.repoRoot || previous.workspace.gitDir !== snapshot.workspace.gitDir || previous.workspace.repositoryId !== snapshot.workspace.repositoryId || previous.workspace.policyRoot !== snapshot.workspace.policyRoot);
       const identityChanged = previous && (bindingChanged || previous.workspace.id !== snapshot.workspace.id);
       if (identityChanged && (bindingChanged || entry.fileTarget?.reviewId == null)) {
@@ -348,6 +372,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       if (bindingChanged) {
         entry.historyRequest?.abort();
         entry.historyRequest = null;
+        entry.files.clear();
       }
       publish(entry, {
         status: "live",
@@ -368,7 +393,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
   }
   const entryFor = (sessionId) => {
     if (!entries.has(sessionId)) {
-      const entry = { source: void 0, sessionId, target: { mode: "worktree" }, state: empty(), listeners: /* @__PURE__ */ new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, action: null };
+      const entry = { source: void 0, sessionId, target: { mode: "worktree" }, state: empty(), listeners: /* @__PURE__ */ new Set(), request: null, timer: null, fileRequest: null, fileTarget: null, historyRequest: null, action: null, files: /* @__PURE__ */ new Map() };
       entry.source = {
         getSnapshot: () => entry.state,
         subscribe(listener) {
@@ -403,6 +428,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     stopRead(entry);
     stopFile(entry);
     entry.fileTarget = null;
+    entry.files.clear();
     entry.target = { mode, ...mode === "range" ? { base: base2 } : {} };
     publish(entry, empty());
     void refreshEntry(entry);
@@ -411,6 +437,13 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
     const entry = entryFor(sessionId), generation = epoch, key = JSON.stringify(target);
     if (entry.state.fileKey === key && ["loading", "ready"].includes(entry.state.fileStatus)) return;
     stopFile(entry);
+    const cached = entry.files.get(key);
+    if (cached) {
+      cacheFile(entry, key, cached);
+      entry.fileTarget = target;
+      publish(entry, { file: cached, fileKey: key, fileStatus: "ready", fileError: null });
+      return;
+    }
     const request = new AbortController();
     entry.fileRequest = request;
     entry.fileTarget = target;
@@ -420,6 +453,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       if (disposed || request.signal.aborted || epoch !== generation || entry.fileRequest !== request) return;
       const file = readFile(raw, target.path);
       if (!file) throw problem("code/invalid-file");
+      cacheFile(entry, key, file);
       publish(entry, { file, fileStatus: "ready" });
     } catch (error) {
       if (!disposed && epoch === generation && entry.fileRequest === request) publish(entry, { file: null, fileStatus: "failed", fileError: problem(errorInfo(error).code, errorInfo(error).message) });
@@ -490,6 +524,7 @@ function createCodeController(rpc, { timeoutMs = 12e3, pollMs = 4e3, documentObj
       entry.historyRequest = null;
       entry.action = null;
       entry.fileTarget = null;
+      entry.files.clear();
       publish(entry, empty());
       if (entry.listeners.size) void refreshEntry(entry);
     }

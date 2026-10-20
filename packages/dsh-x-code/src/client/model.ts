@@ -65,6 +65,24 @@ export function readSnapshot(value: unknown, sessionId: string): CodeSnapshot | 
   return value as CodeSnapshot
 }
 
+/**
+ * True when a poll returned the state the panel already renders. The workspace id
+ * already covers the enumerated paths, their version stamps, the commit, and the
+ * index, so an unchanged id with an unchanged review/operation reuses the previous
+ * object instead of rebuilding the file tree and the whole workbench.
+ */
+export function sameSnapshot(left: CodeSnapshot | null, right: CodeSnapshot): boolean {
+  if (!left) return false
+  if (left.scope !== right.scope || left.revision !== right.revision || left.workspace.id !== right.workspace.id) return false
+  if (left.complete !== right.complete || left.truncated !== right.truncated || left.dshAvailable !== right.dshAvailable) return false
+  if (JSON.stringify(left.dshModel ?? null) !== JSON.stringify(right.dshModel ?? null)) return false
+  if ((left.operation?.id ?? null) !== (right.operation?.id ?? null) || (left.operation?.state ?? null) !== (right.operation?.state ?? null)) return false
+  const before = left.review, after = right.review
+  if ((before?.id ?? null) !== (after?.id ?? null) || (before?.state ?? null) !== (after?.state ?? null) || (before?.stale ?? null) !== (after?.stale ?? null) || (before?.summary ?? null) !== (after?.summary ?? null)) return false
+  if ((before?.findings.length ?? 0) !== (after?.findings.length ?? 0) || (before?.paths.length ?? 0) !== (after?.paths.length ?? 0)) return false
+  return left.history.length === right.history.length && left.history.every((item, index) => item.id === right.history[index]?.id)
+}
+
 /** A read is useful only for the exact file and content generation requested. */
 export function readFile(value: unknown, path: string): CodeSource | null {
   if (!record(value) || value.path !== path || !text(value.status ?? value.kind ?? 'text')) return null

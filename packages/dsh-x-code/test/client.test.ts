@@ -188,12 +188,14 @@ test('compiled Code client browses, searches, switches locales and prepares exac
   assert.equal(typeof factories[0].options.slots.views,'function')
   assert.ok(document.querySelector('[data-factory="conversation.content"]'))
   assert.equal(document.querySelectorAll('.dxc-chat textarea,.dxc-chat-form').length,0,'no hand-written composer')
+  // The shell's session store re-renders the occurrence on its own; an unchanged
+  // snapshot poll does not, because the panel reuses the state it already shows.
   shell.blank=true
-  await act(async()=>{face.refresh();await wait()})
+  await act(async()=>{root.render(React.createElement(Render));await wait()})
   assert.equal(factories.at(-1).props.phase,'hero','a blank Session keeps the centred hero composer')
   assert.equal(factories.at(-1).props.hero,true)
   shell.blank=false
-  await act(async()=>{face.refresh();await wait()})
+  await act(async()=>{root.render(React.createElement(Render));await wait()})
   assert.equal(factories.at(-1).props.phase,'active')
   assert.match(draft,/dsh_x_code_review/,'the main composer draft is untouched by the embedded Chat tab')
   assert.equal(sendCount,0)

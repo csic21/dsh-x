@@ -113,4 +113,5 @@ export declare function createRepository(spawn: Spawn): {
         preview?: boolean;
     }) => Promise<FileEvidence>;
     capture: (inv: Inventory, paths: string[]) => Promise<CapturedSnapshot>;
+    revalidate: (inv: Inventory) => Promise<void>;
 };

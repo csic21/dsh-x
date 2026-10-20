@@ -20,6 +20,15 @@ const FILENAMES = new Set(['Dockerfile', 'Makefile', 'LICENSE', 'NOTICE', '.giti
 const PRIVATE_NAME = /^(?:.*[._-])?(?:credentials?|secrets?|passwords?|tokens?)(?:\.(?:json|ya?ml|toml|txt|ini|conf|xml))?$|^id_(?:rsa|ed25519)(?:\.pub)?$/i;
 const PRIVATE_FILES = new Set(['.npmrc', '.netrc', '.pypirc', '.git-credentials', 'credentials.json', 'credentials.yaml']);
 const PRIVATE_DIRECTORIES = new Set(['.git', '.ssh', '.aws', '.azure', '.gnupg', '.dsh', '.dsh-x', '.dsh-x-code', '.dsh-x-agents', 'node_modules', 'vendor']);
+// A folder called `credentials` is a normal place for secret *data* and also for
+// ordinary product source about credentials. Its data files stay private; its
+// code files are code, so only a program-extension allowlist is browseable there.
+const PRIVATE_DIRECTORY_NAME = /^(?:.*[._-])?(?:credentials?|secrets?|passwords?|tokens?)$/i;
+const PROGRAM_EXTENSIONS = new Set([
+    '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.py', '.rb', '.go', '.rs', '.java', '.kt',
+    '.swift', '.c', '.h', '.cpp', '.hpp', '.cs', '.sh', '.bash', '.ps1', '.bat', '.cmd',
+    '.php', '.dart', '.scala', '.lua', '.pl', '.vue', '.svelte', '.graphql', '.gql', '.proto',
+]);
 /** Conservative credential screening, not a general-purpose secret scrubber. */
 export function containsCredentialLikeText(text) {
     if (typeof text !== 'string')
@@ -40,9 +49,16 @@ export function evidencePathReason(file) {
     const parts = file.split('/');
     if (parts.some(part => part === '' || part === '.' || part === '..'))
         return 'unsafe path';
-    if (parts.some(part => PRIVATE_DIRECTORIES.has(part.toLowerCase()) || PRIVATE_FILES.has(part.toLowerCase()) || PRIVATE_NAME.test(part) || /^\.env(?:[.-]|$)/i.test(part)))
+    const name = parts.at(-1) ?? '', folders = parts.slice(0, -1), extension = path.posix.extname(name).toLowerCase();
+    if (folders.some(part => PRIVATE_DIRECTORIES.has(part.toLowerCase())))
         return 'private or excluded path';
-    const name = parts.at(-1) ?? '';
+    // Credential-shaped names are a filename rule: testing every segment would hide
+    // whole source trees behind one folder name.
+    if (PRIVATE_FILES.has(name.toLowerCase()) || PRIVATE_NAME.test(name) || /^\.env(?:[.-]|$)/i.test(name))
+        return 'private or excluded path';
+    // Inside a credential-named folder only program source is ordinary code.
+    if (folders.some(part => PRIVATE_DIRECTORY_NAME.test(part)) && !PROGRAM_EXTENSIONS.has(extension) && !FILENAMES.has(name))
+        return 'private or excluded path';
     if (!EXTENSIONS.has(path.posix.extname(name).toLowerCase()) && !FILENAMES.has(name))
         return 'not an allowlisted source-text file';
     return null;

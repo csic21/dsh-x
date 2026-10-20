@@ -2,7 +2,7 @@ import { realpath, lstat, readdir } from 'node:fs/promises'
 import type { BigIntStats } from 'node:fs'
 import path from 'node:path'
 import { createGit } from './git.ts'
-import type { Spawn } from './git.ts'
+import type { Spawn, GitPrepared } from './git.ts'
 import { evidencePathReason, readEvidenceFile, readPreviewMedia, containsCredentialLikeText, hashText, MAX_EVIDENCE_FILE_BYTES } from './files.ts'
 import type { EvidenceFile, MediaRead } from './files.ts'
 import { MAX_PREVIEW_MEDIA_BYTES, mediaOf } from './formats.ts'
@@ -93,6 +93,37 @@ const OID=/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/
 const within=(root: string,cwd: string): boolean=>{const relative=path.relative(root,cwd);return relative===''||relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative)}
 export const validMode=(mode: unknown): ReviewMode=>{if(mode!=='worktree'&&mode!=='staged'&&mode!=='range')throw fail('CODE_MODE','Choose worktree, staged, or range.');return mode}
 function records(raw: string): string[]{if(raw&&!raw.endsWith('\0'))throw fail('CODE_GIT','Incomplete Git manifest.');return raw?raw.slice(0,-1).split('\0'):[]}
+/** Run one async task per item with a bounded number of tasks in flight, keeping input order. */
+async function mapLimit<T, U>(items: T[], limit: number, run: (item: T) => Promise<U>): Promise<U[]> {
+  const results = new Array<U>(items.length)
+  let next = 0
+  const worker = async () => { while (next < items.length) { const index = next++; results[index] = await run(items[index]) } }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+/** Read the per-component identity stamps that make one path's content version observable. */
+async function pathStamps(repoRoot: string, paths: string[], signal: AbortSignal | undefined): Promise<Array<[string, string | null]>> {
+  // Parent directories repeat across every path, so each component is inspected
+  // once, and no more than 64 paths are walked at a time.
+  const cache = new Map<string, Promise<BigIntStats | { error: string | undefined }>>()
+  const inspect = async (file: string): Promise<string | null> => {
+    if (evidencePathReason(file)) return null
+    signal?.throwIfAborted()
+    let cursor = repoRoot
+    const stamps: string[] = []
+    for (const part of file.split('/')) {
+      cursor = path.join(cursor, part)
+      if (!cache.has(cursor)) cache.set(cursor, lstat(cursor, { bigint: true }).catch((error: NodeJS.ErrnoException) => ({ error: error.code })))
+      const stat = (await cache.get(cursor))!
+      // A failed lstat always carries an errno code; the fallback keeps the stamp total.
+      if ('error' in stat) return stat.error ?? 'unavailable'
+      if (stat.isSymbolicLink()) return 'symlink'
+      stamps.push((['dev','ino','mode','size','mtimeNs','ctimeNs'] as const).map(key => String(stat[key])).join(':'))
+    }
+    return stamps.join('/')
+  }
+  return mapLimit(paths, 64, async file => [file, await inspect(file)] as [string, string | null])
+}
 export function createRepository(spawn: Spawn) {
  const git=createGit(spawn)
  async function required(cwd: string,args: string[],signal: AbortSignal | undefined,max?: number): Promise<string>{const r=await git(cwd,args,signal,max);if(!r.ok)throw fail('CODE_GIT','Git evidence is unavailable or exceeds its size limit.');return r.output}
@@ -100,60 +131,63 @@ export function createRepository(spawn: Spawn) {
   const reviewMode=validMode(mode);mode=reviewMode;cwd=await realpath(cwd)
   if(!policy||!path.isAbsolute(policy.workspaceRoot??'')||!['read-only','workspace-write','danger-full-access'].includes(policy.mode))throw fail('CODE_POLICY','The host workspace policy is unavailable.')
   const policyRoot=await realpath(policy.workspaceRoot)
-  const repoRoot=await realpath((await required(cwd,['rev-parse','--show-toplevel'],signal)).trim())
+  // One Git start reports the work tree and both metadata directories.
+  const roots=(await required(cwd,['rev-parse','--show-toplevel','--absolute-git-dir','--git-common-dir'],signal)).trimEnd().split('\n')
+  if(roots.length!==3||roots.some(line=>!line))throw fail('CODE_GIT','Git evidence is unavailable or exceeds its size limit.')
+  const repoRoot=await realpath(roots[0])
   if(!within(policyRoot,cwd)||!within(policyRoot,repoRoot))throw fail('CODE_BOUNDARY','The repository is outside the host workspace boundary. Select its root as the session workspace.')
-  const gitDir=await realpath((await required(cwd,['rev-parse','--absolute-git-dir'],signal)).trim())
+  const gitDir=await realpath(roots[1])
   if(!within(policyRoot,gitDir))throw fail('CODE_BOUNDARY','Git metadata is outside the host workspace boundary. Select a workspace encompassing the repository metadata.')
-  const commonRaw=(await required(cwd,['rev-parse','--git-common-dir'],signal)).trim(),commonDir=await realpath(path.resolve(cwd,commonRaw))
+  const commonDir=await realpath(path.resolve(cwd,roots[2]))
   if(!within(policyRoot,commonDir))throw fail('CODE_BOUNDARY','Shared Git metadata is outside the host workspace boundary.')
   for(const dir of new Set([gitDir,commonDir]))for(const name of ['config','config.worktree','index','HEAD','commondir']){const stat=await lstat(path.join(dir,name)).catch((error: NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return null;throw error});if(stat?.isSymbolicLink())throw fail('CODE_BOUNDARY','Symbolic Git metadata is unsupported.')}
   const objects=path.join(commonDir,'objects'),alternate=await lstat(path.join(objects,'info','alternates')).catch((error: NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return null;throw error})
   if(alternate&&(alternate.isSymbolicLink()||alternate.size>0))throw fail('CODE_BOUNDARY','Git alternate object stores are unsupported for scoped review.')
   let objectEntries=0;const queue=[objects]
   while(queue.length){signal?.throwIfAborted();const dir=queue.pop()!;if((await lstat(dir)).isSymbolicLink())throw fail('CODE_BOUNDARY','Symbolic Git object stores are unsupported.');for(const entry of await readdir(dir,{withFileTypes:true})){if(++objectEntries>20000)throw fail('CODE_INCOMPLETE','Git object metadata exceeds the inspection limit.');if(entry.isSymbolicLink())throw fail('CODE_BOUNDARY','Symbolic Git object stores are unsupported.');if(entry.isDirectory())queue.push(path.join(dir,entry.name))}}
-  const gitStat=await lstat(gitDir,{bigint:true}),commonStat=await lstat(commonDir,{bigint:true});const repositoryId=hash({repoRoot,gitDir,commonDir,dev:String(gitStat.dev),ino:String(gitStat.ino),commonDev:String(commonStat.dev),commonIno:String(commonStat.ino)})
-  const head=(await required(cwd,['rev-parse','--verify','HEAD'],signal)).trim()
+  const [gitStat,commonStat]=await Promise.all([lstat(gitDir,{bigint:true}),lstat(commonDir,{bigint:true})]);const repositoryId=hash({repoRoot,gitDir,commonDir,dev:String(gitStat.dev),ino:String(gitStat.ino),commonDev:String(commonStat.dev),commonIno:String(commonStat.ino)})
+  if(mode==='range'&&(typeof base!=='string'||!base||base.length>160||! /^[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(base)||base.includes('..')))throw fail('CODE_BASE','Choose a branch, tag, or commit hash as the base.')
+  // One safety-lookup round for the whole inspection; the manifest reads themselves
+  // are independent of one another and therefore start together.
+  const prepared: GitPrepared=await git.prepare(repoRoot,signal,{ignore:true,filters:true})
+  const treeArgs=(ref: string)=>['ls-tree','-r','-z',ref]
+  const diffManifest=(target: string[])=>['diff','--name-only','-z','--no-ext-diff','--no-textconv','--ignore-submodules=all','--no-renames',...target,'--']
+  const headCapture=prepared.read({args:['rev-parse','--verify','HEAD']})
+  const indexCapture=prepared.read({args:['ls-files','--stage','-z']})
+  const untrackedCapture=mode==='worktree'?prepared.read({args:['ls-files','--others','--exclude-standard','-z']}):null
+  // The base tree of worktree and staged review is HEAD itself, so Git can resolve it.
+  const headTreeCapture=mode==='range'?null:prepared.read({args:treeArgs('HEAD')})
+  const changedCapture=mode==='staged'?prepared.read({args:diffManifest(['--cached','HEAD'])}):mode==='worktree'?prepared.read({args:diffManifest(['HEAD'])}):null
+  const baseCommitCapture=mode==='range'?prepared.read({args:['rev-parse','--verify',`${base}^{commit}`]}):null
+  const settle=async(capture: Promise<{ok: boolean, output: string}> | null): Promise<string>=>{const r=await capture!;if(!r.ok)throw fail('CODE_GIT','Git evidence is unavailable or exceeds its size limit.');return r.output}
+  const head=(await settle(headCapture)).trim()
   if(!OID.test(head))throw fail('CODE_HEAD','A committed Git HEAD is required.')
-  let baseRef=mode==='range'?base:'HEAD',baseOid=head
+  const indexRaw=await settle(indexCapture)
+  const untracked=mode==='worktree'?records(await settle(untrackedCapture)):[]
+  const indexEntries=new Map<string, ManifestEntry>()
+  for(const entry of records(indexRaw)) { const m=/^([0-7]{6}) ([a-f0-9]{40}(?:[a-f0-9]{24})?) ([0-3])\t([\s\S]+)$/.exec(entry);if(!m)throw fail('CODE_GIT','Unsupported index record.');indexEntries.set(m[4],{mode:m[1],oid:m[2],unmerged:m[3]!=='0'||indexEntries.get(m[4])?.unmerged}) }
+  let baseOid=head
   if(mode==='range') {
-   if(typeof base!=='string'||!base||base.length>160||! /^[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(base)||base.includes('..'))throw fail('CODE_BASE','Choose a branch, tag, or commit hash as the base.')
-   const resolved=(await required(repoRoot,['rev-parse','--verify',`${base}^{commit}`],signal)).trim()
+   const resolved=(await settle(baseCommitCapture)).trim()
    if(!OID.test(resolved))throw fail('CODE_BASE','The base did not resolve to a commit.')
    baseOid=(await required(repoRoot,['merge-base',resolved,head],signal)).trim()
    if(!OID.test(baseOid))throw fail('CODE_BASE','The base has no supported merge base.')
   }
-  const index=await required(repoRoot,['ls-files','--stage','-z'],signal)
-  const indexEntries=new Map<string, ManifestEntry>()
-  for(const entry of records(index)) { const m=/^([0-7]{6}) ([a-f0-9]{40}(?:[a-f0-9]{24})?) ([0-3])\t([\s\S]+)$/.exec(entry);if(!m)throw fail('CODE_GIT','Unsupported index record.');indexEntries.set(m[4],{mode:m[1],oid:m[2],unmerged:m[3]!=='0'||indexEntries.get(m[4])?.unmerged}) }
-  async function tree(ref: string): Promise<Map<string, ManifestEntry>>{const result=new Map<string, ManifestEntry>();for(const entry of records(await required(repoRoot,['ls-tree','-r','-z',ref],signal))) {const m=/^([0-7]{6}) (blob|commit) ([a-f0-9]{40}(?:[a-f0-9]{24})?)\t([\s\S]+)$/.exec(entry);if(!m)throw fail('CODE_GIT','Unsupported tree record.');result.set(m[4],{mode:m[1],oid:m[3],kind:m[2]})}return result}
-  const before=await tree(baseOid), after: Map<string, ManifestEntry>=mode==='range'?await tree(head):indexEntries
-  const untracked=mode==='worktree'?records(await required(repoRoot,['ls-files','--others','--exclude-standard','-z'],signal)):[]
-  const diffArgs=['diff','--name-only','-z','--no-ext-diff','--no-textconv','--ignore-submodules=all','--no-renames',...(mode==='staged'?['--cached',head]:mode==='range'?[baseOid,head]:[head]),'--']
-  const changed=new Set([...records(await required(repoRoot,diffArgs,signal)),...untracked])
+  const parseTree=(raw: string): Map<string, ManifestEntry>=>{const result=new Map<string, ManifestEntry>();for(const entry of records(raw)) {const m=/^([0-7]{6}) (blob|commit) ([a-f0-9]{40}(?:[a-f0-9]{24})?)\t([\s\S]+)$/.exec(entry);if(!m)throw fail('CODE_GIT','Unsupported tree record.');result.set(m[4],{mode:m[1],oid:m[3],kind:m[2]})}return result}
+  const before=parseTree(await settle(headTreeCapture??prepared.read({args:treeArgs(baseOid)})))
+  const after: Map<string, ManifestEntry>=mode==='range'?parseTree(await settle(prepared.read({args:treeArgs(head)}))):indexEntries
+  const changedView=await settle(changedCapture??prepared.read({args:diffManifest([baseOid,head])}))
+  const changed=new Set([...records(changedView),...untracked])
   const paths=[...new Set([...before.keys(),...after.keys(),...untracked])].sort()
   const truncated=paths.length>LIMITS.maxFiles
-  const statCache=new Map<string, Promise<BigIntStats | { error: string | undefined }>>()
-  async function safeStamp(file: string): Promise<string | null> {
-   if(evidencePathReason(file))return null
-   let cursor=repoRoot;const stamps: string[]=[]
-   for(const part of file.split('/')) {
-    cursor=path.join(cursor,part)
-    if(!statCache.has(cursor))statCache.set(cursor,lstat(cursor,{bigint:true}).catch((error: NodeJS.ErrnoException)=>({error:error.code})))
-    const stat=(await statCache.get(cursor))!
-    // A failed lstat always carries an errno code; the fallback keeps the stamp total.
-    if('error' in stat)return stat.error??'unavailable'
-    if(stat.isSymbolicLink())return 'symlink'
-    stamps.push((['dev','ino','mode','size','mtimeNs','ctimeNs'] as const).map(key=>String(stat[key])).join(':'))
-   }
-   return stamps.join('/')
-  }
-  const stamps: Array<[string, string | null]>=mode==='worktree'?await Promise.all(paths.slice(0,LIMITS.maxFiles).map(async file=>[file,await safeStamp(file)] as [string, string | null])):[]
+  const stamps: Array<[string, string | null]>=mode==='worktree'?await pathStamps(repoRoot,paths.slice(0,LIMITS.maxFiles),signal):[]
+  const stampOf=new Map(stamps), untrackedSet=new Set(untracked)
   const files=paths.slice(0,LIMITS.maxFiles).map(file=>{
    const entry=after.get(file),old=before.get(file);const reason=evidencePathReason(file)|| (entry?.unmerged?'unmerged index':entry?.mode==='160000'||old?.mode==='160000'?'submodule':entry?.mode==='120000'||old?.mode==='120000'?'symbolic link':null)
-   return {path:file,changed:changed.has(file),status:changed.has(file)?!old?'added':mode==='worktree'&&stamps.find(([p])=>p===file)?.[1]==='ENOENT'||!entry&&!untracked.includes(file)?'deleted':'modified':'unchanged',selectable:!reason,reason}
+   return {path:file,changed:changed.has(file),status:changed.has(file)?!old?'added':mode==='worktree'&&stampOf.get(file)==='ENOENT'||!entry&&!untrackedSet.has(file)?'deleted':'modified':'unchanged',selectable:!reason,reason}
   })
   // Include the index and path set so stale UI cannot change revision semantics.
-  const core={cwd,repoRoot,gitDir,commonDir,repositoryId,head,base:baseOid,baseRef:baseRef!,mode:reviewMode,indexHash:hash(index),policyRoot}
+  const core={cwd,repoRoot,gitDir,commonDir,repositoryId,head,base:baseOid,baseRef:(mode==='range'?base:'HEAD')!,mode:reviewMode,indexHash:hash(indexRaw),policyRoot}
   const workspace: Workspace={...core,id:hash({...core,paths,stamps})}
   return {workspace,files,complete:!truncated,truncated,limits:LIMITS,before,after,signal,policy}
  }
@@ -188,55 +222,88 @@ export function createRepository(spawn: Spawn) {
  }
  async function previewMedia(inv: Inventory, file: string, kind: MediaKind, mime: string, meta: WorkspaceFile): Promise<FileEvidence> {
   const version=inv.workspace.mode==='worktree'?'Worktree':inv.workspace.mode==='staged'?'Index':inv.workspace.head
-  const after=inv.workspace.mode==='worktree'?await readPreviewMedia(inv.workspace.repoRoot,file):await mediaBlob(inv,inv.after.get(file),kind)
-  const before=await mediaBlob(inv,inv.before.get(file),kind)
+  const [afterRead,before]=await Promise.all([
+   inv.workspace.mode==='worktree'?readPreviewMedia(inv.workspace.repoRoot,file):mediaBlob(inv,inv.after.get(file),kind),
+   mediaBlob(inv,inv.before.get(file),kind),
+  ])
+  const after=afterRead
   const viewable=(side: MediaRead)=>side.kind===kind||side.kind==='missing'
   if(!viewable(after))return {path:file,kind:after.kind==='symlink'?'symlink':after.kind,status:meta.status,reason:after.reason,truncated:false,version,baseVersion:inv.workspace.base}
   const shown=after.kind===kind||before.kind===kind?kind:after.kind
   return {path:file,kind:shown,mediaType:mime,status:meta.status,data:after.data,beforeData:before.kind===kind?before.data:undefined,afterKind:after.kind,beforeKind:before.kind,text:'',beforeText:'',version,baseVersion:inv.workspace.base,diff:'',hunks:[],truncated:false,reason:shown===kind?undefined:after.reason}
  }
  async function file(inv: Inventory,file: string,options?: {preview?: boolean}): Promise<FileEvidence> {
-   const preview=options?.preview===true
+  const preview=options?.preview===true
   const meta=inv.files.find(item=>item.path===file)
   if(!meta||evidencePathReason(file)==='unsafe path')throw fail('CODE_PATH','The file is outside the enumerated repository scope.')
   const media=mediaOf(file)
   const unmerged=Boolean(inv.after.get(file)?.unmerged||inv.before.get(file)?.unmerged)
   const mediaPreview=preview&&media!=null&&meta.reason==='not an allowlisted source-text file'&&!unmerged
   if(!meta.selectable&&!mediaPreview)return {path:file,kind:'excluded',status:meta.status,reason:meta.reason??undefined,truncated:false}
+  const repoRoot=inv.workspace.repoRoot,worktree=inv.workspace.mode==='worktree'
   // --no-index also checks tracked files, so ignored credentials remain excluded.
-  const ignored=await git(inv.workspace.repoRoot,['check-ignore','--no-index','--',file],inv.signal,8192)
+  const checkIgnored=async()=>{const prepared=await git.prepare(repoRoot,inv.signal,{ignore:true,filters:true});return prepared.read({args:['check-ignore','--no-index','--',file],maxBytes:8192})}
+  if(mediaPreview&&media){
+   const ignored=await checkIgnored()
+   if(ignored.code===0)return {path:file,kind:'excluded',status:meta.status,reason:'ignored file',truncated:false}
+   if(ignored.code!==1)throw fail('CODE_GIT','Ignore rules could not be checked.')
+   return previewMedia(inv,file,media.kind,media.mime,meta)
+  }
+  const diffArgs=['diff','--text','--no-color','--no-ext-diff','--no-textconv','--no-renames','--unified=3',...(inv.workspace.mode==='staged'?['--cached',inv.workspace.head]:inv.workspace.mode==='range'?[inv.workspace.base,inv.workspace.head]:[inv.workspace.head]),'--',file]
+  const diffLimit=preview?Number.MAX_SAFE_INTEGER:LIMITS.maxFileBytes*3
+  // Both source sides and the diff are independent; the ignore check needs the one
+  // safety lookup this operation is about to perform anyway.
+  const preparedPromise=git.prepare(repoRoot,inv.signal,{ignore:true,filters:true})
+  const beforePromise=blob(inv,inv.before.get(file),file,preview)
+  const afterPromise=worktree?readEvidenceFile(repoRoot,file,preview?{maxBytes:Number.MAX_SAFE_INTEGER}:undefined):blob(inv,inv.after.get(file),file,preview)
+  const ignoredPromise=(async()=>{const prepared=await preparedPromise;return prepared.read({args:['check-ignore','--no-index','--',file],maxBytes:8192})})()
+  const diffPromise=(async()=>{const prepared=await preparedPromise;return prepared.read({args:diffArgs,maxBytes:diffLimit})})()
+  const [before,after,ignored,captured]=await Promise.all([beforePromise,afterPromise,ignoredPromise,diffPromise])
   if(ignored.code===0)return {path:file,kind:'excluded',status:meta.status,reason:'ignored file',truncated:false}
   if(ignored.code!==1)throw fail('CODE_GIT','Ignore rules could not be checked.')
-  if(mediaPreview&&media)return previewMedia(inv,file,media.kind,media.mime,meta)
-  const before=await blob(inv,inv.before.get(file),file,preview)
-  let after: FileEvidence=inv.workspace.mode==='worktree'?await readEvidenceFile(inv.workspace.repoRoot,file,preview?{maxBytes:Number.MAX_SAFE_INTEGER}:undefined):await blob(inv,inv.after.get(file),file,preview)
-  if(after.kind==='missing')after={...after,text:'',hash:hashText('')}
   const version=inv.workspace.mode==='worktree'?'Worktree':inv.workspace.mode==='staged'?'Index':inv.workspace.head
   const withhold=(value: FileEvidence): FileEvidence=>({path:file,kind:value.kind==='opaque'?/size/.test(value.reason??'')?'oversized':/binary|UTF-8/.test(value.reason??'')?'binary':'excluded':value.kind,status:meta.status,reason:value.reason,truncated:false,version,baseVersion:inv.workspace.base})
   const bad=[before,after].find(value=>value.kind!=='text'&&value.kind!=='missing')
   if(bad&&(!preview||after.kind!=='text'&&after.kind!=='missing'))return withhold(bad)
-  const diffArgs=['diff','--text','--no-color','--no-ext-diff','--no-textconv','--no-renames','--unified=3',...(inv.workspace.mode==='staged'?['--cached',inv.workspace.head]:inv.workspace.mode==='range'?[inv.workspace.base,inv.workspace.head]:[inv.workspace.head]),'--',file]
   let diff='',diffTruncated=false
-  if(!preview)diff=await required(inv.workspace.repoRoot,diffArgs,inv.signal,LIMITS.maxFileBytes*3)
-  else {const captured=await git(inv.workspace.repoRoot,diffArgs,inv.signal,Number.MAX_SAFE_INTEGER);if(captured.truncated){diffTruncated=true;diff=captured.output.replace(/\uFFFD+$/u,'')}else if(captured.ok)diff=captured.output;else diffTruncated=true}
-  if(!inv.before.has(file)&&!inv.after.has(file)&&after.kind==='text') {
-   const lines=(after.text??'').split('\n');if(lines.at(-1)==='')lines.pop()
+  if(!preview&&!captured.ok)throw fail('CODE_GIT','Git evidence is unavailable or exceeds its size limit.')
+  if(preview&&(captured.truncated||!captured.ok)){diffTruncated=true;diff=captured.output.replace(/\uFFFD+$/u,'')}
+  else diff=captured.output
+  const afterFile: FileEvidence=after.kind==='missing'?{...after,text:'',hash:hashText('')}:after
+  if(!inv.before.has(file)&&!inv.after.has(file)&&afterFile.kind==='text') {
+   const lines=(afterFile.text??'').split('\n');if(lines.at(-1)==='')lines.pop()
    diff=`--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${lines.length} @@\n${lines.map(line=>'+'+line).join('\n')}\n`
   }
   if(containsCredentialLikeText(diff))return {path:file,kind:'excluded',status:meta.status,reason:'possible credential content excluded',truncated:false}
   const hunks: Hunk[]=[];let hunk: Hunk | undefined
   for(const line of diff.split('\n')) {const m=/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);if(m){hunk={oldStart:+m[1],oldLines:+(m[2]??1),newStart:+m[3],newLines:+(m[4]??1),lines:[]};hunks.push(hunk)}else if(hunk&&/^[ +\\-]/.test(line))hunk.lines.push(line)}
-  return {path:file,kind:after.kind,status:meta.status,afterKind:after.kind,beforeKind:before.kind==='text'||before.kind==='missing'?before.kind:'oversized',text:after.text??'',beforeText:before.kind==='text'?before.text??'':'',hash:after.hash,beforeHash:before.hash,version,baseVersion:inv.workspace.base,diff,hunks,truncated:before.truncated===true||after.truncated===true,diffTruncated}
+  return {path:file,kind:afterFile.kind,status:meta.status,afterKind:afterFile.kind,beforeKind:before.kind==='text'||before.kind==='missing'?before.kind:'oversized',text:afterFile.text??'',beforeText:before.kind==='text'?before.text??'':'',hash:afterFile.hash,beforeHash:before.hash,version,baseVersion:inv.workspace.base,diff,hunks,truncated:before.truncated===true||afterFile.truncated===true,diffTruncated}
+ }
+ /**
+  * Re-check the exact inputs one source read depends on: the commit and the index
+  * it was enumerated from. The selected file verifies its own identity before and
+  * after the read, so an unrelated worktree edit needs no second full manifest;
+  * it arrives with the next inventory refresh instead.
+  */
+ async function revalidate(inv: Inventory): Promise<void> {
+  const prepared=await git.prepare(inv.workspace.repoRoot,inv.signal)
+  const [headCapture,indexCapture]=await prepared.parallel([{args:['rev-parse','--verify','HEAD']},{args:['ls-files','--stage','-z']}])
+  if(!headCapture.ok||!indexCapture.ok)throw fail('CODE_GIT','Git evidence is unavailable or exceeds its size limit.')
+  if(headCapture.output.trim()!==inv.workspace.head||hash(indexCapture.output)!==inv.workspace.indexHash)throw fail('CODE_STALE','Workspace changed while reading source. Refresh Code.')
  }
  async function capture(inv: Inventory,paths: string[]): Promise<CapturedSnapshot> {
   if(!inv.complete)throw fail('CODE_INCOMPLETE','The repository manifest exceeds the supported limit.')
   if(!Array.isArray(paths)||!paths.length||paths.length>LIMITS.maxSelectedFiles||new Set(paths).size!==paths.length||paths.some(p=>typeof p!=='string'))throw fail('CODE_SCOPE','Select 1–20 distinct files explicitly.')
+  const sorted=[...paths].sort()
+  // Selected files are independent reads; a small in-flight bound keeps process
+  // pressure bounded without waiting for one file at a time.
+  const captured=await mapLimit(sorted,4,async p=>[p,await file(inv,p)] as const)
   const files: FileEvidence[]=[];let bytes=0
-  for(const p of [...paths].sort()){const result=await file(inv,p);if(result.kind!=='text'&&result.kind!=='missing')throw fail('CODE_EXCLUDED',`${p}: ${result.reason??result.kind}`);bytes+=Buffer.byteLength(result.text??'')+Buffer.byteLength(result.beforeText??'');if(bytes>LIMITS.maxReviewBytes)throw fail('CODE_BUDGET','Selected before/after source exceeds the 48 KB review budget. Select fewer or smaller files.');files.push(result)}
+  for(const [p,result] of captured){if(result.kind!=='text'&&result.kind!=='missing')throw fail('CODE_EXCLUDED',`${p}: ${result.reason??result.kind}`);bytes+=Buffer.byteLength(result.text??'')+Buffer.byteLength(result.beforeText??'');if(bytes>LIMITS.maxReviewBytes)throw fail('CODE_BUDGET','Selected before/after source exceeds the 48 KB review budget. Select fewer or smaller files.');files.push(result)}
   const current=await inventory({cwd:inv.workspace.cwd,policy:inv.policy,mode:inv.workspace.mode,base:inv.workspace.baseRef,signal:inv.signal})
   if(current.workspace.id!==inv.workspace.id)throw fail('CODE_STALE','Workspace changed while capturing selected source. Refresh and retry.')
   const snapshotId=hash({workspace:inv.workspace,files:files.map(f=>({path:f.path,hash:f.hash,beforeHash:f.beforeHash}))})
   return {snapshotId,workspace:inv.workspace,files,bytes,paths:files.map(f=>f.path)}
  }
- return {inventory,file,capture}
+ return {inventory,file,capture,revalidate}
 }

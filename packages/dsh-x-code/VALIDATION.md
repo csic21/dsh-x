@@ -2,11 +2,12 @@
 
 ## Current scope
 
-Validated with official DSH `0.2.1-rc.2`, Cordis `4.0.5`, Node 24. Current repository run: 278 tests, 278 passed, 0 skipped; the Code package contributes 37 of them. Code registers three tools: `dsh_x_code_inspect`, `dsh_x_code_file` and `dsh_x_code_review`; `dsh_x_code_repair` no longer exists.
+Validated with official DSH `0.2.1-rc.2`, Cordis `4.0.5`, Node 24. Current repository run: 354 tests, 353 passed, 1 skipped; the Code package contributes 39 of them. Code registers three tools: `dsh_x_code_inspect`, `dsh_x_code_file` and `dsh_x_code_review`; `dsh_x_code_repair` no longer exists.
 
 Covered through official Cordis, ToolRuntime, LlmRuntime, managed subprocess, approval bridges, and durable records:
 
 - Bounded tree/source/diff browsing without a model call; worktree, staged, and merge-base…HEAD versions; before/after missing sides; deterministic diff coordinates under color, blank-context, and binary-diff attributes.
+- Credential-shaped names apply to file names, not to every path segment: a source folder called `credentials` stays browseable while its credential data and non-program files stay excluded. Reads run as concurrent fixed-argv commands with one safety-lookup round, and a source read re-checks the commit and index it came from. Reopening a file under the same scope and workspace generation reuses its response; a new generation does not.
 - Explicit selected paths and exact snapshot capture; final post-approval freshness checks; source edits, index changes, session/cwd changes, repository replacement, and cross-repository re-review rejection.
 - Configured DSH review with one bounded snapshot message, no session history, and zero tools; approval rejection sends no source; exact prepared config and model-visible input are persisted before stream dispatch.
 - Structured severity/line/evidence/trigger validation; fabricated or out-of-scope evidence, malformed/truncated responses, tool attempts, oversized output, and sensitive-shaped output fail explicitly.

@@ -12,6 +12,21 @@ test('late scope read never replaces a newer target or leaks prior file content'
  const a=controller.loadFile('session',{scope:'scope',workspaceId:'stage',path:'a.js',mode:'staged'});const first=pending.at(-1);const b=controller.loadFile('session',{scope:'scope',workspaceId:'stage',path:'b.js',mode:'staged'});const second=pending.at(-1);assert.equal(source.getSnapshot().file,null);second.resolve(ok({path:'b.js',kind:'text',text:'B',beforeText:''}));await b;first.resolve(ok({path:'a.js',kind:'text',text:'A',beforeText:''}));await a;assert.equal(source.getSnapshot().file!.text,'B')
  }finally{unsubscribe();controller.dispose()}
 })
+test('reopening a file in the same workspace generation reuses the captured response',async()=>{
+ let calls=0
+ const controller=createCodeController({call:async(_api,name,args)=>{if(name==='code/file')calls++;return ok(name==='code/snapshot'?snap():{path:args.path,kind:'text',text:String(args.path),beforeText:''})}},{pollMs:100000}),source=controller.source('session'),unsubscribe=source.subscribe(()=>{})
+ try{
+  await tick()
+  await controller.loadFile('session',{scope:'scope',workspaceId:'v1',path:'a.js',mode:'worktree'})
+  await controller.loadFile('session',{scope:'scope',workspaceId:'v1',path:'b.js',mode:'worktree'})
+  assert.equal(calls,2)
+  await controller.loadFile('session',{scope:'scope',workspaceId:'v1',path:'a.js',mode:'worktree'})
+  assert.equal(calls,2,'the same workspace generation serves the captured response again')
+  assert.equal(source.getSnapshot().file!.text,'a.js');assert.equal(source.getSnapshot().fileStatus,'ready')
+  await controller.loadFile('session',{scope:'scope',workspaceId:'v2',path:'a.js',mode:'worktree'})
+  assert.equal(calls,3,'a new workspace generation is a new request key')
+ }finally{unsubscribe();controller.dispose()}
+})
 test('connection reset clears cached source and disables unconfirmed actions',async()=>{
  const controller=createCodeController({call:async(_api,name)=>name==='code/snapshot'?ok(snap()):ok({path:'a.js',kind:'text',text:'secret-free fixture',beforeText:''})},{pollMs:100000}),source=controller.source('session'),unsubscribe=source.subscribe(()=>{})
  try{await tick();await controller.loadFile('session',{scope:'scope',workspaceId:'v1',path:'a.js',mode:'worktree'});assert.equal(source.getSnapshot().fileStatus,'ready');controller.reset();assert.equal(source.getSnapshot().snapshot,null);assert.equal(source.getSnapshot().file,null);assert.equal((await controller.cancel('session')).ok,false)}finally{unsubscribe();controller.dispose()}
