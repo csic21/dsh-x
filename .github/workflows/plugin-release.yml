@@ -46,7 +46,7 @@ jobs:
       - run: pnpm run build
       - name: Test the tagged tree
         timeout-minutes: 15
-        run: node --test --test-timeout=600000 packages/*/test/*.test.ts test/*.test.js
+        run: node --test --test-concurrency=1 --test-timeout=600000 packages/*/test/*.test.ts test/*.test.js
       - name: Generate the market index snapshot
         run: node scripts/generate-market-index.mjs --output "$RUNNER_TEMP/market-index.json"
       - uses: actions/upload-artifact@v4
