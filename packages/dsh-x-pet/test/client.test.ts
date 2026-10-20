@@ -100,7 +100,7 @@ test('the pet frame registers in the frame overlay and follows the session state
     }
     const render = async () => step(() => root.render(React.createElement(Render, { entry })))
     await render()
-    assert.deepEqual(rpcCalls, ['dsh-x-pet/list'])
+    assert.deepEqual(rpcCalls.filter(endpoint => endpoint !== 'dsh-x-pet/window'), ['dsh-x-pet/list'])
     const frame = dom.window.document.querySelector<HTMLElement>('.dxp')
     assert.ok(frame, 'the pet frame is rendered')
     assert.equal(frame!.dataset.petState, 'idle')

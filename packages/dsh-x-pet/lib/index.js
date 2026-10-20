@@ -208,6 +208,8 @@ export function apply(ctx, config = {}) {
                 shell.close();
                 return { open: false };
             }
+            if (payload.action === 'status')
+                return { open: shell.running() };
             if (payload.action !== 'open')
                 throw new Error('PET_WINDOW');
             const base = host.webApp.getAdvertisedUrl();

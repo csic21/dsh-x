@@ -114,6 +114,14 @@ function createPetController(rpc, fetchObject = globalThis.fetch) {
         return false;
       }
     },
+    async detached() {
+      try {
+        const value = await call(WINDOW_ENDPOINT, { action: "status" });
+        return value?.open === true;
+      } catch {
+        return false;
+      }
+    },
     atlasUrl(id) {
       const cached = urls.get(id);
       if (cached) return Promise.resolve(cached);
@@ -641,23 +649,25 @@ async function openDetachedFrame(controller) {
     const bridge = globalThis.dshDesktop?.petWindow;
     if (bridge !== void 0 && typeof bridge.open === "function") {
       void bridge.open();
-      return;
+      return false;
     }
   } catch {
   }
   try {
-    if (await controller.detach()) return;
+    if (await controller.detach()) return true;
   } catch {
   }
   try {
     globalThis.open?.("/api/dsh-x-pet/frame", "dsh-x-pet-frame", "width=280,height=340,menubar=no,toolbar=no,location=no,status=no");
   } catch {
   }
+  return false;
 }
 function PetFrame(props) {
   const { controller, t } = props;
   const standard = props;
   const [pickerOpen, setPickerOpen] = (0, import_react.useState)(false);
+  const [detached, setDetached] = (0, import_react.useState)(false);
   const [failed, setFailed] = (0, import_react.useState)(false);
   const [url, setUrl] = (0, import_react.useState)(null);
   const [offset, setOffset] = (0, import_react.useState)(null);
@@ -676,11 +686,28 @@ function PetFrame(props) {
     (0, import_react.useCallback)(() => controller.getSnapshot(), [controller])
   );
   const active = view?.active ?? "off";
-  const narration = usePetNarration(list, statuses, controller, t, active !== "off");
+  const narration = usePetNarration(list, statuses, controller, t, active !== "off" && !detached);
   const animation = narration.celebrate ? "waving" : state;
   (0, import_react.useEffect)(() => {
     void controller.load();
   }, [controller]);
+  (0, import_react.useEffect)(() => {
+    if (!detached) {
+      let cancelled = false;
+      void controller.detached().then((open) => {
+        if (!cancelled && open) setDetached(true);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    const timer = globalThis.setInterval(() => {
+      void controller.detached().then((open) => {
+        if (!open) setDetached(false);
+      });
+    }, 3e3);
+    return () => globalThis.clearInterval(timer);
+  }, [controller, detached]);
   (0, import_react.useEffect)(() => {
     controller.release(active === "off" ? [] : [active]);
   }, [controller, active]);
@@ -764,7 +791,7 @@ function PetFrame(props) {
     }
     setPickerOpen(true);
   }, []);
-  if (active === "off") return null;
+  if (active === "off" || detached) return null;
   const label = `${t("frame.label")} \xB7 ${t(STATE_LABEL[animation])}`;
   const style = offset ? { "--dxp-x": `${offset.x}px`, "--dxp-y": `${offset.y}px` } : void 0;
   return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp", style, "data-pet-state": animation }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-stage" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-bubble", "data-show": narration.line !== null, "data-tone": narration.line?.tone }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-text", role: "status", "aria-live": "polite" }, /* @__PURE__ */ import_react.default.createElement("strong", { className: "dxp-bubble-title" }, narration.line?.tone === "done" ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-check", "aria-hidden": "true" }, "\u2713") : null, narration.line?.title), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxp-bubble-detail" }, narration.line?.detail)), narration.count > 1 ? /* @__PURE__ */ import_react.default.createElement(
@@ -807,7 +834,9 @@ function PetFrame(props) {
       }
     }
   ), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-status" }, t(STATE_LABEL[state])), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxp-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setPickerOpen(true) }, t("frame.open")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
-    void openDetachedFrame(controller);
+    void openDetachedFrame(controller).then((open) => {
+      if (open) setDetached(true);
+    });
   } }, t("frame.popout")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => {
     void controller.select("off").catch(() => {
     });

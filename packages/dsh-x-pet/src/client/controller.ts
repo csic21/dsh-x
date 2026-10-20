@@ -45,6 +45,8 @@ export interface PetController {
   activity(ids: string[]): Promise<Record<string, SessionActivity>>
   /** Ask the Host to open the native pet window; false when it cannot. */
   detach(): Promise<boolean>
+  /** Whether the native pet window is still running. */
+  detached(): Promise<boolean>
   /**
    * A small first-frame preview. `cropped` tells the caller whether the image
    * is one cell (draw it whole) or the full sheet (draw it as a sprite).
@@ -133,6 +135,12 @@ export function createPetController(rpc: PetRpc, fetchObject: typeof fetch | und
     async detach() {
       try {
         const value = await call(WINDOW_ENDPOINT, { action: 'open' })
+        return value?.open === true
+      } catch { return false }
+    },
+    async detached() {
+      try {
+        const value = await call(WINDOW_ENDPOINT, { action: 'status' })
         return value?.open === true
       } catch { return false }
     },

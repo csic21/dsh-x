@@ -34,6 +34,9 @@ private final class PetShell: NSObject, WKScriptMessageHandler, WKNavigationDele
     private let pageURL: URL
     private var spriteRect = HitRect()
     private var loadedPage = false
+    /// Set while the page is moving the window: the pointer leaves the sprite,
+    /// and re-testing the rect mid-drag would switch input off under the user.
+    private var draggingUntil = Date.distantPast
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
@@ -114,6 +117,10 @@ private final class PetShell: NSObject, WKScriptMessageHandler, WKNavigationDele
     /// The bubble is taller than the sprite, so only the sprite takes clicks;
     /// everywhere else the panel stays transparent to input.
     private func updateHitTesting() {
+        if Date() < draggingUntil {
+            if panel.ignoresMouseEvents { panel.ignoresMouseEvents = false }
+            return
+        }
         let point = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
         let inside = panel.frame.contains(NSEvent.mouseLocation) && spriteRect.contains(point)
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
@@ -129,8 +136,9 @@ private final class PetShell: NSObject, WKScriptMessageHandler, WKNavigationDele
             var origin = panel.frame.origin
             origin.x += CGFloat(dx)
             origin.y -= CGFloat(dy)
+            draggingUntil = Date().addingTimeInterval(1.5)
             panel.setFrameOrigin(origin)
-            updateHitTesting()
+            panel.ignoresMouseEvents = false
         case "rect":
             guard let x = body["x"] as? Double, let y = body["y"] as? Double,
                   let width = body["w"] as? Double, let height = body["h"] as? Double else { return }

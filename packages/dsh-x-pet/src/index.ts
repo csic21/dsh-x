@@ -255,6 +255,7 @@ export function apply(ctx: Context, config: PetConfig = {}) {
     // The pet's own window: compiled from the shipped Swift source on first use.
     host.connection.fetch.register(createPetRoute(PET_WINDOW, async payload => {
       if (payload.action === 'close') { shell.close(); return { open: false } }
+      if (payload.action === 'status') return { open: shell.running() }
       if (payload.action !== 'open') throw new Error('PET_WINDOW')
       const base = host.webApp.getAdvertisedUrl()
       const opened = await shell.open({

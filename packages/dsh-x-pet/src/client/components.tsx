@@ -493,18 +493,19 @@ export function usePetNarration(
  * this stays a quiet no-op until the shell ships a pet window; a browser opens
  * it right away.
  */
-async function openDetachedFrame(controller: PetController): Promise<void> {
+async function openDetachedFrame(controller: PetController): Promise<boolean> {
   // 1. A Desktop shell that ships a pet window owns placement and stacking.
   try {
     const bridge = (globalThis as any).dshDesktop?.petWindow
-    if (bridge !== undefined && typeof bridge.open === 'function') { void bridge.open(); return }
+    if (bridge !== undefined && typeof bridge.open === 'function') { void bridge.open(); return false }
   } catch { /* Fall through to the plugin's own window. */ }
   // 2. The plugin's native shell: a floating panel the app window cannot clip.
-  try { if (await controller.detach()) return } catch { /* Fall through to a popup. */ }
+  try { if (await controller.detach()) return true } catch { /* Fall through to a popup. */ }
   // 3. A browser tab, which at least leaves the app window.
   try {
     globalThis.open?.('/api/dsh-x-pet/frame', 'dsh-x-pet-frame', 'width=280,height=340,menubar=no,toolbar=no,location=no,status=no')
   } catch { /* A denied popup never breaks the frame. */ }
+  return false
 }
 
 export function PetFrame(props: PetStandardProps & {
@@ -514,6 +515,8 @@ export function PetFrame(props: PetStandardProps & {
   const { controller, t } = props
   const standard = props
   const [pickerOpen, setPickerOpen] = useState(false)
+  /** True while the native panel is up: one pet, not two. */
+  const [detached, setDetached] = useState(false)
   const [failed, setFailed] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
   const [offset, setOffset] = useState<{ x: number, y: number } | null>(null)
@@ -532,10 +535,24 @@ export function PetFrame(props: PetStandardProps & {
   const active = view?.active ?? 'off'
   // The frame renders `null` while the pet is off, so the narration behind it
   // must not keep a clock or poll the host either.
-  const narration = usePetNarration(list, statuses, controller, t, active !== 'off')
+  const narration = usePetNarration(list, statuses, controller, t, active !== 'off' && !detached)
   const animation = narration.celebrate ? 'waving' : state
 
   useEffect(() => { void controller.load() }, [controller])
+
+  // A reload keeps the panel alive, and closing the panel from its own corner
+  // brings the in-app pet back.
+  useEffect(() => {
+    if (!detached) {
+      let cancelled = false
+      void controller.detached().then(open => { if (!cancelled && open) setDetached(true) })
+      return () => { cancelled = true }
+    }
+    const timer = globalThis.setInterval(() => {
+      void controller.detached().then(open => { if (!open) setDetached(false) })
+    }, 3_000)
+    return () => globalThis.clearInterval(timer)
+  }, [controller, detached])
 
   useEffect(() => {
     controller.release(active === 'off' ? [] : [active])
@@ -614,7 +631,7 @@ export function PetFrame(props: PetStandardProps & {
     setPickerOpen(true)
   }, [])
 
-  if (active === 'off') return null
+  if (active === 'off' || detached) return null
 
   const label = `${t('frame.label')} · ${t(STATE_LABEL[animation])}`
   const style = offset ? ({ '--dxp-x': `${offset.x}px`, '--dxp-y': `${offset.y}px` } as any) : undefined
@@ -665,7 +682,7 @@ export function PetFrame(props: PetStandardProps & {
         <div className="dxp-status">{t(STATE_LABEL[state])}</div>
         <div className="dxp-controls">
           <button type="button" onClick={() => setPickerOpen(true)}>{t('frame.open')}</button>
-          <button type="button" onClick={() => { void openDetachedFrame(controller) }}>{t('frame.popout')}</button>
+          <button type="button" onClick={() => { void openDetachedFrame(controller).then(open => { if (open) setDetached(true) }) }}>{t('frame.popout')}</button>
           <button type="button" onClick={() => { void controller.select('off').catch(() => {}) }}>{t('frame.hide')}</button>
         </div>
       </div>

@@ -22,6 +22,8 @@ html,body{margin:0;height:100%;background:transparent;overflow:hidden;font:12px/
 .dxp-more{flex:none;min-width:24px;height:20px;padding:0 5px;border:1px solid #d7dbe2;border-radius:999px;background:#f4f5f7;color:#717885;font:inherit;font-size:10px}
 .dxp-close{flex:none;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:transparent;color:#8a919c;font:inherit;font-size:13px;line-height:1;cursor:pointer}
 .dxp-close:hover{background:#e9ebef;color:#20252e}
+.dxp-hide{position:absolute;right:-4px;bottom:-4px;width:20px;height:20px;padding:0;border:1px solid #d7dbe2;border-radius:999px;background:#fff;color:#717885;font:inherit;font-size:12px;line-height:1;cursor:pointer;opacity:0;transition:opacity .16s ease}
+.dxp-stage:hover .dxp-hide{opacity:1}
 @media (prefers-color-scheme:dark){.dxp-bubble{background:#232830;color:#e8eaee;border-color:#3a404b}.dxp-title{color:#9aa3af}.dxp-close:hover{background:#2f3540}}
 @media (prefers-reduced-motion:reduce){.dxp-bubble{transition:none}}
 `;
@@ -46,6 +48,7 @@ const say = {
   idle: () => zh ? '空闲' : 'Idle',
   untitled: () => zh ? '新对话' : 'New conversation',
   close: () => zh ? '收起这条提示' : 'Hide this bubble',
+  closeWindow: () => zh ? '关掉桌面宠物窗口' : 'Close the pet window',
   more: (n) => zh ? n + ' 个对话在进行' : n + ' conversations active',
 }
 
@@ -60,10 +63,27 @@ const closeEl = document.querySelector('.dxp-close')
 closeEl.title = say.close()
 closeEl.addEventListener('click', () => { hiddenFor = lineKey; bubble.dataset.show = 'false' })
 
+const hideEl = document.querySelector('.dxp-hide')
+hideEl.title = say.closeWindow()
+hideEl.addEventListener('click', () => {
+  if (bridge && typeof bridge.close === 'function') bridge.close()
+  else bubble.dataset.show = 'false'
+})
+
+window.addEventListener('resize', reportRect)
+window.addEventListener('load', reportRect)
+setTimeout(reportRect, 0)
+
 let rows = 11
 let atlas = { id: null, url: null, rows: 0 }
 let plan = null, planKey = '', timer = null, index = 0
 let lineKey = '', hiddenFor = ''
+
+function reportRect() {
+  if (!bridge || typeof bridge.rect !== 'function') return
+  const box = sprite.getBoundingClientRect()
+  bridge.rect(box.left, box.top, box.width, box.height)
+}
 
 async function ensureAtlas(id, nextRows) {
   if (!id) {
@@ -84,6 +104,7 @@ async function ensureAtlas(id, nextRows) {
   atlas = { id, url, rows: nextRows }
   sprite.style.backgroundImage = 'url(' + url + ')'
   sprite.style.backgroundSize = '800% ' + (nextRows * 100) + '%'
+  reportRect()
 }
 
 function play(next) {
@@ -155,13 +176,11 @@ if (bridge && typeof bridge.hover === 'function') {
     bridge.hover(over)
   })
 }
+// Dragging only moves the whole window in the native shell; with no bridge it
+// moves the stage inside a browser tab. The listeners live on the window,
+// because the pointer leaves this small sprite as soon as the window follows it.
 let drag = null
-sprite.addEventListener('pointerdown', (event) => {
-  if (event.button !== 0) return
-  drag = { x: event.clientX, y: event.clientY }
-  sprite.setPointerCapture(event.pointerId)
-})
-sprite.addEventListener('pointermove', (event) => {
+const onDragMove = (event) => {
   if (!drag) return
   const dx = event.clientX - drag.x
   const dy = event.clientY - drag.y
@@ -172,10 +191,21 @@ sprite.addEventListener('pointermove', (event) => {
   const bottom = parseFloat(getComputedStyle(stage).bottom) || 0
   stage.style.right = Math.max(-40, right - dx) + 'px'
   stage.style.bottom = Math.max(-40, bottom - dy) + 'px'
+}
+const release = () => {
+  drag = null
+  window.removeEventListener('pointermove', onDragMove)
+  window.removeEventListener('pointerup', release)
+  window.removeEventListener('pointercancel', release)
+}
+sprite.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return
+  drag = { x: event.clientX, y: event.clientY }
+  sprite.setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', onDragMove)
+  window.addEventListener('pointerup', release)
+  window.addEventListener('pointercancel', release)
 })
-const release = () => { drag = null }
-sprite.addEventListener('pointerup', release)
-sprite.addEventListener('pointercancel', release)
 `;
 /** One self-contained document: no bundle, no Client runtime, no build step. */
 export function petFramePage() {
@@ -192,6 +222,7 @@ export function petFramePage() {
       <button type="button" class="dxp-close" aria-label="close">×</button>
     </div>
     <button type="button" class="dxp-sprite" aria-label="dsh pet"></button>
+    <button type="button" class="dxp-hide" aria-label="close">×</button>
   </div>
 </div>
 <script>${PAGE_JS}</script>
