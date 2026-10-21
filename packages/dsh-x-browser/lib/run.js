@@ -68,7 +68,7 @@ async function waitForStableGrant(request, quietMs = 900, capMs = 8000) {
     for (;;) {
         const tab = await readTab(request);
         const at = Date.now();
-        if (tab?.granted && tab.visible) {
+        if (tab?.granted && (tab.visible || request.allowHidden === true)) {
             if (!stable || stable.epoch !== tab.epoch)
                 stable = { epoch: tab.epoch, since: at };
             else if (at - stable.since >= quietMs)
@@ -99,8 +99,8 @@ async function currentTab(request, patienceMs = 0) {
     }
     if (!tab)
         throw fail('BROWSER_TARGET', 'The tab this run targets is gone. Open or refresh it, then start a new run.');
-    if (!tab.visible)
-        throw fail('BROWSER_HIDDEN', 'The tab is hidden, so a run cannot continue. Show it and retry.');
+    if (!tab.visible && request.allowHidden !== true)
+        throw fail('BROWSER_HIDDEN', 'The tab is hidden, so a run cannot continue. Show it and retry, or enable background mode.');
     if (!tab.granted)
         throw fail('BROWSER_GRANT', 'AI access ended during the run. Enable it again, then start a new run.');
     return tab;

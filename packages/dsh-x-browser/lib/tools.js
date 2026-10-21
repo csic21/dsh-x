@@ -149,7 +149,7 @@ export function registerBrowserTools(ctx, deps) {
                     const targetCap = typeof targetLimit === 'number' && Number.isSafeInteger(targetLimit) ? targetLimit : 40;
                     const bounded = Math.min(Math.max(textCap, 200), 8000);
                     const boundedTargets = Math.min(Math.max(targetCap, 1), 120);
-                    return jsonObject(await runSequence({ runtime, scope, owner, tabId, epoch, grantRevision, steps: accepted, textLimit: bounded, targetLimit: boundedTargets, finalObservation: true }));
+                    return jsonObject(await runSequence({ runtime, scope, owner, tabId, epoch, grantRevision, steps: accepted, textLimit: bounded, targetLimit: boundedTargets, finalObservation: true, allowHidden: deps.background === true }));
                 }
                 catch (error) {
                     throw toolFailure(error);

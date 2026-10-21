@@ -47,6 +47,8 @@ export interface RunRequest {
     targetLimit: number;
     /** Whether a final observation is returned when the last step did not produce one. */
     finalObservation: boolean;
+    /** True when the profile lets a hidden tab keep working (background mode). */
+    allowHidden?: boolean;
 }
 /**
  * Execute one run.

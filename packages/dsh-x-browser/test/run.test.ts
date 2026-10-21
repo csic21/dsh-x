@@ -259,3 +259,12 @@ test('the step after a navigating click waits out the renewal revocation, not ju
   const observe = marks.filter(mark => mark.action === 'observe').at(-1)!
   assert.ok(observe.at - started >= 690, `observe issued at ${observe.at - started}ms`)
 })
+
+test('background mode lets a run work on a hidden tab, and the default still refuses', async t => {
+  const f = fixture(); f.setVisible(false)
+  const steps = validateRun([{ action: 'observe' }])
+  await assert.rejects(runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps, textLimit: 100, targetLimit: 2, finalObservation: false }), { code: 'BROWSER_HIDDEN' })
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([{ action: 'click', label: '点我 +1' }]), textLimit: 100, targetLimit: 2, finalObservation: true, allowHidden: true })
+  assert.deepEqual(run.steps.map(step => step.ok), [true])
+  assert.ok(run.observation)
+})
