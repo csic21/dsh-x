@@ -98,13 +98,21 @@ type BrowserBrokerOptions = {
      * renderer disconnection still revoke it. Defaults to false (per-turn grant).
      */
     stickyGrants?: boolean;
+    /**
+     * Unattended profile policy. When true, the renderer grants AI access itself as
+     * soon as the tab is ready and visible, so nobody has to press Allow AI. Only the
+     * explicit `autoGrant` config reaches this flag; the capability still never leaves
+     * the renderer closure, and Take over, hiding, closing, workspace change and
+     * renderer disconnection still revoke the grant.
+     */
+    autoGrant?: boolean;
     onRevoke?: (tab: BrowserPublicTab & {
         reason: string;
     }) => void;
     onTrace?: (event: BrowserTraceEvent) => void;
 };
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, stickyGrants, onRevoke, onTrace }: BrowserBrokerOptions): {
+export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, stickyGrants, autoGrant, onRevoke, onTrace }: BrowserBrokerOptions): {
     register({ sessionId, clientTabId }: {
         sessionId: string;
         clientTabId: string;
@@ -121,6 +129,7 @@ export declare function createBrowserBroker({ profile, contextOf, turnOf, now, t
         status: string;
         capability: string;
         workspace: string;
+        autoGrant: boolean;
     }>;
     list(binding: BrowserScope, { ownerToken, assertCurrent }?: {
         ownerToken?: symbol | null;

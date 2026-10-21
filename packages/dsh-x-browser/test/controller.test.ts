@@ -8,7 +8,7 @@ function fixture(options: Record<string, any> = {}) {
   const calls: any[] = [], state = { ready: true, epoch: 1, title: 'Fixture', url: 'https://example.test/' }, reply = (value: any) => ({ ok: true, value })
   const rpc = { async call(_base: any, name: any, args: any) {
     calls.push({ name, args })
-    if (name === 'browser/register') return reply({ tabId: 'owned-tab', capability: 'owned-cap', workspace: '/work', grantRevision: 0 })
+    if (name === 'browser/register') return reply({ tabId: 'owned-tab', capability: 'owned-cap', workspace: '/work', grantRevision: 0, autoGrant: options.register === true })
     if (name === 'browser/sync') { syncs++; if (options.sync) { const value = options.sync(syncs, { epoch: 1, grantRevision: revision, granted, status: 'manual' }); if (value) return value } return reply({ epoch: 1, grantRevision: revision, granted, status: granted ? 'ready' : 'manual' }) }
     if (name === 'browser/grant') { granted = true; revision++; const response = reply({ epoch: 1, grantRevision: revision, granted }); return options.grant ? options.grant(response) : response }
     if (name === 'browser/revoke') { granted = false; revision++; return reply({ grantRevision: revision }) }
@@ -95,4 +95,26 @@ test('a turn-ended poll failure revokes control with its actual reason, not a co
   const state = f.controller.getSnapshot()
   assert.equal(state.granted, false); assert.equal(state.status, 'turn-ended'); assert.match(state.error!, /\[BROWSER_RUN\]/)
   assert.equal(f.active(), false); assert.equal(f.serverGranted(), false)
+})
+
+test('autoGrant grants a ready visible tab without any click, exactly once', async t => {
+  const f = fixture({ register: true }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick()
+  for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  assert.equal(f.serverGranted(), true)
+  assert.equal(f.controller.getSnapshot().granted, true)
+  assert.equal(f.active(), true)
+  const grants = f.calls.filter(call => call.name === 'browser/grant').length
+  assert.equal(grants, 1)
+  // A revocation must stay revoked: no background retry loop may re-grant it.
+  await f.controller.takeover(); await tick(); await tick()
+  assert.equal(f.serverGranted(), false)
+  assert.equal(f.calls.filter(call => call.name === 'browser/grant').length, grants)
+})
+
+test('a tab without autoGrant stays manual until the user grants it', async t => {
+  const f = fixture(); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick(); await tick()
+  assert.equal(f.calls.some(call => call.name === 'browser/grant'), false)
+  assert.equal(f.controller.getSnapshot().granted, false)
 })

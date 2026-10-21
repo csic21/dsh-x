@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from '../../protocol.js';
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, onRevoke = () => { }, onTrace = () => { } }) {
+export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, autoGrant = false, onRevoke = () => { }, onTrace = () => { } }) {
     const tabs = new Map();
     let disposed = false;
     const same = (left, right) => left?.sessionId === right?.sessionId && left?.workspace === right?.workspace && left?.profile === right?.profile;
@@ -112,7 +112,7 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
                 throw fail('BROWSER_LIMIT', 'Close a browser tab before opening another.');
             const tab = { id: randomUUID(), capability: randomUUID() + randomUUID(), clientTabId, binding: { ...current, profile }, epoch: 0, revision: 0, visible: false, granted: false, title: '', url: '', runId: null, ownerToken: null, ownerClaimed: false, pending: null, lastSeen: now(), status: 'manual' };
             tabs.set(tab.id, tab);
-            return { ...publicTab(tab), capability: tab.capability, workspace: tab.binding.workspace };
+            return { ...publicTab(tab), capability: tab.capability, workspace: tab.binding.workspace, autoGrant };
         },
         async list(binding, { ownerToken = null, assertCurrent } = {}) {
             const result = [];

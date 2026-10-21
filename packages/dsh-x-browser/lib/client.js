@@ -581,6 +581,44 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
     if (documentObject?.hidden) void takeover("hidden");
   };
   documentObject?.addEventListener("visibilitychange", visibility);
+  async function grantNow() {
+    if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return;
+    granting = true;
+    clearTimeout(timer);
+    localRevoke("manual");
+    const ownGeneration = generation;
+    try {
+      if (pumping) await new Promise((resolve) => pumpWaiters.push(resolve));
+      if (disposed || ownGeneration !== generation || !visible || documentObject?.hidden) return;
+      await call("revoke", auth());
+      if (disposed || ownGeneration !== generation) return;
+      const fresh = await sync();
+      if (disposed || ownGeneration !== generation) return;
+      const granted = await call("grant", { ...auth(), epoch: fresh.epoch, grantRevision: fresh.grantRevision });
+      if (disposed || ownGeneration !== generation || !visible) {
+        void takeover("hidden");
+        return;
+      }
+      guest.grant(granted.grantRevision);
+      publish({ granted: true, grantRevision: granted.grantRevision, status: "ready", error: null });
+    } catch (error) {
+      if (!disposed && ownGeneration === generation) {
+        const failure = error;
+        await takeover("manual");
+        publish({ error: String(failure.message ?? "AI access was not enabled.") });
+      }
+    } finally {
+      granting = false;
+      if (!disposed) {
+        clearTimeout(timer);
+        timer = setTimeout(pump, 0);
+      }
+    }
+  }
+  const autoGrant = () => {
+    if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return;
+    void grantNow();
+  };
   return {
     getSnapshot: () => state,
     subscribe(listener) {
@@ -613,6 +651,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
         if (disposed) return;
         publish({ status: "manual" });
         void pump();
+        if (registration.autoGrant === true) void autoGrant();
       } catch (error) {
         if (!disposed) {
           const failure = error;
@@ -625,40 +664,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
       publish({ visible });
       if (!visible) void takeover("hidden");
     },
-    async grant() {
-      if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return;
-      granting = true;
-      clearTimeout(timer);
-      localRevoke("manual");
-      const ownGeneration = generation;
-      try {
-        if (pumping) await new Promise((resolve) => pumpWaiters.push(resolve));
-        if (disposed || ownGeneration !== generation || !visible || documentObject?.hidden) return;
-        await call("revoke", auth());
-        if (disposed || ownGeneration !== generation) return;
-        const fresh = await sync();
-        if (disposed || ownGeneration !== generation) return;
-        const granted = await call("grant", { ...auth(), epoch: fresh.epoch, grantRevision: fresh.grantRevision });
-        if (disposed || ownGeneration !== generation || !visible) {
-          void takeover("hidden");
-          return;
-        }
-        guest.grant(granted.grantRevision);
-        publish({ granted: true, grantRevision: granted.grantRevision, status: "ready", error: null });
-      } catch (error) {
-        if (!disposed && ownGeneration === generation) {
-          const failure = error;
-          await takeover("manual");
-          publish({ error: String(failure.message ?? "AI access was not enabled.") });
-        }
-      } finally {
-        granting = false;
-        if (!disposed) {
-          clearTimeout(timer);
-          timer = setTimeout(pump, 0);
-        }
-      }
-    },
+    grant: grantNow,
     takeover,
     async navigate(url) {
       void takeover();

@@ -25,6 +25,12 @@ export interface BrowserConfig {
    * where nobody is present to click Allow AI again on the next turn.
    */
   persistentGrant?: boolean
+  /**
+   * Let the tab grant itself as soon as the embedded page is ready and visible, so
+   * nobody presses Allow AI at all. Off by default; the capability still never
+   * leaves the renderer closure and Take over still revokes immediately.
+   */
+  autoGrant?: boolean
   cdp?: {
     /** CLI executable; defaults to `agent-browser` on PATH. */
     command?: string
@@ -62,7 +68,7 @@ export function apply(ctx: Context, config: BrowserConfig = {}) {
     })
     runtime = cdpRuntime(backend, { allowedDomains: domains })
   } else {
-    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, onTrace: event => ctx.emit('dsh-x-browser/trace', event) })
+    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, onTrace: event => ctx.emit('dsh-x-browser/trace', event) })
     ownership = createBrowserOwnership({ onClose: token => broker.revokeOwner(token) })
     ctx.provide('dshXBrowserOwnership', { bind: ownership.bind })
     ctx.effect(() => () => { ownership!.dispose(); broker.dispose() }, 'browser: broker lifetime')

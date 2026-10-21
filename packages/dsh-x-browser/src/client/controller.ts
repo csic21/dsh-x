@@ -13,8 +13,8 @@ export interface BrowserRpcEnvelope { ok?: unknown, value?: unknown, error?: unk
 export interface BrowserRpc { call(base: string, name: string, payload: Record<string, unknown>, signal: AbortSignal): Promise<BrowserRpcEnvelope> }
 /** Renderer document subset the controller reads; tests supply a faithful stub. */
 export interface BrowserDocument { hidden: boolean, addEventListener(type: string, listener: () => void): void, removeEventListener(type: string, listener: () => void): void }
-/** Reply of `register`: the owned capability plus its workspace binding. */
-interface BrowserRegistration { tabId: string, capability: string, workspace: string, grantRevision: number }
+/** Reply of `register`: the owned capability, its workspace binding, and the profile's grant policy. */
+interface BrowserRegistration { tabId: string, capability: string, workspace: string, grantRevision: number, autoGrant?: boolean }
 /** Reply of `sync`, `grant`, `revoke` and `poll`: public tab state plus any queued command. */
 interface BrowserSnapshot { epoch: number, grantRevision: number, granted: boolean, status: string, command: BrowserCommandEnvelope | null }
 /** Reply of `confirm`: whether input may be dispatched. */
@@ -139,6 +139,34 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
   }
   const visibility = () => { if (documentObject?.hidden) void takeover('hidden') }
   documentObject?.addEventListener('visibilitychange', visibility)
+  /** The one grant path; the Allow AI button and unattended auto-grant both use it. */
+  async function grantNow() {
+    if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return
+    granting = true; clearTimeout(timer); localRevoke('manual')
+    const ownGeneration = generation
+    try {
+      if (pumping) await new Promise(resolve => pumpWaiters.push(resolve))
+      if (disposed || ownGeneration !== generation || !visible || documentObject?.hidden) return
+      await call('revoke', auth())
+      if (disposed || ownGeneration !== generation) return
+      const fresh = await sync()
+      if (disposed || ownGeneration !== generation) return
+      const granted = await call<BrowserSnapshot>('grant', { ...auth(), epoch: fresh.epoch, grantRevision: fresh.grantRevision })
+      if (disposed || ownGeneration !== generation || !visible) { void takeover('hidden'); return }
+      guest.grant(granted.grantRevision)
+      publish({ granted: true, grantRevision: granted.grantRevision, status: 'ready', error: null })
+    } catch (error) { if (!disposed && ownGeneration === generation) { const failure = error as { message?: unknown }; await takeover('manual'); publish({ error: String(failure.message ?? 'AI access was not enabled.') }) } }
+    finally { granting = false; if (!disposed) { clearTimeout(timer); timer = setTimeout(pump, 0) } }
+  }
+  /**
+   * Grant once, unattended, for a profile that configured `autoGrant`.
+   *
+   * This is not a retry loop: it makes exactly one attempt per ready page, so a
+   * host refusal (wrong workspace, revoked capability, ended turn) is reported
+   * instead of hammering the broker. Any later revocation keeps the tab under
+   * manual control, because nothing calls this again.
+   */
+  const autoGrant = () => { if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return; void grantNow() }
   return {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
@@ -155,27 +183,14 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
         await guest.start()
         if (disposed) return
         publish({ status: 'manual' }); void pump()
+        // Unattended profile: grant as soon as the guest is ready instead of waiting
+        // for the Allow AI button. `autoGrant` is answered by the host from explicit
+        // config, and every revocation path below still ends the grant normally.
+        if (registration.autoGrant === true) void autoGrant()
       } catch (error) { if (!disposed) { const failure = error as { message?: unknown }; publish({ status: 'unavailable', error: String(failure.message ?? 'Embedded browser unavailable.'), ready: false }) } }
     },
     setVisible(value) { visible = Boolean(value); publish({ visible }); if (!visible) void takeover('hidden') },
-    async grant() {
-      if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return
-      granting = true; clearTimeout(timer); localRevoke('manual')
-      const ownGeneration = generation
-      try {
-        if (pumping) await new Promise(resolve => pumpWaiters.push(resolve))
-        if (disposed || ownGeneration !== generation || !visible || documentObject?.hidden) return
-        await call('revoke', auth())
-        if (disposed || ownGeneration !== generation) return
-        const fresh = await sync()
-        if (disposed || ownGeneration !== generation) return
-        const granted = await call<BrowserSnapshot>('grant', { ...auth(), epoch: fresh.epoch, grantRevision: fresh.grantRevision })
-        if (disposed || ownGeneration !== generation || !visible) { void takeover('hidden'); return }
-        guest.grant(granted.grantRevision)
-        publish({ granted: true, grantRevision: granted.grantRevision, status: 'ready', error: null })
-      } catch (error) { if (!disposed && ownGeneration === generation) { const failure = error as { message?: unknown }; await takeover('manual'); publish({ error: String(failure.message ?? 'AI access was not enabled.') }) } }
-      finally { granting = false; if (!disposed) { clearTimeout(timer); timer = setTimeout(pump, 0) } }
-    },
+    grant: grantNow,
     takeover,
     async navigate(url) { void takeover(); if (!disposed) { try { await guest!.navigate(url); publish({ error: null }) } catch (error) { const failure = error as { message?: string }; publish({ error: failure.message }) } } },
     async manual(action) { void takeover(); if (!disposed) { try { guest!.manual(action) } catch (error) { const failure = error as { message?: string }; publish({ error: failure.message }) } } },

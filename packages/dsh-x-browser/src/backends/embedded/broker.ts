@@ -53,12 +53,20 @@ type BrowserBrokerOptions = {
    * renderer disconnection still revoke it. Defaults to false (per-turn grant).
    */
   stickyGrants?: boolean
+  /**
+   * Unattended profile policy. When true, the renderer grants AI access itself as
+   * soon as the tab is ready and visible, so nobody has to press Allow AI. Only the
+   * explicit `autoGrant` config reaches this flag; the capability still never leaves
+   * the renderer closure, and Take over, hiding, closing, workspace change and
+   * renderer disconnection still revoke the grant.
+   */
+  autoGrant?: boolean
   onRevoke?: (tab: BrowserPublicTab & { reason: string }) => void
   onTrace?: (event: BrowserTraceEvent) => void
 }
 
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, onRevoke = () => {}, onTrace = () => {} }: BrowserBrokerOptions) {
+export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, autoGrant = false, onRevoke = () => {}, onTrace = () => {} }: BrowserBrokerOptions) {
   const tabs = new Map<string, BrowserTab>()
   let disposed = false
   const same = (left?: BrowserScope | null, right?: BrowserScope | null) => left?.sessionId === right?.sessionId && left?.workspace === right?.workspace && left?.profile === right?.profile
@@ -135,7 +143,7 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       if (tabs.size >= 32) throw fail('BROWSER_LIMIT', 'Close a browser tab before opening another.')
       const tab: BrowserTab = { id: randomUUID(), capability: randomUUID() + randomUUID(), clientTabId, binding: { ...current, profile }, epoch: 0, revision: 0, visible: false, granted: false, title: '', url: '', runId: null, ownerToken: null, ownerClaimed: false, pending: null, lastSeen: now(), status: 'manual' }
       tabs.set(tab.id, tab)
-      return { ...publicTab(tab), capability: tab.capability, workspace: tab.binding.workspace }
+      return { ...publicTab(tab), capability: tab.capability, workspace: tab.binding.workspace, autoGrant }
     },
     async list(binding: BrowserScope, { ownerToken = null, assertCurrent }: { ownerToken?: symbol | null, assertCurrent?: () => void } = {}) {
       const result: BrowserPublicTab[] = []
