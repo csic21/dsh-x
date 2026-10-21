@@ -30,7 +30,7 @@ export interface BrowserGuestDocument { createElement?(tag: string): unknown }
 /** Host element the guest mounts into; the position probes stay optional for detached hosts. */
 export interface BrowserGuestHost { isConnected?: boolean, getBoundingClientRect?(): { width: number, height: number }, append?(element: unknown): void }
 /** Renderer-side dependencies of one owned guest. */
-export interface BrowserGuestOptions { desktop?: BrowserDesktop | null, workspace: string, host: BrowserGuestHost, applicationOrigin?: string, onChange?: (state: BrowserGuestView) => void, onInvalidate?: (reason: string, navigation: boolean) => void, onOpen?: (url: string) => void, documentObject?: BrowserGuestDocument }
+export interface BrowserGuestOptions { desktop?: BrowserDesktop | null, workspace: string, host: BrowserGuestHost, applicationOrigin?: string, onChange?: (state: BrowserGuestView) => void, onInvalidate?: (reason: string, navigation: boolean) => void, onOpen?: (url: string) => void, documentObject?: BrowserGuestDocument, allowHidden?: boolean }
 /** One owned visible guest lease. */
 export interface BrowserGuest {
   start(): Promise<void>
@@ -44,7 +44,7 @@ export interface BrowserGuest {
 }
 
 /** Own exactly one lease and one visible Electron guest. No iframe or external-browser fallback. */
-export function createGuest({ desktop, workspace, host, applicationOrigin, onChange = () => {}, onInvalidate = () => {}, onOpen = () => {}, documentObject = document }: BrowserGuestOptions): BrowserGuest {
+export function createGuest({ desktop, workspace, host, applicationOrigin, onChange = () => {}, onInvalidate = () => {}, onOpen = () => {}, documentObject = document, allowHidden = false }: BrowserGuestOptions): BrowserGuest {
   let element!: BrowserGuestElement
   let reservation: BrowserLease | undefined
   let released = false, ready = false, disposed = false, epoch = 0, snapshot = 0, active = false, grantRevision = 0
@@ -58,7 +58,7 @@ export function createGuest({ desktop, workspace, host, applicationOrigin, onCha
   const listen = (name: string, fn: (event: BrowserGuestEvent) => void) => { element.addEventListener(name, fn); listeners.push([name, fn]) }
   const check = (command?: BrowserCommandEnvelope) => {
     if (disposed || !ready || !element) throw fail('BROWSER_UNAVAILABLE', 'The embedded desktop guest is not ready.')
-    if (command && (host.isConnected === false || typeof host.getBoundingClientRect === 'function' && (host.getBoundingClientRect().width <= 0 || host.getBoundingClientRect().height <= 0))) throw fail('BROWSER_HIDDEN', 'The owned browser viewport is not visible.')
+    if (command && !allowHidden && (host.isConnected === false || typeof host.getBoundingClientRect === 'function' && (host.getBoundingClientRect().width <= 0 || host.getBoundingClientRect().height <= 0))) throw fail('BROWSER_HIDDEN', 'The owned browser viewport is not visible.')
     if (command && (!active || command.grantRevision !== grantRevision || command.epoch !== epoch)) throw fail('BROWSER_STALE', 'Browser control or document changed.')
   }
   async function release() {
@@ -74,7 +74,7 @@ export function createGuest({ desktop, workspace, host, applicationOrigin, onCha
     element = documentObject.createElement!('webview') as BrowserGuestElement
     element.className = 'dxb-webview'; element.dataset.testid = 'dxb-guest'
     element.setAttribute('name', reservation.lease); element.setAttribute('partition', reservation.partition)
-    element.setAttribute('allowpopups', ''); element.setAttribute('src', `about:blank#${reservation.lease}`)
+    element.setAttribute('allowpopups', ''); element.setAttribute('webpreferences', 'backgroundThrottling=no'); element.setAttribute('src', `about:blank#${reservation.lease}`)
     openDisposer = desktop.browser.onOpenRequested(reservation.lease, url => { try { onOpen(parseAddress(url, applicationOrigin)) } catch {} })
     listen('did-start-navigation', event => {
       if (event.isMainFrame === false) return

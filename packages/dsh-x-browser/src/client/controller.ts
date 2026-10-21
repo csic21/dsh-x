@@ -239,7 +239,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
         if (desktop?.protocolVersion !== 1 || !desktop.browser) throw fail('BROWSER_DESKTOP', 'A compatible DSH Desktop shell is required. Web preview does not provide an embedded browser.')
         registration = await call<BrowserRegistration>('register', { sessionId, clientTabId })
         if (disposed) { await call('close', auth()).catch(() => {}); return }
-        guest = guestFactory({ desktop, workspace: registration.workspace, host: host!, applicationOrigin, documentObject,
+        guest = guestFactory({ desktop, workspace: registration.workspace, host: host!, applicationOrigin, documentObject, allowHidden: registration.background === true,
           onOpen, onChange: next => {
             publish(next)
             // The pane may be visible before the guest finishes mounting, so both

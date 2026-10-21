@@ -245,7 +245,7 @@ function helperScript(request) {
 function createGuest({ desktop, workspace, host, applicationOrigin, onChange = () => {
 }, onInvalidate = () => {
 }, onOpen = () => {
-}, documentObject = document }) {
+}, documentObject = document, allowHidden = false }) {
   let element;
   let reservation;
   let released = false, ready = false, disposed = false, epoch = 0, snapshot = 0, active = false, grantRevision = 0;
@@ -271,7 +271,7 @@ function createGuest({ desktop, workspace, host, applicationOrigin, onChange = (
   };
   const check = (command) => {
     if (disposed || !ready || !element) throw fail("BROWSER_UNAVAILABLE", "The embedded desktop guest is not ready.");
-    if (command && (host.isConnected === false || typeof host.getBoundingClientRect === "function" && (host.getBoundingClientRect().width <= 0 || host.getBoundingClientRect().height <= 0))) throw fail("BROWSER_HIDDEN", "The owned browser viewport is not visible.");
+    if (command && !allowHidden && (host.isConnected === false || typeof host.getBoundingClientRect === "function" && (host.getBoundingClientRect().width <= 0 || host.getBoundingClientRect().height <= 0))) throw fail("BROWSER_HIDDEN", "The owned browser viewport is not visible.");
     if (command && (!active || command.grantRevision !== grantRevision || command.epoch !== epoch)) throw fail("BROWSER_STALE", "Browser control or document changed.");
   };
   async function release() {
@@ -293,6 +293,7 @@ function createGuest({ desktop, workspace, host, applicationOrigin, onChange = (
     element.setAttribute("name", reservation.lease);
     element.setAttribute("partition", reservation.partition);
     element.setAttribute("allowpopups", "");
+    element.setAttribute("webpreferences", "backgroundThrottling=no");
     element.setAttribute("src", `about:blank#${reservation.lease}`);
     openDisposer = desktop.browser.onOpenRequested(reservation.lease, (url) => {
       try {
@@ -669,6 +670,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
           host,
           applicationOrigin,
           documentObject,
+          allowHidden: registration.background === true,
           onOpen,
           onChange: (next) => {
             publish(next);
