@@ -516,6 +516,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
       return;
     }
     const ownGeneration = generation;
+    let inputAdmitted = false;
     running = command;
     publish({ busy: true, status: "running" });
     try {
@@ -523,6 +524,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
         if (disposed || ownGeneration !== generation) throw fail("BROWSER_REVOKED", "Browser control ended before input dispatch.");
         const confirmation = await call("confirm", { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: guest.state().epoch });
         if (!confirmation.allowed || disposed || ownGeneration !== generation) throw fail("BROWSER_REVOKED", "Browser input authority expired.");
+        inputAdmitted = true;
       } });
       if (disposed || ownGeneration !== generation) return;
       await call("ack", { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: outcome.epoch, result: outcome.result });
@@ -534,8 +536,11 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
           await call("ack", { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: guest.state().epoch, error: String(failure.message ?? error).slice(0, 300) });
         } catch {
         }
-        await takeover("stopped");
-        publish({ error: String(failure.message ?? "Browser operation stopped.").slice(0, 300) });
+        if (!inputAdmitted) publish({ error: String(failure.message ?? "The browser refused the command.").slice(0, 300), status: "ready" });
+        else {
+          await takeover("stopped");
+          publish({ error: String(failure.message ?? "Browser operation stopped.").slice(0, 300) });
+        }
       }
     } finally {
       if (running === command) {
@@ -617,7 +622,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
     }
   }
   const autoGrant = () => {
-    if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return;
+    if (disposed || granting || state.granted || !guest?.state().ready || !visible || documentObject?.hidden) return;
     void grantNow();
   };
   return {

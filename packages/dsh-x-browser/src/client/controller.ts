@@ -101,23 +101,32 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
   async function execute(command: BrowserCommandEnvelope) {
     if (running || !state.granted || !visible || documentObject?.hidden) { await takeover('manual'); return }
     const ownGeneration = generation
+    // `beforeInput` runs immediately before every native event, so this flag is the
+    // exact boundary between "the page rejected the command" and "input may already
+    // have reached the page". Only the latter is an uncertain mutation.
+    let inputAdmitted = false
     running = command; publish({ busy: true, status: 'running' })
     try {
       const outcome = await guest!.perform(command, { beforeInput: async () => {
         if (disposed || ownGeneration !== generation) throw fail('BROWSER_REVOKED', 'Browser control ended before input dispatch.')
         const confirmation = await call<BrowserConfirmation>('confirm', { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: guest!.state().epoch })
         if (!confirmation.allowed || disposed || ownGeneration !== generation) throw fail('BROWSER_REVOKED', 'Browser input authority expired.')
+        inputAdmitted = true
       } })
       if (disposed || ownGeneration !== generation) return
       await call('ack', { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: outcome.epoch, result: outcome.result })
       if (!disposed && ownGeneration === generation) publish({ status: 'ready' })
     } catch (error) {
       if (!disposed && ownGeneration === generation) {
-        const failure = error as { message?: unknown }
+        const failure = error as { message?: unknown, code?: unknown }
         // A failed acknowledgement is an uncertain mutation, not permission to replay.
         try { await call('ack', { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: guest!.state().epoch, error: String(failure.message ?? error).slice(0, 300) }) } catch {}
-        await takeover('stopped')
-        publish({ error: String(failure.message ?? 'Browser operation stopped.').slice(0, 300) })
+        // Nothing reached the page when the command was refused before its first
+        // input event — a stale target reference, for example. Reporting it and
+        // keeping the grant lets an unattended loop observe again and continue,
+        // instead of losing the tab to a typo in one reference.
+        if (!inputAdmitted) publish({ error: String(failure.message ?? 'The browser refused the command.').slice(0, 300), status: 'ready' })
+        else { await takeover('stopped'); publish({ error: String(failure.message ?? 'Browser operation stopped.').slice(0, 300) }) }
       }
     } finally { if (running === command) { running = null; publish({ busy: false }) } }
   }
@@ -168,7 +177,13 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
    * instead of hammering the broker. Any later revocation keeps the tab under
    * manual control, because nothing calls this again.
    */
-  const autoGrant = () => { if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return; void grantNow() }
+  const autoGrant = () => {
+    // Never restart the flow for a tab that already holds a grant: grantNow revokes
+    // first, so a redundant call would briefly revoke a healthy grant and reject any
+    // action that arrived in that window.
+    if (disposed || granting || state.granted || !guest?.state().ready || !visible || documentObject?.hidden) return
+    void grantNow()
+  }
   return {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },

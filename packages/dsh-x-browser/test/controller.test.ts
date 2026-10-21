@@ -147,3 +147,29 @@ test('autoGrant retries once when the guest becomes ready after the pane was alr
   assert.equal(f.serverGranted(), true)
   assert.equal(f.controller.getSnapshot().granted, true)
 })
+
+test('a command refused before any input keeps the grant, so an unattended loop can observe again', async t => {
+  const f = fixture({ perform: async () => { throw Object.assign(new Error('Observe the page again and choose an allowed target.'), { code: 'BROWSER_TARGET' }) } })
+  t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick(); await f.controller.grant()
+  f.setCommand({ id: 'stale', action: 'click', target: 'e1:s1:n9', epoch: 1, grantRevision: f.controller.getSnapshot().grantRevision })
+  for (let i = 0; i < 200 && !f.controller.getSnapshot().error; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  assert.equal(f.controller.getSnapshot().granted, true)
+  assert.equal(f.serverGranted(), true)
+  assert.match(String(f.controller.getSnapshot().error), /allowed target/)
+})
+
+test('autoGrant never restarts a grant that is already live', async t => {
+  const f = fixture({ register: true }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick()
+  for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  const grants = f.calls.filter(call => call.name === 'browser/grant').length
+  assert.equal(grants, 1)
+  // Re-asserting visibility while the grant is healthy must not revoke-and-redo it.
+  const revokes = f.calls.filter(call => call.name === 'browser/revoke').length
+  f.controller.setVisible(true); await tick(); await tick()
+  assert.equal(f.calls.filter(call => call.name === 'browser/grant').length, 1)
+  // `grantNow` revokes once as its own first step; re-asserting visibility must add nothing.
+  assert.equal(f.calls.filter(call => call.name === 'browser/revoke').length, revokes)
+  assert.equal(f.serverGranted(), true)
+})
