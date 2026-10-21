@@ -217,3 +217,36 @@ test('automatic tab opening is off unless configured and never accepts a non-HTT
   await assert.rejects(broker.requestOpen({ sessionId: scope.sessionId, url: 'https://example.test/' }), { code: 'BROWSER_DISABLED' })
   assert.equal(broker.takeOpen({ sessionId: scope.sessionId }).url, null)
 })
+
+test('an undelivered command is rebound to the new document instead of being abandoned', async t => {
+  const s = { profile: 'p', sessionId: 's', workspace: '/w' }
+  const broker = createBrowserBroker({ profile: s.profile, stickyGrants: true, turnOf: () => ({ runId: 'r', turn: 1 }), contextOf: async id => ({ ...s, sessionId: id }) })
+  t.after(() => broker.dispose())
+  const tab = await broker.register({ sessionId: s.sessionId, clientTabId: 'ui' }), auth = { tabId: tab.tabId, capability: tab.capability }
+  await broker.sync({ ...auth, epoch: 1, visible: true })
+  const grant = await broker.grant({ ...auth, epoch: 1, grantRevision: 0 })
+  const pending = broker.execute(s, { tabId: tab.tabId, epoch: 1, grantRevision: grant.grantRevision, command: { action: 'click', target: 'e1:s1:n0' } }, { runId: 'r', turnNumber: 1 })
+  await new Promise<any>(resolve => setImmediate(resolve))
+  // The page navigates before the renderer ever polls for this command.
+  await broker.sync({ ...auth, epoch: 2, visible: true })
+  const delivery = await broker.poll(auth)
+  assert.equal(delivery.command?.action, 'click')
+  assert.equal(delivery.command?.epoch, 2)
+  await broker.acknowledge({ ...auth, commandId: delivery.command!.id, epoch: 2, grantRevision: grant.grantRevision, result: { status: 'input-sent' } })
+  assert.equal((await pending).epoch, 2)
+})
+
+test('a delivered command still stops when the document changes under it', async t => {
+  const s = { profile: 'p2', sessionId: 's2', workspace: '/w2' }
+  const broker = createBrowserBroker({ profile: s.profile, stickyGrants: true, turnOf: () => ({ runId: 'r', turn: 1 }), contextOf: async id => ({ ...s, sessionId: id }) })
+  t.after(() => broker.dispose())
+  const tab = await broker.register({ sessionId: s.sessionId, clientTabId: 'ui' }), auth = { tabId: tab.tabId, capability: tab.capability }
+  await broker.sync({ ...auth, epoch: 1, visible: true })
+  const grant = await broker.grant({ ...auth, epoch: 1, grantRevision: 0 })
+  const pending = broker.execute(s, { tabId: tab.tabId, epoch: 1, grantRevision: grant.grantRevision, command: { action: 'click', target: 'e1:s1:n0' } }, { runId: 'r', turnNumber: 1 })
+  const rejected = assert.rejects(pending, { code: 'BROWSER_STALE' })
+  await new Promise<any>(resolve => setImmediate(resolve))
+  await broker.poll(auth) // delivered
+  await broker.sync({ ...auth, epoch: 2, visible: true })
+  await rejected
+})

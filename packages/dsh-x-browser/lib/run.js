@@ -233,7 +233,7 @@ export async function runSequence(request) {
             log.push({ step: position, action: step.action, ok: false, note: String(failure.message ?? 'failed').slice(0, 300) });
             const stopped = { tabId: tab.tabId, epoch: tab.epoch, grantRevision: tab.grantRevision, untrustedPageContent: true, steps: log, observation };
             const code = typeof failure.code === 'string' ? failure.code : 'BROWSER_GUEST';
-            const wrapped = fail(code, `Run stopped at step ${position} (${step.action}): ${String(failure.message ?? 'failed').slice(0, 300)}`);
+            const wrapped = fail(code, `Run stopped at step ${position} (${step.action}) [${typeof failure.code === 'string' ? failure.code : 'BROWSER_GUEST'}]: ${String(failure.message ?? 'failed').slice(0, 300)}`);
             if (code === 'BROWSER_STALE' || code === 'BROWSER_UNSENT' || code === 'BROWSER_TARGET' || code === 'BROWSER_INPUT' || code === 'BROWSER_HIDDEN' || code === 'BROWSER_GRANT' || code === 'BROWSER_RUN')
                 wrapped.details = stopped;
             throw wrapped;

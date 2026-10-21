@@ -171,15 +171,18 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       const tab = authenticate(args)
       await verify(tab)
       if (!Number.isSafeInteger(args.epoch) || args.epoch < tab.epoch || typeof args.visible !== 'boolean') throw fail('BROWSER_STALE', 'Stale browser state.')
-      // A sticky grant follows this tab into a new document; the pending command that
-      // targeted the old document is abandoned rather than revoked. The per-turn
-      // default keeps the original behavior: any document change ends the grant.
+      // A document change while a command is queued has two very different meanings.
+      //
+      // The command was never delivered: the page simply finished a redirect or a load
+      // before the renderer picked it up. Rebinding it to the new document is exactly
+      // what the caller meant, and the renderer still validates every target itself.
+      //
+      // The command was already delivered: its input may have reached the old document,
+      // which is uncertain, so it is abandoned and never replayed.
       if (args.epoch !== tab.epoch && tab.pending && !NAVIGATION.has(tab.pending.command.action)) {
-        // `delivered` is the exact boundary: a command the renderer never received can
-        // be retried safely, while one it may already have typed into must not be.
         if (!stickyGrants) revoke(tab, 'document-changed')
         else if (tab.pending.delivered) stop(tab, 'document-changed', 'BROWSER_STALE', 'The page changed after the command was delivered. Observe again; do not replay it.')
-        else stop(tab, 'document-changed', 'BROWSER_UNSENT', 'The page changed before the queued command ran. Observe again.')
+        else { tab.pending.epoch = args.epoch; trace('rebase', tab, 'document-changed') }
       }
       tab.epoch = args.epoch; tab.visible = args.visible
       tab.title = typeof args.title === 'string' ? args.title.slice(0, 200) : ''
