@@ -16,8 +16,9 @@ function approvalOf(services) {
  * while the CDP backend treats the explicit `backend: 'cdp'` config as consent and still
  * requires one official approval per action. See docs/dev/browser-cdp.md.
  */
-export function createAuthority(services) {
+export function createAuthority(services, options = {}) {
     const profile = realpathSync(services.profileContext.dir);
+    const mode = options.approval === 'auto' ? 'auto' : 'ask';
     const contextOf = async (sessionId, exec) => {
         identifier(sessionId, 'session');
         const session = exec?.agent?.session ?? sessionsOf(services)?.get(sessionId);
@@ -56,8 +57,18 @@ export function createAuthority(services) {
             },
         };
     }
-    /** Every non-observe action needs one explicit official approval; no backend may skip it. */
+    /**
+     * Every non-observe action needs one explicit decision; no backend may skip it.
+     *
+     * Under `ask` that decision is the official approval and the action fails closed
+     * when no answerer exists. Under `auto` this plugin is the answerer for its own
+     * tools, which is the whole point of that opt-in: an unattended run must not wait
+     * for a human. `auto` never widens anything else — the tab still has to be
+     * visible and explicitly granted, and Take over still revokes it.
+     */
     async function approve(exec, reason) {
+        if (mode === 'auto')
+            return;
         const approval = approvalOf(services);
         if (!approval)
             throw fail('BROWSER_APPROVAL', 'Official approval is unavailable; the browser action was not sent.');

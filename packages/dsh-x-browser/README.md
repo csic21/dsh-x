@@ -19,6 +19,28 @@ Open AI Browser from the conversation dock or sidebar guide. Enter an HTTP(S) ad
 
 The grant is bound to the currently open DSH turn, or exactly the next turn when enabled while idle. A nested owner, when present, claims the grant for its one genuine parent execution; another run cannot reuse or inspect it. Ending that run revokes the grant, even after its last browser action has settled. Every non-observation tool action separately requests official approval. **Take over / Stop AI** revokes local command authority immediately; manual interaction is then yours. It stops browser automation rather than cancelling unrelated conversation work. Already-sent website input cannot be undone.
 
+## Unattended mode (opt-in)
+
+By default one grant covers one turn and every action waits for a human. That makes a verification loop impossible to leave running, so a profile can opt in to unattended operation:
+
+```yaml
+- id: dsh-x-browser
+  config:
+    approval: auto          # this plugin answers its own browser approvals
+    persistentGrant: true   # one explicit tab grant survives later turns
+```
+
+Both are off by default, and each is independent. `approval: 'auto'` skips only the per-action prompt for this plugin's own tools — it is this plugin, not the official approver, that answers, so it never widens any other tool. `persistentGrant: true` keeps the grant on the tab instead of the turn: it survives later turns and in-tab navigation, and a command whose owning turn ended is abandoned rather than revoking the tab.
+
+The boundaries that remain under both flags:
+
+- The user still enables the tab once in the sidebar. The model cannot grant itself anything, and Take over still revokes instantly.
+- The tab must stay visible. Hiding, closing, switching workspace, renderer disconnection and a heartbeat timeout all revoke.
+- Credential filters are unchanged: passwords, payment details, verification codes and bank fields never reach the model, and CAPTCHA, security warnings, permissions and unsupported frames still require the human.
+- A page that navigates during a pending grant still cannot authorize the replacement document; the observation is re-required.
+
+Unattended mode means the model can submit forms while nobody watches. Enable it only in a profile where that risk is acceptable.
+
 ## Deliberately bounded protocol
 
 Actions: `observe`, `navigate`, `click`, `type`, `scroll`, `press`, `back`, `forward`, `reload`. No model-supplied JavaScript, CSS selector, CDP command, raw IPC, debug endpoint or process command is accepted. A reviewed fixed helper reads top-frame visible text and bounded target descriptions; native input is sent to the same owned guest.

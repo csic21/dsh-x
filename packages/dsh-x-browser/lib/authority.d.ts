@@ -34,6 +34,17 @@ export interface AuthorityServices {
     };
     get(name: string): unknown;
 }
+/**
+ * How one browser action reaches the user.
+ *
+ * - `ask` (default): every non-observe action waits for one official approval and
+ *   fails closed when no answerer exists.
+ * - `auto`: this plugin itself answers its own browser approvals, so an unattended
+ *   run keeps working after the user granted the tab once. The tab grant, the
+ *   visible-tab requirement, the credential filters and Take over all still apply;
+ *   only the per-action prompt is skipped.
+ */
+export type BrowserApprovalMode = 'ask' | 'auto';
 /** One live owning run handed to the backend for a single dispatch. */
 export interface ExecutionTurn {
     signal: AbortSignal;
@@ -48,7 +59,9 @@ export interface ExecutionTurn {
  * while the CDP backend treats the explicit `backend: 'cdp'` config as consent and still
  * requires one official approval per action. See docs/dev/browser-cdp.md.
  */
-export declare function createAuthority(services: AuthorityServices): {
+export declare function createAuthority(services: AuthorityServices, options?: {
+    approval?: BrowserApprovalMode;
+}): {
     profile: string;
     contextOf: (sessionId: string, exec?: ToolRunContext) => Promise<BrowserScope>;
     turnOf: (sessionId: string) => BrowserTurn | null;

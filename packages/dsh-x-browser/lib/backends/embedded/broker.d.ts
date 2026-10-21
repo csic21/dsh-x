@@ -91,13 +91,20 @@ type BrowserBrokerOptions = {
     now?: () => number;
     timeoutMs?: number;
     heartbeatMs?: number;
+    /**
+     * Unattended profile policy. When true, one explicit UI grant keeps working for
+     * this tab across turns and across in-tab navigation instead of expiring at the
+     * end of the authorizing turn. Take over, hide, close, workspace change and
+     * renderer disconnection still revoke it. Defaults to false (per-turn grant).
+     */
+    stickyGrants?: boolean;
     onRevoke?: (tab: BrowserPublicTab & {
         reason: string;
     }) => void;
     onTrace?: (event: BrowserTraceEvent) => void;
 };
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, onRevoke, onTrace }: BrowserBrokerOptions): {
+export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, stickyGrants, onRevoke, onTrace }: BrowserBrokerOptions): {
     register({ sessionId, clientTabId }: {
         sessionId: string;
         clientTabId: string;

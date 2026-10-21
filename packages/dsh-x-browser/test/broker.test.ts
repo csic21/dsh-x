@@ -155,3 +155,43 @@ test('grant made during a finishing setup turn cannot silently authorize the fol
   await f.broker.grant({ ...f.auth, epoch: 1, grantRevision: stopped.grantRevision })
   assert.equal((await f.broker.list(scope)).tabs[0].granted, true)
 })
+
+test('sticky grants survive a turn boundary and an unrelated document change, while every other stop still revokes', async t => {
+  const scope = { profile: 'profile-s', sessionId: 'session-s', workspace: '/work/s' }
+  let turn = { runId: 'run-1', turn: 1 }
+  const broker = createBrowserBroker({ profile: scope.profile, stickyGrants: true, turnOf: () => turn, contextOf: async id => ({ ...scope, sessionId: id }) })
+  t.after(() => broker.dispose())
+  const tab = await broker.register({ sessionId: scope.sessionId, clientTabId: 'ui-s' }), auth = { tabId: tab.tabId, capability: tab.capability }
+  await broker.sync({ ...auth, epoch: 1, visible: true, url: 'https://example.test/' })
+  const grant = await broker.grant({ ...auth, epoch: 1, grantRevision: 0 })
+  const dispatch = (command: unknown, owner = { runId: turn.runId!, turnNumber: turn.turn }) => broker.execute(scope, { tabId: tab.tabId, epoch: 1, grantRevision: grant.grantRevision, command }, owner)
+  const settle = async (promise: Promise<any>, epoch = 1) => {
+    await new Promise<any>(resolve => setImmediate(resolve))
+    const delivery = await broker.poll(auth)
+    await broker.acknowledge({ ...auth, commandId: delivery.command!.id, epoch, grantRevision: grant.grantRevision, result: { status: 'input-sent' } })
+    return await promise
+  }
+  // Turn 2 must not need another grant, and a new document must not revoke one either.
+  turn = { runId: 'run-2', turn: 2 }
+  assert.equal((await broker.list(scope)).tabs[0].granted, true)
+  await settle(dispatch({ action: 'scroll', x: 0, y: 10 }))
+  await broker.sync({ ...auth, epoch: 2, visible: true, url: 'https://example.test/next' })
+  assert.equal((await broker.list(scope)).tabs[0].granted, true)
+  // The user is still the authority: taking over ends the sticky grant immediately.
+  broker.revoke(auth)
+  await assert.rejects(dispatch({ action: 'scroll', x: 0, y: 10 }), { code: 'BROWSER_GRANT' })
+})
+
+test('sticky grants still abandon a command whose owning turn ended, without dropping the tab grant', async t => {
+  const scope = { profile: 'profile-n', sessionId: 'session-n', workspace: '/work/n' }
+  const broker = createBrowserBroker({ profile: scope.profile, stickyGrants: true, turnOf: () => ({ runId: 'run-a', turn: 1 }), contextOf: async id => ({ ...scope, sessionId: id }) })
+  t.after(() => broker.dispose())
+  const tab = await broker.register({ sessionId: scope.sessionId, clientTabId: 'ui-n' }), auth = { tabId: tab.tabId, capability: tab.capability }
+  await broker.sync({ ...auth, epoch: 1, visible: true })
+  const grant = await broker.grant({ ...auth, epoch: 1, grantRevision: 0 }), run = new AbortController()
+  const pending = broker.execute(scope, { tabId: tab.tabId, epoch: 1, grantRevision: grant.grantRevision, command: { action: 'scroll', x: 0, y: 5 } }, { runId: 'run-a', turnNumber: 1, signal: run.signal })
+  await new Promise<any>(resolve => setImmediate(resolve))
+  run.abort()
+  await assert.rejects(pending, { code: 'BROWSER_REVOKED' })
+  assert.equal((await broker.list(scope)).tabs[0].granted, false)
+})

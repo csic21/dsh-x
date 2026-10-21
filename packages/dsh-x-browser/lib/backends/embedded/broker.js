@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from '../../protocol.js';
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, onRevoke = () => { }, onTrace = () => { } }) {
+export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, onRevoke = () => { }, onTrace = () => { } }) {
     const tabs = new Map();
     let disposed = false;
     const same = (left, right) => left?.sessionId === right?.sessionId && left?.workspace === right?.workspace && left?.profile === right?.profile;
@@ -50,6 +50,18 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
         }
         catch { }
     }
+    /**
+     * Abandon the queued command without touching the grant.
+     *
+     * Only used under `stickyGrants`, where the grant belongs to the tab rather than
+     * to one turn: the authority that authorized this command is gone, but the tab
+     * still is. Every path that keeps this distinction also records a trace event, so
+     * a non-sticky profile can never reach it.
+     */
+    function stop(tab, reason, code, message) {
+        trace('stop', tab, reason);
+        settle(tab, fail(code, message));
+    }
     async function verify(tab, binding) {
         const current = await contextOf(tab.binding.sessionId);
         if (!same(tab.binding, { ...current, profile }) || binding && !same(tab.binding, binding)) {
@@ -64,7 +76,9 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
                 tab.observedTurn = turn?.turn;
                 tab.observedRunId = turn?.runId;
             }
-            if (!turn || turn.turn > tab.expectedTurn || turn.turn === tab.expectedTurn && (!turn.runId || tab.runId && turn.runId !== tab.runId)) {
+            // A sticky grant is bound to the tab, not to the turn that authorized it, so a
+            // turn boundary is not a revocation reason. Everything else still fails closed.
+            if (!stickyGrants && (!turn || turn.turn > tab.expectedTurn || turn.turn === tab.expectedTurn && (!turn.runId || tab.runId && turn.runId !== tab.runId))) {
                 trace('verify-failure', tab, 'turn-ended', turn);
                 revoke(tab, 'turn-ended');
                 throw fail('BROWSER_RUN', 'The browser grant is no longer bound to the current or next authorized turn.');
@@ -126,8 +140,12 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
             await verify(tab);
             if (!Number.isSafeInteger(args.epoch) || args.epoch < tab.epoch || typeof args.visible !== 'boolean')
                 throw fail('BROWSER_STALE', 'Stale browser state.');
-            if (args.epoch !== tab.epoch && tab.pending && !NAVIGATION.has(tab.pending.command.action))
-                revoke(tab, 'document-changed');
+            // A sticky grant follows this tab into a new document; the pending command that
+            // targeted the old document is abandoned rather than revoked. The per-turn
+            // default keeps the original behavior: any document change ends the grant.
+            if (args.epoch !== tab.epoch && tab.pending && !NAVIGATION.has(tab.pending.command.action)) {
+                stickyGrants ? stop(tab, 'document-changed', 'BROWSER_STALE', 'The page changed before the queued command ran. Observe again.') : revoke(tab, 'document-changed');
+            }
             tab.epoch = args.epoch;
             tab.visible = args.visible;
             tab.title = typeof args.title === 'string' ? args.title.slice(0, 200) : '';
@@ -176,6 +194,10 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
                     pending.signal?.throwIfAborted();
                 }
                 catch {
+                    if (stickyGrants) {
+                        stop(tab, 'run-ended', 'BROWSER_RUN', 'The owning turn ended before this command was delivered. Observe again in the current turn.');
+                        return { ...publicTab(tab), command: null };
+                    }
                     revoke(tab, 'run-ended');
                     return { ...publicTab(tab), command: null };
                 }
@@ -195,6 +217,10 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
                 pending.signal?.throwIfAborted();
             }
             catch {
+                if (stickyGrants) {
+                    stop(tab, 'run-ended', 'BROWSER_RUN', 'The owning turn ended before input dispatch.');
+                    throw fail('BROWSER_RUN', 'The owning turn ended before input dispatch.');
+                }
                 revoke(tab, 'run-ended');
                 throw fail('BROWSER_REVOKED', 'The owning run ended before input dispatch.');
             }
@@ -210,16 +236,30 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
                 pending.signal?.throwIfAborted();
             }
             catch {
+                if (stickyGrants) {
+                    stop(tab, 'run-ended', 'BROWSER_RUN', 'The owning turn ended before acknowledgement.');
+                    throw fail('BROWSER_RUN', 'The owning turn ended before acknowledgement.');
+                }
                 revoke(tab, 'run-ended');
                 throw fail('BROWSER_REVOKED', 'The owning run ended.');
             }
             const validEpoch = NAVIGATION.has(pending.command.action) ? args.epoch >= pending.epoch : args.epoch === pending.epoch;
             if (!Number.isSafeInteger(args.epoch) || !validEpoch || tab.epoch > args.epoch) {
+                if (stickyGrants) {
+                    stop(tab, 'document-changed', 'BROWSER_STALE', 'Browser document changed before acknowledgement. Observe again.');
+                    throw fail('BROWSER_STALE', 'Browser document changed before acknowledgement.');
+                }
                 revoke(tab, 'document-changed');
                 throw fail('BROWSER_STALE', 'Browser document changed before acknowledgement.');
             }
             tab.epoch = args.epoch;
             touch(tab);
+            // A settled command under a sticky grant must not keep claiming the tab, or a
+            // later turn would be refused ownership of a grant that is meant to persist.
+            if (stickyGrants) {
+                tab.ownerClaimed = false;
+                tab.ownerToken = null;
+            }
             if (args.error)
                 settle(tab, fail('BROWSER_GUEST', String(args.error).slice(0, 300)));
             else
@@ -239,7 +279,9 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
                 throw fail('BROWSER_STALE', 'Refresh browser state; this command refers to an old document or grant.');
             if (typeof runId !== 'string' || !runId || !Number.isSafeInteger(turnNumber))
                 throw fail('BROWSER_RUN', 'A live owning DSH turn is required.');
-            if (tab.expectedTurn !== turnNumber || tab.runId && tab.runId !== runId) {
+            // Sticky grants admit any live owning turn; the per-turn default keeps the
+            // original binding so a later turn cannot reuse an earlier turn's authority.
+            if (!stickyGrants && (tab.expectedTurn !== turnNumber || tab.runId && tab.runId !== runId)) {
                 revoke(tab, 'run-changed');
                 throw fail('BROWSER_RUN', 'This browser grant belongs to a different turn. Ask for a new grant.');
             }

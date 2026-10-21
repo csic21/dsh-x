@@ -15,7 +15,7 @@ async function harness(t: import('node:test').TestContext, options: Record<strin
   ctx.provide('profileContext', { dir }); ctx.provide('workingDirectory', { ensure: async () => dir, get: () => dir }); ctx.provide('sessions', { get: (id: any) => id === agent.session.id ? agent.session : undefined }); ctx.provide('sessionProjections', { stateOf: () => boundary })
   ctx.provide('connection', { fetch: { register: (route: any) => { routes.set(route.path, route); return () => {} } } })
   ctx.provide('approval', { request: async (request: any) => { approvals.push(request); return options.approve ? options.approve(request) : 'allowed-once' } })
-  await ctx.plugin(plugin)
+  await ctx.plugin(plugin, options.config ?? {})
   async function rpc(name: any, payload: any) {
     const response = await routes.get(`/api/browser/${name}`).fetch(new Request(`http://localhost/api/browser/${name}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'client-request', method: `browser/${name}`, rpcId: crypto.randomUUID(), payload }) }))
     const message = await response.json(); if (!message.result.ok) throw Object.assign(new Error(message.result.error.message), message.result.error); return message.result.value
@@ -115,5 +115,41 @@ test('closed native parent cannot fall back to direct DSH after the user grants 
     const stale = await h.ctx.tools.execute({ ...parent, name, arguments: args, signal, callId: crypto.randomUUID() as import('@deepseek-ai/dsh-llm').ToolCallId })
     assert.equal(stale.isError, true); assert.match((stale.content[0] as { text: string }).text, /no live Browser owner/)
   }
+  assert.equal((await h.rpc('poll', h.auth)).command, null)
+})
+
+test('unattended profile answers its own approvals and keeps one tab grant across turns', async t => {
+  const h = await harness(t, { config: { approval: 'auto', persistentGrant: true } })
+  const scroll = h.invoke('dsh_x_browser_action', { ...h.identity, action: 'scroll', x: 0, y: 120 }), sent = await h.delivery()
+  assert.equal(h.approvals.length, 0)
+  await h.rpc('ack', { ...h.auth, commandId: sent.id, epoch: 1, grantRevision: h.identity.grantRevision, result: { status: 'input-sent' } })
+  assert.equal((await scroll).isError, false)
+  // A new turn must not need another click on Allow AI: the tab grant survives it.
+  h.setBoundary({ openTurnStartSeq: 42, lastTurn: 2 })
+  const next = await h.invoke('dsh_x_browser_tabs')
+  assert.equal(next.isError, false, JSON.stringify(next)); assert.equal(next.value.tabs[0].granted, true)
+  const observe = h.invoke('dsh_x_browser_action', { ...h.identity, action: 'observe' }), command = await h.delivery()
+  await h.rpc('ack', { ...h.auth, commandId: command.id, epoch: 1, grantRevision: h.identity.grantRevision, result: { text: 'Second turn' } })
+  const result = await observe
+  assert.equal(result.isError, false, JSON.stringify(result)); assert.equal(result.value.result.text, 'Second turn')
+  assert.equal(h.approvals.length, 0)
+})
+
+test('default profile still asks for every non-observe action and still expires the grant at turn end', async t => {
+  const h = await harness(t)
+  const scroll = h.invoke('dsh_x_browser_action', { ...h.identity, action: 'scroll', x: 0, y: 10 }), sent = await h.delivery()
+  assert.equal(h.approvals.length, 1)
+  await h.rpc('ack', { ...h.auth, commandId: sent.id, epoch: 1, grantRevision: h.identity.grantRevision, result: { status: 'input-sent' } })
+  await scroll
+  h.setBoundary({ openTurnStartSeq: 7, lastTurn: 2 })
+  const expired = await h.invoke('dsh_x_browser_tabs')
+  assert.equal(expired.isError, false); assert.deepEqual(expired.value.tabs, [])
+})
+
+test('unattended profile still refuses a tab the user never granted', async t => {
+  const h = await harness(t, { config: { approval: 'auto', persistentGrant: true } })
+  await h.rpc('revoke', h.auth)
+  const denied = await h.invoke('dsh_x_browser_action', { ...h.identity, action: 'scroll', x: 0, y: 10 })
+  assert.equal(denied.isError, true); assert.equal(denied.error.info.code, 'BROWSER_GRANT')
   assert.equal((await h.rpc('poll', h.auth)).command, null)
 })

@@ -10,7 +10,7 @@ export const inject = ['tools', 'workingDirectory', 'profileContext', 'systemPro
 /** Composition root: authority + one backend + optional renderer routes + model-facing tools. */
 export function apply(ctx, config = {}) {
     const services = ctx;
-    const authority = createAuthority(services);
+    const authority = createAuthority(services, { approval: config.approval });
     let runtime;
     let ownership;
     if (config.backend === 'cdp') {
@@ -24,7 +24,7 @@ export function apply(ctx, config = {}) {
         runtime = cdpRuntime(backend, { allowedDomains: domains });
     }
     else {
-        const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, onTrace: event => ctx.emit('dsh-x-browser/trace', event) });
+        const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, onTrace: event => ctx.emit('dsh-x-browser/trace', event) });
         ownership = createBrowserOwnership({ onClose: token => broker.revokeOwner(token) });
         ctx.provide('dshXBrowserOwnership', { bind: ownership.bind });
         ctx.effect(() => () => { ownership.dispose(); broker.dispose(); }, 'browser: broker lifetime');
@@ -32,5 +32,5 @@ export function apply(ctx, config = {}) {
         runtime = embeddedRuntime(broker);
     }
     ctx.effect(() => () => { void runtime.dispose(); }, 'browser: runtime lifetime');
-    registerBrowserTools(ctx, { name, authority, runtime, ownership, systemPrompt: services.systemPrompt });
+    registerBrowserTools(ctx, { name, authority, runtime, ownership, approval: config.approval, persistentGrant: config.persistentGrant === true, systemPrompt: services.systemPrompt });
 }

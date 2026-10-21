@@ -22,6 +22,18 @@ export interface AuthorityServices {
   get(name: string): unknown
 }
 
+/**
+ * How one browser action reaches the user.
+ *
+ * - `ask` (default): every non-observe action waits for one official approval and
+ *   fails closed when no answerer exists.
+ * - `auto`: this plugin itself answers its own browser approvals, so an unattended
+ *   run keeps working after the user granted the tab once. The tab grant, the
+ *   visible-tab requirement, the credential filters and Take over all still apply;
+ *   only the per-action prompt is skipped.
+ */
+export type BrowserApprovalMode = 'ask' | 'auto'
+
 /** One live owning run handed to the backend for a single dispatch. */
 export interface ExecutionTurn {
   signal: AbortSignal
@@ -52,8 +64,9 @@ function approvalOf(services: AuthorityServices): BrowserApproval | undefined {
  * while the CDP backend treats the explicit `backend: 'cdp'` config as consent and still
  * requires one official approval per action. See docs/dev/browser-cdp.md.
  */
-export function createAuthority(services: AuthorityServices) {
+export function createAuthority(services: AuthorityServices, options: { approval?: BrowserApprovalMode } = {}) {
   const profile = realpathSync(services.profileContext.dir)
+  const mode: BrowserApprovalMode = options.approval === 'auto' ? 'auto' : 'ask'
 
   const contextOf = async (sessionId: string, exec?: ToolRunContext): Promise<BrowserScope> => {
     identifier(sessionId, 'session')
@@ -92,8 +105,17 @@ export function createAuthority(services: AuthorityServices) {
     }
   }
 
-  /** Every non-observe action needs one explicit official approval; no backend may skip it. */
+  /**
+   * Every non-observe action needs one explicit decision; no backend may skip it.
+   *
+   * Under `ask` that decision is the official approval and the action fails closed
+   * when no answerer exists. Under `auto` this plugin is the answerer for its own
+   * tools, which is the whole point of that opt-in: an unattended run must not wait
+   * for a human. `auto` never widens anything else — the tab still has to be
+   * visible and explicitly granted, and Take over still revokes it.
+   */
   async function approve(exec: ToolRunContext, reason: string): Promise<void> {
+    if (mode === 'auto') return
     const approval = approvalOf(services)
     if (!approval) throw fail('BROWSER_APPROVAL', 'Official approval is unavailable; the browser action was not sent.')
     const result = await approval.request({ agent: exec.agent, callId: exec.callId, toolName: exec.name, signal: exec.signal, reason })

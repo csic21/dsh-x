@@ -12,6 +12,19 @@ import { registerBrowserTools } from './tools.ts'
 /** Plugin config; `embedded` stays the default until a packaged CDP run is recorded. */
 export interface BrowserConfig {
   backend?: 'embedded' | 'cdp'
+  /**
+   * How browser actions reach the user. `ask` (default) keeps one official approval
+   * per non-observe action. `auto` lets an unattended run continue without those
+   * prompts: the explicit tab grant, the visible-tab requirement, the credential
+   * filters and Take over still bound what the model may do. See the README.
+   */
+  approval?: 'ask' | 'auto'
+  /**
+   * Keep one explicit tab grant across turns and in-tab navigation instead of
+   * expiring it at the end of the authorizing turn. Required for unattended work,
+   * where nobody is present to click Allow AI again on the next turn.
+   */
+  persistentGrant?: boolean
   cdp?: {
     /** CLI executable; defaults to `agent-browser` on PATH. */
     command?: string
@@ -35,7 +48,7 @@ export const inject = ['tools', 'workingDirectory', 'profileContext', 'systemPro
 /** Composition root: authority + one backend + optional renderer routes + model-facing tools. */
 export function apply(ctx: Context, config: BrowserConfig = {}) {
   const services = ctx as Context & HostServices
-  const authority = createAuthority(services)
+  const authority = createAuthority(services, { approval: config.approval })
   let runtime: BrowserRuntime
   let ownership: ReturnType<typeof createBrowserOwnership> | undefined
 
@@ -49,7 +62,7 @@ export function apply(ctx: Context, config: BrowserConfig = {}) {
     })
     runtime = cdpRuntime(backend, { allowedDomains: domains })
   } else {
-    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, onTrace: event => ctx.emit('dsh-x-browser/trace', event) })
+    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, onTrace: event => ctx.emit('dsh-x-browser/trace', event) })
     ownership = createBrowserOwnership({ onClose: token => broker.revokeOwner(token) })
     ctx.provide('dshXBrowserOwnership', { bind: ownership.bind })
     ctx.effect(() => () => { ownership!.dispose(); broker.dispose() }, 'browser: broker lifetime')
@@ -58,5 +71,5 @@ export function apply(ctx: Context, config: BrowserConfig = {}) {
   }
 
   ctx.effect(() => () => { void runtime.dispose() }, 'browser: runtime lifetime')
-  registerBrowserTools(ctx, { name, authority, runtime, ownership, systemPrompt: services.systemPrompt })
+  registerBrowserTools(ctx, { name, authority, runtime, ownership, approval: config.approval, persistentGrant: config.persistentGrant === true, systemPrompt: services.systemPrompt })
 }

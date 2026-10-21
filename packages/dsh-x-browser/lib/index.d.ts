@@ -2,6 +2,19 @@ import type { Context } from '@deepseek-ai/cordis';
 /** Plugin config; `embedded` stays the default until a packaged CDP run is recorded. */
 export interface BrowserConfig {
     backend?: 'embedded' | 'cdp';
+    /**
+     * How browser actions reach the user. `ask` (default) keeps one official approval
+     * per non-observe action. `auto` lets an unattended run continue without those
+     * prompts: the explicit tab grant, the visible-tab requirement, the credential
+     * filters and Take over still bound what the model may do. See the README.
+     */
+    approval?: 'ask' | 'auto';
+    /**
+     * Keep one explicit tab grant across turns and in-tab navigation instead of
+     * expiring it at the end of the authorizing turn. Required for unattended work,
+     * where nobody is present to click Allow AI again on the next turn.
+     */
+    persistentGrant?: boolean;
     cdp?: {
         /** CLI executable; defaults to `agent-browser` on PATH. */
         command?: string;
