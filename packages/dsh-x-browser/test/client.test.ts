@@ -31,7 +31,9 @@ test('compiled UI registers its own right-sidebar tab and shows honest web limit
     assert.equal(entries.has('main'), false)
     await act(async () => { root.render(React.createElement(Render)); await new Promise<any>(resolve => setTimeout(resolve, 0)) })
     assert.match(document.body.textContent, /Web preview cannot embed Chromium/)
-    assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('[data-testid="dxb-enable-ai"]')!.disabled, true)
+    // Web preview has no embedded browser at all, so the pane must not offer a
+    // control that could never work; the honest limitation text carries the message.
+    assert.equal(document.querySelector('[data-testid="dxb-enable-ai"]'), null)
     assert.equal(document.querySelectorAll('iframe,webview').length, 0)
     assert.equal(requests.length, 0)
     await act(async () => { await locale.setLocale('zh') })

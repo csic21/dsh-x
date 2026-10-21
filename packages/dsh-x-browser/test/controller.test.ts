@@ -111,12 +111,12 @@ test('autoGrant grants a ready visible tab without any click, exactly once', asy
   assert.equal(f.serverGranted(), true)
   assert.equal(f.controller.getSnapshot().granted, true)
   assert.equal(f.active(), true)
-  const grants = f.calls.filter(call => call.name === 'browser/grant').length
+  const grants = f.calls.filter((call: any) => call.name === 'browser/grant').length
   assert.equal(grants, 1)
   // A revocation must stay revoked: no background retry loop may re-grant it.
   await f.controller.takeover(); await tick(); await tick()
   assert.equal(f.serverGranted(), false)
-  assert.equal(f.calls.filter(call => call.name === 'browser/grant').length, grants)
+  assert.equal(f.calls.filter((call: any) => call.name === 'browser/grant').length, grants)
 })
 
 test('a tab without autoGrant stays manual until the user grants it', async t => {
@@ -163,12 +163,12 @@ test('autoGrant never restarts a grant that is already live', async t => {
   const f = fixture({ register: true }); t.after(() => f.controller.dispose())
   await f.controller.start(); await tick()
   for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
-  const grants = f.calls.filter(call => call.name === 'browser/grant').length
+  const grants = f.calls.filter((call: any) => call.name === 'browser/grant').length
   assert.equal(grants, 1)
   // Re-asserting visibility while the grant is healthy must not revoke-and-redo it.
   const revokes = f.calls.filter(call => call.name === 'browser/revoke').length
   f.controller.setVisible(true); await tick(); await tick()
-  assert.equal(f.calls.filter(call => call.name === 'browser/grant').length, 1)
+  assert.equal(f.calls.filter((call: any) => call.name === 'browser/grant').length, 1)
   // `grantNow` revokes once as its own first step; re-asserting visibility must add nothing.
   assert.equal(f.calls.filter(call => call.name === 'browser/revoke').length, revokes)
   assert.equal(f.serverGranted(), true)
@@ -178,12 +178,12 @@ test('an unattended profile renews the grant after a link navigates, without ask
   const f = fixture({ register: true }); t.after(() => f.controller.dispose())
   await f.controller.start(); await tick()
   for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
-  const before = f.calls.filter(call => call.name === 'browser/grant').length
+  const before = f.calls.filter((call: any) => call.name === 'browser/grant').length
   assert.equal(f.controller.getSnapshot().granted, true)
   // A click that navigates produces exactly this invalidation on the real guest.
   f.navigateWhilePending()
-  for (let i = 0; i < 200 && f.calls.filter(call => call.name === 'browser/grant').length === before; i++) await new Promise<any>(resolve => setTimeout(resolve, 2))
-  assert.equal(f.calls.filter(call => call.name === 'browser/grant').length, before + 1)
+  for (let i = 0; i < 200 && f.calls.filter((call: any) => call.name === 'browser/grant').length === before; i++) await new Promise<any>(resolve => setTimeout(resolve, 2))
+  assert.equal(f.calls.filter((call: any) => call.name === 'browser/grant').length, before + 1)
   assert.equal(f.serverGranted(), true)
   assert.equal(f.controller.getSnapshot().granted, true)
 })
@@ -256,10 +256,10 @@ test('an unattended tab recovers by itself after an ordinary stop, and gives up 
   await f.controller.start(); await tick()
   for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
   for (let round = 0; round < 6; round++) {
-    f.setCommand({ id: `cmd-${round}`, action: 'scroll', x: 0, y: 1, epoch: 1, grantRevision: f.calls.filter(c => c.name === 'browser/grant').length })
+    f.setCommand({ id: `cmd-${round}`, action: 'scroll', x: 0, y: 1, epoch: 1, grantRevision: f.calls.filter((c: any) => c.name === 'browser/grant').length })
     await new Promise<any>(resolve => setTimeout(resolve, 60))
   }
   // Recovery is bounded: the loop cannot spin forever on a guest that never succeeds.
   assert.ok(failures >= 1)
-  assert.ok(f.calls.filter(call => call.name === 'browser/grant').length <= 1 + 3, `grants=${f.calls.filter(call => call.name === 'browser/grant').length}`)
+  assert.ok(f.calls.filter((call: any) => call.name === 'browser/grant').length <= 1 + 3, `grants=${f.calls.filter((call: any) => call.name === 'browser/grant').length}`)
 })

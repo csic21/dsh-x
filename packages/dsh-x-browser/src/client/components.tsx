@@ -71,7 +71,9 @@ export function BrowserBody({ sessionId, useTabInfo, createController, t }: Brow
           // Unattended profile: the host grants this tab itself, so there is nothing
           // for the user to allow and the control would only ever be a dead end.
           ? <span className="dxb-auto" data-testid="dxb-auto">{t('autoPending')}</span>
-          : <button type="button" className="dxb-primary" data-testid="dxb-enable-ai" disabled={!state.ready || !tab.visible} onClick={() => setConsent(true)}>{t('enable')}</button>}
+          // Nothing to decide while the guest is still starting, so do not flash a
+          // control the user may not need at all.
+          : state.ready ? <button type="button" className="dxb-primary" data-testid="dxb-enable-ai" disabled={!tab.visible} onClick={() => setConsent(true)}>{t('enable')}</button> : null}
     </div>
     {consent && <section className="dxb-consent" role="dialog" aria-label={t('enable')}><p>{t('consent')}</p><div><button type="button" onClick={() => setConsent(false)}>{t('cancel')}</button><button type="button" className="dxb-primary" data-testid="dxb-confirm-ai" onClick={() => { setConsent(false); void controller.current?.grant() }}>{t('grant')}</button></div></section>}
     {state.error && <div className="dxb-error" role="alert"><p>{t(state.status === 'unavailable' ? 'desktopOnly' : 'error')}</p><details><summary>{t('details')}</summary><p>{state.error}</p></details></div>}
