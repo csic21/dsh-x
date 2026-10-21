@@ -69,7 +69,10 @@ export function apply(ctx: BrowserClientContext) {
           const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 8000)
           const reply = await ctx.connection.rpc.call('/api', 'browser/open', { sessionId }, abort.signal).finally(() => clearTimeout(timeout))
           const url = (reply?.ok ? (reply.value as { url?: unknown } | undefined)?.url : undefined)
-          if (!stopped && typeof url === 'string' && url) ctx.sidebarRight.openTab('dsh-x-browser', { params: { url }, revealIfOpened: false })
+          // Reveal an already-open pane instead of focusing it quietly: an invisible tab
+          // is revoked by design, so a model-initiated open must make it visible or the
+          // request can never succeed.
+          if (!stopped && typeof url === 'string' && url) ctx.sidebarRight.openTab('dsh-x-browser', { params: { url }, revealIfOpened: true })
         } catch { /* A closed connection is retried on the next tick. */ }
         finally { busy = false }
       }

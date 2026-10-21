@@ -983,7 +983,7 @@ function apply(ctx) {
           const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 8e3);
           const reply = await ctx.connection.rpc.call("/api", "browser/open", { sessionId }, abort.signal).finally(() => clearTimeout(timeout));
           const url = reply?.ok ? reply.value?.url : void 0;
-          if (!stopped && typeof url === "string" && url) ctx.sidebarRight.openTab("dsh-x-browser", { params: { url }, revealIfOpened: false });
+          if (!stopped && typeof url === "string" && url) ctx.sidebarRight.openTab("dsh-x-browser", { params: { url }, revealIfOpened: true });
         } catch {
         } finally {
           busy = false;
