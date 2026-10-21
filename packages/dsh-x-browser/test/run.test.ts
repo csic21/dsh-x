@@ -143,3 +143,31 @@ test('a locating observation refused before delivery is retried with the step', 
   assert.equal(probes, 2)
   assert.deepEqual(run.steps.map(step => step.ok), [true])
 })
+
+test('a click that lands but loses its acknowledgement to the navigation counts as success', async t => {
+  const f = fixture()
+  const base = f.runtime.execute.bind(f.runtime)
+  f.runtime.execute = async (scope, args, owner) => {
+    if (args.command.action === 'click') {
+      f.bumpEpoch()
+      throw Object.assign(new Error('The page changed after the command was delivered.'), { code: 'BROWSER_STALE' })
+    }
+    return base(scope, args, owner)
+  }
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+  ]), textLimit: 500, targetLimit: 5, finalObservation: true })
+  assert.deepEqual(run.steps.map(step => step.ok), [true])
+  assert.equal(run.steps[0].note, 'page changed')
+  assert.equal(run.epoch, 2)
+})
+
+test('a run waits through the brief window where a renewed grant reports not granted', async t => {
+  const f = fixture()
+  f.setGranted(false)
+  setTimeout(() => f.setGranted(true), 150)
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'observe' },
+  ]), textLimit: 200, targetLimit: 3, finalObservation: false })
+  assert.deepEqual(run.steps.map(step => step.ok), [true])
+})

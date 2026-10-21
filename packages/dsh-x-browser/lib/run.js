@@ -22,9 +22,25 @@ const CLICK_SETTLE_MS = 300;
 const SETTLE_POLL_MS = 60;
 const actionsNeedingTarget = new Set(['click', 'type']);
 /** Read the mutable state of the run's tab, or fail when it is gone. */
-async function currentTab(request) {
+async function readTab(request) {
     const list = await request.runtime.list(request.scope, { ownerToken: request.owner.ownerToken ?? null, assertCurrent: request.owner.assertCurrent, signal: request.owner.signal });
-    const tab = list.tabs.find(item => item.tabId === request.tabId);
+    return list.tabs.find(item => item.tabId === request.tabId);
+}
+/**
+ * Read the run's tab, tolerating the renewal window.
+ *
+ * A navigating click renews the grant a moment later under an unattended profile, so
+ * a read that lands inside that window sees `granted: false`. Waiting briefly turns a
+ * spurious failure into the ordinary case; a really revoked tab still fails.
+ */
+async function currentTab(request, patienceMs = 0) {
+    const deadline = Date.now() + patienceMs;
+    let tab = await readTab(request);
+    while (tab && !tab.granted && tab.visible && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 80));
+        request.owner.signal?.throwIfAborted();
+        tab = await readTab(request);
+    }
     if (!tab)
         throw fail('BROWSER_TARGET', 'The tab this run targets is gone. Open or refresh it, then start a new run.');
     if (!tab.visible)
@@ -91,7 +107,7 @@ async function settle(request, from, budgetMs) {
  */
 export async function runSequence(request) {
     const log = [];
-    let tab = await currentTab(request);
+    let tab = await currentTab(request, 1200);
     let observation = null;
     /** One retry per step is enough: `BROWSER_UNSENT` means the renderer never got it. */
     let retries = 0;
@@ -155,7 +171,7 @@ export async function runSequence(request) {
             }
             const result = outcome.result;
             observation = observationOf(result.result, request.textLimit, request.targetLimit) ?? observation;
-            tab = await currentTab(request);
+            tab = await currentTab(request, 1200);
             // Only actions that can replace the document are worth a settle wait; typing,
             // pressing and scrolling cannot, and waiting for them would slow the run down.
             const budget = step.action === 'navigate' || step.action === 'back' || step.action === 'forward' || step.action === 'reload'
@@ -167,6 +183,18 @@ export async function runSequence(request) {
         }
         catch (error) {
             const failure = error;
+            // A delivered click whose document changed did what it was asked to. The broker
+            // reports BROWSER_STALE because the acknowledgement raced the navigation, so
+            // confirm the document actually moved and treat it as the success it is.
+            if (step.action === 'click' && failure.code === 'BROWSER_STALE') {
+                const after = await readTab(request).catch(() => undefined);
+                if (after && after.epoch !== before.epoch) {
+                    tab = after;
+                    log.push({ step: position, action: step.action, ok: true, note: 'page changed' });
+                    observation = null;
+                    continue;
+                }
+            }
             log.push({ step: position, action: step.action, ok: false, note: String(failure.message ?? 'failed').slice(0, 300) });
             const stopped = { tabId: tab.tabId, epoch: tab.epoch, grantRevision: tab.grantRevision, untrustedPageContent: true, steps: log, observation };
             const code = typeof failure.code === 'string' ? failure.code : 'BROWSER_GUEST';
