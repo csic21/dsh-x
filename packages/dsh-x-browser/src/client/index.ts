@@ -48,7 +48,8 @@ export function apply(ctx: BrowserClientContext) {
   const t = ctx.locale.bind(NS), controllers = new Set<BrowserController>(), factories = new Map<string, (options: BrowserPaneControllerOptions) => BrowserController>()
   ctx.effect(() => { const style = document.createElement('style'); style.dataset.plugin = 'dsh-x-browser'; style.textContent = CSS; document.head.append(style); return () => style.remove() }, 'browser: styles')
   ctx.effect(() => ctx.sidebarRightTabs.register({ id: 'dsh-x-browser', kind: 'dsh-x-browser', multiple: true, keepMounted: true, title: () => t('title'), guide: [{ id: 'new', order: 35, title: () => t('title'), description: () => t('description'), icon: BrowserIcon }] }), 'browser: tab type')
-  const createController = (options: BrowserPaneControllerOptions) => { const owner = createBrowserController({ ...options, rpc: ctx.connection.rpc }); const dispose = owner.dispose; owner.dispose = async () => { controllers.delete(owner); await dispose() }; controllers.add(owner); return owner }
+  let paneSession: string | undefined
+  const createController = (options: BrowserPaneControllerOptions) => { paneSession = options.sessionId; const owner = createBrowserController({ ...options, rpc: ctx.connection.rpc }); const dispose = owner.dispose; owner.dispose = async () => { controllers.delete(owner); await dispose() }; controllers.add(owner); return owner }
   const factoryFor = (sessionId: string) => { if (!factories.has(sessionId)) factories.set(sessionId, options => createController({ ...options, sessionId })); return factories.get(sessionId)! }
   ctx.effect(() => () => { for (const owner of controllers) void owner.dispose(); controllers.clear(); factories.clear() }, 'browser: owned guests')
   ctx.on('connection/reset', () => { for (const owner of controllers) void owner.takeover('disconnected') })
@@ -62,7 +63,9 @@ export function apply(ctx: BrowserClientContext) {
     let stopped = false, timer: ReturnType<typeof setTimeout> | undefined, busy = false
     const tick = async () => {
       if (stopped || busy) return
-      const sessionId = ctx.sidebarRight.mounted?.getSnapshot?.() as string | undefined
+      // `mounted` is the on-screen Session; fall back to the pane's own last session so
+      // an unexpected shape in the host cannot silently disable model-initiated opens.
+      const sessionId = (ctx.sidebarRight.mounted?.getSnapshot?.() as string | undefined) ?? paneSession
       if (sessionId) {
         busy = true
         try {

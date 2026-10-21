@@ -947,7 +947,9 @@ function apply(ctx) {
     return () => style.remove();
   }, "browser: styles");
   ctx.effect(() => ctx.sidebarRightTabs.register({ id: "dsh-x-browser", kind: "dsh-x-browser", multiple: true, keepMounted: true, title: () => t("title"), guide: [{ id: "new", order: 35, title: () => t("title"), description: () => t("description"), icon: BrowserIcon }] }), "browser: tab type");
+  let paneSession;
   const createController = (options) => {
+    paneSession = options.sessionId;
     const owner = createBrowserController({ ...options, rpc: ctx.connection.rpc });
     const dispose = owner.dispose;
     owner.dispose = async () => {
@@ -976,7 +978,7 @@ function apply(ctx) {
     let stopped = false, timer, busy = false;
     const tick = async () => {
       if (stopped || busy) return;
-      const sessionId = ctx.sidebarRight.mounted?.getSnapshot?.();
+      const sessionId = ctx.sidebarRight.mounted?.getSnapshot?.() ?? paneSession;
       if (sessionId) {
         busy = true;
         try {
