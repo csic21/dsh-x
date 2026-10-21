@@ -466,6 +466,9 @@ function createGuest({ desktop, workspace, host, applicationOrigin, onChange = (
 // src/client/controller.ts
 function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, initialUrl, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }) {
   let registration, guest, disposed = false, visible = false, timer, pumping = false, granting = false, pumpWaiters = [], running = null, generation = 0, autoGrantTried = false;
+  let navigatedByCommand = false;
+  let autoRecoveries = 0;
+  const MAX_AUTO_RECOVERIES = 3;
   const listeners = /* @__PURE__ */ new Set(), requests = /* @__PURE__ */ new Set();
   let state = { status: "loading", granted: false, visible: false, epoch: 0, grantRevision: 0, ready: false, url: "", title: "", error: null, busy: false, tabId: null };
   const publish = (patch) => {
@@ -517,6 +520,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
     }
     const ownGeneration = generation;
     let inputAdmitted = false;
+    navigatedByCommand = false;
     running = command;
     publish({ busy: true, status: "running" });
     try {
@@ -528,7 +532,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
       } });
       if (disposed || ownGeneration !== generation) return;
       await call("ack", { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: outcome.epoch, result: outcome.result });
-      if (!disposed && ownGeneration === generation) publish({ status: "ready" });
+      if (!disposed && ownGeneration === generation) publish({ status: "ready", error: null });
     } catch (error) {
       if (!disposed && ownGeneration === generation) {
         const failure = error;
@@ -537,9 +541,11 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
         } catch {
         }
         if (!inputAdmitted) publish({ error: String(failure.message ?? "The browser refused the command.").slice(0, 300), status: "ready" });
+        else if (navigatedByCommand && registration?.autoGrant === true) publish({ status: "ready", error: null });
         else {
           await takeover("stopped");
           publish({ error: String(failure.message ?? "Browser operation stopped.").slice(0, 300) });
+          recoverUnattended();
         }
       }
     } finally {
@@ -576,6 +582,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
       if (!disposed && ownGeneration === generation) {
         await takeover(stopReason(error));
         publish({ error: errorDetail(error) });
+        recoverUnattended();
       }
     } finally {
       pumping = false;
@@ -590,6 +597,12 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
       if (disposed || !visible || documentObject?.hidden) return;
       void grantNow();
     }, 400);
+  }
+  function recoverUnattended() {
+    if (registration?.autoGrant !== true || autoRecoveries >= MAX_AUTO_RECOVERIES) return;
+    if (disposed || !visible || documentObject?.hidden) return;
+    autoRecoveries += 1;
+    scheduleRegrant();
   }
   const visibility = () => {
     if (documentObject?.hidden) void takeover("hidden");
@@ -614,6 +627,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
         return;
       }
       guest.grant(granted.grantRevision);
+      autoRecoveries = 0;
       publish({ granted: true, grantRevision: granted.grantRevision, status: "ready", error: null });
     } catch (error) {
       if (!disposed && ownGeneration === generation) {
@@ -663,14 +677,15 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
             }
           },
           onInvalidate: (reason, navigation) => {
-            if (navigation && registration?.autoGrant === true && state.granted) {
-              scheduleRegrant();
+            if (navigation && registration?.autoGrant === true) {
+              if (running) navigatedByCommand = true;
+              else if (state.granted) scheduleRegrant();
               return;
             }
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason);
           }
         });
-        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision });
+        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision, autoGrant: registration.autoGrant === true });
         await guest.start();
         if (disposed) return;
         if (initialUrl) await guest.navigate(initialUrl).catch(() => {
@@ -785,7 +800,7 @@ function BrowserBody({ sessionId, useTabInfo, createController, t }) {
   } }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxb-nav" }, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-icon-button", title: t("back"), "aria-label": t("back"), disabled: !state.ready || !state.canGoBack, onClick: () => controller.current?.manual("back") }, "\u2039"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-icon-button", title: t("forward"), "aria-label": t("forward"), disabled: !state.ready || !state.canGoForward, onClick: () => controller.current?.manual("forward") }, "\u203A"), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-icon-button", title: t(state.loading ? "stop" : "reload"), "aria-label": t(state.loading ? "stop" : "reload"), disabled: !state.ready, onClick: () => controller.current?.manual(state.loading ? "stop" : "reload") }, state.loading ? "\xD7" : "\u21BB")), /* @__PURE__ */ import_react.default.createElement("input", { "data-testid": "dxb-address", "aria-label": t("address"), placeholder: "https://", value: address, onChange: (event) => setAddress(event.target.value), spellCheck: false }), /* @__PURE__ */ import_react.default.createElement("button", { "data-testid": "dxb-go", type: "submit", disabled: !state.ready || !address.trim() }, t("go")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-icon-button", title: t("newTab"), "aria-label": t("newTab"), onClick: () => tab.actions.openTab("dsh-x-browser", { revealIfOpened: false }) }, "\uFF0B")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxb-control", "data-active": state.granted || void 0 }, /* @__PURE__ */ import_react.default.createElement("span", { role: "status", "data-testid": "dxb-status", className: "dxb-status" }, /* @__PURE__ */ import_react.default.createElement("span", { className: "dxb-dot" }), t(status)), state.granted ? /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-takeover", "data-testid": "dxb-takeover", onClick: () => {
     setConsent(false);
     void controller.current?.takeover();
-  } }, t("takeover")) : /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-primary", "data-testid": "dxb-enable-ai", disabled: !state.ready || !tab.visible, onClick: () => setConsent(true) }, t("enable"))), consent && /* @__PURE__ */ import_react.default.createElement("section", { className: "dxb-consent", role: "dialog", "aria-label": t("enable") }, /* @__PURE__ */ import_react.default.createElement("p", null, t("consent")), /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setConsent(false) }, t("cancel")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-primary", "data-testid": "dxb-confirm-ai", onClick: () => {
+  } }, t("takeover")) : state.autoGrant ? /* @__PURE__ */ import_react.default.createElement("span", { className: "dxb-auto", "data-testid": "dxb-auto" }, t("autoPending")) : /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-primary", "data-testid": "dxb-enable-ai", disabled: !state.ready || !tab.visible, onClick: () => setConsent(true) }, t("enable"))), consent && /* @__PURE__ */ import_react.default.createElement("section", { className: "dxb-consent", role: "dialog", "aria-label": t("enable") }, /* @__PURE__ */ import_react.default.createElement("p", null, t("consent")), /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("button", { type: "button", onClick: () => setConsent(false) }, t("cancel")), /* @__PURE__ */ import_react.default.createElement("button", { type: "button", className: "dxb-primary", "data-testid": "dxb-confirm-ai", onClick: () => {
     setConsent(false);
     void controller.current?.grant();
   } }, t("grant")))), state.error && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxb-error", role: "alert" }, /* @__PURE__ */ import_react.default.createElement("p", null, t(state.status === "unavailable" ? "desktopOnly" : "error")), /* @__PURE__ */ import_react.default.createElement("details", null, /* @__PURE__ */ import_react.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react.default.createElement("p", null, state.error))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxb-viewport" }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxb-guest-host", ref: host }), !state.url && !state.error && /* @__PURE__ */ import_react.default.createElement("div", { className: "dxb-placeholder" }, /* @__PURE__ */ import_react.default.createElement(BrowserIcon, null), /* @__PURE__ */ import_react.default.createElement("p", null, t(state.ready ? "start" : "loading")))), /* @__PURE__ */ import_react.default.createElement("footer", { className: "dxb-footer" }, /* @__PURE__ */ import_react.default.createElement("span", null, t("experimental")), /* @__PURE__ */ import_react.default.createElement("details", null, /* @__PURE__ */ import_react.default.createElement("summary", null, t("details")), /* @__PURE__ */ import_react.default.createElement("p", null, t("privacy")), /* @__PURE__ */ import_react.default.createElement("p", null, t("limitations")))));
@@ -823,6 +838,7 @@ var en = {
   grant: "Allow page access",
   cancel: "Cancel",
   experimental: "Experimental \xB7 desktop validation required",
+  autoPending: "AI access is automatic in this profile",
   desktopOnly: "This feature needs a compatible DSH Desktop app. Web preview cannot embed Chromium. No external browser was opened.",
   start: "Enter a website address to start browsing.",
   privacy: "Permissions, downloads, HTTP authentication and native pop-ups stay blocked by the Desktop shell.",
@@ -860,6 +876,7 @@ var zh = {
   grant: "\u5141\u8BB8\u8BBF\u95EE\u9875\u9762",
   cancel: "\u53D6\u6D88",
   experimental: "\u5B9E\u9A8C\u529F\u80FD \xB7 \u5C1A\u9700\u684C\u9762\u5B9E\u673A\u9A8C\u8BC1",
+  autoPending: "\u6B64 profile \u5DF2\u81EA\u52A8\u5141\u8BB8 AI \u8BBF\u95EE",
   desktopOnly: "\u6B64\u529F\u80FD\u9700\u8981\u517C\u5BB9\u7684 DSH \u684C\u9762\u5E94\u7528\u3002\u7F51\u9875\u7248\u9884\u89C8\u4E0D\u80FD\u5185\u5D4C Chromium\uFF0C\u4E5F\u4E0D\u4F1A\u6253\u5F00\u5916\u90E8\u6D4F\u89C8\u5668\u3002",
   start: "\u8F93\u5165\u7F51\u9875\u5730\u5740\uFF0C\u5F00\u59CB\u6D4F\u89C8\u3002",
   privacy: "\u684C\u9762\u5185\u6838\u7EE7\u7EED\u963B\u6B62\u6743\u9650\u7533\u8BF7\u3001\u4E0B\u8F7D\u3001HTTP \u8EAB\u4EFD\u9A8C\u8BC1\u53CA\u539F\u751F\u5F39\u7A97\u3002",

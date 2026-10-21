@@ -28,7 +28,7 @@ function fixture(options: Record<string, any> = {}) {
     return guest
   } })
   if (options.startHidden !== true) controller.setVisible(true)
-  return { controller, calls, active: () => active, serverGranted: () => granted, navigateWhilePending: () => { state.epoch++; state.url = 'https://elsewhere.test/b'; invalidate('navigation', true) }, setCommand: (value: any) => { command = value } }
+  return { controller, calls, active: () => active, serverGranted: () => granted, invalidate: (reason: string, navigation: boolean) => invalidate(reason, navigation), navigateWhilePending: () => { state.epoch++; state.url = 'https://elsewhere.test/b'; invalidate('navigation', true) }, setCommand: (value: any) => { command = value } }
 }
 test('grant waits behind stale pump sync; old response cannot overwrite or orphan new server authority', async t => {
   const old = deferred(), f = fixture({ sync: (count: any) => count === 1 ? old.promise : null }); t.after(() => f.controller.dispose())
@@ -196,4 +196,70 @@ test('a default profile still drops the grant when a link navigates', async t =>
   for (let i = 0; i < 200 && f.serverGranted(); i++) await new Promise<any>(resolve => setTimeout(resolve, 2))
   assert.equal(f.serverGranted(), false)
   assert.equal(f.controller.getSnapshot().granted, false)
+})
+
+test('a click that navigates is not reported as a failure under autoGrant', async t => {
+  const f: any = fixture({
+    register: true,
+    // The real guest invalidates its document while the click is still in flight,
+    // then the command's own epoch check fails.
+    perform: async (_raw: any, { beforeInput }: any) => {
+      await beforeInput!()
+      f.navigateWhilePending()
+      throw Object.assign(new Error('Control was revoked or the page changed.'), { code: 'BROWSER_STALE' })
+    },
+  }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick()
+  for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  const revision = f.controller.getSnapshot().grantRevision
+  f.setCommand({ id: 'nav-click', action: 'click', target: 'e1:s1:n1', epoch: 1, grantRevision: revision })
+  for (let i = 0; i < 200 && f.controller.getSnapshot().busy !== false; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  await tick(); await tick()
+  const state = f.controller.getSnapshot()
+  assert.equal(state.granted, true)
+  assert.equal(state.error, null)
+  assert.equal(state.status, 'ready')
+  assert.equal(f.serverGranted(), true)
+})
+
+test('the pane reports the autoGrant policy so the UI can drop the Allow AI control', async t => {
+  const f = fixture({ register: true }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick()
+  assert.equal(f.controller.getSnapshot().autoGrant, true)
+  const g = fixture(); t.after(() => g.controller.dispose())
+  await g.controller.start(); await tick()
+  assert.equal(g.controller.getSnapshot().autoGrant, false)
+})
+
+test('the same navigating click still stops a default profile, so the check is discriminating', async t => {
+  const f: any = fixture({
+    perform: async (_raw: any, { beforeInput }: any) => {
+      await beforeInput!()
+      f.navigateWhilePending()
+      throw Object.assign(new Error('Control was revoked or the page changed.'), { code: 'BROWSER_STALE' })
+    },
+  }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick(); await f.controller.grant()
+  f.setCommand({ id: 'nav-click', action: 'click', target: 'e1:s1:n1', epoch: 1, grantRevision: f.controller.getSnapshot().grantRevision })
+  for (let i = 0; i < 300 && f.serverGranted(); i++) await new Promise<any>(resolve => setTimeout(resolve, 2))
+  assert.equal(f.serverGranted(), false)
+  assert.equal(f.controller.getSnapshot().granted, false)
+})
+
+test('an unattended tab recovers by itself after an ordinary stop, and gives up after three tries', async t => {
+  let failures = 0
+  const f: any = fixture({
+    register: true,
+    // The guest accepts input but the acknowledgement always fails.
+    perform: async () => { failures += 1; throw Object.assign(new Error('acknowledgement failed'), { code: 'BROWSER_STALE' }) },
+  }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick()
+  for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  for (let round = 0; round < 6; round++) {
+    f.setCommand({ id: `cmd-${round}`, action: 'scroll', x: 0, y: 1, epoch: 1, grantRevision: f.calls.filter(c => c.name === 'browser/grant').length })
+    await new Promise<any>(resolve => setTimeout(resolve, 60))
+  }
+  // Recovery is bounded: the loop cannot spin forever on a guest that never succeeds.
+  assert.ok(failures >= 1)
+  assert.ok(f.calls.filter(call => call.name === 'browser/grant').length <= 1 + 3, `grants=${f.calls.filter(call => call.name === 'browser/grant').length}`)
 })

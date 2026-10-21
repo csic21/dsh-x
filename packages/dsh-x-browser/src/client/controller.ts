@@ -27,6 +27,8 @@ export interface BrowserPaneState {
   epoch: number
   grantRevision: number
   ready: boolean
+  /** Profile policy: AI access is granted automatically, so no Allow AI control applies. */
+  autoGrant?: boolean
   url: string
   title: string
   error: string | null
@@ -37,7 +39,7 @@ export interface BrowserPaneState {
   canGoForward?: boolean
 }
 /** Pane-visible projection the body component renders from. */
-export type BrowserPaneView = Pick<BrowserPaneState, 'status' | 'ready' | 'granted' | 'url' | 'title' | 'error' | 'loading' | 'canGoBack' | 'canGoForward'>
+export type BrowserPaneView = Pick<BrowserPaneState, 'status' | 'ready' | 'granted' | 'autoGrant' | 'url' | 'title' | 'error' | 'loading' | 'canGoBack' | 'canGoForward'>
 /** Renderer-side dependencies of one owned tab controller. */
 export interface BrowserControllerOptions {
   rpc: BrowserRpc
@@ -71,6 +73,15 @@ export interface BrowserController {
 /** Renderer lifetime owner. Revocation is local and synchronous before any RPC or runner interruption. */
 export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, initialUrl, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }: BrowserControllerOptions): BrowserController {
   let registration: BrowserRegistration | undefined, guest: BrowserGuest | undefined, disposed = false, visible = false, timer: ReturnType<typeof setTimeout> | undefined, pumping = false, granting = false, pumpWaiters: Array<(value?: unknown) => void> = [], running: BrowserCommandEnvelope | null = null, generation = 0, autoGrantTried = false
+  /**
+   * Set when the command in flight navigated the page itself. Such a document change
+   * is the expected result of a click, not a failure, so it must not revoke the grant
+   * or surface an error banner.
+   */
+  let navigatedByCommand = false
+  /** Bounded automatic recoveries; a broken guest must not become an endless retry loop. */
+  let autoRecoveries = 0
+  const MAX_AUTO_RECOVERIES = 3
   const listeners = new Set<() => void>(), requests = new Set<AbortController>()
   let state: BrowserPaneState = { status: 'loading', granted: false, visible: false, epoch: 0, grantRevision: 0, ready: false, url: '', title: '', error: null, busy: false, tabId: null }
   const publish = (patch: Partial<BrowserPaneState>) => { if (disposed) return; state = { ...state, ...patch }; for (const callback of listeners) callback() }
@@ -105,6 +116,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
     // exact boundary between "the page rejected the command" and "input may already
     // have reached the page". Only the latter is an uncertain mutation.
     let inputAdmitted = false
+    navigatedByCommand = false
     running = command; publish({ busy: true, status: 'running' })
     try {
       const outcome = await guest!.perform(command, { beforeInput: async () => {
@@ -115,7 +127,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
       } })
       if (disposed || ownGeneration !== generation) return
       await call('ack', { ...auth(), commandId: command.id, grantRevision: command.grantRevision, epoch: outcome.epoch, result: outcome.result })
-      if (!disposed && ownGeneration === generation) publish({ status: 'ready' })
+      if (!disposed && ownGeneration === generation) publish({ status: 'ready', error: null })
     } catch (error) {
       if (!disposed && ownGeneration === generation) {
         const failure = error as { message?: unknown, code?: unknown }
@@ -126,7 +138,12 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
         // keeping the grant lets an unattended loop observe again and continue,
         // instead of losing the tab to a typo in one reference.
         if (!inputAdmitted) publish({ error: String(failure.message ?? 'The browser refused the command.').slice(0, 300), status: 'ready' })
-        else { await takeover('stopped'); publish({ error: String(failure.message ?? 'Browser operation stopped.').slice(0, 300) }) }
+        else if (navigatedByCommand && registration?.autoGrant === true) publish({ status: 'ready', error: null })
+        else {
+          await takeover('stopped')
+          publish({ error: String(failure.message ?? 'Browser operation stopped.').slice(0, 300) })
+          recoverUnattended()
+        }
       }
     } finally { if (running === command) { running = null; publish({ busy: false }) } }
   }
@@ -145,7 +162,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
       if (state.granted && !result.granted) { await takeover(result.status); return }
       if (result.command) void execute(result.command)
     } catch (error) {
-      if (!disposed && ownGeneration === generation) { await takeover(stopReason(error)); publish({ error: errorDetail(error) }) }
+      if (!disposed && ownGeneration === generation) { await takeover(stopReason(error)); publish({ error: errorDetail(error) }); recoverUnattended() }
     } finally { pumping = false; for (const done of pumpWaiters.splice(0)) done(); if (!disposed && !granting) timer = setTimeout(pump, pollMs) }
   }
   /**
@@ -161,6 +178,19 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
       if (disposed || !visible || documentObject?.hidden) return
       void grantNow()
     }, 400)
+  }
+  /**
+   * Recover an unattended tab whose grant an ordinary failure dropped.
+   *
+   * Bounded: a guest that keeps failing gets three attempts and then stays stopped, so
+   * a broken page cannot turn into a tight retry loop. Every recovery re-checks that
+   * the tab is still visible and the document still exists.
+   */
+  function recoverUnattended() {
+    if (registration?.autoGrant !== true || autoRecoveries >= MAX_AUTO_RECOVERIES) return
+    if (disposed || !visible || documentObject?.hidden) return
+    autoRecoveries += 1
+    scheduleRegrant()
   }
   const visibility = () => { if (documentObject?.hidden) void takeover('hidden') }
   documentObject?.addEventListener('visibilitychange', visibility)
@@ -179,6 +209,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
       const granted = await call<BrowserSnapshot>('grant', { ...auth(), epoch: fresh.epoch, grantRevision: fresh.grantRevision })
       if (disposed || ownGeneration !== generation || !visible) { void takeover('hidden'); return }
       guest.grant(granted.grantRevision)
+      autoRecoveries = 0
       publish({ granted: true, grantRevision: granted.grantRevision, status: 'ready', error: null })
     } catch (error) { if (!disposed && ownGeneration === generation) { const failure = error as { message?: unknown }; await takeover('manual'); publish({ error: String(failure.message ?? 'AI access was not enabled.') }) } }
     finally { granting = false; if (!disposed) { clearTimeout(timer); timer = setTimeout(pump, 0) } }
@@ -216,12 +247,17 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
           }, onInvalidate: (reason, navigation) => {
             // A link that navigates ends the document the grant covered, so the default
             // profile drops the grant and asks the human again. An unattended profile has
-            // nobody to ask, so it renews the grant for the new document instead; every
-            // other invalidation (hidden, crash, takeover) still goes through `takeover`.
-            if (navigation && registration?.autoGrant === true && state.granted) { scheduleRegrant(); return }
+            // nobody to ask: a navigation caused by the command in flight is expected, and
+            // a page-driven one renews the grant for the new document. Every other
+            // invalidation (hidden, crash, takeover) still goes through `takeover`.
+            if (navigation && registration?.autoGrant === true) {
+              if (running) navigatedByCommand = true
+              else if (state.granted) scheduleRegrant()
+              return
+            }
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason)
           } })
-        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision })
+        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision, autoGrant: registration.autoGrant === true })
         await guest.start()
         if (disposed) return
         // Load the requested page before granting: the grant must cover the document
