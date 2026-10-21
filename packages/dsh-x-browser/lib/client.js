@@ -663,7 +663,11 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
     setVisible(value) {
       visible = Boolean(value);
       publish({ visible });
-      if (!visible) void takeover("hidden");
+      if (!visible) {
+        void takeover("hidden");
+        return;
+      }
+      if (registration?.autoGrant === true) void autoGrant();
     },
     grant: grantNow,
     takeover,

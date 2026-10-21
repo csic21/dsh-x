@@ -189,7 +189,13 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
         if (registration.autoGrant === true) void autoGrant()
       } catch (error) { if (!disposed) { const failure = error as { message?: unknown }; publish({ status: 'unavailable', error: String(failure.message ?? 'Embedded browser unavailable.'), ready: false }) } }
     },
-    setVisible(value) { visible = Boolean(value); publish({ visible }); if (!visible) void takeover('hidden') },
+    setVisible(value) {
+      visible = Boolean(value); publish({ visible })
+      if (!visible) { void takeover('hidden'); return }
+      // A freshly opened tab becomes visible after `start()` resolved, so the
+      // ready-time attempt alone would always lose the race with `setVisible(true)`.
+      if (registration?.autoGrant === true) void autoGrant()
+    },
     grant: grantNow,
     takeover,
     async navigate(url) { void takeover(); if (!disposed) { try { await guest!.navigate(url); publish({ error: null }) } catch (error) { const failure = error as { message?: string }; publish({ error: failure.message }) } } },

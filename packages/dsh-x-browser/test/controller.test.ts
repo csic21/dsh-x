@@ -20,7 +20,7 @@ function fixture(options: Record<string, any> = {}) {
   } }
   const guest = { state: () => state, start: async () => {}, grant: () => { active = true }, revoke: () => { active = false }, dispose: async () => {}, perform: async (raw: any, controls: any) => options.perform ? options.perform(raw, controls) : { epoch: 1, result: {} }, navigate: async (value: any) => { state.url = value }, manual() {} }
   const controller = createBrowserController({ rpc, desktop: { protocolVersion: 1, browser: {} as any }, sessionId: 'session', clientTabId: 'ui', host: {}, pollMs: 100000, documentObject: { hidden: false, addEventListener() {}, removeEventListener() {} }, guestFactory: ({ onChange, onInvalidate }) => { invalidate = onInvalidate; guest.start = async () => onChange!({ ...state, loading: false, error: null, canGoBack: false, canGoForward: false }); return guest } })
-  controller.setVisible(true)
+  if (options.startHidden !== true) controller.setVisible(true)
   return { controller, calls, active: () => active, serverGranted: () => granted, navigateWhilePending: () => { state.epoch++; state.url = 'https://elsewhere.test/b'; invalidate('navigation', true) }, setCommand: (value: any) => { command = value } }
 }
 test('grant waits behind stale pump sync; old response cannot overwrite or orphan new server authority', async t => {
@@ -117,4 +117,15 @@ test('a tab without autoGrant stays manual until the user grants it', async t =>
   await f.controller.start(); await tick(); await tick()
   assert.equal(f.calls.some(call => call.name === 'browser/grant'), false)
   assert.equal(f.controller.getSnapshot().granted, false)
+})
+
+test('autoGrant also fires when the tab becomes visible after the guest is ready', async t => {
+  const f = fixture({ register: true, startHidden: true }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick(); await tick()
+  // The pane starts hidden, so readiness alone must not grant anything yet.
+  assert.equal(f.serverGranted(), false)
+  f.controller.setVisible(true); await tick()
+  for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  assert.equal(f.serverGranted(), true)
+  assert.equal(f.controller.getSnapshot().granted, true)
 })
