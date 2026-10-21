@@ -464,7 +464,7 @@ function createGuest({ desktop, workspace, host, applicationOrigin, onChange = (
 }
 
 // src/client/controller.ts
-function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }) {
+function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, initialUrl, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }) {
   let registration, guest, disposed = false, visible = false, timer, pumping = false, granting = false, pumpWaiters = [], running = null, generation = 0, autoGrantTried = false;
   const listeners = /* @__PURE__ */ new Set(), requests = /* @__PURE__ */ new Set();
   let state = { status: "loading", granted: false, visible: false, epoch: 0, grantRevision: 0, ready: false, url: "", title: "", error: null, busy: false, tabId: null };
@@ -656,6 +656,9 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
         publish({ tabId: registration.tabId, grantRevision: registration.grantRevision });
         await guest.start();
         if (disposed) return;
+        if (initialUrl) await guest.navigate(initialUrl).catch(() => {
+        });
+        if (disposed) return;
         publish({ status: "manual" });
         void pump();
         if (registration.autoGrant === true) void autoGrant();
@@ -731,7 +734,7 @@ function BrowserBody({ sessionId, useTabInfo, createController, t }) {
   const { tab } = useTabInfo(), host = (0, import_react.useRef)(null), controller = (0, import_react.useRef)(null);
   const [state, setState] = (0, import_react.useState)({ status: "loading", ready: false, granted: false, url: "", title: "", error: null }), [address, setAddress] = (0, import_react.useState)(""), [consent, setConsent] = (0, import_react.useState)(false);
   (0, import_react.useEffect)(() => {
-    const owner = createController({ sessionId, clientTabId: tab.id, host: host.current, onOpen: (url) => tab.actions.openTab("dsh-x-browser", { params: { url }, revealIfOpened: false }) });
+    const owner = createController({ sessionId, clientTabId: tab.id, host: host.current, initialUrl: tab.navigation.params?.url, onOpen: (url) => tab.actions.openTab("dsh-x-browser", { params: { url }, revealIfOpened: false }) });
     controller.current = owner;
     const unsubscribe = owner.subscribe(() => setState(owner.getSnapshot()));
     owner.setVisible(tab.visible);
@@ -739,9 +742,7 @@ function BrowserBody({ sessionId, useTabInfo, createController, t }) {
       void owner.dispose();
     };
     tab.signal.addEventListener("abort", close, { once: true });
-    void owner.start().then(() => {
-      if (tab.navigation.params?.url && owner.getSnapshot().ready) void owner.navigate(tab.navigation.params.url);
-    });
+    void owner.start();
     const unbind = tab.actions.bindCommands({ refresh: () => {
       void owner.manual("reload");
     } });

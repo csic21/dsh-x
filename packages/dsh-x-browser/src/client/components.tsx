@@ -39,13 +39,13 @@ export function BrowserBody({ sessionId, useTabInfo, createController, t }: Brow
   const { tab } = useTabInfo(), host = useRef<HTMLDivElement>(null!), controller = useRef<BrowserController | null>(null)
   const [state, setState] = useState<BrowserPaneView>({ status: 'loading', ready: false, granted: false, url: '', title: '', error: null }), [address, setAddress] = useState(''), [consent, setConsent] = useState(false)
   useEffect(() => {
-    const owner = createController({ sessionId, clientTabId: tab.id, host: host.current, onOpen: url => tab.actions.openTab('dsh-x-browser', { params: { url }, revealIfOpened: false }) })
+    const owner = createController({ sessionId, clientTabId: tab.id, host: host.current, initialUrl: tab.navigation.params?.url, onOpen: url => tab.actions.openTab('dsh-x-browser', { params: { url }, revealIfOpened: false }) })
     controller.current = owner
     const unsubscribe = owner.subscribe(() => setState(owner.getSnapshot()))
     owner.setVisible(tab.visible)
     const close = () => { void owner.dispose() }
     tab.signal.addEventListener('abort', close, { once: true })
-    void owner.start().then(() => { if (tab.navigation.params?.url && owner.getSnapshot().ready) void owner.navigate(tab.navigation.params!.url) })
+    void owner.start()
     const unbind = tab.actions.bindCommands({ refresh: () => { void owner.manual('reload') } })
     return () => { unsubscribe(); unbind(); tab.signal.removeEventListener('abort', close); void owner.dispose(); if (controller.current === owner) controller.current = null }
   }, [sessionId, tab.id, tab.signal, createController])

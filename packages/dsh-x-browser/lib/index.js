@@ -24,7 +24,11 @@ export function apply(ctx, config = {}) {
         runtime = cdpRuntime(backend, { allowedDomains: domains });
     }
     else {
-        const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, autoOpen: config.autoOpen === true, onTrace: event => ctx.emit('dsh-x-browser/trace', event) });
+        const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, autoOpen: config.autoOpen === true, onTrace: event => { try {
+                if (process.env.DSH_X_BROWSER_TRACE)
+                    require('node:fs').appendFileSync(process.env.DSH_X_BROWSER_TRACE, JSON.stringify(event) + '\n');
+            }
+            catch { } ; ctx.emit('dsh-x-browser/trace', event); } });
         ownership = createBrowserOwnership({ onClose: token => broker.revokeOwner(token) });
         ctx.provide('dshXBrowserOwnership', { bind: ownership.bind });
         ctx.effect(() => () => { ownership.dispose(); broker.dispose(); }, 'browser: broker lifetime');

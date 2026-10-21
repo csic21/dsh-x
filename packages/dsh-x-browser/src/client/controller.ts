@@ -46,6 +46,8 @@ export interface BrowserControllerOptions {
   clientTabId: string
   host?: BrowserGuestHost | null
   applicationOrigin?: string
+  /** Address the pane should load before it is granted; a fresh tab otherwise starts blank. */
+  initialUrl?: string
   onOpen?: (url: string) => void
   guestFactory?: (options: Parameters<typeof createGuest>[0]) => BrowserGuest
   pollMs?: number
@@ -67,7 +69,7 @@ export interface BrowserController {
 }
 
 /** Renderer lifetime owner. Revocation is local and synchronous before any RPC or runner interruption. */
-export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }: BrowserControllerOptions): BrowserController {
+export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, initialUrl, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }: BrowserControllerOptions): BrowserController {
   let registration: BrowserRegistration | undefined, guest: BrowserGuest | undefined, disposed = false, visible = false, timer: ReturnType<typeof setTimeout> | undefined, pumping = false, granting = false, pumpWaiters: Array<(value?: unknown) => void> = [], running: BrowserCommandEnvelope | null = null, generation = 0, autoGrantTried = false
   const listeners = new Set<() => void>(), requests = new Set<AbortController>()
   let state: BrowserPaneState = { status: 'loading', granted: false, visible: false, epoch: 0, grantRevision: 0, ready: false, url: '', title: '', error: null, busy: false, tabId: null }
@@ -187,6 +189,11 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
           } })
         publish({ tabId: registration.tabId, grantRevision: registration.grantRevision })
         await guest.start()
+        if (disposed) return
+        // Load the requested page before granting: the grant must cover the document
+        // the caller asked for, and an unattended profile gets no later chance to
+        // re-grant after a post-grant navigation revokes it.
+        if (initialUrl) await guest.navigate(initialUrl).catch(() => {})
         if (disposed) return
         publish({ status: 'manual' }); void pump()
         // Unattended profile: grant as soon as the guest is ready instead of waiting
