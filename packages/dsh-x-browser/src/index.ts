@@ -31,6 +31,12 @@ export interface BrowserConfig {
    * leaves the renderer closure and Take over still revokes immediately.
    */
   autoGrant?: boolean
+  /**
+   * Let `dsh_x_browser_open` create the embedded AI Browser tab in the sidebar, so
+   * the model can start a page by itself instead of waiting for the user to find the
+   * entry. Off by default; a new tab still starts ungranted unless `autoGrant` is on.
+   */
+  autoOpen?: boolean
   cdp?: {
     /** CLI executable; defaults to `agent-browser` on PATH. */
     command?: string
@@ -68,7 +74,7 @@ export function apply(ctx: Context, config: BrowserConfig = {}) {
     })
     runtime = cdpRuntime(backend, { allowedDomains: domains })
   } else {
-    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, onTrace: event => ctx.emit('dsh-x-browser/trace', event) })
+    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, autoOpen: config.autoOpen === true, onTrace: event => ctx.emit('dsh-x-browser/trace', event) })
     ownership = createBrowserOwnership({ onClose: token => broker.revokeOwner(token) })
     ctx.provide('dshXBrowserOwnership', { bind: ownership.bind })
     ctx.effect(() => () => { ownership!.dispose(); broker.dispose() }, 'browser: broker lifetime')

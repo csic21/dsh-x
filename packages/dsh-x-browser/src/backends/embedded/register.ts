@@ -16,6 +16,7 @@ export function registerEmbeddedRoutes(ctx: Context, broker: EmbeddedBroker): vo
     const route = <A extends object>(handler: (payload: A) => unknown) => (payload: BrowserRoutePayload): unknown => handler(payload as A)
     const routes: BrowserRouteEntry[] = [
       ['register', route(broker.register), ['sessionId', 'clientTabId']],
+      ['open', route(broker.takeOpen), ['sessionId']],
       ['sync', route(broker.sync), ['tabId', 'capability', 'epoch', 'visible', 'title', 'url']],
       ['grant', route(broker.grant), ['tabId', 'capability', 'epoch', 'grantRevision']],
       ['revoke', route(broker.revoke), ['tabId', 'capability']],

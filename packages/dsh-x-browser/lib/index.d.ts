@@ -21,6 +21,12 @@ export interface BrowserConfig {
      * leaves the renderer closure and Take over still revokes immediately.
      */
     autoGrant?: boolean;
+    /**
+     * Let `dsh_x_browser_open` create the embedded AI Browser tab in the sidebar, so
+     * the model can start a page by itself instead of waiting for the user to find the
+     * entry. Off by default; a new tab still starts ungranted unless `autoGrant` is on.
+     */
+    autoOpen?: boolean;
     cdp?: {
         /** CLI executable; defaults to `agent-browser` on PATH. */
         command?: string;

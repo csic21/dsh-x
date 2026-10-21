@@ -1,10 +1,28 @@
 import { fail } from './contract/errors.js';
 import { boundedJson } from './contract/json.js';
+import { modelUrl } from './contract/observation.js';
 import { parseAddress } from './contract/url.js';
 /** Adapter over the renderer-backed broker; behavior stays exactly as before. */
 export function embeddedRuntime(broker) {
     return {
         kind: 'embedded',
+        canOpen(url) {
+            parseAddress(url);
+        },
+        /**
+         * Ask the shell to open the AI Browser tab for this session.
+         *
+         * The renderer creates the tab, mounts the guest and owns the capability; this
+         * call only records a bounded request. The tab starts ungranted, so the model
+         * still cannot act in it until the profile's grant policy allows it.
+         */
+        async open(scope, url, owner) {
+            owner.signal?.throwIfAborted();
+            owner.assertCurrent?.();
+            const address = parseAddress(url);
+            await broker.requestOpen({ sessionId: scope.sessionId, url: address });
+            return { tabId: '', sessionId: scope.sessionId, epoch: 0, grantRevision: 0, visible: false, granted: false, title: '', url: modelUrl(address), busy: false, status: 'opening' };
+        },
         async list(scope, options = {}) {
             const value = await broker.list(scope, options);
             return { tabs: value.tabs, runtime: value.runtime, nativeRuntimes: value.nativeRuntimes, experimental: value.experimental };

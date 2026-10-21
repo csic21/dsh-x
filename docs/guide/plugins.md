@@ -51,7 +51,7 @@
 - **内嵌（默认）**：在官方右侧栏增加 AI Browser tab，使用 Electron `webview` 与官方 lease，不接管内置浏览器的私有 tab；模型观察与操作受按轮授权、逐动作审批和接管约束。
 - **CDP（可选）**：配置 `backend: cdp` 后，由本机的 [agent-browser](https://github.com/vercel-labs/agent-browser)（0.39.x）驱动外部 Chrome。需要自己安装 CLI；默认有窗口可见，`allowedDomains` 可限制域名。模型拿到的仍是 `dsh_x_browser_tabs`、`dsh_x_browser_open`、`dsh_x_browser_action`，`grantRevision` 恒为 0，`epoch` 是目标修订号，动作后必须重新观察。
 - 两种后端都不接受模型提供的 JavaScript、CSS 选择器、CDP 命令或原始 IPC；CDP 只是插件内部的传输。默认每个非 observe 动作都要官方审批。
-- **无人值守（可选）**：三个开关互相独立、默认全关。`approval: auto` 让插件自己回答本工具的审批；`persistentGrant: true` 让一次页面授权跨轮次和页内跳转继续有效；`autoGrant: true` 让页面就绪后自动授权，连「允许 AI 操作此页」都不用点。开启后接管、隐藏、关闭、工作区切换、渲染进程断线照样立即吊销，密码与验证码照旧不进模型。等于允许模型在无人看着时提交表单，只在能接受该风险的 profile 里开。
+- **无人值守（可选）**：三个开关互相独立、默认全关。`approval: auto` 让插件自己回答本工具的审批；`persistentGrant: true` 让一次页面授权跨轮次和页内跳转继续有效；`autoGrant: true` 让页面就绪后自动授权；`autoOpen: true` 让 `dsh_x_browser_open` 自己创建内嵌标签页。三个都开才是「模型自己开页并操作」的完整体验。开启后接管、隐藏、关闭、工作区切换、渲染进程断线照样立即吊销，密码与验证码照旧不进模型。等于允许模型在无人看着时提交表单，只在能接受该风险的 profile 里开。
 - 内嵌后端的 Electron / 打包应用行为需要单独验证；CDP 后端在本机真实 Chrome 上跑通过打开、观察、点击和双标签，但没有打包 Desktop 记录。
 
 ## dsh-x-pet

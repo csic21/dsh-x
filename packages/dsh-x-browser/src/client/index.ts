@@ -29,7 +29,11 @@ export interface BrowserClientContext {
   on(event: string, listener: () => void): unknown
   locale: BrowserClientLocale
   connection: { rpc: BrowserControllerOptions['rpc'] }
-  sidebarRight: { openTab(kind: string): unknown }
+  sidebarRight: {
+    openTab(kind: string, options?: { params?: { url: string }, revealIfOpened?: boolean }): unknown
+    /** Observable of the Session on screen; `undefined` while no conversation is shown. */
+    mounted?: { getSnapshot(): string | undefined }
+  }
   sidebarRightTabs: { register(definition: BrowserTabDefinition): () => void }
   slots: {
     inject(name: string, fn: () => () => void): () => void
@@ -51,4 +55,27 @@ export function apply(ctx: BrowserClientContext) {
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: 'dsh-x-browser', locale: NS, inject: sessionId => ({ createController: factoryFor(sessionId) }) }, BrowserBody)), 'browser: body')
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: 'dsh-x-browser' }, BrowserTitle)), 'browser: title')
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'dsh-x-browser', order: -9, locale: NS, inject: () => ({ open: () => ctx.sidebarRight.openTab('dsh-x-browser') }) }, BrowserEntry))
+  // An unattended profile lets the model ask for the tab, so the pane polls the
+  // host for one pending request per session and opens it here. The request carries
+  // only an HTTP(S) URL; the renderer still owns the tab, the guest and the grant.
+  ctx.effect(() => {
+    let stopped = false, timer: ReturnType<typeof setTimeout> | undefined, busy = false
+    const tick = async () => {
+      if (stopped || busy) return
+      const sessionId = ctx.sidebarRight.mounted?.getSnapshot?.() as string | undefined
+      if (sessionId) {
+        busy = true
+        try {
+          const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 8000)
+          const reply = await ctx.connection.rpc.call('/api', 'browser/open', { sessionId }, abort.signal).finally(() => clearTimeout(timeout))
+          const url = (reply?.ok ? (reply.value as { url?: unknown } | undefined)?.url : undefined)
+          if (!stopped && typeof url === 'string' && url) ctx.sidebarRight.openTab('dsh-x-browser', { params: { url }, revealIfOpened: false })
+        } catch { /* A closed connection is retried on the next tick. */ }
+        finally { busy = false }
+      }
+      if (!stopped) timer = setTimeout(tick, 2000)
+    }
+    void tick()
+    return () => { stopped = true; clearTimeout(timer) }
+  }, 'browser: automatic tab opening')
 }

@@ -106,13 +106,21 @@ type BrowserBrokerOptions = {
      * renderer disconnection still revoke the grant.
      */
     autoGrant?: boolean;
+    /**
+     * Unattended profile policy. When true, a browser tool may ask the shell to open
+     * the AI Browser tab for a session instead of waiting for the user to find the
+     * entry. The request carries only a session id and an HTTP(S) URL; the renderer
+     * still owns the tab, the guest and the capability, and opening it changes nothing
+     * about what the model may do without a grant.
+     */
+    autoOpen?: boolean;
     onRevoke?: (tab: BrowserPublicTab & {
         reason: string;
     }) => void;
     onTrace?: (event: BrowserTraceEvent) => void;
 };
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, stickyGrants, autoGrant, onRevoke, onTrace }: BrowserBrokerOptions): {
+export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, stickyGrants, autoGrant, autoOpen, onRevoke, onTrace }: BrowserBrokerOptions): {
     register({ sessionId, clientTabId }: {
         sessionId: string;
         clientTabId: string;
@@ -146,6 +154,26 @@ export declare function createBrowserBroker({ profile, contextOf, turnOf, now, t
     revokeOwner(ownerToken: symbol): void;
     close(args: BrowserAuthRequest): {
         closed: boolean;
+    };
+    /**
+     * Record one "open this URL in a browser tab" request for a session.
+     *
+     * These are served to the trusted renderer only: the polling call takes a
+     * session id that the host resolves against its own live conversations, and the
+     * payload is one HTTP(S) URL. Nothing about authority changes here — a freshly
+     * opened tab still starts ungranted.
+     */
+    requestOpen({ sessionId, url }: {
+        sessionId: string;
+        url: string;
+    }): Promise<{
+        requested: boolean;
+    }>;
+    /** Consume the pending open request for one session, if it has not expired. */
+    takeOpen({ sessionId }: {
+        sessionId: string;
+    }): {
+        url: string | null;
     };
     poll(args: BrowserAuthRequest): Promise<{
         tabId: string;

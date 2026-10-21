@@ -86,6 +86,7 @@ var BROWSER_ERROR_CODES = [
   "BROWSER_BINARY_MISSING",
   "BROWSER_BUSY",
   "BROWSER_CLOSED",
+  "BROWSER_DISABLED",
   "BROWSER_DAEMON",
   "BROWSER_DESKTOP",
   "BROWSER_GRANT",
@@ -925,5 +926,30 @@ function apply(ctx) {
   ctx.effect(() => ctx.slots.inject("sidebar.right.pane.tab", () => ctx.slots.register({ name: "sidebar.right.pane.tab", key: "dsh-x-browser", locale: NS, inject: (sessionId) => ({ createController: factoryFor(sessionId) }) }, BrowserBody)), "browser: body");
   ctx.effect(() => ctx.slots.inject("sidebar.right.pane.tab.title", () => ctx.slots.register({ name: "sidebar.right.pane.tab.title", key: "dsh-x-browser" }, BrowserTitle)), "browser: title");
   ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({ name: "conversation.input.dock", id: "dsh-x-browser", order: -9, locale: NS, inject: () => ({ open: () => ctx.sidebarRight.openTab("dsh-x-browser") }) }, BrowserEntry));
+  ctx.effect(() => {
+    let stopped = false, timer, busy = false;
+    const tick = async () => {
+      if (stopped || busy) return;
+      const sessionId = ctx.sidebarRight.mounted?.getSnapshot?.();
+      if (sessionId) {
+        busy = true;
+        try {
+          const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 8e3);
+          const reply = await ctx.connection.rpc.call("/api", "browser/open", { sessionId }, abort.signal).finally(() => clearTimeout(timeout));
+          const url = reply?.ok ? reply.value?.url : void 0;
+          if (!stopped && typeof url === "string" && url) ctx.sidebarRight.openTab("dsh-x-browser", { params: { url }, revealIfOpened: false });
+        } catch {
+        } finally {
+          busy = false;
+        }
+      }
+      if (!stopped) timer = setTimeout(tick, 2e3);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, "browser: automatic tab opening");
 }
 return module.exports; } });

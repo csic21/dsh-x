@@ -61,13 +61,23 @@ type BrowserBrokerOptions = {
    * renderer disconnection still revoke the grant.
    */
   autoGrant?: boolean
+  /**
+   * Unattended profile policy. When true, a browser tool may ask the shell to open
+   * the AI Browser tab for a session instead of waiting for the user to find the
+   * entry. The request carries only a session id and an HTTP(S) URL; the renderer
+   * still owns the tab, the guest and the capability, and opening it changes nothing
+   * about what the model may do without a grant.
+   */
+  autoOpen?: boolean
   onRevoke?: (tab: BrowserPublicTab & { reason: string }) => void
   onTrace?: (event: BrowserTraceEvent) => void
 }
 
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, autoGrant = false, onRevoke = () => {}, onTrace = () => {} }: BrowserBrokerOptions) {
+export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, autoGrant = false, autoOpen = false, onRevoke = () => {}, onTrace = () => {} }: BrowserBrokerOptions) {
   const tabs = new Map<string, BrowserTab>()
+  /** One pending open request per session; the renderer polls and clears it. */
+  const opens = new Map<string, { url: string, expires: number }>()
   let disposed = false
   const same = (left?: BrowserScope | null, right?: BrowserScope | null) => left?.sessionId === right?.sessionId && left?.workspace === right?.workspace && left?.profile === right?.profile
   const publicTab = (tab: BrowserTab): BrowserPublicTab => ({ tabId: tab.id, sessionId: tab.binding.sessionId, epoch: tab.epoch, grantRevision: tab.revision, visible: tab.visible, granted: tab.granted, title: tab.granted ? tab.title : '', url: tab.granted ? modelUrl(tab.url) : '', busy: Boolean(tab.pending), status: tab.status })
@@ -187,9 +197,33 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       trace('grant', tab, null, turn)
       return publicTab(tab)
     },
-    revoke(args: BrowserAuthRequest) { const tab = authenticate(args); revoke(tab, 'taken-over'); touch(tab); return publicTab(tab) },
-    revokeOwner(ownerToken: symbol) { for (const tab of tabs.values()) if (tab.granted && tab.ownerClaimed && tab.ownerToken === ownerToken) revoke(tab, 'native-run-ended') },
+    revoke(args: BrowserAuthRequest) { const tab = authenticate(args); revoke(tab, 'taken-over'); touch(tab); return publicTab(tab) },    revokeOwner(ownerToken: symbol) { for (const tab of tabs.values()) if (tab.granted && tab.ownerClaimed && tab.ownerToken === ownerToken) revoke(tab, 'native-run-ended') },
     close(args: BrowserAuthRequest) { const tab = authenticate(args); revoke(tab, 'closed'); tabs.delete(tab.id); return { closed: true } },
+    /**
+     * Record one "open this URL in a browser tab" request for a session.
+     *
+     * These are served to the trusted renderer only: the polling call takes a
+     * session id that the host resolves against its own live conversations, and the
+     * payload is one HTTP(S) URL. Nothing about authority changes here — a freshly
+     * opened tab still starts ungranted.
+     */
+    async requestOpen({ sessionId, url }: { sessionId: string, url: string }) {
+      if (!autoOpen) throw fail('BROWSER_DISABLED', 'Automatic tab opening is disabled; open the AI Browser tab in the sidebar.')
+      identifier(sessionId, 'session')
+      const current = await contextOf(sessionId)
+      if (!current || current.sessionId !== sessionId) throw fail('BROWSER_SCOPE', 'Open an existing conversation with a workspace.')
+      opens.set(sessionId, { url: modelUrl(new URL(url).href), expires: now() + 15_000 })
+      return { requested: true }
+    },
+    /** Consume the pending open request for one session, if it has not expired. */
+    takeOpen({ sessionId }: { sessionId: string }) {
+      if (!autoOpen) return { url: null }
+      identifier(sessionId, 'session')
+      const request = opens.get(sessionId)
+      if (!request) return { url: null }
+      opens.delete(sessionId)
+      return { url: request.expires > now() ? request.url : null }
+    },
     async poll(args: BrowserAuthRequest) {
       const tab = authenticate(args)
       await verify(tab)
@@ -260,6 +294,6 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
         if (signal?.aborted) pending.abort()
       })
     },
-    dispose() { if (disposed) return; disposed = true; clearInterval(sweep); for (const tab of tabs.values()) revoke(tab, 'host-stopped'); tabs.clear() },
+    dispose() { if (disposed) return; disposed = true; clearInterval(sweep); for (const tab of tabs.values()) revoke(tab, 'host-stopped'); tabs.clear(); opens.clear() },
   }
 }

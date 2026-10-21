@@ -195,3 +195,25 @@ test('sticky grants still abandon a command whose owning turn ended, without dro
   await assert.rejects(pending, { code: 'BROWSER_REVOKED' })
   assert.equal((await broker.list(scope)).tabs[0].granted, false)
 })
+
+test('automatic tab opening serves one bounded request per session and expires it', async t => {
+  const scope = { profile: 'profile-o', sessionId: 'session-o', workspace: '/work/o' }
+  let clock = 1_000
+  const broker = createBrowserBroker({ profile: scope.profile, autoOpen: true, now: () => clock, turnOf: () => ({ runId: 'run-a', turn: 1 }), contextOf: async id => ({ ...scope, sessionId: id }) })
+  t.after(() => broker.dispose())
+  await broker.requestOpen({ sessionId: scope.sessionId, url: 'https://example.test/page?token=secret#frag' })
+  const first = broker.takeOpen({ sessionId: scope.sessionId })
+  assert.equal(first.url, 'https://example.test/page') // query and fragment never reach the renderer surface
+  assert.equal(broker.takeOpen({ sessionId: scope.sessionId }).url, null)
+  await broker.requestOpen({ sessionId: scope.sessionId, url: 'https://example.test/late' })
+  clock += 20_000
+  assert.equal(broker.takeOpen({ sessionId: scope.sessionId }).url, null)
+})
+
+test('automatic tab opening is off unless configured and never accepts a non-HTTP target', async t => {
+  const scope = { profile: 'profile-p', sessionId: 'session-p', workspace: '/work/p' }
+  const broker = createBrowserBroker({ profile: scope.profile, turnOf: () => ({ runId: 'run-a', turn: 1 }), contextOf: async id => ({ ...scope, sessionId: id }) })
+  t.after(() => broker.dispose())
+  await assert.rejects(broker.requestOpen({ sessionId: scope.sessionId, url: 'https://example.test/' }), { code: 'BROWSER_DISABLED' })
+  assert.equal(broker.takeOpen({ sessionId: scope.sessionId }).url, null)
+})

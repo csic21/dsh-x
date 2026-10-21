@@ -29,9 +29,10 @@ By default one grant covers one turn and every action waits for a human. That ma
     approval: auto          # this plugin answers its own browser approvals
     persistentGrant: true   # one explicit tab grant survives later turns
     autoGrant: true         # the tab grants itself once the page is ready
+    autoOpen: true          # dsh_x_browser_open creates the tab by itself
 ```
 
-All three are off by default, and each is independent. `approval: 'auto'` skips only the per-action prompt for this plugin's own tools — it is this plugin, not the official approver, that answers, so it never widens any other tool. `persistentGrant: true` keeps the grant on the tab instead of the turn: it survives later turns and in-tab navigation, and a command whose owning turn ended is abandoned rather than revoking the tab. `autoGrant: true` makes the renderer grant the tab as soon as the guest is ready and visible, so the profile needs no per-tab click at all; it is one attempt per ready page, never a retry loop, so a host refusal is reported instead of re-asked.
+All three are off by default, and each is independent. `approval: 'auto'` skips only the per-action prompt for this plugin's own tools — it is this plugin, not the official approver, that answers, so it never widens any other tool. `persistentGrant: true` keeps the grant on the tab instead of the turn: it survives later turns and in-tab navigation, and a command whose owning turn ended is abandoned rather than revoking the tab. `autoGrant: true` makes the renderer grant the tab as soon as the guest is ready and visible, so the profile needs no per-tab click at all; it is one attempt per ready page, never a retry loop, so a host refusal is reported instead of re-asked. `autoOpen: true` lets `dsh_x_browser_open` create the embedded tab from a tool call, so the model starts the page itself; the renderer still creates the tab, mounts the guest and holds the capability, and a new tab starts ungranted unless `autoGrant` is also on.
 
 The boundaries that remain under these flags:
 

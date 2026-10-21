@@ -7,6 +7,7 @@ export function registerEmbeddedRoutes(ctx, broker) {
         const route = (handler) => (payload) => handler(payload);
         const routes = [
             ['register', route(broker.register), ['sessionId', 'clientTabId']],
+            ['open', route(broker.takeOpen), ['sessionId']],
             ['sync', route(broker.sync), ['tabId', 'capability', 'epoch', 'visible', 'title', 'url']],
             ['grant', route(broker.grant), ['tabId', 'capability', 'epoch', 'grantRevision']],
             ['revoke', route(broker.revoke), ['tabId', 'capability']],
