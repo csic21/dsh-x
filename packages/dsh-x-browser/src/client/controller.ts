@@ -68,7 +68,7 @@ export interface BrowserController {
 
 /** Renderer lifetime owner. Revocation is local and synchronous before any RPC or runner interruption. */
 export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }: BrowserControllerOptions): BrowserController {
-  let registration: BrowserRegistration | undefined, guest: BrowserGuest | undefined, disposed = false, visible = false, timer: ReturnType<typeof setTimeout> | undefined, pumping = false, granting = false, pumpWaiters: Array<(value?: unknown) => void> = [], running: BrowserCommandEnvelope | null = null, generation = 0
+  let registration: BrowserRegistration | undefined, guest: BrowserGuest | undefined, disposed = false, visible = false, timer: ReturnType<typeof setTimeout> | undefined, pumping = false, granting = false, pumpWaiters: Array<(value?: unknown) => void> = [], running: BrowserCommandEnvelope | null = null, generation = 0, autoGrantTried = false
   const listeners = new Set<() => void>(), requests = new Set<AbortController>()
   let state: BrowserPaneState = { status: 'loading', granted: false, visible: false, epoch: 0, grantRevision: 0, ready: false, url: '', title: '', error: null, busy: false, tabId: null }
   const publish = (patch: Partial<BrowserPaneState>) => { if (disposed) return; state = { ...state, ...patch }; for (const callback of listeners) callback() }
@@ -176,7 +176,13 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
         registration = await call<BrowserRegistration>('register', { sessionId, clientTabId })
         if (disposed) { await call('close', auth()).catch(() => {}); return }
         guest = guestFactory({ desktop, workspace: registration.workspace, host: host!, applicationOrigin, documentObject,
-          onOpen, onChange: next => publish(next), onInvalidate: (reason, navigation) => {
+          onOpen, onChange: next => {
+            publish(next)
+            // The pane may be visible before the guest finishes mounting, so both
+            // earlier attempts can bail out on `!ready`. Retry once when readiness
+            // flips; `autoGrantTried` keeps a failure from looping.
+            if (next.ready && registration?.autoGrant === true && !state.granted && !autoGrantTried) { autoGrantTried = true; void autoGrant() }
+          }, onInvalidate: (reason, navigation) => {
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason)
           } })
         publish({ tabId: registration.tabId, grantRevision: registration.grantRevision })

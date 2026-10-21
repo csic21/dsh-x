@@ -465,7 +465,7 @@ function createGuest({ desktop, workspace, host, applicationOrigin, onChange = (
 
 // src/client/controller.ts
 function createBrowserController({ rpc, desktop = globalThis.dshDesktop, sessionId, clientTabId, host, applicationOrigin = globalThis.location?.origin, onOpen, guestFactory = createGuest, pollMs = 750, documentObject = globalThis.document }) {
-  let registration, guest, disposed = false, visible = false, timer, pumping = false, granting = false, pumpWaiters = [], running = null, generation = 0;
+  let registration, guest, disposed = false, visible = false, timer, pumping = false, granting = false, pumpWaiters = [], running = null, generation = 0, autoGrantTried = false;
   const listeners = /* @__PURE__ */ new Set(), requests = /* @__PURE__ */ new Set();
   let state = { status: "loading", granted: false, visible: false, epoch: 0, grantRevision: 0, ready: false, url: "", title: "", error: null, busy: false, tabId: null };
   const publish = (patch) => {
@@ -642,7 +642,13 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
           applicationOrigin,
           documentObject,
           onOpen,
-          onChange: (next) => publish(next),
+          onChange: (next) => {
+            publish(next);
+            if (next.ready && registration?.autoGrant === true && !state.granted && !autoGrantTried) {
+              autoGrantTried = true;
+              void autoGrant();
+            }
+          },
           onInvalidate: (reason, navigation) => {
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason);
           }

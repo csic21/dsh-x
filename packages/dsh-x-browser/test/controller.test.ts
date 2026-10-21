@@ -19,7 +19,14 @@ function fixture(options: Record<string, any> = {}) {
     throw Error(name)
   } }
   const guest = { state: () => state, start: async () => {}, grant: () => { active = true }, revoke: () => { active = false }, dispose: async () => {}, perform: async (raw: any, controls: any) => options.perform ? options.perform(raw, controls) : { epoch: 1, result: {} }, navigate: async (value: any) => { state.url = value }, manual() {} }
-  const controller = createBrowserController({ rpc, desktop: { protocolVersion: 1, browser: {} as any }, sessionId: 'session', clientTabId: 'ui', host: {}, pollMs: 100000, documentObject: { hidden: false, addEventListener() {}, removeEventListener() {} }, guestFactory: ({ onChange, onInvalidate }) => { invalidate = onInvalidate; guest.start = async () => onChange!({ ...state, loading: false, error: null, canGoBack: false, canGoForward: false }); return guest } })
+  const controller = createBrowserController({ rpc, desktop: { protocolVersion: 1, browser: {} as any }, sessionId: 'session', clientTabId: 'ui', host: {}, pollMs: 100000, documentObject: { hidden: false, addEventListener() {}, removeEventListener() {} }, guestFactory: ({ onChange, onInvalidate }) => {
+    invalidate = onInvalidate
+    const ready = () => onChange!({ ...state, loading: false, error: null, canGoBack: false, canGoForward: false })
+    // `guestReadyLater` models the real ordering: the pane is visible first, the
+    // webview reports ready afterwards, so start() must not block on that flip.
+    guest.start = async () => { if (options.guestReadyLater) { state.ready = false; void options.guestReadyLater.promise.then(() => { state.ready = true; ready() }) } else ready() }
+    return guest
+  } })
   if (options.startHidden !== true) controller.setVisible(true)
   return { controller, calls, active: () => active, serverGranted: () => granted, navigateWhilePending: () => { state.epoch++; state.url = 'https://elsewhere.test/b'; invalidate('navigation', true) }, setCommand: (value: any) => { command = value } }
 }
@@ -125,6 +132,17 @@ test('autoGrant also fires when the tab becomes visible after the guest is ready
   // The pane starts hidden, so readiness alone must not grant anything yet.
   assert.equal(f.serverGranted(), false)
   f.controller.setVisible(true); await tick()
+  for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  assert.equal(f.serverGranted(), true)
+  assert.equal(f.controller.getSnapshot().granted, true)
+})
+
+test('autoGrant retries once when the guest becomes ready after the pane was already visible', async t => {
+  const ready = deferred()
+  const f = fixture({ register: true, guestReadyLater: ready }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick(); await tick()
+  assert.equal(f.serverGranted(), false)
+  ready.resolve(true)
   for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
   assert.equal(f.serverGranted(), true)
   assert.equal(f.controller.getSnapshot().granted, true)
