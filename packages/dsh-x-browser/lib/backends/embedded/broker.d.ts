@@ -114,13 +114,20 @@ type BrowserBrokerOptions = {
      * about what the model may do without a grant.
      */
     autoOpen?: boolean;
+    /**
+     * Unattended background policy. When true, a hidden tab keeps its grant and still
+     * accepts commands, so the model can work while the panel is collapsed or another
+     * tab is on top. The webview must still be laid out: the guest refuses to send input
+     * into a zero-sized viewport rather than clicking blind.
+     */
+    background?: boolean;
     onRevoke?: (tab: BrowserPublicTab & {
         reason: string;
     }) => void;
     onTrace?: (event: BrowserTraceEvent) => void;
 };
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, stickyGrants, autoGrant, autoOpen, onRevoke, onTrace }: BrowserBrokerOptions): {
+export declare function createBrowserBroker({ profile, contextOf, turnOf, now, timeoutMs, heartbeatMs, stickyGrants, autoGrant, autoOpen, background, onRevoke, onTrace }: BrowserBrokerOptions): {
     register({ sessionId, clientTabId }: {
         sessionId: string;
         clientTabId: string;
@@ -138,6 +145,7 @@ export declare function createBrowserBroker({ profile, contextOf, turnOf, now, t
         capability: string;
         workspace: string;
         autoGrant: boolean;
+        background: boolean;
     }>;
     list(binding: BrowserScope, { ownerToken, assertCurrent }?: {
         ownerToken?: symbol | null;
@@ -173,7 +181,11 @@ export declare function createBrowserBroker({ profile, contextOf, turnOf, now, t
     takeOpen({ sessionId }: {
         sessionId: string;
     }): {
+        url: null;
+        reveal?: undefined;
+    } | {
         url: string | null;
+        reveal: boolean;
     };
     poll(args: BrowserAuthRequest): Promise<{
         tabId: string;

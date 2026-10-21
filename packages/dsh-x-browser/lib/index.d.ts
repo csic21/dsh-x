@@ -27,6 +27,11 @@ export interface BrowserConfig {
      * entry. Off by default; a new tab still starts ungranted unless `autoGrant` is on.
      */
     autoOpen?: boolean;
+    /**
+     * Let the model keep working while the AI Browser tab is collapsed or behind another
+     * sidebar tab. Off by default: hiding a tab normally revokes AI access immediately.
+     */
+    background?: boolean;
     cdp?: {
         /** CLI executable; defaults to `agent-browser` on PATH. */
         command?: string;

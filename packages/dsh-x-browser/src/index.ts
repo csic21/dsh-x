@@ -37,6 +37,11 @@ export interface BrowserConfig {
    * entry. Off by default; a new tab still starts ungranted unless `autoGrant` is on.
    */
   autoOpen?: boolean
+  /**
+   * Let the model keep working while the AI Browser tab is collapsed or behind another
+   * sidebar tab. Off by default: hiding a tab normally revokes AI access immediately.
+   */
+  background?: boolean
   cdp?: {
     /** CLI executable; defaults to `agent-browser` on PATH. */
     command?: string
@@ -74,7 +79,7 @@ export function apply(ctx: Context, config: BrowserConfig = {}) {
     })
     runtime = cdpRuntime(backend, { allowedDomains: domains })
   } else {
-    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, autoOpen: config.autoOpen === true, onTrace: event => { try { if (process.env.DSH_X_BROWSER_TRACE) require('node:fs').appendFileSync(process.env.DSH_X_BROWSER_TRACE, JSON.stringify(event) + '\n') } catch {}; ctx.emit('dsh-x-browser/trace', event) } })
+    const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, autoOpen: config.autoOpen === true, background: config.background === true, onTrace: event => { try { if (process.env.DSH_X_BROWSER_TRACE) require('node:fs').appendFileSync(process.env.DSH_X_BROWSER_TRACE, JSON.stringify(event) + '\n') } catch {}; ctx.emit('dsh-x-browser/trace', event) } })
     ownership = createBrowserOwnership({ onClose: token => broker.revokeOwner(token) })
     ctx.provide('dshXBrowserOwnership', { bind: ownership.bind })
     ctx.effect(() => () => { ownership!.dispose(); broker.dispose() }, 'browser: broker lifetime')
@@ -83,5 +88,5 @@ export function apply(ctx: Context, config: BrowserConfig = {}) {
   }
 
   ctx.effect(() => () => { void runtime.dispose() }, 'browser: runtime lifetime')
-  registerBrowserTools(ctx, { name, authority, runtime, ownership, approval: config.approval, persistentGrant: config.persistentGrant === true, systemPrompt: services.systemPrompt })
+  registerBrowserTools(ctx, { name, authority, runtime, ownership, approval: config.approval, persistentGrant: config.persistentGrant === true, background: config.background === true, systemPrompt: services.systemPrompt })
 }

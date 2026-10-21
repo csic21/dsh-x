@@ -14,7 +14,7 @@ export interface BrowserRpc { call(base: string, name: string, payload: Record<s
 /** Renderer document subset the controller reads; tests supply a faithful stub. */
 export interface BrowserDocument { hidden: boolean, addEventListener(type: string, listener: () => void): void, removeEventListener(type: string, listener: () => void): void }
 /** Reply of `register`: the owned capability, its workspace binding, and the profile's grant policy. */
-interface BrowserRegistration { tabId: string, capability: string, workspace: string, grantRevision: number, autoGrant?: boolean }
+interface BrowserRegistration { tabId: string, capability: string, workspace: string, grantRevision: number, autoGrant?: boolean, background?: boolean }
 /** Reply of `sync`, `grant`, `revoke` and `poll`: public tab state plus any queued command. */
 interface BrowserSnapshot { epoch: number, grantRevision: number, granted: boolean, status: string, command: BrowserCommandEnvelope | null }
 /** Reply of `confirm`: whether input may be dispatched. */
@@ -29,6 +29,8 @@ export interface BrowserPaneState {
   ready: boolean
   /** Profile policy: AI access is granted automatically, so no Allow AI control applies. */
   autoGrant?: boolean
+  /** Profile policy: the tab keeps working while hidden. */
+  background?: boolean
   url: string
   title: string
   error: string | null
@@ -39,7 +41,7 @@ export interface BrowserPaneState {
   canGoForward?: boolean
 }
 /** Pane-visible projection the body component renders from. */
-export type BrowserPaneView = Pick<BrowserPaneState, 'status' | 'ready' | 'granted' | 'autoGrant' | 'url' | 'title' | 'error' | 'loading' | 'canGoBack' | 'canGoForward'>
+export type BrowserPaneView = Pick<BrowserPaneState, 'status' | 'ready' | 'granted' | 'autoGrant' | 'background' | 'url' | 'title' | 'error' | 'loading' | 'canGoBack' | 'canGoForward'>
 /** Renderer-side dependencies of one owned tab controller. */
 export interface BrowserControllerOptions {
   rpc: BrowserRpc
@@ -110,7 +112,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
   }
   const sync = () => call<BrowserSnapshot>('sync', { ...auth(), epoch: guest!.state().epoch, visible: visible && !documentObject?.hidden, title: guest!.state().title, url: guest!.state().url })
   async function execute(command: BrowserCommandEnvelope) {
-    if (running || !state.granted || !visible || documentObject?.hidden) { await takeover('manual'); return }
+    if (running || !state.granted || (!visible && registration?.background !== true) || documentObject?.hidden) { await takeover('manual'); return }
     const ownGeneration = generation
     // `beforeInput` runs immediately before every native event, so this flag is the
     // exact boundary between "the page rejected the command" and "input may already
@@ -192,11 +194,11 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
     autoRecoveries += 1
     scheduleRegrant()
   }
-  const visibility = () => { if (documentObject?.hidden) void takeover('hidden') }
+  const visibility = () => { if (documentObject?.hidden && registration?.background !== true) void takeover('hidden') }
   documentObject?.addEventListener('visibilitychange', visibility)
   /** The one grant path; the Allow AI button and unattended auto-grant both use it. */
   async function grantNow() {
-    if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return
+    if (disposed || granting || !guest?.state().ready || (!visible && registration?.background !== true) || documentObject?.hidden) return
     granting = true; clearTimeout(timer); localRevoke('manual')
     const ownGeneration = generation
     try {
@@ -226,7 +228,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
     // Never restart the flow for a tab that already holds a grant: grantNow revokes
     // first, so a redundant call would briefly revoke a healthy grant and reject any
     // action that arrived in that window.
-    if (disposed || granting || state.granted || !guest?.state().ready || !visible || documentObject?.hidden) return
+    if (disposed || granting || state.granted || !guest?.state().ready || (!visible && registration?.background !== true) || documentObject?.hidden) return
     void grantNow()
   }
   return {
@@ -257,7 +259,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
             }
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason)
           } })
-        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision, autoGrant: registration.autoGrant === true })
+        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision, autoGrant: registration.autoGrant === true, background: registration.background === true })
         await guest.start()
         if (disposed) return
         // Load the requested page before granting: the grant must cover the document
@@ -274,7 +276,7 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
     },
     setVisible(value) {
       visible = Boolean(value); publish({ visible })
-      if (!visible) { void takeover('hidden'); return }
+      if (!visible) { if (registration?.background !== true) void takeover('hidden'); return }
       // A freshly opened tab becomes visible after `start()` resolved, so the
       // ready-time attempt alone would always lose the race with `setVisible(true)`.
       if (registration?.autoGrant === true) void autoGrant()

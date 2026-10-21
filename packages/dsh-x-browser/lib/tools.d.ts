@@ -13,6 +13,8 @@ export interface BrowserToolDeps {
     approval?: BrowserApprovalMode;
     /** True when one explicit tab grant persists across turns and in-tab navigation. */
     persistentGrant?: boolean;
+    /** True when a hidden tab keeps its grant and still accepts commands. */
+    background?: boolean;
     systemPrompt: {
         section(options: {
             name: string;

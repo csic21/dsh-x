@@ -84,7 +84,7 @@ export function registerBrowserTools(ctx, deps) {
                 const command = validateCommand(raw, null, cdp ? CDP_REF_PATTERN : EMBEDDED_REF_PATTERN, actions), scope = await authority.binding(exec), owner = authority.executionTurn(exec, nativeOwner);
                 owner.assertCurrent();
                 const tab = (await runtime.list(scope, { ownerToken: owner.ownerToken, assertCurrent: owner.assertCurrent, signal: exec.signal })).tabs.find(item => item.tabId === tabId);
-                const ungranted = !tab?.granted || (!cdp && !tab.visible);
+                const ungranted = !tab?.granted || (!cdp && !tab.visible && deps.background !== true);
                 const staleEpoch = !tab || tab.epoch !== epoch || tab.grantRevision !== grantRevision;
                 if (ungranted || staleEpoch) {
                     throw fail(cdp && !ungranted ? 'BROWSER_STALE' : 'BROWSER_GRANT', cdp
@@ -139,7 +139,7 @@ export function registerBrowserTools(ctx, deps) {
                     owner.assertCurrent();
                     const accepted = validateRun(steps);
                     const tab = (await runtime.list(scope, { ownerToken: owner.ownerToken, assertCurrent: owner.assertCurrent, signal: exec.signal })).tabs.find(item => item.tabId === tabId);
-                    if (!tab?.granted || !tab.visible)
+                    if (!tab?.granted || (!tab.visible && deps.background !== true))
                         throw fail('BROWSER_GRANT', 'Show the exact browser tab and enable AI access, then refresh tabs before starting a run.');
                     if (tab.epoch !== epoch || tab.grantRevision !== grantRevision)
                         throw fail('BROWSER_STALE', 'Refresh tabs; this tabId, epoch or grantRevision is stale.');

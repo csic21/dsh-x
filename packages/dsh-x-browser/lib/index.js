@@ -24,7 +24,7 @@ export function apply(ctx, config = {}) {
         runtime = cdpRuntime(backend, { allowedDomains: domains });
     }
     else {
-        const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, autoOpen: config.autoOpen === true, onTrace: event => { try {
+        const broker = createBrowserBroker({ profile: authority.profile, contextOf: authority.contextOf, turnOf: authority.turnOf, stickyGrants: config.persistentGrant === true, autoGrant: config.autoGrant === true, autoOpen: config.autoOpen === true, background: config.background === true, onTrace: event => { try {
                 if (process.env.DSH_X_BROWSER_TRACE)
                     require('node:fs').appendFileSync(process.env.DSH_X_BROWSER_TRACE, JSON.stringify(event) + '\n');
             }
@@ -36,5 +36,5 @@ export function apply(ctx, config = {}) {
         runtime = embeddedRuntime(broker);
     }
     ctx.effect(() => () => { void runtime.dispose(); }, 'browser: runtime lifetime');
-    registerBrowserTools(ctx, { name, authority, runtime, ownership, approval: config.approval, persistentGrant: config.persistentGrant === true, systemPrompt: services.systemPrompt });
+    registerBrowserTools(ctx, { name, authority, runtime, ownership, approval: config.approval, persistentGrant: config.persistentGrant === true, background: config.background === true, systemPrompt: services.systemPrompt });
 }

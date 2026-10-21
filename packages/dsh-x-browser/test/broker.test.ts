@@ -250,3 +250,25 @@ test('a delivered command still stops when the document changes under it', async
   await broker.sync({ ...auth, epoch: 2, visible: true })
   await rejected
 })
+
+test('a background profile keeps a hidden tab controllable; the default profile still revokes it', async t => {
+  const run = async (background: boolean) => {
+    const s = { profile: `p-${background}`, sessionId: `s-${background}`, workspace: '/w' }
+    const broker = createBrowserBroker({ profile: s.profile, stickyGrants: true, background, turnOf: () => ({ runId: 'r', turn: 1 }), contextOf: async id => ({ ...s, sessionId: id }) })
+    const tab = await broker.register({ sessionId: s.sessionId, clientTabId: 'ui' }), auth = { tabId: tab.tabId, capability: tab.capability }
+    await broker.sync({ ...auth, epoch: 1, visible: true })
+    const grant = await broker.grant({ ...auth, epoch: 1, grantRevision: 0 })
+    await broker.sync({ ...auth, epoch: 1, visible: false })
+    const listed = (await broker.list(s)).tabs[0]
+    if (!background) { assert.equal(listed.granted, false); broker.dispose(); return }
+    assert.equal(listed.granted, true)
+    const pending = broker.execute(s, { tabId: tab.tabId, epoch: 1, grantRevision: grant.grantRevision, command: { action: 'scroll', x: 0, y: 10 } }, { runId: 'r', turnNumber: 1 })
+    await new Promise<any>(resolve => setImmediate(resolve))
+    const delivery = await broker.poll(auth)
+    await broker.acknowledge({ ...auth, commandId: delivery.command!.id, epoch: 1, grantRevision: grant.grantRevision, result: { status: 'input-sent' } })
+    assert.equal((await pending).epoch, 1)
+    broker.dispose()
+  }
+  await run(false)
+  await run(true)
+})

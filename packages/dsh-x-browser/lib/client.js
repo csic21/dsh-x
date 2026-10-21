@@ -515,7 +515,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
   }
   const sync = () => call("sync", { ...auth(), epoch: guest.state().epoch, visible: visible && !documentObject?.hidden, title: guest.state().title, url: guest.state().url });
   async function execute(command) {
-    if (running || !state.granted || !visible || documentObject?.hidden) {
+    if (running || !state.granted || !visible && registration?.background !== true || documentObject?.hidden) {
       await takeover("manual");
       return;
     }
@@ -606,11 +606,11 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
     scheduleRegrant();
   }
   const visibility = () => {
-    if (documentObject?.hidden) void takeover("hidden");
+    if (documentObject?.hidden && registration?.background !== true) void takeover("hidden");
   };
   documentObject?.addEventListener("visibilitychange", visibility);
   async function grantNow() {
-    if (disposed || granting || !guest?.state().ready || !visible || documentObject?.hidden) return;
+    if (disposed || granting || !guest?.state().ready || !visible && registration?.background !== true || documentObject?.hidden) return;
     granting = true;
     clearTimeout(timer);
     localRevoke("manual");
@@ -645,7 +645,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
     }
   }
   const autoGrant = () => {
-    if (disposed || granting || state.granted || !guest?.state().ready || !visible || documentObject?.hidden) return;
+    if (disposed || granting || state.granted || !guest?.state().ready || !visible && registration?.background !== true || documentObject?.hidden) return;
     void grantNow();
   };
   return {
@@ -686,7 +686,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason);
           }
         });
-        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision, autoGrant: registration.autoGrant === true });
+        publish({ tabId: registration.tabId, grantRevision: registration.grantRevision, autoGrant: registration.autoGrant === true, background: registration.background === true });
         await guest.start();
         if (disposed) return;
         if (initialUrl) await guest.navigate(initialUrl).catch(() => {
@@ -706,7 +706,7 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
       visible = Boolean(value);
       publish({ visible });
       if (!visible) {
-        void takeover("hidden");
+        if (registration?.background !== true) void takeover("hidden");
         return;
       }
       if (registration?.autoGrant === true) void autoGrant();
@@ -984,8 +984,9 @@ function apply(ctx) {
         try {
           const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 8e3);
           const reply = await ctx.connection.rpc.call("/api", "browser/open", { sessionId }, abort.signal).finally(() => clearTimeout(timeout));
-          const url = reply?.ok ? reply.value?.url : void 0;
-          if (!stopped && typeof url === "string" && url) ctx.sidebarRight.openTab("dsh-x-browser", { params: { url }, revealIfOpened: true });
+          const value = reply?.ok ? reply.value : void 0;
+          const url = value?.url;
+          if (!stopped && typeof url === "string" && url) ctx.sidebarRight.openTab("dsh-x-browser", { params: { url }, revealIfOpened: value?.reveal !== false });
         } catch {
         } finally {
           busy = false;

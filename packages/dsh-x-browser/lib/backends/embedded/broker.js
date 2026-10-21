@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { boundedResult, fail, identifier, modelUrl, NAVIGATION, validateCommand } from '../../protocol.js';
 /** One broker per host profile. Capabilities stay in trusted renderer closures, never model results. */
-export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, autoGrant = false, autoOpen = false, onRevoke = () => { }, onTrace = () => { } }) {
+export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now, timeoutMs = 20_000, heartbeatMs = 5_000, stickyGrants = false, autoGrant = false, autoOpen = false, background = false, onRevoke = () => { }, onTrace = () => { } }) {
     const tabs = new Map();
     /** One pending open request per session; the renderer polls and clears it. */
     const opens = new Map();
@@ -114,7 +114,7 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
                 throw fail('BROWSER_LIMIT', 'Close a browser tab before opening another.');
             const tab = { id: randomUUID(), capability: randomUUID() + randomUUID(), clientTabId, binding: { ...current, profile }, epoch: 0, revision: 0, visible: false, granted: false, title: '', url: '', runId: null, ownerToken: null, ownerClaimed: false, pending: null, lastSeen: now(), status: 'manual' };
             tabs.set(tab.id, tab);
-            return { ...publicTab(tab), capability: tab.capability, workspace: tab.binding.workspace, autoGrant };
+            return { ...publicTab(tab), capability: tab.capability, workspace: tab.binding.workspace, autoGrant, background };
         },
         async list(binding, { ownerToken = null, assertCurrent } = {}) {
             const result = [];
@@ -164,7 +164,7 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
             tab.visible = args.visible;
             tab.title = typeof args.title === 'string' ? args.title.slice(0, 200) : '';
             tab.url = typeof args.url === 'string' ? args.url.slice(0, 4096) : '';
-            if (!tab.visible && tab.granted)
+            if (!tab.visible && tab.granted && !background)
                 revoke(tab, 'hidden');
             touch(tab);
             return publicTab(tab);
@@ -223,7 +223,7 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
             if (!request)
                 return { url: null };
             opens.delete(sessionId);
-            return { url: request.expires > now() ? request.url : null };
+            return { url: request.expires > now() ? request.url : null, reveal: !background };
         },
         async poll(args) {
             const tab = authenticate(args);
@@ -313,7 +313,7 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
             await verify(tab, binding);
             signal?.throwIfAborted();
             assertCurrent?.();
-            if (!tab.visible || !tab.granted)
+            if ((!tab.visible && !background) || !tab.granted)
                 throw fail('BROWSER_GRANT', 'Ask the user to show this tab and enable AI access. Manual browsing remains available.');
             if (tab.ownerClaimed && tab.ownerToken !== ownerToken)
                 throw fail('BROWSER_OWNER', 'This browser grant belongs to another tool or native run. Ask for a new explicit grant.');
