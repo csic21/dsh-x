@@ -1,6 +1,6 @@
 {
   "name": "dsh-x-browser",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Experimental, opt-in browser tools: embedded Desktop tab or external Chrome over CDP",
   "type": "module",
   "main": "./lib/index.js",

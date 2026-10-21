@@ -126,3 +126,20 @@ test('a step whose command was never delivered is retried once; a stale delivere
   ]), textLimit: 500, targetLimit: 5, finalObservation: false }), { code: 'BROWSER_STALE' })
   assert.equal(delivered, 1)
 })
+
+test('a locating observation refused before delivery is retried with the step', async t => {
+  let probes = 0
+  const f = fixture()
+  const base = f.runtime.execute.bind(f.runtime)
+  f.runtime.execute = async (scope, args, owner) => {
+    // This is exactly what a redirecting page does: the probe is refused before the
+    // renderer ever sees it, and the run must resolve the label again afterwards.
+    if (args.command.action === 'observe' && args.command.action === 'observe' && probes++ === 0) throw Object.assign(new Error('The page changed before the queued command ran.'), { code: 'BROWSER_UNSENT' })
+    return base(scope, args, owner)
+  }
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+  ]), textLimit: 500, targetLimit: 5, finalObservation: false })
+  assert.equal(probes, 2)
+  assert.deepEqual(run.steps.map(step => step.ok), [true])
+})
