@@ -211,3 +211,23 @@ test('the retry budget is finite, so a permanently broken page still fails', asy
     { action: 'click', label: '点我 +1' },
   ]), textLimit: 200, targetLimit: 3, finalObservation: false }), { code: 'BROWSER_UNSENT' })
 })
+
+test('a run waits for the renewed grant after a navigating click before issuing the next step', async t => {
+  const f = fixture()
+  const base = f.runtime.execute.bind(f.runtime)
+  f.runtime.execute = async (scope, args, owner) => {
+    if (args.command.action === 'click') {
+      f.bumpEpoch()
+      // The renderer renews its grant shortly after the document changes.
+      f.setGranted(false)
+      setTimeout(() => f.setGranted(true), 150)
+      return { tabId: 't1', epoch: 2, grantRevision: 5, untrustedPageContent: true, result: { status: 'input-sent' } }
+    }
+    return base(scope, args, owner)
+  }
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+    { action: 'observe' },
+  ]), textLimit: 200, targetLimit: 3, finalObservation: true })
+  assert.deepEqual(run.steps.map(step => step.ok), [true, true])
+})

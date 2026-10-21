@@ -206,7 +206,12 @@ export async function runSequence(request) {
             }
             const result = outcome.result;
             observation = observationOf(result.result, request.textLimit, request.targetLimit) ?? observation;
-            tab = await currentTab(request, 1200);
+            // A click that navigates makes the renderer renew its grant a moment later, and
+            // during that gap a new command is refused. Wait for the tab to be granted again
+            // and for the document to stop moving before the next step is issued.
+            tab = await currentTab(request, 3000);
+            if (before.budget > 0)
+                tab = await waitForQuiet(request);
             // Only actions that can replace the document are worth a settle wait; typing,
             // pressing and scrolling cannot, and waiting for them would slow the run down.
             const budget = step.action === 'navigate' || step.action === 'back' || step.action === 'forward' || step.action === 'reload'
