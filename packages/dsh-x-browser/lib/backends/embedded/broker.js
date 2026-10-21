@@ -146,7 +146,14 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
             // targeted the old document is abandoned rather than revoked. The per-turn
             // default keeps the original behavior: any document change ends the grant.
             if (args.epoch !== tab.epoch && tab.pending && !NAVIGATION.has(tab.pending.command.action)) {
-                stickyGrants ? stop(tab, 'document-changed', 'BROWSER_STALE', 'The page changed before the queued command ran. Observe again.') : revoke(tab, 'document-changed');
+                // `delivered` is the exact boundary: a command the renderer never received can
+                // be retried safely, while one it may already have typed into must not be.
+                if (!stickyGrants)
+                    revoke(tab, 'document-changed');
+                else if (tab.pending.delivered)
+                    stop(tab, 'document-changed', 'BROWSER_STALE', 'The page changed after the command was delivered. Observe again; do not replay it.');
+                else
+                    stop(tab, 'document-changed', 'BROWSER_UNSENT', 'The page changed before the queued command ran. Observe again.');
             }
             tab.epoch = args.epoch;
             tab.visible = args.visible;

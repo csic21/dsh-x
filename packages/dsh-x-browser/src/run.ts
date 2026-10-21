@@ -136,6 +136,8 @@ export async function runSequence(request: RunRequest): Promise<RunOutcome> {
   const log: RunStepResult[] = []
   let tab = await currentTab(request)
   let observation: RunOutcome['observation'] = null
+  /** One retry per step is enough: `BROWSER_UNSENT` means the renderer never got it. */
+  let retries = 0
 
   for (const [index, step] of request.steps.entries()) {
     const position = index + 1
@@ -168,17 +170,26 @@ export async function runSequence(request: RunRequest): Promise<RunOutcome> {
         : { action: step.action }
 
       const before = tab.epoch
+      let result: Awaited<ReturnType<BrowserRuntime['execute']>>
+      try {
+        result = await request.runtime.execute(request.scope, { tabId: tab.tabId, epoch: tab.epoch, grantRevision: tab.grantRevision, command }, request.owner)
+      } catch (error) {
+        const failure = error as { code?: unknown }
+        if (failure.code !== 'BROWSER_UNSENT' || retries >= 3) throw error
+        // The page changed while the command was queued and the renderer never saw it,
+        // so replaying is safe. Wait for the new document, re-read its identity and try
+        // once more; anything that might have reached the page never lands here.
+        retries += 1
+        await new Promise<void>(resolve => setTimeout(resolve, 200))
+        request.owner.signal?.throwIfAborted()
+        tab = await currentTab(request)
+        result = await request.runtime.execute(request.scope, { tabId: tab.tabId, epoch: tab.epoch, grantRevision: tab.grantRevision, command }, request.owner)
+      }
       // Only actions that can replace the document are worth a settle wait; typing,
       // pressing and scrolling cannot, and waiting for them would slow the run down.
       const budget = step.action === 'navigate' || step.action === 'back' || step.action === 'forward' || step.action === 'reload'
         ? NAVIGATION_SETTLE_MS
         : step.action === 'click' ? CLICK_SETTLE_MS : 0
-      const result = await request.runtime.execute(request.scope, {
-        tabId: tab.tabId,
-        epoch: tab.epoch,
-        grantRevision: tab.grantRevision,
-        command,
-      }, request.owner)
       observation = observationOf(result.result, request.textLimit, request.targetLimit) ?? observation
       tab = await currentTab(request)
       // Navigation and clicks may still be loading; let the next step see the new

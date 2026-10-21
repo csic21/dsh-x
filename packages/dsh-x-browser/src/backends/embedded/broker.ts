@@ -37,7 +37,7 @@ type BrowserPending = { id: string, epoch: number, revision: number, command: Br
 /** One live tab lease owned by this broker. */
 type BrowserTab = { id: string, capability: string, clientTabId: unknown, binding: BrowserScope, epoch: number, revision: number, visible: boolean, granted: boolean, title: string, url: string, runId: string | null, ownerToken: symbol | null, ownerClaimed: boolean, pending: BrowserPending | null, lastSeen: number, status: string, expectedTurn?: number, observedTurn?: number, observedRunId?: string | null }
 /** Why one dispatched command stopped; `run-ended` keeps a sticky grant, everything else revokes it. */
-type BrowserStop = { code: 'BROWSER_STALE' | 'BROWSER_RUN' | 'BROWSER_REVOKED', message: string }
+type BrowserStop = { code: 'BROWSER_STALE' | 'BROWSER_UNSENT' | 'BROWSER_RUN' | 'BROWSER_REVOKED', message: string }
 /** Host services the broker calls back into. */
 type BrowserBrokerOptions = {
   profile: string
@@ -175,7 +175,11 @@ export function createBrowserBroker({ profile, contextOf, turnOf, now = Date.now
       // targeted the old document is abandoned rather than revoked. The per-turn
       // default keeps the original behavior: any document change ends the grant.
       if (args.epoch !== tab.epoch && tab.pending && !NAVIGATION.has(tab.pending.command.action)) {
-        stickyGrants ? stop(tab, 'document-changed', 'BROWSER_STALE', 'The page changed before the queued command ran. Observe again.') : revoke(tab, 'document-changed')
+        // `delivered` is the exact boundary: a command the renderer never received can
+        // be retried safely, while one it may already have typed into must not be.
+        if (!stickyGrants) revoke(tab, 'document-changed')
+        else if (tab.pending.delivered) stop(tab, 'document-changed', 'BROWSER_STALE', 'The page changed after the command was delivered. Observe again; do not replay it.')
+        else stop(tab, 'document-changed', 'BROWSER_UNSENT', 'The page changed before the queued command ran. Observe again.')
       }
       tab.epoch = args.epoch; tab.visible = args.visible
       tab.title = typeof args.title === 'string' ? args.title.slice(0, 200) : ''

@@ -99,3 +99,30 @@ test('a run refuses to continue when the grant or the tab disappears', async () 
   const revoked = fixture(); revoked.setGranted(false)
   await assert.rejects(runSequence({ runtime: revoked.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([{ action: 'observe' }]), textLimit: 1000, targetLimit: 10, finalObservation: false }), { code: 'BROWSER_GRANT' })
 })
+
+test('a step whose command was never delivered is retried once; a stale delivered step is not', async t => {
+  let attempts = 0
+  const f = fixture()
+  const original = f.runtime.execute.bind(f.runtime)
+  f.runtime.execute = async (scope, args, owner) => {
+    if (args.command.action === 'click' && attempts++ === 0) throw Object.assign(new Error('The page changed before the queued command ran.'), { code: 'BROWSER_UNSENT' })
+    return original(scope, args, owner)
+  }
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+  ]), textLimit: 500, targetLimit: 5, finalObservation: false })
+  assert.equal(attempts, 2)
+  assert.deepEqual(run.steps.map(step => step.ok), [true])
+
+  const g = fixture()
+  const base = g.runtime.execute.bind(g.runtime)
+  let delivered = 0
+  g.runtime.execute = async (scope, args, owner) => {
+    if (args.command.action === 'click') { delivered += 1; throw Object.assign(new Error('The page changed after the command was delivered.'), { code: 'BROWSER_STALE' }) }
+    return base(scope, args, owner)
+  }
+  await assert.rejects(runSequence({ runtime: g.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+  ]), textLimit: 500, targetLimit: 5, finalObservation: false }), { code: 'BROWSER_STALE' })
+  assert.equal(delivered, 1)
+})
