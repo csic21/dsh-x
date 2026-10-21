@@ -583,6 +583,14 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
       if (!disposed && !granting) timer = setTimeout(pump, pollMs);
     }
   }
+  let regrantTimer;
+  function scheduleRegrant() {
+    clearTimeout(regrantTimer);
+    regrantTimer = setTimeout(() => {
+      if (disposed || !visible || documentObject?.hidden) return;
+      void grantNow();
+    }, 400);
+  }
   const visibility = () => {
     if (documentObject?.hidden) void takeover("hidden");
   };
@@ -655,6 +663,10 @@ function createBrowserController({ rpc, desktop = globalThis.dshDesktop, session
             }
           },
           onInvalidate: (reason, navigation) => {
+            if (navigation && registration?.autoGrant === true && state.granted) {
+              scheduleRegrant();
+              return;
+            }
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason);
           }
         });

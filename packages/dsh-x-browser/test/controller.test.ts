@@ -173,3 +173,27 @@ test('autoGrant never restarts a grant that is already live', async t => {
   assert.equal(f.calls.filter(call => call.name === 'browser/revoke').length, revokes)
   assert.equal(f.serverGranted(), true)
 })
+
+test('an unattended profile renews the grant after a link navigates, without asking again', async t => {
+  const f = fixture({ register: true }); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick()
+  for (let i = 0; !f.serverGranted() && i < 100; i++) await new Promise<any>(resolve => setTimeout(resolve, 1))
+  const before = f.calls.filter(call => call.name === 'browser/grant').length
+  assert.equal(f.controller.getSnapshot().granted, true)
+  // A click that navigates produces exactly this invalidation on the real guest.
+  f.navigateWhilePending()
+  for (let i = 0; i < 200 && f.calls.filter(call => call.name === 'browser/grant').length === before; i++) await new Promise<any>(resolve => setTimeout(resolve, 2))
+  assert.equal(f.calls.filter(call => call.name === 'browser/grant').length, before + 1)
+  assert.equal(f.serverGranted(), true)
+  assert.equal(f.controller.getSnapshot().granted, true)
+})
+
+test('a default profile still drops the grant when a link navigates', async t => {
+  const f = fixture(); t.after(() => f.controller.dispose())
+  await f.controller.start(); await tick(); await f.controller.grant()
+  assert.equal(f.serverGranted(), true)
+  f.navigateWhilePending()
+  for (let i = 0; i < 200 && f.serverGranted(); i++) await new Promise<any>(resolve => setTimeout(resolve, 2))
+  assert.equal(f.serverGranted(), false)
+  assert.equal(f.controller.getSnapshot().granted, false)
+})

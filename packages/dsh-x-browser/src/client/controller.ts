@@ -148,6 +148,20 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
       if (!disposed && ownGeneration === generation) { await takeover(stopReason(error)); publish({ error: errorDetail(error) }) }
     } finally { pumping = false; for (const done of pumpWaiters.splice(0)) done(); if (!disposed && !granting) timer = setTimeout(pump, pollMs) }
   }
+  /**
+   * Renew the grant for the document a navigation just produced.
+   *
+   * Delayed so the new document settles and the next `sync` reports its epoch; the
+   * grant must cover the page that is actually on screen, never the one that left.
+   */
+  let regrantTimer: ReturnType<typeof setTimeout> | undefined
+  function scheduleRegrant() {
+    clearTimeout(regrantTimer)
+    regrantTimer = setTimeout(() => {
+      if (disposed || !visible || documentObject?.hidden) return
+      void grantNow()
+    }, 400)
+  }
   const visibility = () => { if (documentObject?.hidden) void takeover('hidden') }
   documentObject?.addEventListener('visibilitychange', visibility)
   /** The one grant path; the Allow AI button and unattended auto-grant both use it. */
@@ -200,6 +214,11 @@ export function createBrowserController({ rpc, desktop = globalThis.dshDesktop, 
             // flips; `autoGrantTried` keeps a failure from looping.
             if (next.ready && registration?.autoGrant === true && !state.granted && !autoGrantTried) { autoGrantTried = true; void autoGrant() }
           }, onInvalidate: (reason, navigation) => {
+            // A link that navigates ends the document the grant covered, so the default
+            // profile drops the grant and asks the human again. An unattended profile has
+            // nobody to ask, so it renews the grant for the new document instead; every
+            // other invalidation (hidden, crash, takeover) still goes through `takeover`.
+            if (navigation && registration?.autoGrant === true && state.granted) { scheduleRegrant(); return }
             if ((state.granted || granting) && !(navigation && running && NAVIGATION.has(running.action))) void takeover(reason)
           } })
         publish({ tabId: registration.tabId, grantRevision: registration.grantRevision })
