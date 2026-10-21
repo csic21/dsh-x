@@ -20,6 +20,8 @@ import { describeLabels, matchLabel } from './contract/batch.js';
 const NAVIGATION_SETTLE_MS = 3000;
 const CLICK_SETTLE_MS = 300;
 const SETTLE_POLL_MS = 60;
+/** Total time a single step may spend retrying an undelivered command. */
+const UNSENT_BUDGET_MS = 8000;
 const actionsNeedingTarget = new Set(['click', 'type']);
 /** Read the mutable state of the run's tab, or fail when it is gone. */
 async function readTab(request) {
@@ -183,18 +185,23 @@ export async function runSequence(request) {
             // showing it to the renderer. That is the one failure worth replaying, and it
             // can hit the locating observation just as easily as the step itself.
             let outcome;
-            for (let attempt = 0; attempt < 2 && outcome === undefined; attempt++) {
+            const retryUntil = Date.now() + UNSENT_BUDGET_MS;
+            for (;;) {
                 try {
                     outcome = await attemptStep(step);
+                    break;
                 }
                 catch (error) {
+                    // A command the renderer never received is safe to replay, and a page that is
+                    // still redirecting will keep refusing it. Retry with a time budget instead of
+                    // a fixed count: the window between queueing and pickup is up to one poll
+                    // interval, so a single extra attempt often lands in the same bad window.
                     const failure = error;
-                    if (failure.code !== 'BROWSER_UNSENT' || attempt === 1 || retries >= 3)
+                    if (failure.code !== 'BROWSER_UNSENT' || Date.now() >= retryUntil)
                         throw error;
                     retries += 1;
-                    await new Promise(resolve => setTimeout(resolve, 200));
                     request.owner.signal?.throwIfAborted();
-                    tab = await currentTab(request);
+                    tab = await waitForQuiet(request);
                 }
             }
             const result = outcome.result;

@@ -187,3 +187,27 @@ test('a run waits for a still-redirecting page instead of issuing a doomed comma
   assert.ok(Date.now() - started >= 250, `waited ${Date.now() - started}ms`)
   assert.equal(f.commands.filter(command => command.action === 'click').length, 1)
 })
+
+test('an undelivered step retries within its budget instead of a fixed count', async t => {
+  const f = fixture()
+  const base = f.runtime.execute.bind(f.runtime)
+  let refusals = 0
+  f.runtime.execute = async (scope, args, owner) => {
+    // Refuse the first three arrivals, as a slow multi-hop redirect would.
+    if (args.command.action !== 'observe' && refusals++ < 3) throw Object.assign(new Error('The page changed before the queued command ran.'), { code: 'BROWSER_UNSENT' })
+    return base(scope, args, owner)
+  }
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+  ]), textLimit: 200, targetLimit: 3, finalObservation: false })
+  assert.equal(refusals, 4)
+  assert.deepEqual(run.steps.map(step => step.ok), [true])
+})
+
+test('the retry budget is finite, so a permanently broken page still fails', async t => {
+  const f = fixture()
+  f.runtime.execute = async () => { throw Object.assign(new Error('The page changed before the queued command ran.'), { code: 'BROWSER_UNSENT' }) }
+  await assert.rejects(runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+  ]), textLimit: 200, targetLimit: 3, finalObservation: false }), { code: 'BROWSER_UNSENT' })
+})
