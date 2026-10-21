@@ -231,3 +231,31 @@ test('a run waits for the renewed grant after a navigating click before issuing 
   ]), textLimit: 200, targetLimit: 3, finalObservation: true })
   assert.deepEqual(run.steps.map(step => step.ok), [true, true])
 })
+
+test('the step after a navigating click waits out the renewal revocation, not just the old grant', async t => {
+  const f = fixture()
+  const base = f.runtime.execute.bind(f.runtime)
+  const marks: { action: string, at: number }[] = []
+  f.runtime.execute = async (scope, args, owner) => {
+    marks.push({ action: args.command.action, at: Date.now() })
+    if (args.command.action === 'click') {
+      f.bumpEpoch()
+      // The real renderer keeps the old grant valid for ~400ms, then revokes for the
+      // renewal, then grants again. Anything issued inside that gap is refused.
+      setTimeout(() => f.setGranted(false), 400)
+      setTimeout(() => f.setGranted(true), 700)
+      return { tabId: 't1', epoch: 2, grantRevision: 5, untrustedPageContent: true, result: { status: 'input-sent' } }
+    }
+    return base(scope, args, owner)
+  }
+  const started = Date.now()
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 1, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+    { action: 'observe' },
+  ]), textLimit: 200, targetLimit: 3, finalObservation: true })
+  assert.deepEqual(run.steps.map(step => step.ok), [true, true])
+  // The observe must have been issued after the renewal finished (>=700ms), never in
+  // the 400-700ms gap where the client is mid-renewal.
+  const observe = marks.filter(mark => mark.action === 'observe').at(-1)!
+  assert.ok(observe.at - started >= 690, `observe issued at ${observe.at - started}ms`)
+})

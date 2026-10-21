@@ -101,6 +101,30 @@ async function waitForQuiet(request: RunRequest, quietMs = 300, capMs = 4000): P
 }
 
 /**
+ * Wait until the tab is granted *and stays granted* for a quiet window.
+ *
+ * A navigating click renews the grant about 400 ms after the document changes. Waiting
+ * for `granted: true` alone is not enough: the old grant is still true right up to the
+ * moment the renewal revokes it, so a step issued then lands in the gap. Requiring a
+ * stable window across the renewal delay is what makes the next step safe.
+ */
+async function waitForStableGrant(request: RunRequest, quietMs = 900, capMs = 8000): Promise<RuntimeTarget> {
+  const deadline = Date.now() + capMs
+  let stable: { epoch: number, since: number } | undefined
+  for (;;) {
+    const tab = await readTab(request)
+    const at = Date.now()
+    if (tab?.granted && tab.visible) {
+      if (!stable || stable.epoch !== tab.epoch) stable = { epoch: tab.epoch, since: at }
+      else if (at - stable.since >= quietMs) return tab
+    } else stable = undefined
+    if (at >= deadline) return await currentTab(request, 0)
+    await new Promise<void>(resolve => setTimeout(resolve, 100))
+    request.owner.signal?.throwIfAborted()
+  }
+}
+
+/**
  * Read the run's tab, tolerating the renewal window.
  *
  * A navigating click renews the grant a moment later under an unattended profile, so
@@ -250,10 +274,12 @@ export async function runSequence(request: RunRequest): Promise<RunOutcome> {
       const result = outcome!.result
       observation = observationOf(result.result, request.textLimit, request.targetLimit) ?? observation
       // A click that navigates makes the renderer renew its grant a moment later, and
-      // during that gap a new command is refused. Wait for the tab to be granted again
-      // and for the document to stop moving before the next step is issued.
-      tab = await currentTab(request, 3000)
-      if (before.budget > 0) tab = await waitForQuiet(request)
+      // during that gap a new command is refused. Wait out the whole renewal before the
+      // next step is issued, not just until the old grant stops looking valid.
+      if (before.budget > 0) {
+        tab = await waitForStableGrant(request)
+        tab = await waitForQuiet(request)
+      } else tab = await currentTab(request, 1200)
       // Only actions that can replace the document are worth a settle wait; typing,
       // pressing and scrolling cannot, and waiting for them would slow the run down.
       const budget = step.action === 'navigate' || step.action === 'back' || step.action === 'forward' || step.action === 'reload'
