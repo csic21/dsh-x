@@ -76,6 +76,29 @@ async function readTab(request: RunRequest): Promise<RuntimeTarget | undefined> 
 }
 
 /**
+ * Wait until the document stops changing, so a command is stamped with the epoch the
+ * page will still have when the renderer picks it up.
+ *
+ * The embedded backend binds every queued command to one document epoch, so issuing a
+ * command while the page is mid-redirect is refused before the renderer ever sees it.
+ * Waiting for a quiet window is what turns "retry until it happens to work" into a
+ * predictable first-try success.
+ */
+async function waitForQuiet(request: RunRequest, quietMs = 300, capMs = 4000): Promise<RuntimeTarget> {
+  const deadline = Date.now() + capMs
+  let tab = await currentTab(request, 1200)
+  let seen = tab.epoch, since = Date.now()
+  while (Date.now() < deadline) {
+    if (tab.epoch !== seen) { seen = tab.epoch; since = Date.now() }
+    else if (Date.now() - since >= quietMs) return tab
+    await new Promise<void>(resolve => setTimeout(resolve, 60))
+    request.owner.signal?.throwIfAborted()
+    tab = await currentTab(request, 1200)
+  }
+  return tab
+}
+
+/**
  * Read the run's tab, tolerating the renewal window.
  *
  * A navigating click renews the grant a moment later under an unattended profile, so
@@ -162,6 +185,8 @@ export async function runSequence(request: RunRequest): Promise<RunOutcome> {
   /** Perform one step exactly once, resolving a label locator if the step names one. */
   async function attemptStep(step: RunStep): Promise<{ result: Awaited<ReturnType<BrowserRuntime['execute']>>, target?: string }> {
     let target = step.target
+    // Never issue a command into a document that is still navigating.
+    tab = await waitForQuiet(request)
     // A step that names a control instead of a reference needs a fresh observation
     // here, because the previous step invalidated every reference on the page.
     if (actionsNeedingTarget.has(step.action) && !target && step.label) {

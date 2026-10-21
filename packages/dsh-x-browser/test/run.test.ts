@@ -171,3 +171,19 @@ test('a run waits through the brief window where a renewed grant reports not gra
   ]), textLimit: 200, targetLimit: 3, finalObservation: false })
   assert.deepEqual(run.steps.map(step => step.ok), [true])
 })
+
+test('a run waits for a still-redirecting page instead of issuing a doomed command', async t => {
+  const f = fixture()
+  // Two quick document changes, exactly like google.com -> .com.hk -> /search.
+  f.bumpEpoch()
+  setTimeout(() => f.bumpEpoch(), 80)
+  setTimeout(() => f.bumpEpoch(), 160)
+  const started = Date.now()
+  const run = await runSequence({ runtime: f.runtime, scope, owner: {}, tabId: 't1', epoch: 3, grantRevision: 5, steps: validateRun([
+    { action: 'click', label: '点我 +1' },
+  ]), textLimit: 300, targetLimit: 5, finalObservation: false })
+  assert.deepEqual(run.steps.map(step => step.ok), [true])
+  // The run must have waited out the redirect before clicking.
+  assert.ok(Date.now() - started >= 250, `waited ${Date.now() - started}ms`)
+  assert.equal(f.commands.filter(command => command.action === 'click').length, 1)
+})
