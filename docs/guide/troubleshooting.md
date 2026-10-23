@@ -78,7 +78,7 @@ error: profile "desktop" is managed exclusively by the Electron application
 
 ```sh
 rm -rf ~/.dsh/profiles/web/.dsh-x-code
-rm -rf ~/.dsh/profiles/web/.dsh-x-stock
+rm -rf ~/.dsh/profiles/web/.dsh-x-finance
 ```
 
 不要删除或改写官方 `sessions/`；那不是插件的数据。

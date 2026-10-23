@@ -141,16 +141,7 @@ importers:
         specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
         version: 0.2.1-rc.2(53871834bb50b7f532ec7289e680bbda)
 
-  packages/dsh-x-pet:
-    dependencies:
-      '@deepseek-ai/cordis':
-        specifier: '*'
-        version: 4.0.5
-      '@deepseek-ai/dsh-tools':
-        specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
-        version: 0.2.1-rc.2(53871834bb50b7f532ec7289e680bbda)
-
-  packages/dsh-x-stock:
+  packages/dsh-x-finance:
     dependencies:
       '@deepseek-ai/cordis':
         specifier: '*'
@@ -158,6 +149,15 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
         version: 0.2.1-rc.2(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-tools':
+        specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
+        version: 0.2.1-rc.2(53871834bb50b7f532ec7289e680bbda)
+
+  packages/dsh-x-pet:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: '*'
+        version: 4.0.5
       '@deepseek-ai/dsh-tools':
         specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
         version: 0.2.1-rc.2(53871834bb50b7f532ec7289e680bbda)

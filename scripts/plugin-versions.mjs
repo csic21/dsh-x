@@ -3,7 +3,7 @@
 // once, at the earliest tag that contains it, so an unchanged package does not
 // get a new market entry.
 
-export const PLUGIN_PACKAGES = ['dsh-x-code', 'dsh-x-stock', 'dsh-x-browser', 'dsh-x-delegate', 'dsh-x-pet']
+export const PLUGIN_PACKAGES = ['dsh-x-code', 'dsh-x-finance', 'dsh-x-browser', 'dsh-x-delegate', 'dsh-x-pet']
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 

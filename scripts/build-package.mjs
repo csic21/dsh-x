@@ -1,5 +1,5 @@
 // Shared package builder. Run it from a package directory (the package
-// scripts do) or pass one: `node scripts/build-package.mjs packages/dsh-x-stock`.
+// scripts do) or pass one: `node scripts/build-package.mjs packages/dsh-x-finance`.
 //
 //   1. Remove lib/ so renamed or deleted sources never linger as stale output.
 //   2. Emit host JavaScript and declarations with tsc when the package has
@@ -24,7 +24,7 @@ const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), '
 const SHARED_MODULES = /^(?:react(?:-dom)?(?:\/|$)|@deepseek-ai\/)/
 // TradingView Lightweight Charts requires its notice to travel with the bundle.
 const NOTICES = {
-  'dsh-x-stock': '/*! TradingView Lightweight Charts™; Copyright (с) 2025 TradingView, Inc. https://www.tradingview.com/; see bundled licenses/lightweight-charts.NOTICE and LICENSE. */',
+  'dsh-x-finance': '/*! TradingView Lightweight Charts™; Copyright (с) 2025 TradingView, Inc. https://www.tradingview.com/; see bundled licenses/lightweight-charts.NOTICE and LICENSE. */',
 }
 
 if (!existsSync(path.join(directory, 'tsconfig.build.json'))) throw new Error(`${manifest.name} must declare tsconfig.build.json`)

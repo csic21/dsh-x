@@ -8,14 +8,14 @@ test('a repeated package version stays pinned to the earlier release', () => {
   const pinned = pinVersions([
     { timestamp: 1, packages: [
       { name: 'dsh-x-code', version: '0.6.0', commit: commit('1'), tree: 'tree-code-1' },
-      { name: 'dsh-x-stock', version: '0.6.0', commit: commit('1'), tree: 'tree-stock-1' },
+      { name: 'dsh-x-finance', version: '0.6.0', commit: commit('1'), tree: 'tree-stock-1' },
     ] },
     { timestamp: 2, packages: [
       { name: 'dsh-x-code', version: '0.6.1', commit: commit('2'), tree: 'tree-code-2' },
-      { name: 'dsh-x-stock', version: '0.6.0', commit: commit('2'), tree: 'tree-stock-1' },
+      { name: 'dsh-x-finance', version: '0.6.0', commit: commit('2'), tree: 'tree-stock-1' },
     ] },
   ])
-  assert.equal(pinned.get('dsh-x-stock').get('0.6.0').commit, commit('1'))
+  assert.equal(pinned.get('dsh-x-finance').get('0.6.0').commit, commit('1'))
   assert.equal(pinned.get('dsh-x-code').get('0.6.1').commit, commit('2'))
   assert.equal(pinned.get('dsh-x-code').size, 2)
 })
@@ -23,13 +23,13 @@ test('a repeated package version stays pinned to the earlier release', () => {
 test('an unchanged plugin passes and a changed plugin must bump', () => {
   const pinned = pinVersions([{ timestamp: 1, packages: [
     { name: 'dsh-x-code', version: '0.6.0', commit: commit('1'), tree: 'old-code' },
-    { name: 'dsh-x-stock', version: '0.6.0', commit: commit('1'), tree: 'same-stock' },
+    { name: 'dsh-x-finance', version: '0.6.0', commit: commit('1'), tree: 'same-stock' },
     { name: 'dsh-x-browser', version: '0.6.0', commit: commit('1'), tree: 'old-browser' },
     { name: 'dsh-x-delegate', version: '0.6.0', commit: commit('1'), tree: 'same-delegate' },
   ] }])
   const errors = assessRelease([
     { name: 'dsh-x-code', version: '0.6.1', tree: 'new-code', dirty: false },
-    { name: 'dsh-x-stock', version: '0.6.0', tree: 'same-stock', dirty: false },
+    { name: 'dsh-x-finance', version: '0.6.0', tree: 'same-stock', dirty: false },
     { name: 'dsh-x-browser', version: '0.6.0', tree: 'changed-browser', dirty: false },
     { name: 'dsh-x-delegate', version: '0.6.0', tree: 'same-delegate', dirty: false },
   ], pinned)

@@ -76,4 +76,4 @@ dsh plugin --profile web remove dsh-x-code
 dsh plugin --profile web remove dsh-x-code
 ```
 
-Code 与 Stocks 的 profile 级状态分别在 `.dsh-x-code`、`.dsh-x-stock`，卸载不会自动删除；需要重置时见[常见问题](/guide/troubleshooting)。
+Code 与 Finance 的 profile 级状态分别在 `.dsh-x-code`、`.dsh-x-finance`（旧的 `.dsh-x-stock` 会在首次启动时被继承），卸载不会自动删除；需要重置时见[常见问题](/guide/troubleshooting)。

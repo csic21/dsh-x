@@ -25,7 +25,7 @@
   "admission": "exact-engines-and-human-qualification",
   "pluginDirectories": [
     "packages/dsh-x-code",
-    "packages/dsh-x-stock",
+    "packages/dsh-x-finance",
     "packages/dsh-x-browser",
     "packages/dsh-x-delegate",
     "packages/dsh-x-pet"

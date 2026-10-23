@@ -29,11 +29,11 @@ const packages = {
     category: 'development',
     icon: 'icons/dsh-x-code.svg',
   },
-  'dsh-x-stock': {
-    title: { en: 'Stocks', zh: '股票' },
-    description: { en: 'A-share watchlist with name search, a fixed realtime bottom bar and a read-only quote tool.', zh: 'A 股自选（含名称搜索）、可固定的准实时底栏与只读报价工具。' },
+  'dsh-x-finance': {
+    title: { en: 'Finance', zh: '金融' },
+    description: { en: 'A-share watchlist and market board plus a gold panel with cross-market spreads and range moves.', zh: 'A 股自选与市场全景，外加黄金面板：跨市场报价、沪伦价差与区间变化。' },
     category: 'data',
-    icon: 'icons/dsh-x-stock.svg',
+    icon: 'icons/dsh-x-finance.svg',
   },
   'dsh-x-browser': {
     title: { en: 'AI Browser', zh: 'AI 浏览器' },

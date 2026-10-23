@@ -21,7 +21,7 @@ if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(values.profile) || values.profile === 'd
   throw new Error('使用普通 profile 名称，例如 web。desktop 必须使用官方 Desktop 自带的 CLI，此脚本不操作它。')
 }
 const root = fileURLToPath(new URL('..', import.meta.url))
-const packages = ['dsh-x-code', 'dsh-x-stock', 'dsh-x-browser', 'dsh-x-delegate', 'dsh-x-pet'].map(name => path.join(root, 'packages', name))
+const packages = ['dsh-x-code', 'dsh-x-finance', 'dsh-x-browser', 'dsh-x-delegate', 'dsh-x-pet'].map(name => path.join(root, 'packages', name))
 for (const directory of packages) {
   if (!existsSync(path.join(directory, 'package.json'))) throw new Error(`缺少插件：${directory}`)
 }

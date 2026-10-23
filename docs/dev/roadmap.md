@@ -42,7 +42,7 @@
 只改说明，不改行为。这三处会让下一步改错地方。
 
 1. **Delegate 的权限。** `packages/dsh-x-delegate/VALIDATION.md` 把默认写成只读。代码里只有 Grok/OpenCode 默认 `read-only`；Codex 在 `packages/dsh-x-delegate/src/index.ts` 和 `cordis.patch.yml` 里默认 `workspace-write`。另外 `README.md` 写了 `command: bundled`，但 `resolveCodexCommand` 没有被启动路径调用，不要当成已经能用。
-2. **Stock 只有一个 A 股开关。** `packages/dsh-x-stock/README.md` 第 98 行说 `marketSource` 和 `freeSource` 各管一路。`packages/dsh-x-stock/src/index.ts` 里两者打开的是同一个源，`freeSource` 是旧名字。Finnhub 工具仍然分开，不要并进去。
+2. **Stock 只有一个 A 股开关。** `packages/dsh-x-finance/README.md` 第 98 行说 `marketSource` 和 `freeSource` 各管一路。`packages/dsh-x-finance/src/index.ts` 里两者打开的是同一个源，`freeSource` 是旧名字。Finnhub 工具仍然分开，不要并进去。
 3. **插件数量只认一份清单。** 现在是五个包，`packages/README.md` 与 `compatibility/policy.json` 是来源；`docs/` 不要再出现三个或四个的旧口径。
 
 做完的样子：这三处和上表一致，没有顺手改功能。
