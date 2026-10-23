@@ -6,7 +6,7 @@
 //
 // Only projected fields leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
-import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name, normalizeMarketCode, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, isAshareMinute, } from './market.js';
+import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, isAshareMinute, } from './market.js';
 import { validateSymbol } from './watchlist.js';
 import { MAX_ABSOLUTE_PRICE } from './chart-data.js';
 export const MARKET_QUOTE_ENDPOINT = 'https://qt.gtimg.cn/q=';
@@ -279,6 +279,9 @@ export function parseStockQuote(key, fields, now) {
         status: 'available',
         name,
         price,
+        // The raw field keeps the quoted width, so a 3- or 4-decimal ETF price is
+        // displayed as quoted instead of being rounded to two decimals.
+        pricePrecision: quotePrecision(fields[3]),
         changePercent,
         quotedAt: parseTencentTimestamp(fields[30], now),
         fetchedAt: null,

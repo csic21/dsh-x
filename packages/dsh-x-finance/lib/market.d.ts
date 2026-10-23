@@ -114,6 +114,12 @@ export interface MarketQuote {
     status: 'available' | 'unavailable';
     name: string;
     price: number | null;
+    /**
+     * Decimal places the source actually quoted, not a fixed 2. A fund or bond
+     * ETF may quote 3–4 decimals, and rounding it to 2 would change the price
+     * the user sees. Null means the source did not state a usable width.
+     */
+    pricePrecision: number | null;
     changePercent: number | null;
     quotedAt: string | null;
     fetchedAt: string | null;
@@ -267,6 +273,13 @@ export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {
     code: string;
 };
+/**
+ * Decimal places exactly as the source quoted the price. The raw string is the
+ * authority: an ETF quoted at `4.027` or `4.0240` keeps that width, and the UI
+ * never rounds it to two decimals. Returns null for a non-numeric field or a
+ * width beyond six places, so the caller can fall back instead of guessing.
+ */
+export declare function quotePrecision(raw: unknown): number | null;
 export declare const MARKET_LEVEL1: readonly [{
     readonly code: '801010';
     readonly name: '农林牧渔';

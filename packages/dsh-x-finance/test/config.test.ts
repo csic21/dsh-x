@@ -99,6 +99,7 @@ test('the deprecated freeSource flag still forces the one shared A-share source 
       status: 'available',
       name: NAME,
       price: 1329,
+      pricePrecision: 2,
       changePercent: 1.22,
       quotedAt: '2026-10-16T16:14:47+08:00',
       fetchedAt: body.result.value.quotes[0].fetchedAt,

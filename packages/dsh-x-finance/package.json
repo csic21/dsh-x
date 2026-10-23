@@ -1,6 +1,6 @@
 {
   "name": "dsh-x-finance",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "main": "./lib/index.js",
   "engines": {

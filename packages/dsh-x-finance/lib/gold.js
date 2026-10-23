@@ -5,6 +5,7 @@
 // Sina's quote feed is GBK text with a per-market field layout. Each layout is
 // parsed and validated separately, and a field that does not look like a price
 // makes the instrument unavailable instead of being filled in with a guess.
+import { quotePrecision } from './market.js';
 export const GOLD_ENDPOINT = 'dsh-x-finance.gold';
 export const GOLD_SOURCE_NAME = '新浪财经 (unofficial)';
 export const GOLD_QUOTE_ENDPOINT = 'https://hq.sinajs.cn/list=';
@@ -71,6 +72,7 @@ function build(key, unit, name, raw) {
     return {
         key, name, unit,
         price: raw.price,
+        precision: raw.precision ?? null,
         change, changePercent: percent(changePercent),
         open: raw.open ?? null, high: raw.high ?? null, low: raw.low ?? null,
         previousClose: raw.previousClose ?? null,
@@ -100,6 +102,7 @@ export function parseGoldQuote(key, fields, now) {
             throw new Error('invalid gold quote');
         return build(spec.key, spec.unit, name, {
             price,
+            precision: quotePrecision(fields[1]),
             change: change !== null ? change : null,
             changePercent: changePercent !== null ? changePercent : null,
             quotedAt,
@@ -121,6 +124,7 @@ export function parseGoldQuote(key, fields, now) {
         throw new Error('invalid gold quote range');
     return build(spec.key, spec.unit, name, {
         price,
+        precision: quotePrecision(fields[0]),
         open: open ?? null,
         high: high ?? null,
         low: low ?? null,
@@ -253,9 +257,11 @@ export function validateGoldSnapshot(raw, now) {
         const signed = (value) => value === null ? null : (typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e6 ? value : null);
         const quotedAt = typeof item.quotedAt === 'string' && Number.isFinite(Date.parse(item.quotedAt)) && Date.parse(item.quotedAt) <= now + 300_000
             ? item.quotedAt : null;
+        const rawPrecision = item.precision;
+        const precision = typeof rawPrecision === 'number' && Number.isInteger(rawPrecision) && rawPrecision >= 0 && rawPrecision <= 6 ? rawPrecision : null;
         return {
             key: item.key, name: typeof item.name === 'string' ? item.name.slice(0, 32) : spec.key, unit: spec.unit,
-            price,
+            price, precision,
             change: signed(item.change), changePercent: percent(item.changePercent),
             open: optional(item.open), high: optional(item.high), low: optional(item.low), previousClose: optional(item.previousClose),
             amplitudePercent: percent(item.amplitudePercent),

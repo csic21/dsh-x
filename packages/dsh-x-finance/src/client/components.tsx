@@ -33,7 +33,7 @@ function Status({ snapshot, quote, t, format }: any) {
 function StockChip({ item, quote, snapshot, open, t, format }: any) {
   const status = quoteStatus(quote)
   return <button className="dxs-chip" onClick={() => open(item.symbol)} title={t('chip.title', { symbol: item.symbol, status: t(`status.${status}`) })}>
-    <strong>{item.alias || quote?.name || item.symbol}</strong><span>{format.price(quote?.price)}</span>
+    <strong>{item.alias || quote?.name || item.symbol}</strong><span>{format.priceAt(quote?.price, quote?.pricePrecision)}</span>
     {quote?.price != null ? <span className={tone(quote.changePercent)}>{format.change(quote.changePercent)}</span> : <Status snapshot={snapshot} quote={quote} t={t} format={format} />}
     {quote?.price != null && (snapshot.status === 'failed' || status === 'stale') ? <span className="dxs-muted">{t('stale')}</span> : null}
   </button>
@@ -112,7 +112,7 @@ function Detail({ item, useResource, t, format, scope, locale, rpc }: any) {
         <p className="dxs-symbol-line"><span className="dxs-symbol">{item.symbol}</span>{item.alias ? t('detail.alias') : ''}{item.fixed ? t('detail.fixed') : ''}</p>
       </div>
       <div className="dxs-quote-figures">
-        <div className={`dxs-price ${changeTone}`}>{format.price(quote?.price)}</div>
+        <div className={`dxs-price ${changeTone}`}>{format.priceAt(quote?.price, quote?.pricePrecision)}</div>
         <div className={`dxs-change ${changeTone}`}>{format.change(quote?.changePercent)}</div>
         <p className="dxs-status-line"><Status snapshot={snapshot} quote={quote} t={t} format={format} /></p>
       </div>

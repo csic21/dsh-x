@@ -10,7 +10,7 @@ import {
   MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES,
   MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS,
   MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket,
-  level2Parent, level1Name, normalizeMarketCode, shanghaiToday, validateBoardCode, validateHistoryLimit,
+  level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit,
   validateAdjustment, isAshareMinute,
 } from './market.ts'
 import type {
@@ -296,6 +296,9 @@ export function parseStockQuote(key: string, fields: string[], now: number): Mar
     status: 'available',
     name,
     price,
+    // The raw field keeps the quoted width, so a 3- or 4-decimal ETF price is
+    // displayed as quoted instead of being rounded to two decimals.
+    pricePrecision: quotePrecision(fields[3]),
     changePercent,
     quotedAt: parseTencentTimestamp(fields[30], now),
     fetchedAt: null,

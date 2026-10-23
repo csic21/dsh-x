@@ -1,23 +1,27 @@
 import React from 'react'
 import type { GoldInstrument, GoldSeries } from '../../gold.ts'
-import { formatLocale } from '../format.ts'
+import { formatLocale, quoteDigits } from '../format.ts'
 import { useGoldPanel } from './data.ts'
 import { SourceButton } from '../source-button.tsx'
 
 const tone = (value: any) => typeof value === 'number' && Number.isFinite(value) ? (value > 0 ? 'dxs-up' : value < 0 ? 'dxs-down' : '') : ''
 
-const priceDigits = (unit: GoldInstrument['unit']) => unit === 'cny-usd' ? 4 : 2
+/** The feed's quoted width wins; the unit only supplies a fallback. */
+const priceDigits = (instrument: GoldInstrument) =>
+  quoteDigits(instrument.precision ?? (instrument.unit === 'cny-usd' ? 4 : 2))
 
 function priceText(instrument: GoldInstrument, locale: any) {
+  const digits = priceDigits(instrument)
   return new Intl.NumberFormat(formatLocale(locale), {
-    minimumFractionDigits: priceDigits(instrument.unit),
-    maximumFractionDigits: priceDigits(instrument.unit),
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   }).format(instrument.price)
 }
 
 function InstrumentCard({ instrument, t, format, locale }: any) {
   const changeTone = tone(instrument.changePercent)
   const change = instrument.change
+  const digits = priceDigits(instrument)
   return <article className="dxs-gold-card" aria-label={t(`gold.key.${instrument.key}`)}>
     <header>
       <h3 title={instrument.name}>{t(`gold.key.${instrument.key}`)}</h3>
@@ -26,13 +30,13 @@ function InstrumentCard({ instrument, t, format, locale }: any) {
     <div className={`dxs-gold-price ${changeTone}`}>{priceText(instrument, locale)}</div>
     <p className={`dxs-gold-change ${changeTone}`}>
       {format.change(instrument.changePercent)}
-      {change == null ? '' : ` · ${format.signed(change)}`}
+      {change == null ? '' : ` · ${format.signedAt(change, digits)}`}
     </p>
     <dl className="dxs-gold-metrics">
-      <dt>{t('gold.metric.open')}</dt><dd>{format.price(instrument.open)}</dd>
-      <dt>{t('gold.metric.high')}</dt><dd>{format.price(instrument.high)}</dd>
-      <dt>{t('gold.metric.low')}</dt><dd>{format.price(instrument.low)}</dd>
-      <dt>{t('gold.metric.previous')}</dt><dd>{format.price(instrument.previousClose)}</dd>
+      <dt>{t('gold.metric.open')}</dt><dd>{format.priceAt(instrument.open, digits)}</dd>
+      <dt>{t('gold.metric.high')}</dt><dd>{format.priceAt(instrument.high, digits)}</dd>
+      <dt>{t('gold.metric.low')}</dt><dd>{format.priceAt(instrument.low, digits)}</dd>
+      <dt>{t('gold.metric.previous')}</dt><dd>{format.priceAt(instrument.previousClose, digits)}</dd>
       <dt>{t('gold.metric.amplitude')}</dt><dd>{format.percent(instrument.amplitudePercent)}</dd>
     </dl>
     <p className="dxs-muted dxs-gold-time">{t('gold.quoting', { time: format.time(instrument.quotedAt, t) })}</p>

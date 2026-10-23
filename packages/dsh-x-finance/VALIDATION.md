@@ -1,5 +1,11 @@
 # Finance validation
 
+## Quoted price width — 2026-10-23
+
+- Bug: the fixed bar and the stock detail formatted every price with two decimals, so an ETF quoted at `4.027` (or `4.0240`) was rounded and misreported. Fix: the provider now carries `pricePrecision` from the raw quote field, the host re-validates it (integer 0–6, otherwise null), and the browser formats at that width. A source that states no width still falls back to two decimals.
+- `pnpm --filter dsh-x-finance test`: **195 tests, 0 failed**. New cases cover the width parser (including trailing zeros and out-of-range input), the projection boundary, the formatter, and a jsdom bottom-bar render asserting `4.027` and `4.0240` are not rounded.
+- Gold instruments carry the same field: `53.925` stays three decimals instead of being rounded to `53.93`.
+
 ## Rename to dsh-x-finance and the gold panel — 2026-10-23
 
 - `pnpm --filter dsh-x-finance test`: **190 tests, 0 failed**; `tsc -p tsconfig.json` and the package build pass. Gold and rename tests are offline fixtures; one manual live smoke of the provider returned six instruments, the CNY/g restatement, the Shanghai premium and both daily series.

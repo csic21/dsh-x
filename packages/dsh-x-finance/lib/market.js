@@ -47,6 +47,22 @@ export function validateBoardCode(value) {
 export function stockMarketError(code) {
     return Object.assign(new Error(code), { code });
 }
+/**
+ * Decimal places exactly as the source quoted the price. The raw string is the
+ * authority: an ETF quoted at `4.027` or `4.0240` keeps that width, and the UI
+ * never rounds it to two decimals. Returns null for a non-numeric field or a
+ * width beyond six places, so the caller can fall back instead of guessing.
+ */
+export function quotePrecision(raw) {
+    if (typeof raw !== 'string')
+        return null;
+    const text = raw.trim();
+    if (!/^\d+(?:\.\d+)?$/.test(text))
+        return null;
+    const dot = text.indexOf('.');
+    const digits = dot < 0 ? 0 : text.length - dot - 1;
+    return digits <= 6 ? digits : null;
+}
 // Shenwan industry taxonomy, level 1. These are identities, not estimates.
 // The source quotes each board under `pt01<code>`.
 export const MARKET_LEVEL1 = [

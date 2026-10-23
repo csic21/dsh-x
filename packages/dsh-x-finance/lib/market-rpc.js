@@ -24,12 +24,17 @@ export function projectQuotes(raw, symbols, now) {
             && typeof quote.quotedAt === 'string' && Number.isFinite(Date.parse(quote.quotedAt))
             && Date.parse(quote.quotedAt) <= now + 300_000;
         if (!usable)
-            return { symbol, status: 'unavailable', name: '', price: null, changePercent: null, quotedAt: null, fetchedAt: null, marketStatus: 'unknown' };
+            return { symbol, status: 'unavailable', name: '', price: null, pricePrecision: null, changePercent: null, quotedAt: null, fetchedAt: null, marketStatus: 'unknown' };
+        // A replacement adapter may omit the width or send nonsense; the browser
+        // then falls back to its own two-decimal default instead of trusting it.
+        const precision = Number.isInteger(quote.pricePrecision) && quote.pricePrecision >= 0 && quote.pricePrecision <= 6
+            ? quote.pricePrecision : null;
         return {
             symbol,
             status: 'available',
             name: typeof quote.name === 'string' ? quote.name.slice(0, 64) : '',
             price: quote.price,
+            pricePrecision: precision,
             changePercent: quote.changePercent,
             quotedAt: quote.quotedAt,
             fetchedAt,

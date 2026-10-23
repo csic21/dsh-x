@@ -22,14 +22,23 @@ test('generated market index parses as format 1 with commit-pinned Git install t
     const tracked = execFileSync('git', ['ls-files', 'packages'], { cwd: root, encoding: 'utf8' })
       .split('\n').map(line => line.split('/')[1]).filter(Boolean)
     for (const name of names) assert.ok(tracked.includes(name), `${name} must be committed`)
-    // The generator skips a package whose working tree is dirty, because its
-    // Git install target would point at a commit that does not contain the
-    // advertised version. A freshly renamed package is exactly that case until
-    // it is committed, so the expectation mirrors the same rule.
+    // The generator lists a package when a plugins-v* tag contains it, or when
+    // its working tree is clean and committed. A dirty package with no tag is
+    // legitimately absent (its install target would not contain the version),
+    // so the expectation mirrors those two rules.
     const clean = (name) => !execFileSync('git', ['status', '--porcelain', '--', `packages/${name}`], { cwd: root, encoding: 'utf8' }).trim()
+    const tagCommits = execFileSync('git', ['for-each-ref', '--format=%(objectname)', 'refs/tags/plugins-v*'], { cwd: root, encoding: 'utf8' })
+      .split('\n').filter(Boolean)
+    const tagged = (name) => tagCommits.some(commit => {
+      try {
+        execFileSync('git', ['show', `${commit}:packages/${name}/package.json`], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] })
+        return true
+      } catch { return false }
+    })
+    const candidates = ['dsh-x-browser', 'dsh-x-code', 'dsh-x-finance']
     assert.deepEqual(
-      names.filter(name => name !== 'dsh-x-delegate' && name !== 'dsh-x-pet'),
-      ['dsh-x-browser', 'dsh-x-code', 'dsh-x-finance'].filter(clean),
+      names.filter(name => !['dsh-x-delegate', 'dsh-x-pet'].includes(name)),
+      candidates.filter(name => clean(name) || tagged(name)),
     )
     for (const plugin of index.plugins) {
       assert.ok(plugin.versions.length > 0, plugin.name)

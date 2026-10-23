@@ -40,6 +40,7 @@ test('parses a Tencent quote line into the projected quote contract', () => {
     status: 'available',
     name: NAME,
     price: 1329,
+    pricePrecision: 2,
     changePercent: 1.22,
     quotedAt: '2026-10-16T16:14:47+08:00',
     fetchedAt: null,

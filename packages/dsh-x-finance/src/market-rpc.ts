@@ -29,12 +29,17 @@ export function projectQuotes(raw: unknown, symbols: string[], now: number): Mar
       && Number.isFinite(quote.changePercent) && Math.abs(quote.changePercent) <= 1000
       && typeof quote.quotedAt === 'string' && Number.isFinite(Date.parse(quote.quotedAt))
       && Date.parse(quote.quotedAt) <= now + 300_000
-    if (!usable) return { symbol, status: 'unavailable' as const, name: '', price: null, changePercent: null, quotedAt: null, fetchedAt: null, marketStatus: 'unknown' as const }
+    if (!usable) return { symbol, status: 'unavailable' as const, name: '', price: null, pricePrecision: null, changePercent: null, quotedAt: null, fetchedAt: null, marketStatus: 'unknown' as const }
+    // A replacement adapter may omit the width or send nonsense; the browser
+    // then falls back to its own two-decimal default instead of trusting it.
+    const precision = Number.isInteger(quote.pricePrecision) && quote.pricePrecision >= 0 && quote.pricePrecision <= 6
+      ? quote.pricePrecision : null
     return {
       symbol,
       status: 'available' as const,
       name: typeof quote.name === 'string' ? quote.name.slice(0, 64) : '',
       price: quote.price,
+      pricePrecision: precision,
       changePercent: quote.changePercent,
       quotedAt: quote.quotedAt,
       fetchedAt,

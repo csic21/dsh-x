@@ -19,6 +19,8 @@ export interface GoldInstrument {
     name: string;
     unit: GoldUnit;
     price: number;
+    /** Decimal places the feed quoted, so 53.925 is not rounded to 53.93. */
+    precision: number | null;
     change: number | null;
     changePercent: number | null;
     open: number | null;
