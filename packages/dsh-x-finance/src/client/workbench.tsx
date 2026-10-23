@@ -11,6 +11,7 @@ import { validateScope } from '../watchlist.ts'
 import { useMarketHistory } from './market/history.ts'
 import { useMarketIntraday } from './market/intraday.ts'
 import { QuantReplay } from './QuantReplay.tsx'
+import { QuantPanel } from './quant/QuantPanel.tsx'
 import { IntradayChart } from './chart/IntradayChart.tsx'
 import { resampleDataset } from '../resample.ts'
 import type { BarInterval } from '../resample.ts'
@@ -107,9 +108,19 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
   const showIntraday = view === 'intraday' && mode === 'market'
   const history = useMarketHistory(rpc, showIntraday ? null : symbol ?? null, adjustment, MARKET_HISTORY_MAX_LIMIT)
   const intraday = useMarketIntraday(rpc, showIntraday ? symbol ?? null : null)
+  // The benchmark is fetched only for a market-backed daily view. CSI 300 is
+  // the default; when the chart itself is CSI 300, SSE Composite is used.
+  const benchmarkSymbol = mode === 'market' && view !== 'intraday' && symbol
+    ? (symbol === 'SH.000300' ? 'SH.000001' : 'SH.000300')
+    : null
+  const benchmarkHistory = useMarketHistory(rpc, benchmarkSymbol, 'none', MARKET_HISTORY_MAX_LIMIT)
   const marketDataset: HistoryDataset | null = (() => {
     if (history.status !== 'ready' || !history.value) return null
     try { return toChartDataset(history.value) } catch { return null }
+  })()
+  const benchmarkDataset: HistoryDataset | null = (() => {
+    if (benchmarkHistory.status !== 'ready' || !benchmarkHistory.value) return null
+    try { return toChartDataset(benchmarkHistory.value) } catch { return null }
   })()
   const clear = () => { generation.current++; setBusy(false); setError(''); setLocal(null) }
   const showDemo = () => { clear(); setMode('demo') }
@@ -190,6 +201,7 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
       </p>
       <StockChart dataset={dataset} t={t} format={format} locale={locale} config={config} onConfigChange={changeConfig} />
       <QuantReplay dataset={dataset} macd={config.macd} t={t} locale={locale} />
+      {sourceDataset ? <QuantPanel dataset={sourceDataset} benchmark={benchmarkDataset} t={t} format={format} /> : null}
     </> : null}
     <p className="dxs-attribution"><a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView</a> · {t('workbench.attribution')}</p>
   </section>

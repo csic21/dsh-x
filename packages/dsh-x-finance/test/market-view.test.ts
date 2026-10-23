@@ -150,6 +150,52 @@ test('market dashboard renders indices, sentiment, heatmap, breadth and movers',
   } finally { await h.close() }
 })
 
+test('the index grid adds mainland broad indices and Hang Seng quotes without inventing turnover or drill-down', async () => {
+  const extraIndex = (code: string, name: string, price: number, percent: number) => ({
+    code, name, price, change: percent * price / 100, changePercent: percent,
+    open: price - 10, high: price + 20, low: price - 20, previousClose: price - 2,
+    amount: null, quotedAt: QUOTED,
+  })
+  const expanded = {
+    ...overview,
+    indices: [
+      ...overview.indices,
+      extraIndex('SH.000300', '沪深300', 4105.33, 1.71),
+      extraIndex('SH.000688', '科创50', 1345.51, 3.04),
+      extraIndex('BJ.899050', '北证50', 984.9, 1.88),
+      extraIndex('SH.000852', '中证1000', 6734.55, 2.38),
+      extraIndex('SH.000985', '中证全指', 5253.73, 1.93),
+      extraIndex('HK.HSI', '恒生指数', 23093.37, 0.69),
+      extraIndex('HK.HSCEI', '国企指数', 7756.25, 0.87),
+      extraIndex('HK.HSTECH', '恒生科技指数', 3871.66, 2.05),
+      extraIndex('HK.HSCCI', '红筹指数', 3842.67, 0.2),
+      extraIndex('SH.932000', '中证2000', 4321.5, 1.2),
+    ],
+  }
+  const rpc = {
+    call: async (_channel: string, endpoint: string, payload: any) => {
+      if (endpoint === 'dsh-x-finance.market-preference') return { ok: true, value: { enabled: true, forced: false } }
+      if (payload?.kind === 'overview') return { ok: true, value: { status: 'ready', overview: expanded } }
+      if (payload?.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      return { ok: true, value: { status: 'ready', board } }
+    },
+  }
+  const h = await harness({ rpc })
+  try {
+    const cards = [...h.document.querySelectorAll<HTMLElement>('.dxs-mkt-index')]
+    assert.equal(cards.length, 13)
+    const byText = (text: string) => cards.find(card => card.textContent?.includes(text))
+    assert.equal(byText('恒生指数')!.getAttribute('role'), null)
+    assert.equal(byText('恒生科技指数')!.getAttribute('role'), null)
+    assert.equal(byText('中证2000')!.getAttribute('role'), null)
+    assert.equal(byText('中证1000')!.getAttribute('role'), 'button')
+    assert.match(byText('恒生指数')!.textContent ?? '', /GMT\+8/)
+    assert.match(h.document.body.textContent ?? '', /港股指数按香港时间显示/)
+    assert.match(h.document.body.textContent ?? '', /中证2000 由东方财富公开接口补充/)
+    assert.doesNotMatch(h.document.body.textContent ?? '', /NaN|undefined/)
+  } finally { await h.close() }
+})
+
 test('selecting an industry opens its constituent panel and close removes it', async () => {
   const h = await harness()
   try {
@@ -427,9 +473,14 @@ test('a mover row and an index card drill down without touching the watchlist', 
     // must not be written to the watchlist.
     await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-    const index = dom.window.document.querySelector<HTMLElement>('.dxs-mkt-index .dxs-mkt-link')
-    assert.ok(index, 'index cards must offer a drill-down action')
-    await act(async () => index!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    const index = dom.window.document.querySelector<HTMLElement>('.dxs-mkt-index.is-clickable')
+    assert.ok(index, 'index cards must be clickable')
+    assert.equal(index!.getAttribute('role'), 'button')
+    // The big number is part of the card, so clicking it must open the chart
+    // rather than requiring the small name link.
+    const indexPrice = index!.querySelector<HTMLElement>('.dxs-mkt-index-price')
+    assert.ok(indexPrice, 'index card price is rendered')
+    await act(async () => indexPrice!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     assert.deepEqual(added, [{ symbol: 'BJ.920196', alias: 'N南乳', fixed: false }], 'indices never enter the A-share watchlist')
     assert.match(dom.window.document.body.textContent ?? '', /上证指数 · SH\.000001/)

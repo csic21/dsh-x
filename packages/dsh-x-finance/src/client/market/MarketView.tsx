@@ -110,7 +110,7 @@ function MarketStatus({ quotedAt, now, t, format, showTime = true }: any) {
 
 function SentimentPanel({ data, breadth, t, format }: any) {
   const sentiment = useMemo(() => data ? computeSentiment({
-    indexChanges: data.indices.map((index: MarketIndex) => index.changePercent),
+    indexChanges: data.indices.filter((index: MarketIndex) => !index.code.startsWith('HK.')).map((index: MarketIndex) => index.changePercent),
     breadth: breadth ? { up: breadth.up, down: breadth.down, flat: breadth.flat } : null,
     sectorChanges: data.sectors.filter((sector: MarketSector) => sector.level === 1).map((sector: MarketSector) => sector.changePercent),
   }) : null, [data, breadth])
@@ -146,11 +146,21 @@ function IndexCard({ index, t, format, onOpen }: any) {
   const low = Number.isFinite(index.low) ? index.low : null
   const marker = high !== null && low !== null && high > low ? Math.max(0, Math.min(100, ((index.price - low) / (high - low)) * 100)) : null
   const tone = textTone(index.changePercent)
-  return <article className="dxs-mkt-index">
-    <header><div>{onOpen
-      ? <button type="button" className="dxs-mkt-link" onClick={() => onOpen(index.code, index.name)} title={t('market.drill.index-title', { name: index.name })}><h4>{index.name}</h4><span>{index.code}</span></button>
-      : <><h4>{index.name}</h4><span>{index.code}</span></>}
-    </div><span className={`dxs-mkt-change ${tone}`}>{format.change(index.changePercent)}</span></header>
+  // The whole card is the target, not only the small name/code link: a reader
+  // naturally clicks the big number. There is no nested button, so the card can
+  // carry the button role without invalid interactive nesting.
+  const open = typeof onOpen === 'function' ? () => onOpen(index.code, index.name) : undefined
+  return <article
+    className={`dxs-mkt-index ${open ? 'is-clickable' : ''}`}
+    role={open ? 'button' : undefined}
+    tabIndex={open ? 0 : undefined}
+    aria-label={open ? t('market.drill.index-title', { name: index.name }) : undefined}
+    onClick={open}
+    onKeyDown={open ? (event: any) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open() }
+    } : undefined}
+  >
+    <header><div><h4>{index.name}</h4><span>{index.code}</span></div><span className={`dxs-mkt-change ${tone}`}>{format.change(index.changePercent)}</span></header>
     <div className={`dxs-mkt-index-price ${tone}`}>{format.price(index.price)}</div>
     <div className="dxs-mkt-index-sub"><span className={tone}>{format.signed(index.change)}</span><span>{index.amount !== null ? t('market.indices.amount', { amount: format.compact(index.amount) }) : '—'}</span></div>
     {marker !== null ? <div className="dxs-mkt-range" role="img" aria-label={t('market.indices.range')}>
@@ -161,7 +171,10 @@ function IndexCard({ index, t, format, onOpen }: any) {
       <div><dt>{t('market.indices.open-label')}</dt><dd>{format.price(index.open)}</dd></div>
       <div><dt>{t('market.indices.previous-label')}</dt><dd>{format.price(index.previousClose)}</dd></div>
     </dl>
-    <footer>{t('market.quote-time', { time: format.time(index.quotedAt, t) })}</footer>
+    <footer>
+      <span>{t('market.quote-time', { time: index.code.startsWith('HK.') ? format.zoneTime(index.quotedAt, 'Asia/Hong_Kong', t) : format.time(index.quotedAt, t) })}</span>
+      {open ? <span className="dxs-mkt-index-open">{t('market.drill.open-chart')} →</span> : null}
+    </footer>
   </article>
 }
 
@@ -414,12 +427,17 @@ function SectorDetail({ rpc, selection, onClose, t, format, onOpen }: any) {
   </section>
 }
 
+/** Only mainland indices with a supported history route can open the chart. */
+const canDrillIndex = (code: string) => /^(SH|SZ|BJ)\.\d{6}$/.test(code) && code !== 'SH.932000'
+
 export function MarketView({ rpc, t, format, locale, now = () => new Date(), onOpenStock, scope }: MarketViewProps) {
   const overview = useMarketOverview(rpc)
   const breadth = useMarketBreadth(rpc)
   const preference = useMarketPreference(rpc)
   const [selected, setSelected] = useState<Selection | null>(null)
   const [indexChart, setIndexChart] = useState<{ code: string, name: string } | null>(null)
+  const chartRef = useRef<HTMLElement>(null)
+  useEffect(() => { if (indexChart) chartRef.current?.scrollIntoView?.({ block: 'nearest' }) }, [indexChart])
   const changeSource = async (enabled: boolean) => {
     try {
       await preference.setEnabled(enabled)
@@ -432,7 +450,7 @@ export function MarketView({ rpc, t, format, locale, now = () => new Date(), onO
   const sectorChanges = data?.sectors.filter(sector => sector.level === 1).map(sector => sector.changePercent) ?? []
   const strongest = data ? [...data.sectors].filter(sector => sector.level === 1).sort((left, right) => right.changePercent - left.changePercent)[0] ?? null : null
   const sentiment = data ? computeSentiment({
-    indexChanges: data.indices.map(index => index.changePercent),
+    indexChanges: data.indices.filter(index => !index.code.startsWith('HK.')).map(index => index.changePercent),
     breadth: breadthValue ? { up: breadthValue.up, down: breadthValue.down, flat: breadthValue.flat } : null,
     sectorChanges,
   }) : null
@@ -475,13 +493,20 @@ export function MarketView({ rpc, t, format, locale, now = () => new Date(), onO
     <SentimentPanel data={data} breadth={breadthValue} t={t} format={format} />
     <section className="dxs-mkt-card">
       <header className="dxs-mkt-card-head"><div><h3>{t('market.indices.title')}</h3><p>{t('market.indices.subtitle')}</p></div></header>
-      {data.indices.length ? <div className="dxs-mkt-index-grid">{data.indices.map(index => <IndexCard key={index.code} index={index} t={t} format={format} onOpen={(code: string, name: string) => setIndexChart({ code, name })} />)}</div> : <p className="dxs-mkt-muted">{t('market.indices.empty')}</p>}
+      {data.indices.length ? <div className="dxs-mkt-index-grid">{data.indices.map(index => <IndexCard key={index.code} index={index} t={t} format={format} onOpen={canDrillIndex(index.code) ? (code: string, name: string) => setIndexChart({ code, name }) : undefined} />)}</div> : <p className="dxs-mkt-muted">{t('market.indices.empty')}</p>}
       <p className="dxs-mkt-muted">{t('market.drill.index-hint')}</p>
+      {data.indices.some(index => index.code.startsWith('HK.')) ? <p className="dxs-mkt-muted">{t('market.indices.hk-note')}</p> : null}
+      {data.indices.some(index => index.code === 'SH.932000')
+        ? <p className="dxs-mkt-muted">{t('market.indices.csi2000-note')}</p>
+        : <p className="dxs-mkt-muted">{t('market.indices.csi2000-missing')}</p>}
     </section>
-    {indexChart ? <section className="dxs-mkt-card dxs-mkt-index-chart" aria-label={t('market.drill.index-chart', { name: indexChart.name })}>
+    {indexChart ? <section ref={chartRef} className="dxs-mkt-card dxs-mkt-index-chart" aria-label={t('market.drill.index-chart', { name: indexChart.name })}>
       <header className="dxs-mkt-card-head">
         <div><h3>{indexChart.name} · {indexChart.code}</h3><p>{t('market.drill.index-chart-note')}</p></div>
-        <button type="button" onClick={() => setIndexChart(null)}>{t('market.detail.close')}</button>
+        <div className="dxs-mkt-index-chart-actions">
+          <button type="button" onClick={() => chartRef.current?.querySelector('.dxs-quant')?.scrollIntoView?.({ block: 'start' })}>{t('market.drill.quant-jump')}</button>
+          <button type="button" onClick={() => setIndexChart(null)}>{t('market.detail.close')}</button>
+        </div>
       </header>
       <StockWorkbench key={`index:${indexChart.code}`} symbol={indexChart.code} scope={scope} rpc={rpc} t={t} format={format} locale={locale} />
     </section> : null}

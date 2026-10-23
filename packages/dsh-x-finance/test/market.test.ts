@@ -5,7 +5,7 @@ import {
   MARKET_ENDPOINT, MARKET_LEVEL1, MARKET_LEVEL1_CODES, MARKET_LEVEL2_PARENT, level2Parent,
 } from '../src/market.ts'
 import {
-  createTencentMarketProvider, parseBoardRank, parseStockRankPage, parseTencentBatch,
+  createTencentMarketProvider, parseBoardRank, parseStockRankPage, parseTencentBatch, parseTencentHkTimestamp,
 } from '../src/market-provider.ts'
 import { createMarketHandler, createMarketRoute } from '../src/market-rpc.ts'
 import { MARKET_MAX_QUOTES } from '../src/market.ts'
@@ -166,6 +166,81 @@ test('Tencent batch parser keeps only well-formed quote lines', () => {
   assert.throws(() => parseStockRankPage({ data: { total: 20_000, rank_list: [] } }))
 })
 
+const hkFields = Array(63).fill('0')
+Object.assign(hkFields, {
+  1: 'Hang Seng', 2: 'HSI', 3: '23093.37', 4: '22934.68', 5: '23027.98',
+  30: '2026/10/16 15:30:00', 31: '158.69', 32: '0.69', 33: '23231.63', 34: '22803.77',
+})
+const hkLine = `v_hkHSI="${hkFields.join('~')}";`
+
+test('Hang Seng indices keep their HK namespace, HK time and unlabelled turnover', async () => {
+  const provider = createTencentMarketProvider({
+    fetchImpl: (async (input: any) => {
+      const url = String(input)
+      if (url.includes('mktHs/rank')) return json({ code: 0, msg: 'ok', data: [] })
+      if (url.includes('qt.gtimg.cn')) return text(`${batchText}\n${hkLine}`)
+      if (url.includes('push2.eastmoney.com')) return json({ rc: 0, data: { diff: [] } })
+      return json({ code: 1 })
+    }) as typeof fetch,
+    now: () => NOW,
+  })
+  const overview = await provider.overview()
+  const hsi = overview.indices.find(index => index.code === 'HK.HSI')
+  assert.ok(hsi)
+  assert.equal(hsi!.name, 'Hang Seng')
+  assert.equal(hsi!.price, 23093.37)
+  assert.equal(hsi!.change, 158.69)
+  assert.equal(hsi!.changePercent, 0.69)
+  assert.equal(hsi!.amount, null)
+  assert.equal(hsi!.quotedAt, '2026-10-16T15:30:00+08:00')
+  // The header clock stays on the A-share session even though HK trades later.
+  assert.equal(overview.quotedAt, '2026-10-16T15:00:00+08:00')
+})
+
+test('CSI 2000 is supplemented from East Money when available and omitted otherwise', async () => {
+  const extraRow = {
+    f12: '932000', f13: 2, f2: 4321.5, f3: 1.2, f4: 51.2,
+    f15: 4350, f16: 4280, f17: 4290, f18: 4270.3, f124: Math.floor(NOW / 1000) - 60,
+  }
+  const provider = createTencentMarketProvider({
+    fetchImpl: (async (input: any) => {
+      const url = String(input)
+      if (url.includes('mktHs/rank')) return json({ code: 0, msg: 'ok', data: [] })
+      if (url.includes('qt.gtimg.cn')) return text(batchText)
+      if (url.includes('push2.eastmoney.com')) return json({ rc: 0, data: { diff: [extraRow] } })
+      return json({ code: 1 })
+    }) as typeof fetch,
+    now: () => NOW,
+  })
+  const overview = await provider.overview()
+  const extra = overview.indices.find(index => index.code === 'SH.932000')
+  assert.ok(extra)
+  assert.equal(extra!.name, '中证2000')
+  assert.equal(extra!.price, 4321.5)
+  assert.equal(extra!.changePercent, 1.2)
+  assert.equal(extra!.amount, null)
+  assert.equal(extra!.quotedAt, new Date((Math.floor(NOW / 1000) - 60) * 1000).toISOString())
+  const fallback = createTencentMarketProvider({
+    fetchImpl: (async (input: any) => {
+      const url = String(input)
+      if (url.includes('mktHs/rank')) return json({ code: 0, msg: 'ok', data: [] })
+      if (url.includes('qt.gtimg.cn')) return text(batchText)
+      return json({ code: 1 })
+    }) as typeof fetch,
+    now: () => NOW,
+  })
+  const without = await fallback.overview()
+  assert.equal(without.indices.some(index => index.code === 'SH.932000'), false)
+  assert.equal(without.indices.length, 6)
+})
+
+test('HK timestamps reject malformed, impossible and future stamps', () => {
+  assert.equal(parseTencentHkTimestamp('2026/10/16 15:30:00', NOW), '2026-10-16T15:30:00+08:00')
+  for (const bad of ['', '2026-10-16 15:30:00', '2026/13/16 15:30:00', '2026/02/30 15:30:00', '2026/10/16 24:00:00', '2026/10/23 15:30:00']) {
+    assert.throws(() => parseTencentHkTimestamp(bad, NOW), /hk quote timestamp/, bad)
+  }
+})
+
 test('overview projects six indices and all 31 industries; board detail stays bounded', async () => {
   let fetches = 0
   const provider = createTencentMarketProvider({
@@ -181,9 +256,9 @@ test('overview projects six indices and all 31 industries; board detail stays bo
   assert.equal(electronics.name, 'Board 4')
   assert.equal(electronics.marketCap, 1004 * 1e8)
   assert.equal(overview.quotedAt, '2026-10-16T15:00:00+08:00')
-  assert.equal(fetches, 2)
+  assert.equal(fetches, 3, 'rank + Tencent batch + best-effort CSI 2000')
   await provider.overview()
-  assert.equal(fetches, 2, 'overview is cached')
+  assert.equal(fetches, 3, 'overview is cached')
   const board = await provider.board('801080')
   assert.equal(board.name, 'Board 4')
   assert.equal(board.total, 3)

@@ -17,7 +17,7 @@ import type {
   BoardDetail, MarketAdjustment, MarketBreadth, MarketDailyBar, MarketHistory, MarketIndex, MarketOverview,
   MarketQuote, MarketSector, MarketStock, MarketTopStock, MarketProvider, MarketIntraday,
 } from './market.ts'
-import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_TTL_MS, parseGlobalQuotes } from './global.ts'
+import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, parseGlobalQuotes } from './global.ts'
 import type { GlobalMarketOverview } from './global.ts'
 import { validateSymbol } from './watchlist.ts'
 import { MAX_ABSOLUTE_PRICE } from './chart-data.ts'
@@ -43,13 +43,23 @@ export const MARKET_TOP_LIMIT = 8
 const STAMP = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/
 
 const INDEXES = [
-  { quote: 'sh000001', code: 'SH.000001' },
-  { quote: 'sz399001', code: 'SZ.399001' },
-  { quote: 'sz399006', code: 'SZ.399006' },
-  { quote: 'sh000300', code: 'SH.000300' },
-  { quote: 'sh000688', code: 'SH.000688' },
-  { quote: 'bj899050', code: 'BJ.899050' },
+  { quote: 'sh000001', code: 'SH.000001', market: 'cn' },
+  { quote: 'sz399001', code: 'SZ.399001', market: 'cn' },
+  { quote: 'sz399006', code: 'SZ.399006', market: 'cn' },
+  { quote: 'sh000300', code: 'SH.000300', market: 'cn' },
+  { quote: 'sh000688', code: 'SH.000688', market: 'cn' },
+  { quote: 'bj899050', code: 'BJ.899050', market: 'cn' },
+  // Broad small/mid-cap coverage that the same Tencent endpoint answers for.
+  { quote: 'sh000852', code: 'SH.000852', market: 'cn' },
+  { quote: 'sh000985', code: 'SH.000985', market: 'cn' },
+  // Hang Seng family: Tencent answers these under its HK index namespace.
+  { quote: 'hkHSI', code: 'HK.HSI', market: 'hk' },
+  { quote: 'hkHSCEI', code: 'HK.HSCEI', market: 'hk' },
+  { quote: 'hkHSTECH', code: 'HK.HSTECH', market: 'hk' },
+  { quote: 'hkHSCCI', code: 'HK.HSCCI', market: 'hk' },
 ] as const
+/** CSI 2000 is not served by Tencent/Sina; try both known East Money secids. */
+const CN_EXTRA_SECIDS = ['1.932000', '2.932000'] as const
 
 export interface MarketProviderOptions {
   fetchImpl?: typeof fetch
@@ -73,6 +83,9 @@ function cleanText(raw: unknown, max = 64): string | null {
 }
 
 function finiteNumber(raw: unknown, min = -Infinity, max = Infinity): number | null {
+  // Tencent fields are strings; East Money rows are numbers. Both are accepted
+  // so the two upstreams share the same numeric validation.
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw >= min && raw <= max ? raw : null
   if (typeof raw !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(raw)) return null
   const value = Number(raw)
   return Number.isFinite(value) && value >= min && value <= max ? value : null
@@ -117,6 +130,27 @@ export function parseTencentTimestamp(raw: unknown, now: number): string {
   const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}+08:00`
   if (!Number.isFinite(stamp) || Date.parse(iso) !== stamp) throw new Error('invalid quote timestamp')
   if (stamp > now + 300_000) throw new Error('quote timestamp is in the future')
+  return iso
+}
+
+const HK_STAMP = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+
+/**
+ * Hang Seng lines stamp `yyyy/MM/dd HH:mm:ss` in Hong Kong time (UTC+8, no
+ * DST). Impossible or future stamps are rejected, not clamped. Exported for tests.
+ */
+export function parseTencentHkTimestamp(raw: unknown, now: number): string {
+  const match = typeof raw === 'string' ? HK_STAMP.exec(raw) : null
+  if (!match) throw new Error('invalid hk quote timestamp')
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3])
+  const hour = Number(match[4]), minute = Number(match[5]), second = Number(match[6])
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) throw new Error('invalid hk quote timestamp')
+  const calendar = new Date(Date.UTC(year, month - 1, day))
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day) throw new Error('invalid hk quote timestamp')
+  const stamp = Date.UTC(year, month - 1, day, hour - 8, minute, second)
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}+08:00`
+  if (!Number.isFinite(stamp) || Date.parse(iso) !== stamp) throw new Error('invalid hk quote timestamp')
+  if (stamp > now + 300_000) throw new Error('hk quote timestamp is in the future')
   return iso
 }
 
@@ -175,7 +209,7 @@ export function parseTencentBatch(text: string): Map<string, string[]> {
   for (const raw of text.trim().split(/\r?\n/)) {
     const line = raw.trim()
     if (!line) continue
-    const match = /^v_((?:sh|sz|bj)\d{6}|pt\d{8})="([^"]*)";?$/.exec(line)
+    const match = /^v_((?:sh|sz|bj)\d{6}|hk[A-Z]+|pt\d{8})="([^"]*)";?$/.exec(line)
     if (!match) continue
     const fields = match[2]!.split('~')
     if (fields.length < 35) continue
@@ -268,6 +302,25 @@ function parseIndexQuote(key: string, fields: string[], now: number): MarketInde
   const changePercent = finiteNumber(fields[32], -100, 100)
   if (!name || price === null || change === null || changePercent === null) throw new Error('invalid index quote')
   if (fields[2] !== digits) throw new Error('index quote mismatch')
+  // Hang Seng lines use the same numeric columns but a slash timestamp and an
+  // HKD turnover field whose unit is not verified; turnover is therefore left
+  // null instead of being labelled as CNY.
+  if (market === 'hk') {
+    if (!/^[A-Z]+$/.test(digits)) throw new Error('invalid hk index code')
+    return {
+      code: `HK.${digits}`,
+      name,
+      price,
+      change,
+      changePercent,
+      open: positiveOrNull(finiteNumber(fields[5], 0, 1e9)),
+      high: positiveOrNull(finiteNumber(fields[33], 0, 1e9)),
+      low: positiveOrNull(finiteNumber(fields[34], 0, 1e9)),
+      previousClose: positiveOrNull(finiteNumber(fields[4], 0, 1e9)),
+      amount: null,
+      quotedAt: parseTencentHkTimestamp(fields[30], now),
+    }
+  }
   const amount = toCnyFromWan(positiveOrNull(finiteNumber(fields[37], 0, 1e12)))
   return {
     code: `${market.toUpperCase()}.${digits}`,
@@ -599,6 +652,43 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     })
   }
 
+  /**
+   * CSI 2000 is not served by the Tencent/Sina endpoints used for the rest of
+   * the board. East Money is already the global-board upstream, so it is tried
+   * here as a best-effort supplement; a failure simply omits the card and never
+   * fails the A-share overview.
+   */
+  async function loadCnExtra(): Promise<MarketIndex | null> {
+    try {
+      const query = [
+        'fltt=2',
+        `secids=${CN_EXTRA_SECIDS.join(',')}`,
+        'fields=f2,f3,f4,f12,f13,f14,f15,f16,f17,f18,f124',
+        `ut=${EASTMONEY_UT}`,
+      ].join('&')
+      const payload = await requestJson(`${GLOBAL_MARKET_ENDPOINT}?${query}`)
+      const rows = payload?.data?.diff
+      const row = Array.isArray(rows) ? rows.find((item: any) => item?.f12 === '932000') : null
+      if (!row) return null
+      const price = finiteNumber(row.f2, 0.0001, 1e9)
+      const change = finiteNumber(row.f4, -1e9, 1e9)
+      const changePercent = finiteNumber(row.f3, -100, 100)
+      const quotedAt = globalQuoteTime(row.f124, now())
+      if (price === null || change === null || changePercent === null || !quotedAt) return null
+      return {
+        code: 'SH.932000',
+        name: '中证2000',
+        price, change, changePercent,
+        open: positiveOrNull(finiteNumber(row.f17, 0, 1e9)),
+        high: positiveOrNull(finiteNumber(row.f15, 0, 1e9)),
+        low: positiveOrNull(finiteNumber(row.f16, 0, 1e9)),
+        previousClose: positiveOrNull(finiteNumber(row.f18, 0, 1e9)),
+        amount: null,
+        quotedAt,
+      }
+    } catch { return null }
+  }
+
   async function loadOverview(): Promise<MarketOverview> {
     const rank = await fetchBoardRank()
     const quotes = [
@@ -606,7 +696,7 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       ...MARKET_LEVEL1_CODES.map(code => `pt01${code}`),
       ...[...rank.keys()].map(code => `pt01${code}`),
     ]
-    const batch = await quoteBatch([...new Set(quotes)])
+    const [batch, extraIndex] = await Promise.all([quoteBatch([...new Set(quotes)]), loadCnExtra()])
     const stamp = now()
     const indices: MarketIndex[] = []
     for (const index of INDEXES) {
@@ -614,6 +704,7 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       if (!fields) continue
       try { indices.push(parseIndexQuote(index.quote, fields, stamp)) } catch { /* one bad index must not hide the board */ }
     }
+    if (extraIndex) indices.push(extraIndex)
     if (indices.length < 3) throw new Error('market indices unavailable')
     const sectors: MarketSector[] = []
     for (const code of MARKET_LEVEL1_CODES) {
@@ -642,9 +733,11 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       })
     }
     if (sectors.filter(sector => sector.level === 1).length < 20) throw new Error('market sectors unavailable')
+    // The header clock and market status describe the A-share session; a later
+    // Hang Seng timestamp must not move that clock past the Shanghai close.
     let quotedAt: string | null = null
     for (const sector of sectors) quotedAt = laterQuote(quotedAt, sector.quotedAt)
-    for (const index of indices) quotedAt = laterQuote(quotedAt, index.quotedAt)
+    for (const index of indices) if (!index.code.startsWith('HK.')) quotedAt = laterQuote(quotedAt, index.quotedAt)
     return {
       source: MARKET_SOURCE_NAME,
       fetchedAt: isoNow(stamp),

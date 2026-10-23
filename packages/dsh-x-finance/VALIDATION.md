@@ -1,3 +1,17 @@
+## Expanded index board — 2026-10-23
+
+- `pnpm --filter dsh-x-finance test`: **220 tests, 0 failed**; typecheck and build pass. New cases cover the Hang Seng batch line and slash timestamp, the HK namespace and null turnover, the A-share clock staying on the mainland close, the best-effort CSI 2000 supplement, and its omission when the source does not answer.
+- Live smoke of the built provider: **12 indices** returned in 230 ms — the original six, 中证1000, 中证全指, 恒生指数, 恒生国企, 恒生科技, 恒生红筹. HK quotes carried Hong Kong timestamps and null turnover; the header `quotedAt` stayed on the latest mainland quote.
+- 中证2000 (932000) is not served by Tencent (`v_pv_none_match`, empty kline) or Sina (empty line). The provider tries East Money `1.932000` and `2.932000` as a best-effort supplement and omits the card on failure. In this sandbox the East Money hosts return 403, so the live smoke did not include it; the live path is therefore **not verified** here.
+- HK cards are quote-only: the chart history route is A-share-only, so `HK.*` and `SH.932000` are excluded from drill-down. The sentiment index momentum excludes HK. No currency is inferred for HK turnover.
+
+## Quantitative analysis and clickable index cards — 2026-10-23
+
+- `pnpm --filter dsh-x-finance test`: **216 tests, 0 failed**; `tsc -p tsconfig.json` and the package build pass. New pure tests cover normalisation, returns/volatility/drawdown/Sharpe, ATR/RSI/Bollinger, monthly grouping, correlation alignment, all four rule replays, next-open execution (no lookahead), both-side costs, and fail-closed empty inputs. A jsdom panel test covers the full render, benchmark correlation and the too-few-bars state.
+- Interaction: the whole index card (including the large value) is now a keyboard-accessible button; clicking it opens the inline daily chart and the new quant panel. The old name-only link was the reason a click on the value did nothing. The test clicks the value element directly.
+- Visual smoke: a standalone Chrome page rendered the panel with a 120-bar synthetic fixture at 1185×1342; the five-column statistics grid, monthly table, replay metrics and SVG equity curve were inspected. This is **not** a Desktop acceptance test; the embedded tab cannot authenticate to the local Web GUI, so the real page was not screenshotted.
+- Limits: daily window is capped at 1,000 bars (about four years); the benchmark is CSI 300 (SSE Composite when the chart itself is CSI 300) and is requested unadjusted. The replay is long-only, fully invested, next-open, with commission/slippage on both sides; no dividends, taxes, financing, leverage or suspended-market fills. It is a historical description, not a forecast or advice. Data remains the unofficial local free source.
+
 ## Global index board — 2026-10-23
 
 - `pnpm --filter dsh-x-finance test`: **203 tests, 0 failed**; `tsc -p tsconfig.json` and the package build pass. New tests cover catalogue uniqueness, the East Money batch parser, rejected unknown/impossible/future rows, the host projection boundary, regional averages, the single batched provider request with caching, and the owner-only RPC branch. All fixtures are offline.

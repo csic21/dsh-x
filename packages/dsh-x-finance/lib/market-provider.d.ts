@@ -19,21 +19,51 @@ export declare const MARKET_TOP_LIMIT = 8;
 declare const INDEXES: readonly [{
     readonly quote: 'sh000001';
     readonly code: 'SH.000001';
+    readonly market: 'cn';
 }, {
     readonly quote: 'sz399001';
     readonly code: 'SZ.399001';
+    readonly market: 'cn';
 }, {
     readonly quote: 'sz399006';
     readonly code: 'SZ.399006';
+    readonly market: 'cn';
 }, {
     readonly quote: 'sh000300';
     readonly code: 'SH.000300';
+    readonly market: 'cn';
 }, {
     readonly quote: 'sh000688';
     readonly code: 'SH.000688';
+    readonly market: 'cn';
 }, {
     readonly quote: 'bj899050';
     readonly code: 'BJ.899050';
+    readonly market: 'cn';
+}, {
+    readonly quote: 'sh000852';
+    readonly code: 'SH.000852';
+    readonly market: 'cn';
+}, {
+    readonly quote: 'sh000985';
+    readonly code: 'SH.000985';
+    readonly market: 'cn';
+}, {
+    readonly quote: 'hkHSI';
+    readonly code: 'HK.HSI';
+    readonly market: 'hk';
+}, {
+    readonly quote: 'hkHSCEI';
+    readonly code: 'HK.HSCEI';
+    readonly market: 'hk';
+}, {
+    readonly quote: 'hkHSTECH';
+    readonly code: 'HK.HSTECH';
+    readonly market: 'hk';
+}, {
+    readonly quote: 'hkHSCCI';
+    readonly code: 'HK.HSCCI';
+    readonly market: 'hk';
 }];
 export interface MarketProviderOptions {
     fetchImpl?: typeof fetch;
@@ -52,6 +82,11 @@ export interface MarketProviderOptions {
  * instead of being silently clamped. Exported for tests.
  */
 export declare function parseTencentTimestamp(raw: unknown, now: number): string;
+/**
+ * Hang Seng lines stamp `yyyy/MM/dd HH:mm:ss` in Hong Kong time (UTC+8, no
+ * DST). Impossible or future stamps are rejected, not clamped. Exported for tests.
+ */
+export declare function parseTencentHkTimestamp(raw: unknown, now: number): string;
 /** Parses the tilde-separated Tencent batch format. Exported for tests. */
 export declare function parseTencentBatch(text: string): Map<string, string[]>;
 interface RankBoard {
