@@ -37,6 +37,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        global?: undefined;
         board?: undefined;
     };
 } | {
@@ -49,6 +50,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        global?: undefined;
         board?: undefined;
     };
 } | {
@@ -61,6 +63,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        global?: undefined;
         board?: undefined;
     };
 } | {
@@ -73,6 +76,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes: MarketQuote[];
         history?: undefined;
         intraday?: undefined;
+        global?: undefined;
         board?: undefined;
     };
 } | {
@@ -85,6 +89,7 @@ export declare function createMarketHandler({ provider, now }?: {
         status: string;
         history: MarketHistory;
         intraday?: undefined;
+        global?: undefined;
         board?: undefined;
     };
 } | {
@@ -97,6 +102,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         status: string;
         intraday: MarketIntraday;
+        global?: undefined;
         board?: undefined;
     };
 } | {
@@ -108,6 +114,20 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        status: string;
+        global: import("./global.ts").GlobalMarketOverview;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
+        global?: undefined;
         status: string;
         board: import("./market.ts").BoardDetail;
     };

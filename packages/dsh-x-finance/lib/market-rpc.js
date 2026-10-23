@@ -1,4 +1,5 @@
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, isAshareMinute, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday } from './market.js';
+import { projectGlobalOverview } from './global.js';
 import { createRpcRoute, failure } from './rpc.js';
 /**
  * Re-validates every quote before it reaches the browser and reports a symbol
@@ -197,6 +198,13 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                     return failure('finance/intraday-unavailable', '当前行情源不提供分时。');
                 const raw = await resolved.intraday(request.symbol);
                 return { ok: true, value: { status: 'ready', intraday: projectIntradayResponse(raw, request.symbol, now()) } };
+            }
+            if (request.kind === 'global') {
+                // A replacement adapter may cover A shares only. That is an honest
+                // "unavailable" for this tab, not a failure of the shared source.
+                if (typeof resolved.globalOverview !== 'function')
+                    return failure('finance/global-unavailable', '当前行情源不提供全球指数。');
+                return { ok: true, value: { status: 'ready', global: projectGlobalOverview(await resolved.globalOverview(), now()) } };
             }
             return { ok: true, value: { status: 'ready', board: await resolved.board(request.board) } };
         }

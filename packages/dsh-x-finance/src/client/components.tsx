@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StockWorkbench } from './workbench.tsx'
 import { MarketView } from './market/MarketView.tsx'
+import { GlobalView } from './market/GlobalView.tsx'
 import { InstrumentSearch } from './SearchBox.tsx'
 import { normalizeAShare, MAX_FIXED, MAX_WATCHLIST, fixedItems, quoteStatus } from '../watchlist.ts'
 import { fixedBarShortcutKeys, fixedBarShortcutLabel } from './shortcut.ts'
@@ -131,7 +132,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
   const preference = useMarketPreference(rpc)
   const item = state.items.find((entry: any) => entry.symbol === state.selectedSymbol) ?? state.items[0]
   const fixedCount = fixedItems(state.items).length
-  const [view, setView] = useState<'watchlist' | 'market' | 'gold'>('watchlist')
+  const [view, setView] = useState<'watchlist' | 'market' | 'global' | 'gold'>('watchlist')
   const [fixError, setFixError] = useState('')
   const [drillNotice, setDrillNotice] = useState('')
   const previousSelection = useRef(state.selectedSymbol)
@@ -168,17 +169,18 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
   const sourceOff = preference.status === 'ready' && !preference.enabled
   return <main className="dxs dxs-page">
     <header className="dxs-titlebar">
-      <div className="dxs-brand"><StockIcon size={16} /><h1>{t('title')}</h1><span className="dxs-context">{view === 'market' ? t('market.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
+      <div className="dxs-brand"><StockIcon size={16} /><h1>{t('title')}</h1><span className="dxs-context">{view === 'market' ? t('market.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
         <button type="button" aria-pressed={view === 'watchlist'} onClick={() => setView('watchlist')}>{t('page.view.watchlist')}</button>
         <button type="button" aria-pressed={view === 'market'} onClick={() => setView('market')}>{t('page.view.market')}</button>
+        <button type="button" aria-pressed={view === 'global'} onClick={() => setView('global')}>{t('global.view.tab')}</button>
         <button type="button" aria-pressed={view === 'gold'} onClick={() => setView('gold')}>{t('gold.view.tab')}</button>
       </nav>
       <div className="dxs-header-actions"><button type="button" onClick={back}>{t('page.back')}</button></div>
     </header>
     <div className="dxs-body">
     {drillNotice ? <p role="status" className="dxs-banner">{drillNotice}</p> : null}
-    {view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
+    {view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView rpc={rpc} t={t} format={format} locale={getLocale()} /></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
       {sourceOff ? <div className="dxs-banner is-warn dxs-source-card"><div><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p>{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</div><SourceButton preference={preference} t={t} large /></div> : preference.status === 'error' ? <p role="alert" className="dxs-banner dxs-error">{t('source.unavailable')}</p> : null}
       {state.placement === 'occupied' && <p role="status" className="dxs-banner">{t('page.occupied')}</p>}
       {state.barHidden && <p role="status" className="dxs-banner">{t('page.bar-hidden')} <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button></p>}

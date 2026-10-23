@@ -98,6 +98,7 @@ async function harness(options: { response?: any; dictionary?: any; rpc?: any; s
       if (!sourceEnabled && !sourceForced) return { ok: true, value: { status: 'unconfigured' } }
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
       if (payload && typeof payload === 'object' && !Object.keys(payload).length) return { ok: true, value: { status: 'ready', snapshot: goldSnapshot } }
       return { ok: true, value: { status: 'ready', board: { ...board, code: payload.board } } }
     },
@@ -233,7 +234,15 @@ const pageBundle = await build({
 const pageModule = { exports: {} as any }
 new Function('module', 'exports', 'require', pageBundle.outputFiles[0].text)(pageModule, pageModule.exports, createRequire(import.meta.url))
 
-test('finance page tabs switch between the watchlist, the market panorama and gold', async () => {
+const globalOverview = {
+  source: '东方财富全球指数 (unofficial)', fetchedAt: '2026-10-18T21:06:57+08:00', quotedAt: QUOTED,
+  quotes: [
+    { code: 'DJIA', name: '道琼斯工业指数', nameEn: 'Dow Jones', region: 'americas', timeZone: 'America/New_York', price: 52867.98, change: 11.89, changePercent: 0.02, open: 52788.41, high: 52927.88, low: 52508.38, previousClose: 52856.09, quotedAt: QUOTED },
+    { code: 'N225', name: '日经225', nameEn: 'Nikkei 225', region: 'asiaPacific', timeZone: 'Asia/Tokyo', price: 62693.16, change: -214.68, changePercent: -0.34, open: 62667.05, high: 62786.89, low: 61462.61, previousClose: 62907.84, quotedAt: QUOTED },
+    { code: 'KS11', name: '韩国KOSPI', nameEn: 'KOSPI', region: 'asiaPacific', timeZone: 'Asia/Seoul', price: 5550.3, change: 16.53, changePercent: 0.3, open: 5403.17, high: 5547.13, low: 5305.98, previousClose: 5533.77, quotedAt: QUOTED },
+  ],
+}
+test('finance page tabs switch between the watchlist, the market panorama, global markets and gold', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
   const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
   ;(globalThis as any).window = dom.window
@@ -245,6 +254,7 @@ test('finance page tabs switch between the watchlist, the market panorama and go
       if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
       if (payload && typeof payload === 'object' && !Object.keys(payload).length) return { ok: true, value: { status: 'ready', snapshot: goldSnapshot } }
       return { ok: true, value: { status: 'ready', board } }
     },
@@ -262,7 +272,7 @@ test('finance page tabs switch between the watchlist, the market panorama and go
     })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     const tabs = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-view-tabs button')]
-    assert.equal(tabs.length, 3)
+    assert.equal(tabs.length, 4)
     assert.equal(tabs[0]!.getAttribute('aria-pressed'), 'true')
     assert.match(dom.window.document.body.textContent ?? '', /我的自选/)
     await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
@@ -274,6 +284,16 @@ test('finance page tabs switch between the watchlist, the market panorama and go
     await act(async () => tabs[2]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     assert.equal(tabs[2]!.getAttribute('aria-pressed'), 'true')
+    const globalText = dom.window.document.body.textContent ?? ''
+    assert.match(globalText, /全球市场/)
+    assert.match(globalText, /道琼斯工业指数/)
+    assert.match(globalText, /日经225/)
+    assert.match(globalText, /韩国KOSPI/)
+    assert.match(globalText, /52,867\.98/)
+    assert.doesNotMatch(globalText, /NaN|undefined/)
+    await act(async () => tabs[3]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.equal(tabs[3]!.getAttribute('aria-pressed'), 'true')
     const goldText = dom.window.document.body.textContent ?? ''
     assert.match(goldText, /折算与价差/)
     assert.match(goldText, /4,035.01/)
@@ -316,6 +336,7 @@ test('market panorama drills into a stock and the workbench requests its daily b
       if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
       return { ok: true, value: { status: 'ready', board } }
     },
   }
@@ -375,6 +396,7 @@ test('a mover row and an index card drill down without touching the watchlist', 
       if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
       return { ok: true, value: { status: 'ready', board } }
     },
   }

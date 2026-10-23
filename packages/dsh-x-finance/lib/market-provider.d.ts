@@ -42,6 +42,7 @@ export interface MarketProviderOptions {
     overviewTtlMs?: number;
     breadthTtlMs?: number;
     boardTtlMs?: number;
+    globalTtlMs?: number;
     retryDelayMs?: number;
     concurrency?: number;
 }

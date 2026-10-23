@@ -17,6 +17,8 @@ import type {
   BoardDetail, MarketAdjustment, MarketBreadth, MarketDailyBar, MarketHistory, MarketIndex, MarketOverview,
   MarketQuote, MarketSector, MarketStock, MarketTopStock, MarketProvider, MarketIntraday,
 } from './market.ts'
+import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_TTL_MS, parseGlobalQuotes } from './global.ts'
+import type { GlobalMarketOverview } from './global.ts'
 import { validateSymbol } from './watchlist.ts'
 import { MAX_ABSOLUTE_PRICE } from './chart-data.ts'
 
@@ -56,6 +58,7 @@ export interface MarketProviderOptions {
   overviewTtlMs?: number
   breadthTtlMs?: number
   boardTtlMs?: number
+  globalTtlMs?: number
   retryDelayMs?: number
   concurrency?: number
 }
@@ -508,13 +511,14 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     overviewTtlMs = MARKET_OVERVIEW_TTL_MS,
     breadthTtlMs = MARKET_CACHE_TTL_MS,
     boardTtlMs = MARKET_BOARD_TTL_MS,
+    globalTtlMs = GLOBAL_TTL_MS,
     retryDelayMs = 200,
     concurrency = 6,
   } = options
   if (typeof fetchImpl !== 'function') throw new Error('market fetch unavailable')
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) throw new Error('invalid market timeout')
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 12) throw new Error('invalid market concurrency')
-  if (![overviewTtlMs, breadthTtlMs, boardTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0)) throw new Error('invalid market cache')
+  if (![overviewTtlMs, breadthTtlMs, boardTtlMs, globalTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0)) throw new Error('invalid market cache')
 
   const cache = new Map<string, CacheEntry<any>>()
   const inflight = new Map<string, Promise<any>>()
@@ -567,6 +571,32 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     const payload = await requestJson(url)
     if (payload.code !== 0) throw new Error('market board rank failed')
     return parseBoardRank(payload)
+  }
+
+  /**
+   * One batched request for the whole global board. The catalogue supplies the
+   * secids, names, regions and time zones; the upstream only supplies numbers.
+   * Rows the source does not answer for are missing from the response, never
+   * filled with a neighbouring market's value.
+   */
+  function loadGlobalOverview(): Promise<GlobalMarketOverview> {
+    const query = [
+      'fltt=2',
+      `secids=${GLOBAL_INSTRUMENTS.map(item => item.secid).join(',')}`,
+      'fields=f2,f3,f4,f12,f13,f14,f15,f16,f17,f18,f124',
+      `ut=${EASTMONEY_UT}`,
+    ].join('&')
+    return requestJson(`${GLOBAL_MARKET_ENDPOINT}?${query}`).then(payload => {
+      if (payload?.rc !== 0 || !payload.data) throw new Error('global market failed')
+      const stamp = now()
+      const quotes = parseGlobalQuotes(payload, stamp)
+      if (!quotes.length) throw new Error('global market empty')
+      let quotedAt: string | null = null
+      for (const quote of quotes) {
+        if (quote.quotedAt && (!quotedAt || Date.parse(quote.quotedAt) > Date.parse(quotedAt))) quotedAt = quote.quotedAt
+      }
+      return { source: GLOBAL_MARKET_SOURCE, fetchedAt: isoNow(stamp), quotedAt, quotes }
+    })
   }
 
   async function loadOverview(): Promise<MarketOverview> {
@@ -767,6 +797,7 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     name: MARKET_SOURCE_NAME,
     overview: () => getOrLoad('overview', overviewTtlMs, loadOverview),
     breadth: () => getOrLoad('breadth', breadthTtlMs, loadBreadth),
+    globalOverview: () => getOrLoad('global', globalTtlMs, loadGlobalOverview),
     board: (input: unknown) => {
       const code = validateBoardCode(input)
       return getOrLoad(`board:${code}`, boardTtlMs, () => loadBoard(code))

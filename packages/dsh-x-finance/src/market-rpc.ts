@@ -2,6 +2,7 @@ import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, isAshareMinute, parseMarke
 import type { MarketIntraday } from './market.ts'
 import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts'
 import type { MarketController } from './market-preference.ts'
+import { projectGlobalOverview } from './global.ts'
 import { createRpcRoute, failure } from './rpc.ts'
 
 // A provider can be replaced or switched at runtime; a function is resolved on
@@ -174,6 +175,12 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
         if (typeof resolved.intraday !== 'function') return failure('finance/intraday-unavailable', '当前行情源不提供分时。')
         const raw = await resolved.intraday(request.symbol)
         return { ok: true, value: { status: 'ready', intraday: projectIntradayResponse(raw, request.symbol, now()) } }
+      }
+      if (request.kind === 'global') {
+        // A replacement adapter may cover A shares only. That is an honest
+        // "unavailable" for this tab, not a failure of the shared source.
+        if (typeof resolved.globalOverview !== 'function') return failure('finance/global-unavailable', '当前行情源不提供全球指数。')
+        return { ok: true, value: { status: 'ready', global: projectGlobalOverview(await resolved.globalOverview(), now()) } }
       }
       return { ok: true, value: { status: 'ready', board: await resolved.board(request.board) } }
     } catch (error: any) {

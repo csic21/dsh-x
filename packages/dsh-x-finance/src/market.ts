@@ -3,8 +3,12 @@
 // identities, taxonomy and arithmetic. No prices are invented here.
 //
 // The same provider and the same opt-in switch serve the market board, the
-// stock page and the bottom bar: there is exactly one A-share quote source.
+// stock page, the bottom bar and the global index tab: the user has one free
+// source switch, not several. The global board itself is catalogued in
+// global.ts because it is a different upstream (East Money) from the A-share
+// Tencent feed, but it is enabled and disabled by the same preference.
 import { validateSymbol } from './watchlist.ts'
+import type { GlobalMarketOverview } from './global.ts'
 export const MARKET_ENDPOINT = 'dsh-x-finance.market'
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference'
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)'
@@ -224,7 +228,8 @@ export type MarketBreadthResult = MarketUnconfigured | { status: 'ready'; breadt
 export type MarketBoardResult = MarketUnconfigured | { status: 'ready'; board: BoardDetail }
 export type MarketQuotesResult = MarketUnconfigured | { status: 'ready'; source: string; quotes: MarketQuote[] }
 export type MarketHistoryResult = MarketUnconfigured | { status: 'ready'; history: MarketHistory }
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult
+export type MarketGlobalResult = MarketUnconfigured | { status: 'ready'; global: GlobalMarketOverview }
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult
 
 export type MarketRequest =
   | { kind: 'overview' }
@@ -233,6 +238,7 @@ export type MarketRequest =
   | { kind: 'quotes'; symbols: string[] }
   | { kind: 'history'; symbol: string; adjustment: 'none' | 'forward' | 'backward'; limit: number }
   | { kind: 'intraday'; symbol: string }
+  | { kind: 'global' }
 
 /** Daily bars requested by one history call. Bounded for response size. */
 export const MARKET_HISTORY_DEFAULT_LIMIT = 250
@@ -274,6 +280,12 @@ export interface MarketProvider {
   history?(symbol: string, options: { adjustment: MarketAdjustment; limit: number }): Promise<MarketHistory>
   /** Today's minute line for one symbol. Optional, and never synthesized from daily bars. */
   intraday?(symbol: string): Promise<MarketIntraday>
+  /**
+   * Global index board. Optional and independent from A-share breadth: an
+   * adapter that only covers A shares leaves the global tab unavailable
+   * instead of failing the whole source.
+   */
+  globalOverview?(): Promise<GlobalMarketOverview>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -585,6 +597,10 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
   if (kind === 'breadth') {
     if (keys.join(',') !== 'kind') throw stockMarketError('invalid-input')
     return { kind: 'breadth' }
+  }
+  if (kind === 'global') {
+    if (keys.join(',') !== 'kind') throw stockMarketError('invalid-input')
+    return { kind: 'global' }
   }
   if (kind === 'board') {
     if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')

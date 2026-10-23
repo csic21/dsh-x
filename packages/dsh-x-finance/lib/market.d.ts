@@ -1,3 +1,4 @@
+import type { GlobalMarketOverview } from './global.ts';
 export declare const MARKET_ENDPOINT = "dsh-x-finance.market";
 export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
 export declare const MARKET_SOURCE_NAME = "\u817E\u8BAF\u884C\u60C5 (unofficial)";
@@ -213,7 +214,11 @@ export type MarketHistoryResult = MarketUnconfigured | {
     status: 'ready';
     history: MarketHistory;
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult;
+export type MarketGlobalResult = MarketUnconfigured | {
+    status: 'ready';
+    global: GlobalMarketOverview;
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -232,6 +237,8 @@ export type MarketRequest = {
 } | {
     kind: 'intraday';
     symbol: string;
+} | {
+    kind: 'global';
 };
 /** Daily bars requested by one history call. Bounded for response size. */
 export declare const MARKET_HISTORY_DEFAULT_LIMIT = 250;
@@ -268,6 +275,12 @@ export interface MarketProvider {
     }): Promise<MarketHistory>;
     /** Today's minute line for one symbol. Optional, and never synthesized from daily bars. */
     intraday?(symbol: string): Promise<MarketIntraday>;
+    /**
+     * Global index board. Optional and independent from A-share breadth: an
+     * adapter that only covers A shares leaves the global tab unavailable
+     * instead of failing the whole source.
+     */
+    globalOverview?(): Promise<GlobalMarketOverview>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {

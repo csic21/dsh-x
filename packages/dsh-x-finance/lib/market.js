@@ -3,7 +3,10 @@
 // identities, taxonomy and arithmetic. No prices are invented here.
 //
 // The same provider and the same opt-in switch serve the market board, the
-// stock page and the bottom bar: there is exactly one A-share quote source.
+// stock page, the bottom bar and the global index tab: the user has one free
+// source switch, not several. The global board itself is catalogued in
+// global.ts because it is a different upstream (East Money) from the A-share
+// Tencent feed, but it is enabled and disabled by the same preference.
 import { validateSymbol } from './watchlist.js';
 export const MARKET_ENDPOINT = 'dsh-x-finance.market';
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference';
@@ -332,6 +335,11 @@ export function parseMarketRequest(payload) {
         if (keys.join(',') !== 'kind')
             throw stockMarketError('invalid-input');
         return { kind: 'breadth' };
+    }
+    if (kind === 'global') {
+        if (keys.join(',') !== 'kind')
+            throw stockMarketError('invalid-input');
+        return { kind: 'global' };
     }
     if (kind === 'board') {
         if (keys.join(',') !== 'board,kind')

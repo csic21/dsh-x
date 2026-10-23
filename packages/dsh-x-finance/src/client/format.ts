@@ -39,5 +39,24 @@ export function createFormatters(getLocale: any) {
       if (!date || !Number.isFinite(date.getTime())) return t('time.missing')
       return t('time.shanghai', { time: new Intl.DateTimeFormat(formatLocale(getLocale()), { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(date) })
     },
+    /**
+     * A quote from another exchange is only meaningful in that exchange's own
+     * local time. The zone comes from the reviewed instrument catalogue, never
+     * from the browser locale, so a US index is not shown in Beijing time.
+     */
+    zoneTime(value: any, timeZone: any, t: any) {
+      const date = value ? new Date(value) : null
+      if (!date || !Number.isFinite(date.getTime())) return t('time.missing')
+      try {
+        return new Intl.DateTimeFormat(formatLocale(getLocale()), {
+          timeZone: typeof timeZone === 'string' && timeZone ? timeZone : 'Asia/Shanghai',
+          year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+          hourCycle: 'h23', timeZoneName: 'short',
+        }).format(date)
+      } catch {
+        // An unsupported zone is not silently replaced with a guessed one.
+        return t('time.missing')
+      }
+    },
   }
 }

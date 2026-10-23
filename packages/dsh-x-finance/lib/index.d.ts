@@ -10,9 +10,10 @@ export interface FinanceConfig {
      */
     freeSource?: boolean;
     /**
-     * Opt in to the unofficial public adapters (Tencent for A shares, Sina for
-     * gold) used by the read-only market board, the stock page, the fixed bottom
-     * bar and the gold panel. Off by default;
+     * Opt in to the unofficial public adapters (Tencent for A shares, East Money
+     * for global indices and intraday, Sina for gold) used by the read-only market
+     * board, the global index tab, the stock page, the fixed bottom bar and the
+     * gold panel. Off by default;
      * `DSH_X_FINANCE_MARKET_SOURCE=1` forces it on for headless compositions.
      * The pre-rename `DSH_X_STOCK_*` variables keep working as deprecated aliases.
      * Intended for local, single-user use only.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT } from '../../market.ts'
 import type { BoardDetail, MarketBreadth, MarketOverview } from '../../market.ts'
+import type { GlobalMarketOverview } from '../../global.ts'
 
 export interface MarketDataState<T> {
   status: 'loading' | 'ready' | 'unconfigured' | 'error'
@@ -13,7 +14,7 @@ const INITIAL = { status: 'loading' as const, value: null, error: '', refreshing
 
 function useMarketResource<T>(
   rpc: any,
-  kind: 'overview' | 'breadth' | 'board',
+  kind: 'overview' | 'breadth' | 'board' | 'global',
   board: string | undefined,
   options: { pollMs?: number; enabled?: boolean } = {},
 ): MarketDataState<T> & { refresh: () => void } {
@@ -69,7 +70,7 @@ function useMarketResource<T>(
           setState({ status: 'unconfigured', value: null, error: '', refreshing: false })
           return
         }
-        const value = kind === 'overview' ? payload?.overview : kind === 'breadth' ? payload?.breadth : payload?.board
+        const value = kind === 'overview' ? payload?.overview : kind === 'breadth' ? payload?.breadth : kind === 'global' ? payload?.global : payload?.board
         if (!value) throw new Error('finance/invalid')
         setState({ status: 'ready', value: value as T, error: '', refreshing: false })
       } catch {
@@ -109,6 +110,11 @@ function useMarketResource<T>(
 
 export function useMarketOverview(rpc: any, options: { pollMs?: number } = {}) {
   return useMarketResource<MarketOverview>(rpc, 'overview', undefined, { pollMs: 60_000, ...options })
+}
+
+/** The global board refreshes at the same pace as the A-share index snapshot. */
+export function useGlobalMarket(rpc: any, options: { pollMs?: number } = {}) {
+  return useMarketResource<GlobalMarketOverview>(rpc, 'global', undefined, { pollMs: 60_000, ...options })
 }
 
 export function useMarketBreadth(rpc: any, options: { pollMs?: number } = {}) {

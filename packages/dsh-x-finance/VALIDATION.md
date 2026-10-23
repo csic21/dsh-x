@@ -1,3 +1,10 @@
+## Global index board — 2026-10-23
+
+- `pnpm --filter dsh-x-finance test`: **203 tests, 0 failed**; `tsc -p tsconfig.json` and the package build pass. New tests cover catalogue uniqueness, the East Money batch parser, rejected unknown/impossible/future rows, the host projection boundary, regional averages, the single batched provider request with caching, and the owner-only RPC branch. All fixtures are offline.
+- Source: one paced request to `push2.eastmoney.com/api/qt/ulist.np/get` with a fixed 30-code catalogue, 60 s host cache. Each of the 30 secids was confirmed to return a quote in a live single request during development; rows the source omits are dropped, never substituted.
+- The catalogue is an explicit identity list with reviewed Chinese/English names, regions and IANA exchange time zones. Quotes are formatted in each exchange's local time, not folded into Beijing time.
+- The sandbox egress returned HTTP 403 when several probes were issued in quick succession, so live checks were spaced out; the endpoint itself answered every paced request. Sustained upstream rate limits and the real Desktop pixel layout are **not** verified. No licensed, real-time, level-2, news or trading feed is claimed.
+
 # Finance validation
 
 ## Quoted price width — 2026-10-23
