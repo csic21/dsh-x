@@ -6,6 +6,7 @@ import { JSDOM } from 'jsdom'
 import React, { act } from 'react'
 import { zh, en } from '../src/client/locales.ts'
 import { createFormatters } from '../src/client/format.ts'
+import { MARKET_CSS } from '../src/client/market/styles.ts'
 
 const NOW = new Date('2026-10-18T21:06:57+08:00')
 const QUOTED = '2026-10-16T15:00:00+08:00'
@@ -246,6 +247,19 @@ test('forced host configuration keeps the switch on and disabled', async () => {
     assert.equal(header!.disabled, true)
     assert.match(header!.closest('label')!.getAttribute('title') ?? '', /强制开启/)
   } finally { await h.close() }
+})
+
+test('the switch paints its on state from theme tokens, never a fixed white knob', () => {
+  // Regression: the on state used the host accent as the track and a literal
+  // #fff knob. A dark theme can resolve brand-primary to near-white, which
+  // collapsed track and knob into one blank pill; the screenshot that reported
+  // this showed exactly that. Track and knob must come from opposing tokens.
+  const checked = MARKET_CSS.match(/input:checked\+\.dxs-mkt-switch-track\{([^}]*)\}/)![1]
+  const knob = MARKET_CSS.match(/input:checked\+\.dxs-mkt-switch-track span\{([^}]*)\}/)![1]
+  assert.match(checked, /background:var\(--dxs-fg/)
+  assert.match(knob, /background:var\(--dxs-bg/)
+  assert.doesNotMatch(knob, /background:#fff/i, 'a literal white knob disappears on a light accent')
+  assert.doesNotMatch(checked, /brand-primary/, 'the host accent can equal the knob colour in a dark theme')
 })
 
 test('unconfigured and failed market sources fail closed without placeholder prices', async () => {

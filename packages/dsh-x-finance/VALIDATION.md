@@ -1,3 +1,12 @@
+## Source switch was invisible in dark themes — 2026-10-24
+
+- Bug reported from a screenshot: with the free source on, the header switch rendered as a blank white pill with no readable on/off state.
+- Cause, confirmed by sampling the screenshot rather than guessing: the on state painted the track with `--dsw-alias-brand-primary`, which this dark theme resolves to near-white `rgb(249,250,251)`, while the knob was a literal `#fff`. Track and knob therefore collapsed into one colour. The knob sat on the right, so the switch was in fact on — it just could not be seen.
+- Fix: the switch no longer depends on the host accent. The on track takes `--dxs-fg` and the knob takes `--dxs-bg`, so the two are always opposing colours in either theme; the off state uses `--dxs-line` with a `--dxs-muted` knob. Label and focus ring moved to the plugin's own tokens. No JSX changed.
+- Verification: the reported state was reproduced offline (old rules, simulated dark theme) and rendered next to the new rules with headless Chrome at 2x. Dark theme: before = blank white pill, after = light track with a dark knob on the right when on, and a grey knob on the left when off. Light theme re-rendered too, since that is where brand-primary is a real blue; both states stay legible there.
+- Tests: `pnpm --filter dsh-x-finance test` — **223 tests, 0 failed**; typecheck and build pass. A new guard asserts the checked track uses `--dxs-fg` and never the brand accent, and that the knob uses `--dxs-bg` rather than a bare `#fff`, which is the exact regression.
+- Not verified: real Desktop pixels after install; the check used a simulated theme with the tokens sampled from the user's screenshot, not the live shell.
+
 ## MA50 / MA250 (季线 / 年线) on the daily chart — 2026-10-24
 
 - Gap: the chart offered only MA5/10/20, so the long-term 季线/年线 that readers commonly look at had no line at all. The indicator engine already accepted any period up to 500; only the chart's fixed period list was the limit.
