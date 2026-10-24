@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sma, ema, macd, computeIndicators, createIndicatorEngine, validateMacdParams, validateIndicatorConfig, DEFAULT_MACD, INDICATOR_ALGORITHM_VERSION } from '../src/indicators.ts'
+import { sma, ema, macd, bollinger, computeIndicators, createIndicatorEngine, validateMacdParams, validateBollingerParams, validateIndicatorConfig, DEFAULT_MACD, DEFAULT_BOLLINGER, INDICATOR_ALGORITHM_VERSION } from '../src/indicators.ts'
 import { createDemoDataset } from '../src/chart-data.ts'
 
 const near = (actual: any, expected: any) => assert.ok(Math.abs(actual - expected) <= 1e-10 + 1e-10 * Math.abs(expected), `${actual} != ${expected}`)
@@ -120,7 +120,7 @@ test('full result is date-keyed, versioned, nullable and independent of visual c
   assert.equal(result.rows[0].hist, null)
   assert.equal(result.rows[3].dif, result.macd.dif[3])
   assert.equal(result.rows[3].ma[2], result.ma[2][3])
-  assert.deepEqual(result.warmup, { macdBars: 4, kdjBars: 9, availableBars: 4, complete: true })
+  assert.deepEqual(result.warmup, { macdBars: 4, kdjBars: 9, bollingerBars: 20, availableBars: 4, complete: true })
   assert.equal(result.rows[0].k, null)
   const hiddenMa = computeIndicators(bars([1, 2, 4, 8]), { ...config, maPeriods: [] })
   assert.deepEqual(hiddenMa.macd, result.macd)
@@ -241,4 +241,53 @@ test('deterministic long oscillation fixture matches an independent reference re
     near(result.dea[i], dea[i - 25])
     near(result.hist[i], (dif[i - 25] - dea[i - 25]) * 2)
   }
+})
+
+test('Bollinger channel, %B and Z match hand-calculated 3-period values', () => {
+  const values = [1, 2, 3, 4, 5]
+  const result = bollinger(values, { period: 3, multiplier: 2 })
+  assert.deepEqual(result.mid.slice(0, 2), [null, null])
+  assert.deepEqual(result.upper.slice(0, 2), [null, null])
+  // The mid line is exactly SMA: one definition, no second implementation.
+  assert.deepEqual(result.mid, sma(values, 3))
+  for (const index of [2, 3, 4]) {
+    near(result.upper[index], result.mid[index]! + 2)
+    near(result.lower[index], result.mid[index]! - 2)
+    near(result.zscore[index], 1)
+    near(result.percentB[index], 0.75)
+  }
+})
+
+test('Bollinger defaults, warm-up and null resets stay explicit', () => {
+  const flat = bollinger([5, 5, 5, 5], { period: 3 })
+  assert.equal(flat.upper[3], 5); assert.equal(flat.lower[3], 5)
+  // A perfectly flat band has no position inside it; 0.5 / 0 would invent one.
+  assert.equal(flat.percentB[3], null); assert.equal(flat.zscore[3], null)
+  const warm = bollinger(Array.from({ length: 19 }, (_, i) => i + 1))
+  assert.equal(warm.mid.at(-1), null)
+  assert.equal(warm.upper.at(-1), null)
+  assert.deepEqual(bollinger(Array.from({ length: 20 }, (_, i) => i + 1)).params, DEFAULT_BOLLINGER)
+  const gapped = [1, 2, 3, null, 4, 5, 6]
+  const reset = bollinger(gapped, { period: 3 })
+  assert.equal(reset.mid[2], 2)
+  assert.equal(reset.mid[3], null)
+  assert.equal(reset.mid[5], null)
+  assert.equal(reset.mid[6], 5)
+})
+
+test('Bollinger parameters are validated strictly and reach the result rows', () => {
+  assert.throws(() => validateBollingerParams({ period: 0 }), /Bollinger period/)
+  assert.throws(() => validateBollingerParams({ multiplier: 0 }), /Bollinger multiplier/)
+  assert.throws(() => validateBollingerParams({ multiplier: 11 }), /Bollinger multiplier/)
+  assert.throws(() => validateBollingerParams({ multiplier: '2' }), /Bollinger multiplier/)
+  assert.throws(() => validateBollingerParams({ sigma: 2 }), /Unknown Bollinger parameter/)
+  const series = bars(Array.from({ length: 30 }, (_, i) => 100 + Math.sin(i / 3) * 5))
+  const result = computeIndicators(series, { maPeriods: [20], bollinger: { period: 20, multiplier: 2 } })
+  assert.equal(result.spec.bollinger.period, 20)
+  assert.equal(result.warmup.bollingerBars, 20)
+  const row = result.rows.at(-1)!
+  assert.equal(row.bollMid, row.ma[20])
+  assert.ok(row.bollUpper! > row.bollMid! && row.bollLower! < row.bollMid!)
+  // %B and Z are the same deviation on two scales: %B = 0.5 + Z / (2 × multiplier).
+  near(row.percentB!, 0.5 + row.zscore! / (2 * 2))
 })

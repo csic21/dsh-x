@@ -78,7 +78,7 @@ test('prepend preserves logical viewport by its original date anchor', () => {
   assert.deepEqual(preserveLogicalRange(range, all.slice(20), all), { from: 29.5, to: 49.5 })
 })
 function mockLibrary() {
-  const log: any = { options: [], series: [], crosshair: null, click: null, rangeChange: null, remove: 0, resize: 0, realtime: 0, observe: 0, disconnect: 0 }, panes = [320, 80, 150, 120].map(height => ({ getHeight: () => height, setHeight: (next: any) => { height = next }, setStretchFactor: (factor: any) => { height = factor * 50 } }))
+  const log: any = { options: [], series: [], priceLines: [], crosshair: null, click: null, rangeChange: null, remove: 0, resize: 0, realtime: 0, observe: 0, disconnect: 0 }, panes = [320, 80, 150, 120, 90, 90].map(height => ({ getHeight: () => height, setHeight: (next: any) => { height = next }, setStretchFactor: (factor: any) => { height = factor * 50 } }))
   let range: any = null
   const timeScale: any = {
     getVisibleLogicalRange: () => range,
@@ -87,25 +87,36 @@ function mockLibrary() {
     scrollToRealTime: () => { log.realtime++ }, fitContent: () => {},
   }
   const chart: any = {
-    addSeries(definition: any, options: any, pane: any) { const item: any = { definition, options: [options], pane, data: [], sets: 0, updates: [], scale: [] }; log.series.push(item); return { setData: (data: any) => { item.data = data; item.sets++ }, update: (point: any) => item.updates.push(point), applyOptions: (options: any) => item.options.push(options), priceScale: () => ({ applyOptions: (options: any) => item.scale.push(options) }) } },
+    addSeries(definition: any, options: any, pane: any) { const item: any = { definition, options: [options], pane, data: [], sets: 0, updates: [], scale: [] }; log.series.push(item); return { setData: (data: any) => { item.data = data; item.sets++ }, update: (point: any) => item.updates.push(point), applyOptions: (options: any) => item.options.push(options), priceScale: () => ({ applyOptions: (options: any) => item.scale.push(options) }), createPriceLine: (options: any) => { const line: any = { options: [options], updates: [] }; line.applyOptions = (next: any) => line.updates.push(next); log.priceLines.push(line); return line } } },
     applyOptions: (value: any) => log.options.push(value), panes: () => panes, timeScale: () => timeScale,
     subscribeCrosshairMove: (fn: any) => { log.crosshair = fn }, unsubscribeCrosshairMove: (fn: any) => { assert.equal(fn, log.crosshair); log.crosshair = null },
     subscribeClick: (fn: any) => { log.click = fn }, unsubscribeClick: (fn: any) => { assert.equal(fn, log.click); log.click = null },
     setCrosshairPosition: (...value: any[]) => { (log as any).selected = value }, resize: () => log.resize++, remove: () => log.remove++,
   }
   class Observer { observe() { log.observe++ } disconnect() { log.disconnect++ } }
-  return { log, chart, timeScale, Observer, library: { createChart: (element: any, options: any) => { log.options.push(options); return chart }, CandlestickSeries: 'Candle', HistogramSeries: 'Histogram', LineSeries: 'Line', CrosshairMode: { Normal: 0 } } }
+  return { log, chart, timeScale, Observer, library: { createChart: (element: any, options: any) => { log.options.push(options); return chart }, CandlestickSeries: 'Candle', HistogramSeries: 'Histogram', LineSeries: 'Line', CrosshairMode: { Normal: 0 }, LineStyle: { Solid: 0, Dotted: 1, Dashed: 2 } } }
 }
-test('single-chart adapter uses four native panes, tail updates and preserves history viewport', () => {
+test('single-chart adapter uses six native panes, tail updates and preserves history viewport', () => {
   const dom = new JSDOM('<div tabindex="0"></div>'), element = dom.window.document.querySelector<HTMLElement & HTMLInputElement>('div'), mock = mockLibrary(), selection = createSelectionStore(), states: any = []
   const adapter = createStockChartAdapter(element, { selection, library: mock.library, ResizeObserverClass: mock.Observer, onViewport: (value: any) => states.push(value) })
   const dataset = createDemoDataset({ count: 100 }), first: any = { ...dataset, bars: dataset.bars.slice(0, 80) }
   adapter.setData(first, computeIndicators(first.bars, { maPeriods: [5, 10, 20, 50, 250] })); adapter.setConfig(normalizeChartConfig())
-  // candles, volume, hist, dif, dea, k, d, j, then MA5/10/20/50/250 on the price pane.
-  assert.deepEqual(mock.log.series.map((s: any) => (s as any).pane), [0, 1, 2, 2, 2, 3, 3, 3, 0, 0, 0, 0, 0])
+  // candles, volume, hist, dif, dea, k, d, j, MA5/10/20/50/250 and the three
+  // Bollinger lines on the price pane, then %B and Z-Score panes.
+  assert.deepEqual(mock.log.series.map((s: any) => (s as any).pane), [0, 1, 2, 2, 2, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 4, 5])
   // The two long lines exist as series but start hidden, and turning MA250 on
   // reaches the adapter as a real visibility change.
-  assert.deepEqual(mock.log.series.slice(8).map((s: any) => (s as any).options[0].color), ['#b07b00', '#9957d4', '#2582cb', '#0f8b8d', '#c2410c'])
+  assert.deepEqual(mock.log.series.slice(8, 13).map((s: any) => (s as any).options[0].color), ['#b07b00', '#9957d4', '#2582cb', '#0f8b8d', '#c2410c'])
+  // The channel is one colour; its edges are dashed so the mid line reads as the mean.
+  assert.deepEqual(mock.log.series.slice(13, 16).map((s: any) => (s as any).options[0].color), ['#607a9c', '#607a9c', '#607a9c'])
+  assert.equal((mock.log.series[13] as any).options[0].lineStyle, 2)
+  assert.equal((mock.log.series[14] as any).options[0].lineStyle, undefined)
+  // Only the %B and Z panes carry horizontal reference lines: 0.5, +2σ, 0, −2σ.
+  assert.deepEqual(mock.log.priceLines.map((line: any) => line.options[0].price), [0.5, 2, 0, -2])
+  assert.deepEqual(mock.log.series.slice(13).map((s: any) => (s as any).options.at(-1).visible), [true, true, true, false, true])
+  adapter.setConfig(normalizeChartConfig({ percentBVisible: true, bollVisible: false }))
+  assert.deepEqual(mock.log.series.slice(13).map((s: any) => (s as any).options.at(-1).visible), [false, false, false, true, true])
+  adapter.setConfig(normalizeChartConfig())
   adapter.setConfig(normalizeChartConfig({ maVisible: { 250: true } }))
   assert.equal(mock.log.series[12].options.at(-1).visible, true)
   assert.equal(mock.log.series[11].options.at(-1).visible, false)

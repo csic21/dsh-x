@@ -1,5 +1,6 @@
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, isAshareMinute, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday } from './market.js';
 import { projectGlobalOverview } from './global.js';
+import { projectTailScan } from './tail-scan.js';
 import { createRpcRoute, failure } from './rpc.js';
 /**
  * Re-validates every quote before it reaches the browser and reports a symbol
@@ -206,6 +207,14 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                     return failure('finance/global-unavailable', '当前行情源不提供全球指数。');
                 return { ok: true, value: { status: 'ready', global: projectGlobalOverview(await resolved.globalOverview(), now()) } };
             }
+            if (request.kind === 'tail-scan') {
+                // Minute data and daily history are optional capabilities. A source
+                // that has neither leaves this panel unavailable without breaking the
+                // market board.
+                if (typeof resolved.tailScan !== 'function')
+                    return failure('finance/tail-scan-unavailable', '当前行情源不提供尾盘扫描。');
+                return { ok: true, value: { status: 'ready', tailScan: projectTailScan(await resolved.tailScan(), now()) } };
+            }
             return { ok: true, value: { status: 'ready', board: await resolved.board(request.board) } };
         }
         catch (error) {
@@ -213,6 +222,10 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                 return failure('finance/history-unavailable', '该股票暂无历史日 K 数据。');
             if (error?.code === 'finance/intraday-unavailable')
                 return failure('finance/intraday-unavailable', '该股票暂无分时数据。');
+            if (error?.code === 'finance/tail-scan-unavailable')
+                return failure('finance/tail-scan-unavailable', '该行情源暂不提供尾盘扫描。');
+            if (typeof error?.message === 'string' && error.message.startsWith('tail-scan '))
+                return failure('finance/tail-scan-unavailable', '尾盘扫描结果无效，请稍后重试。');
             return failure('finance/market-unavailable', '市场数据暂不可用，请稍后重试。');
         }
     };

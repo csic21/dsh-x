@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT } from '../../market.ts'
 import type { BoardDetail, MarketBreadth, MarketOverview } from '../../market.ts'
+import type { TailScanResult } from '../../tail-scan.ts'
 import type { GlobalMarketOverview } from '../../global.ts'
 
 export interface MarketDataState<T> {
@@ -125,6 +126,55 @@ export function useBoardDetail(rpc: any, code: string, options: { pollMs?: numbe
   return useMarketResource<BoardDetail>(rpc, 'board', code, { pollMs: 120_000, ...options })
 }
 
+
+export interface TailScanState {
+  status: 'idle' | 'loading' | 'ready' | 'error' | 'unconfigured'
+  value: TailScanResult | null
+  error: string
+  running: boolean
+}
+
+/**
+ * The scan is heavy (a full-market pre-screen plus bounded minute and daily
+ * requests), so it is manual: mounting the market page never starts it. A
+ * previous successful result stays visible while a new scan is running, and
+ * unmounting aborts the in-flight request.
+ */
+export function useTailScan(rpc: any) {
+  const [state, setState] = useState<TailScanState>({ status: 'idle', value: null, error: '', running: false })
+  const controller = useRef<AbortController | null>(null)
+  useEffect(() => () => { controller.current?.abort() }, [])
+  const run = async () => {
+    controller.current?.abort()
+    const local = new AbortController()
+    controller.current = local
+    setState(previous => previous.value
+      ? { ...previous, running: true, error: '' }
+      : { ...previous, status: 'loading', running: true, error: '' })
+    try {
+      if (!rpc?.call) throw new Error('finance/connection')
+      const result = await rpc.call('/api', MARKET_ENDPOINT, { kind: 'tail-scan' }, local.signal)
+      if (local.signal.aborted) return
+      if (!result?.ok) throw new Error(typeof result?.error?.code === 'string' ? result.error.code : 'finance/tail-scan-unavailable')
+      const payload = result.value
+      if (payload?.status === 'unconfigured') {
+        setState({ status: 'unconfigured', value: null, error: '', running: false })
+        return
+      }
+      if (!payload?.tailScan || typeof payload.tailScan !== 'object') throw new Error('finance/invalid')
+      setState({ status: 'ready', value: payload.tailScan as TailScanResult, error: '', running: false })
+    } catch {
+      if (local.signal.aborted) return
+      setState(previous => ({
+        ...previous,
+        status: previous.value ? 'ready' : 'error',
+        error: 'finance/tail-scan-unavailable',
+        running: false,
+      }))
+    }
+  }
+  return { ...state, run }
+}
 
 export interface MarketPreferenceState {
   status: 'loading' | 'ready' | 'error'

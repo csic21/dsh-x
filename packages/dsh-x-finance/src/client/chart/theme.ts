@@ -1,6 +1,6 @@
 export const PALETTES = {
-  light: { background: '#ffffff', text: '#26334a', grid: '#edf0f5', border: '#d9dfea', crosshair: '#78879b' },
-  dark: { background: '#151c2a', text: '#d6dfef', grid: '#253044', border: '#38465e', crosshair: '#8e9cb5' },
+  light: { background: '#ffffff', text: '#26334a', grid: '#edf0f5', border: '#d9dfea', crosshair: '#78879b', reference: '#9aa5b5' },
+  dark: { background: '#151c2a', text: '#d6dfef', grid: '#253044', border: '#38465e', crosshair: '#8e9cb5', reference: '#7d8aa3' },
 }
 export function resolveChartTheme(element: any, requested = 'auto') {
   if (requested === 'dark' || requested === 'light') return requested

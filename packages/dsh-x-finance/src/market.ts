@@ -9,11 +9,14 @@
 // Tencent feed, but it is enabled and disabled by the same preference.
 import { validateSymbol } from './watchlist.ts'
 import type { GlobalMarketOverview } from './global.ts'
+import type { TailScanResult } from './tail-scan.ts'
 export const MARKET_ENDPOINT = 'dsh-x-finance.market'
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference'
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)'
 /** One batched request covers the whole fixed bottom bar. */
 export const MARKET_MAX_QUOTES = 8
+/** Internal batch size for the market-wide scan; one URL stays far below the response cap. */
+export const MARKET_MAX_QUOTE_BATCH = 600
 export const MARKET_MAX_BOARD_STOCKS = 200
 export const MARKET_MAX_SECTORS = 200
 export const MARKET_MAX_STOCKS = 12_000
@@ -229,7 +232,8 @@ export type MarketBoardResult = MarketUnconfigured | { status: 'ready'; board: B
 export type MarketQuotesResult = MarketUnconfigured | { status: 'ready'; source: string; quotes: MarketQuote[] }
 export type MarketHistoryResult = MarketUnconfigured | { status: 'ready'; history: MarketHistory }
 export type MarketGlobalResult = MarketUnconfigured | { status: 'ready'; global: GlobalMarketOverview }
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult
+export type MarketTailScanResult = MarketUnconfigured | { status: 'ready'; tailScan: TailScanResult }
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult
 
 export type MarketRequest =
   | { kind: 'overview' }
@@ -239,6 +243,7 @@ export type MarketRequest =
   | { kind: 'history'; symbol: string; adjustment: 'none' | 'forward' | 'backward'; limit: number }
   | { kind: 'intraday'; symbol: string }
   | { kind: 'global' }
+  | { kind: 'tail-scan' }
 
 /** Daily bars requested by one history call. Bounded for response size. */
 export const MARKET_HISTORY_DEFAULT_LIMIT = 250
@@ -286,6 +291,11 @@ export interface MarketProvider {
    * instead of failing the whole source.
    */
   globalOverview?(): Promise<GlobalMarketOverview>
+  /**
+   * Market-wide late-session volume-dump scan. Optional: an adapter without
+   * minute data leaves this panel unavailable instead of failing the board.
+   */
+  tailScan?(): Promise<TailScanResult>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -601,6 +611,10 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
   if (kind === 'global') {
     if (keys.join(',') !== 'kind') throw stockMarketError('invalid-input')
     return { kind: 'global' }
+  }
+  if (kind === 'tail-scan') {
+    if (keys.join(',') !== 'kind') throw stockMarketError('invalid-input')
+    return { kind: 'tail-scan' }
   }
   if (kind === 'board') {
     if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')

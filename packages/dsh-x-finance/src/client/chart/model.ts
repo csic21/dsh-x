@@ -9,17 +9,19 @@ export function sessionKey(time: any) {
     ? `${time.year}-${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}` : null
 }
 export const MA_COLORS = { 5: '#b07b00', 10: '#9957d4', 20: '#2582cb', 50: '#0f8b8d', 250: '#c2410c' }
+/** One muted slate for mid and both band edges: the channel reads as one shape. */
+export const BOLL_COLOR = '#607a9c'
 export const UP_COLOR = '#cf3b4c', DOWN_COLOR = '#168463'
 export function buildChartData(dataset: any, indicators: any) {
   // Join by trading date: indicators may be sparse and are never index-zipped.
   const rows = new Map<string, any>(indicators.rows.map((row: any) => [row.sessionDate, row]))
-  const result: Record<string, any[]> = { candles: [], volume: [], ma5: [], ma10: [], ma20: [], ma50: [], ma250: [], dif: [], dea: [], hist: [], k: [], d: [], j: [] }
+  const result: Record<string, any[]> = { candles: [], volume: [], ma5: [], ma10: [], ma20: [], ma50: [], ma250: [], dif: [], dea: [], hist: [], k: [], d: [], j: [], bollMid: [], bollUpper: [], bollLower: [], percentB: [], zscore: [] }
   for (const bar of dataset.bars) {
     const time = businessDay(bar.sessionDate), row = rows.get(bar.sessionDate)
     result.candles.push({ time, open: bar.open, high: bar.high, low: bar.low, close: bar.close })
     result.volume.push(Number.isFinite(bar.volume) ? { time, value: bar.volume, color: bar.close >= bar.open ? UP_COLOR : DOWN_COLOR } : { time })
     for (const period of [5, 10, 20, 50, 250]) result[`ma${period}` as keyof typeof result].push(Number.isFinite(row?.ma?.[period]) ? { time, value: row.ma[period] } : { time })
-    for (const key of ['dif', 'dea', 'hist', 'k', 'd', 'j']) result[key as keyof typeof result].push(Number.isFinite(row?.[key as keyof typeof row])
+    for (const key of ['dif', 'dea', 'hist', 'k', 'd', 'j', 'bollMid', 'bollUpper', 'bollLower', 'percentB', 'zscore']) result[key as keyof typeof result].push(Number.isFinite(row?.[key as keyof typeof row])
       ? { time, value: row[key], ...(key === 'hist' ? { color: row[key] >= 0 ? UP_COLOR : DOWN_COLOR } : {}) } : { time })
   }
   return result

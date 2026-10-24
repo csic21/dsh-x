@@ -1,5 +1,5 @@
 import * as LightweightCharts from 'lightweight-charts'
-import { buildChartData, businessDay, sessionKey, preserveLogicalRange, MA_COLORS, UP_COLOR, DOWN_COLOR } from './model.ts'
+import { buildChartData, businessDay, sessionKey, preserveLogicalRange, MA_COLORS, BOLL_COLOR, UP_COLOR, DOWN_COLOR } from './model.ts'
 import { CHART_MA_PERIODS } from '../../indicators.ts'
 import { PALETTES } from './theme.ts'
 
@@ -13,6 +13,9 @@ export function createStockChartAdapter(element: any, {
   library = LightweightCharts, ResizeObserverClass = element.ownerDocument.defaultView?.ResizeObserver,
 }: any = {}) {
   const { createChart, CandlestickSeries, HistogramSeries, LineSeries, CrosshairMode } = library
+  // Older/partial library objects in tests may omit LineStyle; the numeric
+  // values are part of the stable v5 contract (Solid 0, Dotted 1, Dashed 2).
+  const LineStyle = library.LineStyle ?? { Solid: 0, Dotted: 1, Dashed: 2 }
   let disposed = false, bars: any = [], data: any = null, datasetId: any = null, suppressRange = false, following = true, newBars = false, maximized = false, restoreHeights: any = null
   const palette = PALETTES[theme as keyof typeof PALETTES] ?? PALETTES.light
   const chart = createChart(element, {
@@ -28,7 +31,7 @@ export function createStockChartAdapter(element: any, {
     localization: { locale },
   })
   const common = { priceLineVisible: false, lastValueVisible: false }
-  const series = {
+  const series: Record<string, any> = {
     candles: chart.addSeries(CandlestickSeries, { ...common, upColor: UP_COLOR, downColor: DOWN_COLOR, borderUpColor: UP_COLOR, borderDownColor: DOWN_COLOR, wickUpColor: UP_COLOR, wickDownColor: DOWN_COLOR }, 0),
     volume: chart.addSeries(HistogramSeries, { ...common, priceFormat: { type: 'volume' } }, 1),
     hist: chart.addSeries(HistogramSeries, { ...common, base: 0 }, 2),
@@ -39,10 +42,29 @@ export function createStockChartAdapter(element: any, {
     j: chart.addSeries(LineSeries, { ...common, color: '#2582cb', lineWidth: 1, crosshairMarkerVisible: true }, 3),
   }
   for (const period of CHART_MA_PERIODS) series[`ma${period}` as keyof typeof series] = chart.addSeries(LineSeries, { ...common, color: MA_COLORS[period as keyof typeof MA_COLORS], lineWidth: 1, crosshairMarkerVisible: false }, 0)
+  // The channel belongs on the price pane; %B (0–1) and Z (σ) get their own
+  // panes because neither shares the candle's price scale.
+  series.bollUpper = chart.addSeries(LineSeries, { ...common, color: BOLL_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false }, 0)
+  series.bollMid = chart.addSeries(LineSeries, { ...common, color: BOLL_COLOR, lineWidth: 1, crosshairMarkerVisible: false }, 0)
+  series.bollLower = chart.addSeries(LineSeries, { ...common, color: BOLL_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false }, 0)
+  series.percentB = chart.addSeries(LineSeries, { ...common, color: '#df9635', lineWidth: 1, crosshairMarkerVisible: true }, 4)
+  series.zscore = chart.addSeries(LineSeries, { ...common, color: '#2582cb', lineWidth: 1, crosshairMarkerVisible: true }, 5)
+  // Horizontal reference lines: the mean (0 / 0.5) and the ±2σ entry thresholds.
+  // They are the only arbitrary levels on the chart, so they are labelled on the
+  // axis and re-coloured with the theme instead of being baked in.
+  const referenceLines: any[] = []
+  const addReference = (target: any, price: number, title: string, style: number) => referenceLines.push(target.createPriceLine({ price, color: palette.reference, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }))
+  addReference(series.percentB, 0.5, '%B 0.5', LineStyle.Dotted)
+  addReference(series.zscore, 2, '+2σ', LineStyle.Dashed)
+  addReference(series.zscore, 0, '0', LineStyle.Solid)
+  addReference(series.zscore, -2, '−2σ', LineStyle.Dashed)
   series.volume.priceScale().applyOptions({ scaleMargins: { top: .18, bottom: 0 }, autoScale: true })
   series.hist.priceScale().applyOptions({ scaleMargins: { top: .15, bottom: .15 }, autoScale: true })
   series.j.priceScale().applyOptions({ scaleMargins: { top: .15, bottom: .15 }, autoScale: true })
+  series.percentB.priceScale().applyOptions({ scaleMargins: { top: .2, bottom: .2 }, autoScale: true })
+  series.zscore.priceScale().applyOptions({ scaleMargins: { top: .2, bottom: .2 }, autoScale: true })
   chart.panes()[0].setStretchFactor(6); chart.panes()[1].setStretchFactor(1.4); chart.panes()[2].setStretchFactor(2); chart.panes()[3].setStretchFactor(2)
+  chart.panes()[4]?.setStretchFactor(1.6); chart.panes()[5]?.setStretchFactor(1.6)
   const timeScale = chart.timeScale()
   const report = () => onViewport({ following, newBars })
   const rangeChanged = (range: any) => {
@@ -78,9 +100,9 @@ export function createStockChartAdapter(element: any, {
       }
       bars = dataset.bars; data = next; datasetId = nextId
       const precision = dataset.pricePrecision ?? 2
-      for (const key of ['candles', ...CHART_MA_PERIODS.map(period => `ma${period}`)]) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } })
+      for (const key of ['candles', ...CHART_MA_PERIODS.map(period => `ma${period}`), 'bollMid', 'bollUpper', 'bollLower']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } })
       const indicatorPrecision = Math.max(3, precision)
-      for (const key of ['dif', 'dea', 'hist', 'k', 'd', 'j']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision: indicatorPrecision, minMove: 10 ** -indicatorPrecision } })
+      for (const key of ['dif', 'dea', 'hist', 'k', 'd', 'j', 'percentB', 'zscore']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision: indicatorPrecision, minMove: 10 ** -indicatorPrecision } })
       selection?.setBars(bars, reset)
       if (reset) {
         following = true; newBars = false
@@ -99,12 +121,23 @@ export function createStockChartAdapter(element: any, {
       const kdj = config.kdjVisible !== false
       for (const key of ['k', 'd', 'j']) series[key as keyof typeof series].applyOptions({ visible: kdj })
       chart.panes()[3]?.setStretchFactor(kdj ? 2 : 0.001)
+      const boll = config.bollVisible !== false
+      for (const key of ['bollMid', 'bollUpper', 'bollLower']) series[key].applyOptions({ visible: boll })
+      // A hidden pane keeps its series so toggling back never rebuilds the chart;
+      // stretch 0.001 is this adapter's existing way of collapsing a pane.
+      const percentB = config.percentBVisible === true
+      series.percentB.applyOptions({ visible: percentB })
+      chart.panes()[4]?.setStretchFactor(percentB ? 1.6 : 0.001)
+      const zscore = config.zscoreVisible !== false
+      series.zscore.applyOptions({ visible: zscore })
+      chart.panes()[5]?.setStretchFactor(zscore ? 1.6 : 0.001)
     },
     setLocale(nextLocale: any) { if (!disposed) chart.applyOptions({ localization: { locale: nextLocale } }) },
     setTheme(value: any) {
       if (disposed) return
       const p = PALETTES[value as keyof typeof PALETTES] ?? PALETTES.light
       chart.applyOptions({ layout: { background: { type: 'solid', color: p.background }, textColor: p.text, attributionLogo: true, panes: { enableResize: true, separatorColor: p.border, separatorHoverColor: p.crosshair } }, grid: { vertLines: { color: p.grid }, horzLines: { color: p.grid } }, rightPriceScale: { borderColor: p.border }, timeScale: { borderColor: p.border }, crosshair: { vertLine: { color: p.crosshair }, horzLine: { color: p.crosshair } } })
+      for (const line of referenceLines) line?.applyOptions?.({ color: p.reference })
     },
     setFocused(focused: any) { if (!disposed) chart.applyOptions({ handleScale: { mouseWheel: focused } }) },
     selectDate(date: any) {

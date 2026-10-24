@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { CHART_MA_PERIODS, computeIndicators } from '../../indicators.ts'
+import { CHART_MA_PERIODS, DEFAULT_BOLLINGER, computeIndicators } from '../../indicators.ts'
 import { formatLocale } from '../format.ts'
 import { createStockChartAdapter } from './adapter.ts'
 import { DEFAULT_CHART_CONFIG, normalizeChartConfig } from './config.ts'
@@ -29,6 +29,9 @@ function Readout({ selection, dataset, indicators, config, t, format }: any) {
     ...CHART_MA_PERIODS.filter(period => config.maVisible[period]).map(period => [`MA${period}`, format.price(row?.ma[period])]),
     ['DIF', format.indicator(row?.dif)], ['DEA', format.indicator(row?.dea)], [t('chart.hist', { scale: config.macd.histScale }), format.indicator(row?.hist)],
     ...(config.kdjVisible ? [['K', format.indicator(row?.k)], ['D', format.indicator(row?.d)], ['J', format.indicator(row?.j)]] : []),
+    ...(config.bollVisible ? [[t('chart.boll-mid'), format.price(row?.bollMid)], [t('chart.boll-upper'), format.price(row?.bollUpper)], [t('chart.boll-lower'), format.price(row?.bollLower)]] : []),
+    ...(config.percentBVisible ? [[t('chart.boll-percent'), format.indicator(row?.percentB)]] : []),
+    ...(config.zscoreVisible ? [[t('chart.zscore'), format.indicator(row?.zscore)]] : []),
   ]
   return <section className="dxs-chart-readout" aria-label={t('chart.readout')}>
     <header><strong data-selected-date={bar?.sessionDate}>{bar?.sessionDate ?? '—'}</strong>
@@ -53,12 +56,12 @@ const DataTable = memo(function DataTable({ dataset, indicators, config, selecti
     <div className="dxs-chart-table-scroll" tabIndex={0} aria-label={t('chart.table-caption', { symbol: dataset.symbol })}>
       <table className="dxs-chart-table">
         <caption>{t('chart.table-caption', { symbol: dataset.symbol })}</caption>
-        <thead><tr><th scope="col">{t('chart.date')}</th>{['open', 'high', 'low', 'close', 'volume'].map(key => <th key={key} scope="col">{t(key === 'volume' && dataset.volumeBasis === 'reported' ? 'chart.volume-reported' : `chart.${key}`)}</th>)}<th scope="col">{t('chart.amount', { currency: dataset.currency })}</th>{CHART_MA_PERIODS.map(period => <th key={period} scope="col">MA{period}</th>)}<th scope="col">DIF</th><th scope="col">DEA</th><th scope="col">{t('chart.hist', { scale: config.macd.histScale })}</th><th scope="col">K</th><th scope="col">D</th><th scope="col">J</th><th scope="col">{t('chart.final')}</th></tr></thead>
+        <thead><tr><th scope="col">{t('chart.date')}</th>{['open', 'high', 'low', 'close', 'volume'].map(key => <th key={key} scope="col">{t(key === 'volume' && dataset.volumeBasis === 'reported' ? 'chart.volume-reported' : `chart.${key}`)}</th>)}<th scope="col">{t('chart.amount', { currency: dataset.currency })}</th>{CHART_MA_PERIODS.map(period => <th key={period} scope="col">MA{period}</th>)}<th scope="col">DIF</th><th scope="col">DEA</th><th scope="col">{t('chart.hist', { scale: config.macd.histScale })}</th><th scope="col">K</th><th scope="col">D</th><th scope="col">J</th><th scope="col">{t('chart.boll-mid')}</th><th scope="col">{t('chart.boll-upper')}</th><th scope="col">{t('chart.boll-lower')}</th><th scope="col">{t('chart.boll-percent')}</th><th scope="col">{t('chart.zscore')}</th><th scope="col">{t('chart.final')}</th></tr></thead>
         <tbody>{dataset.bars.slice(start, start + 100).map((bar: any) => {
           const row = rowsByTime.get(bar.sessionDate)
           return <tr key={bar.sessionDate} aria-selected={bar.sessionDate === selected.sessionDate}><th scope="row"><button aria-label={t('chart.select-row', { date: bar.sessionDate })} onClick={() => onSelect(bar.sessionDate)}>{bar.sessionDate}</button></th>
             {['open', 'high', 'low', 'close'].map(key => <td key={key}>{format.price(bar[key])}</td>)}<td>{format.quantity(bar.volume)}</td><td>{format.quantity(bar.amount)}</td>
-            {CHART_MA_PERIODS.map(period => <td key={period}>{format.price(row?.ma[period])}</td>)}{['dif', 'dea', 'hist', 'k', 'd', 'j'].map(key => <td key={key}>{format.indicator(row?.[key as keyof typeof row])}</td>)}<td>{t(bar.isFinal ? 'chart.final' : 'chart.provisional')}</td></tr>
+            {CHART_MA_PERIODS.map(period => <td key={period}>{format.price(row?.ma[period])}</td>)}{['dif', 'dea', 'hist', 'k', 'd', 'j'].map(key => <td key={key}>{format.indicator(row?.[key as keyof typeof row])}</td>)}{['bollMid', 'bollUpper', 'bollLower'].map(key => <td key={key}>{format.price(row?.[key])}</td>)}{['percentB', 'zscore'].map(key => <td key={key}>{format.indicator(row?.[key])}</td>)}<td>{t(bar.isFinal ? 'chart.final' : 'chart.provisional')}</td></tr>
         })}</tbody>
       </table>
     </div>
@@ -91,7 +94,7 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
     catch {
       // Finite imported prices can still overflow recursive arithmetic. Keep
       // original OHLCV inspectable, with no invented indicator values.
-      return { failed: true, rows: dataset.bars.map((bar: any) => ({ sessionDate: bar.sessionDate, ma: Object.fromEntries(CHART_MA_PERIODS.map(n => [n, null])), dif: null, dea: null, hist: null, k: null, d: null, j: null })), warmup: { macdBars: slow + signal - 1 } }
+      return { failed: true, rows: dataset.bars.map((bar: any) => ({ sessionDate: bar.sessionDate, ma: Object.fromEntries(CHART_MA_PERIODS.map(n => [n, null])), dif: null, dea: null, hist: null, k: null, d: null, j: null, bollMid: null, bollUpper: null, bollLower: null, percentB: null, zscore: null })), warmup: { macdBars: slow + signal - 1 } }
     }
   }, [dataset.bars, dataset.historyAnchor, fast, slow, signal, histScale])
   const numbers = useMemo(() => chartFormatters(locale, dataset.pricePrecision ?? 2, format), [locale, dataset.pricePrecision, format])
@@ -123,14 +126,15 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
   // of leaving a silently missing line. Same for a non-daily view, where a
   // "250-period" line means 250 weeks/months rather than the daily year line.
   const starvedMa = CHART_MA_PERIODS.filter(period => config.maVisible[period] && dataset.bars.length < period)
+  const starvedBoll = config.bollVisible && dataset.bars.length < DEFAULT_BOLLINGER.period
   const longMaOnOtherInterval = CHART_MA_PERIODS.filter(period => config.maVisible[period] && period >= 50)
   const toggleMacd = () => setMaximized(adapter.current?.maximizeMacd() ?? false)
   return <section className="dxs-chart" ref={section} data-chart-theme={activeTheme} aria-label={t('chart.title')}>
     <div className="dxs-chart-toolbar"><h3>{t('chart.price-pane')}</h3>
-      <div className="dxs-chart-group">{CHART_MA_PERIODS.map(period => <label key={period}><input type="checkbox" checked={config.maVisible[period]} onChange={event => applyConfig({ ...config, maVisible: { ...config.maVisible, [period]: event.target.checked } })} /><span><i className="dxs-chart-swatch" style={{ background: MA_COLORS[period as keyof typeof MA_COLORS] }} />MA{period}</span></label>)}<label><input type="checkbox" checked={config.kdjVisible} onChange={event => applyConfig({ ...config, kdjVisible: event.target.checked })} /><span>{t('chart.kdj')}</span></label></div>
+      <div className="dxs-chart-group">{CHART_MA_PERIODS.map(period => <label key={period}><input type="checkbox" checked={config.maVisible[period]} onChange={event => applyConfig({ ...config, maVisible: { ...config.maVisible, [period]: event.target.checked } })} /><span><i className="dxs-chart-swatch" style={{ background: MA_COLORS[period as keyof typeof MA_COLORS] }} />MA{period}</span></label>)}<label><input type="checkbox" checked={config.kdjVisible} onChange={event => applyConfig({ ...config, kdjVisible: event.target.checked })} /><span>{t('chart.kdj')}</span></label><label><input type="checkbox" checked={config.bollVisible} onChange={event => applyConfig({ ...config, bollVisible: event.target.checked })} /><span>{t('chart.boll')}</span></label><label><input type="checkbox" checked={config.percentBVisible} onChange={event => applyConfig({ ...config, percentBVisible: event.target.checked })} /><span>{t('chart.boll-percent')}</span></label><label><input type="checkbox" checked={config.zscoreVisible} onChange={event => applyConfig({ ...config, zscoreVisible: event.target.checked })} /><span>{t('chart.zscore')}</span></label></div>
       <div className="dxs-chart-actions"><button aria-label={t('chart.zoom-in')} onClick={() => adapter.current?.zoom(.8)}>+</button><button aria-label={t('chart.zoom-out')} onClick={() => adapter.current?.zoom(1.25)}>−</button><button onClick={() => adapter.current?.latest()}>{t(viewport.newBars ? 'chart.new-bars' : 'chart.latest')}</button><button onClick={() => adapter.current?.reset()}>{t('chart.reset-view')}</button></div>
     </div>
-    <div className="dxs-chart-pane-labels"><span>{t(`chart.interval.${dataset.interval ?? '1d'}`)}</span><span>{t(dataset.volumeBasis === 'reported' ? 'chart.volume-pane-reported' : 'chart.volume-pane')}</span><strong onDoubleClick={toggleMacd}>{t('chart.macd-pane', { fast, slow, signal, scale: histScale })}</strong>{config.kdjVisible ? <span>{t('chart.kdj-pane')}</span> : null}
+    <div className="dxs-chart-pane-labels"><span>{t(`chart.interval.${dataset.interval ?? '1d'}`)}</span><span>{t(dataset.volumeBasis === 'reported' ? 'chart.volume-pane-reported' : 'chart.volume-pane')}</span>{config.bollVisible ? <span>{t('chart.boll-pane', { period: DEFAULT_BOLLINGER.period, multiplier: DEFAULT_BOLLINGER.multiplier })}</span> : null}<strong onDoubleClick={toggleMacd}>{t('chart.macd-pane', { fast, slow, signal, scale: histScale })}</strong>{config.kdjVisible ? <span>{t('chart.kdj-pane')}</span> : null}{config.percentBVisible ? <span>{t('chart.boll-percent-pane', { period: DEFAULT_BOLLINGER.period })}</span> : null}{config.zscoreVisible ? <span>{t('chart.zscore-pane', { period: DEFAULT_BOLLINGER.period })}</span> : null}
       {(['dif', 'dea'] as const).map(key => <button className="dxs-chart-line" key={key} aria-pressed={config[`${key}Visible`]} aria-label={t('chart.hide-line', { line: key.toUpperCase() })} onClick={() => applyConfig({ ...config, [`${key}Visible`]: !config[`${key}Visible`] })}>{key.toUpperCase()}</button>)}
       <button aria-expanded={settings} aria-controls={settingsId} onClick={() => setSettings(!settings)}>{t('chart.settings')}</button><button aria-pressed={maximized} onClick={toggleMacd}>{t(maximized ? 'chart.restore-panes' : 'chart.expand-macd')}</button>
     </div>
@@ -145,8 +149,9 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
     <p className="dxs-chart-help" id={helpId}>{t('chart.help')}</p>
     <p className="dxs-chart-warning">{t('chart.warmup', { required: numbers.count(indicators.warmup.macdBars), available: numbers.count(dataset.bars.length) })}</p>
     {starvedMa.map(period => <p className="dxs-chart-warning" key={period}>{t('chart.ma-short', { period: numbers.count(period), available: numbers.count(dataset.bars.length) })}</p>)}
+    {starvedBoll ? <p className="dxs-chart-warning">{t('chart.boll-short', { period: numbers.count(DEFAULT_BOLLINGER.period), available: numbers.count(dataset.bars.length) })}</p> : null}
     {dataset.interval !== '1d' ? longMaOnOtherInterval.map(period => <p className="dxs-chart-warning" key={period}>{t('chart.ma-other-interval', { period: numbers.count(period), interval: t(`chart.interval.${dataset.interval}`) })}</p>) : null}
-    <p className="dxs-chart-method">{t('chart.method', { scale: histScale })}</p>
+    <p className="dxs-chart-method">{t('chart.method', { scale: histScale, period: DEFAULT_BOLLINGER.period, multiplier: DEFAULT_BOLLINGER.multiplier })}</p>
     <div className="dxs-chart-table-controls"><button aria-expanded={showTable || renderError} aria-controls={tableId} onClick={() => setShowTable(!showTable)}>{t(showTable || renderError ? 'chart.table-hide' : 'chart.table-show')}</button></div>
     {(showTable || renderError) && <div id={tableId}><DataTable dataset={dataset} indicators={indicators} config={config} selection={selection} t={t} format={numbers} onSelect={selectDate} /></div>}
     <div className="dxs-chart-credit"><a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">{t('chart.attribution')}</a></div>

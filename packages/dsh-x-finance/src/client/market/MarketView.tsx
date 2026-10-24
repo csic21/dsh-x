@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketSector, MarketStock } from '../../market.ts'
+import type { TailScanCandidate, TailScanResult } from '../../tail-scan.ts'
 import { computeSentiment, marketClock } from '../../market.ts'
 import type { ChangeTone, NestedGroup, TreemapRect } from './treemap.ts'
 import { changeTone, layoutNested, squarify, tileSize } from './treemap.ts'
-import { useBoardDetail, useMarketBreadth, useMarketOverview, useMarketPreference } from './data.ts'
+import { useBoardDetail, useMarketBreadth, useMarketOverview, useMarketPreference, useTailScan } from './data.ts'
 import { MarketErrorCard, MarketUnconfigured, SourceSwitch } from './gate.tsx'
 import { StockWorkbench } from '../workbench.tsx'
 
@@ -367,6 +368,112 @@ function Movers({ breadth, t, format, onOpen }: any) {
   </section>
 }
 
+function TailScanPanel({ rpc, t, format, onOpenStock }: any) {
+  const scan = useTailScan(rpc)
+  const [consecutiveOnly, setConsecutiveOnly] = useState(false)
+  const result: TailScanResult | null = scan.value
+  const streakOf = (candidate: TailScanCandidate) => Math.max(
+    candidate.daily?.volumeExpansionDownStreak ?? 0,
+    candidate.daily?.volumeDeclineStreak ?? 0,
+  )
+  const consecutiveCount = result?.candidates.filter(candidate => candidate.flags.consecutive).length ?? 0
+  const rows = result ? result.candidates.filter(candidate => !consecutiveOnly || candidate.flags.consecutive) : []
+  const sessionLabel = result?.sessionDate
+    ? t(result.sessionIsToday ? 'tail.session' : 'tail.session-last', { date: result.sessionDate })
+    : ''
+  return <section className="dxs-mkt-card dxs-tail" aria-labelledby="dxs-tail-title">
+    <header className="dxs-mkt-card-head">
+      <div>
+        <h3 id="dxs-tail-title">{t('tail.title')}</h3>
+        <p>{t('tail.subtitle')}</p>
+      </div>
+      <div className="dxs-tail-actions">
+        {result ? <span className="dxs-mkt-updated">{t('tail.scanned-at', { time: format.time(result.fetchedAt, t) })}</span> : null}
+        <button type="button" className="dxs-tail-run" onClick={() => { void scan.run() }} disabled={scan.running}>
+          {scan.running ? t('tail.running') : result ? t('tail.rerun') : t('tail.run')}
+        </button>
+      </div>
+    </header>
+    {scan.status === 'idle' ? <p className="dxs-mkt-muted">{t('tail.idle')}</p> : null}
+    {scan.status === 'loading' ? <p role="status" className="dxs-tail-loading"><span className="dxs-mkt-dot is-live" />{t('tail.loading')}</p> : null}
+    {scan.status === 'error' ? <p role="alert" className="dxs-mkt-error">{t('tail.error')} <button type="button" onClick={() => { void scan.run() }}>{t('market.retry')}</button></p> : null}
+    {scan.status === 'unconfigured' ? <p className="dxs-mkt-muted">{t('tail.unconfigured')}</p> : null}
+    {result ? <>
+      <div className="dxs-tail-summary">
+        <span>{sessionLabel}</span>
+        <span>{t('tail.summary', {
+          screened: format.count(result.universe.screened),
+          confirmed: format.count(result.universe.tailConfirmed),
+          consecutive: format.count(consecutiveCount),
+        })}</span>
+        <span>{t('tail.coverage', { covered: format.count(result.universe.covered), expected: format.count(result.universe.expected) })}</span>
+        <span>{t('tail.source')}: {result.source}</span>
+      </div>
+      {!result.complete ? <p className="dxs-mkt-note">{t('tail.incomplete')}</p> : null}
+      {result.universe.partial ? <p className="dxs-mkt-note">{t('tail.partial', {
+        intraday: format.count(result.universe.failedIntraday),
+        history: format.count(result.universe.failedHistory),
+      })}</p> : null}
+      <div className="dxs-tail-controls">
+        <label><input type="checkbox" checked={consecutiveOnly} onChange={event => setConsecutiveOnly(event.target.checked)} />{t('tail.filter-consecutive')}</label>
+        <span className="dxs-mkt-muted">{t('tail.score-note')}</span>
+      </div>
+      {rows.length ? <div className="dxs-mkt-table-wrap dxs-tail-table"><table>
+        <caption>{sessionLabel}</caption>
+        <thead><tr>
+          <th>{t('tail.col.rank')}</th>
+          <th>{t('tail.col.stock')}</th>
+          <th>{t('tail.col.change')}</th>
+          <th>{t('tail.col.amount')}</th>
+          <th>{t('tail.col.tail')}</th>
+          <th>{t('tail.col.tail-ratio')}</th>
+          <th>{t('tail.col.volume-ratio')}</th>
+          <th>{t('tail.col.streak')}</th>
+          <th>{t('tail.col.rsi')}</th>
+          <th>{t('tail.col.ma20')}</th>
+          <th>{t('tail.col.score')}</th>
+          <th>{t('tail.col.quant')}</th>
+        </tr></thead>
+        <tbody>{rows.map((candidate, index) => {
+          const daily = candidate.daily
+          const quant = candidate.quant
+          const streak = streakOf(candidate)
+          const tailTone = candidate.tail.tailReturn === null ? '' : candidate.tail.tailReturn > 0 ? 'dxs-up' : candidate.tail.tailReturn < 0 ? 'dxs-down' : ''
+          return <tr key={candidate.symbol} className={candidate.flags.consecutive ? 'is-consecutive' : undefined}>
+            <td>{format.count(index + 1)}</td>
+            <td>
+              {onOpenStock
+                ? <button type="button" className="dxs-mkt-link" onClick={() => onOpenStock(candidate.symbol, candidate.name)} title={t('market.drill.title', { name: candidate.name })}><span>{candidate.name}</span><small>{candidate.symbol}</small></button>
+                : <><span>{candidate.name}</span><small>{candidate.symbol}</small></>}
+              <div className="dxs-tail-badges">
+                {candidate.flags.consecutive ? <span className="dxs-tail-badge is-consecutive">{t('tail.badge-consecutive')}</span> : null}
+                {candidate.flags.tailDump ? <span className="dxs-tail-badge">{t('tail.badge-tail')}</span> : null}
+              </div>
+            </td>
+            <td className={textTone(candidate.changePercent)}>{format.change(candidate.changePercent)}</td>
+            <td>{format.compact(candidate.amount)}<small>{candidate.turnoverPercent == null ? '—' : `${format.ratio(candidate.turnoverPercent)}%`}</small></td>
+            <td className={tailTone}>{candidate.tail.tailReturn === null ? '—' : format.change(candidate.tail.tailReturn * 100)}</td>
+            <td>{format.ratio(candidate.tail.tailVolumeRatio)}</td>
+            <td>{format.ratio(daily?.volumeRatio5 ?? null)}</td>
+            <td>{streak ? t('tail.streak-value', { count: format.count(streak) }) : '—'}</td>
+            <td>{format.ratio(quant?.rsi14 ?? null)}</td>
+            <td className={textTone(quant?.priceVsMa20 ?? null)}>{quant?.priceVsMa20 == null ? '—' : format.change(quant.priceVsMa20 * 100)}</td>
+            <td><strong>{format.count(candidate.score)}</strong></td>
+            <td>{onOpenStock ? <button type="button" className="dxs-mkt-drill" onClick={() => onOpenStock(candidate.symbol, candidate.name)}>{t('tail.open-quant')}</button> : '—'}</td>
+          </tr>
+        })}</tbody>
+      </table></div> : <p className="dxs-mkt-muted">{consecutiveOnly ? t('tail.empty-filter') : t('tail.empty')}</p>}
+      <details className="dxs-tail-method">
+        <summary>{t('tail.definition')}</summary>
+        <p>{t('tail.definition-body')}</p>
+        <p>{t('tail.score-body')}</p>
+      </details>
+      <p className="dxs-mkt-muted">{t('tail.quant-hint')}</p>
+      <p className="dxs-mkt-muted">{t('tail.limit')}</p>
+    </> : null}
+  </section>
+}
+
 function SectorDetail({ rpc, selection, onClose, t, format, onOpen }: any) {
   const detail = useBoardDetail(rpc, selection.code)
   const [active, setActive] = useState<string | null>(null)
@@ -510,6 +617,7 @@ export function MarketView({ rpc, t, format, locale, now = () => new Date(), onO
       </header>
       <StockWorkbench key={`index:${indexChart.code}`} symbol={indexChart.code} scope={scope} rpc={rpc} t={t} format={format} locale={locale} />
     </section> : null}
+    <TailScanPanel rpc={rpc} t={t} format={format} onOpenStock={onOpenStock} />
     <Heatmap data={data} selected={selected} onSelect={setSelected} t={t} format={format} />
     {selected ? <SectorDetail key={selected.code} rpc={rpc} selection={selected} onClose={() => setSelected(null)} t={t} format={format} onOpen={onOpenStock} /> : null}
     {breadthValue ? <DistributionBar breadth={breadthValue} t={t} format={format} /> : <section className="dxs-mkt-card dxs-mkt-loading" role="status"><span className="dxs-mkt-dot is-live" />{breadth.status === 'error' ? t('market.error') : t('market.breadth.waiting')}{breadth.status === 'error' ? <button type="button" onClick={breadth.refresh}>{t('market.retry')}</button> : null}</section>}

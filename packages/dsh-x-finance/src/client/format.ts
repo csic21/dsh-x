@@ -29,6 +29,8 @@ export function createFormatters(getLocale: any) {
     change: (value: any) => Number.isFinite(value) ? number(value / 100, { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' }) : '—',
     percent: (value: any) => Number.isFinite(value) ? number(value / 100, { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—',
     signed: (value: any) => Number.isFinite(value) ? number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' }) : '—',
+    /** A plain multiple such as a volume ratio; never a percent and never signed. */
+    ratio: (value: any) => Number.isFinite(value) ? number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—',
     signedAt: (value: any, precision?: any) => {
       if (!Number.isFinite(value)) return '—'
       const digits = quoteDigits(precision)

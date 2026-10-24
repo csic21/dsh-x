@@ -15,10 +15,15 @@ export interface KdjParams {
     k: number;
     d: number;
 }
+export interface BollingerParams {
+    period: number;
+    multiplier: number;
+}
 export interface IndicatorConfig {
     maPeriods: number[];
     macd: MacdParams;
     kdj: KdjParams;
+    bollinger: BollingerParams;
     historyAnchor: string | null;
 }
 export interface IndicatorRow {
@@ -31,6 +36,11 @@ export interface IndicatorRow {
     k: number | null;
     d: number | null;
     j: number | null;
+    bollMid: number | null;
+    bollUpper: number | null;
+    bollLower: number | null;
+    percentB: number | null;
+    zscore: number | null;
 }
 export declare const INDICATOR_ALGORITHM_VERSION = "dsh-independent-sma-ema-v1";
 export declare const MAX_INDICATOR_PERIOD = 500;
@@ -53,6 +63,10 @@ export declare const DEFAULT_KDJ: Readonly<{
     k: 3;
     d: 3;
 }>;
+export declare const DEFAULT_BOLLINGER: Readonly<{
+    period: 20;
+    multiplier: 2;
+}>;
 export declare function validateMacdParams(raw?: unknown): MacdParams;
 /** Tongdaxin-style KDJ: RSV over N bars, then K and D smooth toward 50. J = 3K − 2D. */
 export declare function validateKdjParams(raw?: unknown): KdjParams;
@@ -62,6 +76,21 @@ export declare function kdj(bars: unknown, input?: unknown): {
     k: (number | null)[];
     d: (number | null)[];
     j: (number | null)[];
+};
+export declare function validateBollingerParams(raw?: unknown): BollingerParams;
+/**
+ * Bollinger channel over closes: the mid line is exactly SMA(period), the bands
+ * are mid ± multiplier × sample deviation. %B and Z locate the close inside that
+ * channel; a perfectly flat window has no position, so both stay null rather
+ * than claiming 0.5 / 0. Null closes reset the window, like SMA and KDJ.
+ */
+export declare function bollinger(values: unknown, input?: unknown): {
+    params: BollingerParams;
+    mid: (number | null)[];
+    upper: (number | null)[];
+    lower: (number | null)[];
+    percentB: (number | null)[];
+    zscore: (number | null)[];
 };
 export declare function validateIndicatorConfig(raw?: unknown): IndicatorConfig;
 /** Null breaks continuity; a complete fresh consecutive window is then required. */
@@ -95,6 +124,8 @@ export declare function computeIndicators(bars: unknown, input?: unknown): {
         macd: MacdParams;
         kdj: KdjParams;
         kdjSeed: string;
+        bollinger: BollingerParams;
+        bollingerSeed: string;
     };
     times: any[];
     ma: {
@@ -116,10 +147,19 @@ export declare function computeIndicators(bars: unknown, input?: unknown): {
         d: (number | null)[];
         j: (number | null)[];
     };
+    bollinger: {
+        params: BollingerParams;
+        mid: (number | null)[];
+        upper: (number | null)[];
+        lower: (number | null)[];
+        percentB: (number | null)[];
+        zscore: (number | null)[];
+    };
     rows: IndicatorRow[];
     warmup: {
         macdBars: number;
         kdjBars: number;
+        bollingerBars: number;
         availableBars: number;
         complete: boolean;
     };

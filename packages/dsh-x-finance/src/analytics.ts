@@ -3,7 +3,7 @@
 // descriptive statistics and a declared, cost-aware rule replay. Every
 // assumption is stated in the UI, and an input that cannot support a metric
 // yields null instead of a substituted value.
-import { kdj, macd, sma } from './indicators.ts'
+import { bollinger, kdj, macd, sma } from './indicators.ts'
 
 export const QUANT_MAX_BARS = 5000
 export const QUANT_TRADING_DAYS = 252
@@ -243,13 +243,9 @@ export function relativeStrengthIndex(bars: QuantBar[], period = 14): number | n
 /** %B of a 20-period, 2-sigma Bollinger band; null when the band has no width. */
 export function bollingerPercentB(bars: QuantBar[], period = 20, multiplier = 2): number | null {
   if (bars.length < period) return null
-  const closes = bars.slice(-period).map(bar => bar.close)
-  const middle = mean(closes)
-  const deviation = stdev(closes)
-  if (deviation === null || deviation === 0) return null
-  const upper = middle + multiplier * deviation
-  const lower = middle - multiplier * deviation
-  return (closes.at(-1)! - lower) / (upper - lower)
+  // One implementation, one set of digits: this card and the chart's %B pane
+  // must never drift apart.
+  return bollinger(bars.map(bar => bar.close), { period, multiplier }).percentB.at(-1) ?? null
 }
 
 export function monthlyReturns(bars: QuantBar[]): MonthlyReturn[] {

@@ -12,6 +12,7 @@ export const CHART_MA_PERIODS = Object.freeze([5, 10, 20, 50, 250]);
 export const DEFAULT_MA_PERIODS = Object.freeze([5, 10, 20]);
 export const DEFAULT_MACD = Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 });
 export const DEFAULT_KDJ = Object.freeze({ n: 9, k: 3, d: 3 });
+export const DEFAULT_BOLLINGER = Object.freeze({ period: 20, multiplier: 2 });
 function period(value, label = 'period') {
     if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > MAX_INDICATOR_PERIOD)
         throw new RangeError(`${label} must be an integer from 1 to ${MAX_INDICATOR_PERIOD}`);
@@ -129,12 +130,80 @@ export function kdj(bars, input = {}) {
     }
     return { params, rsv, k, d, j };
 }
+export function validateBollingerParams(raw = {}) {
+    const input = raw;
+    if (!input || typeof input !== 'object' || Array.isArray(input))
+        throw new TypeError('Bollinger parameters must be an object');
+    for (const key of Object.keys(input))
+        if (!['period', 'multiplier'].includes(key))
+            throw new TypeError('Unknown Bollinger parameter');
+    const window = period(input.period ?? DEFAULT_BOLLINGER.period, 'Bollinger period');
+    const multiplier = input.multiplier ?? DEFAULT_BOLLINGER.multiplier;
+    if (typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 10)
+        throw new RangeError('Bollinger multiplier must be a finite number greater than 0 and at most 10');
+    return { period: window, multiplier };
+}
+/** Sample (n−1) deviation of a complete window; one sample has no spread. */
+function sampleDeviation(values) {
+    if (values.length < 2)
+        return null;
+    let sum = 0;
+    for (const value of values)
+        sum += value;
+    const average = sum / values.length;
+    let squares = 0;
+    for (const value of values)
+        squares += (value - average) ** 2;
+    return number(Math.sqrt(squares / (values.length - 1)));
+}
+/**
+ * Bollinger channel over closes: the mid line is exactly SMA(period), the bands
+ * are mid ± multiplier × sample deviation. %B and Z locate the close inside that
+ * channel; a perfectly flat window has no position, so both stay null rather
+ * than claiming 0.5 / 0. Null closes reset the window, like SMA and KDJ.
+ */
+export function bollinger(values, input = {}) {
+    valuesInput(values);
+    const params = validateBollingerParams(input);
+    const mid = sma(values, params.period);
+    const upper = [], lower = [], percentB = [], zscore = [];
+    const window = [];
+    for (let index = 0; index < values.length; index++) {
+        const value = values[index];
+        if (value === null) {
+            window.length = 0;
+            upper.push(null);
+            lower.push(null);
+            percentB.push(null);
+            zscore.push(null);
+            continue;
+        }
+        window.push(value);
+        if (window.length > params.period)
+            window.shift();
+        const center = mid[index];
+        const deviation = window.length === params.period ? sampleDeviation(window) : null;
+        if (center === null || deviation === null) {
+            upper.push(null);
+            lower.push(null);
+            percentB.push(null);
+            zscore.push(null);
+            continue;
+        }
+        const top = number(center + params.multiplier * deviation), bottom = number(center - params.multiplier * deviation);
+        upper.push(top);
+        lower.push(bottom);
+        percentB.push(deviation > 0 ? number((value - bottom) / (top - bottom)) : null);
+        zscore.push(deviation > 0 ? number((value - center) / deviation) : null);
+    }
+    return { params, mid, upper, lower, percentB, zscore };
+}
 export function validateIndicatorConfig(raw = {}) {
     const input = raw;
     if (!input || typeof input !== 'object' || Array.isArray(input))
         throw new TypeError('Indicator configuration must be an object');
     for (const key of Object.keys(input))
-        if (!['maPeriods', 'macd', 'kdj', 'historyAnchor'].includes(key))
+        if (!['maPeriods', 'macd', 'kdj', 'bollinger', 'historyAnchor'].includes(key))
             throw new TypeError('Unknown indicator configuration');
     const maPeriods = input.maPeriods === undefined ? [...DEFAULT_MA_PERIODS] : input.maPeriods;
     if (!Array.isArray(maPeriods) || maPeriods.length > 8)
@@ -145,7 +214,7 @@ export function validateIndicatorConfig(raw = {}) {
         throw new RangeError('MA periods must be unique');
     if (input.historyAnchor !== undefined && input.historyAnchor !== null && !isSessionDate(input.historyAnchor))
         throw new TypeError('historyAnchor must be a session date');
-    return { maPeriods: [...maPeriods], macd: validateMacdParams(input.macd), kdj: validateKdjParams(input.kdj), historyAnchor: input.historyAnchor ?? null };
+    return { maPeriods: [...maPeriods], macd: validateMacdParams(input.macd), kdj: validateKdjParams(input.kdj), bollinger: validateBollingerParams(input.bollinger), historyAnchor: input.historyAnchor ?? null };
 }
 /** Null breaks continuity; a complete fresh consecutive window is then required. */
 export function sma(values, size) {
@@ -236,11 +305,14 @@ export function computeIndicators(bars, input = {}) {
     const ma = Object.fromEntries(config.maPeriods.map(size => [size, sma(values, size)]));
     const macdResult = macd(values, config.macd);
     const kdjResult = kdj(bars.map((bar) => ({ high: bar.high ?? null, low: bar.low ?? null, close: bar.close })), config.kdj);
+    const bollingerResult = bollinger(values, config.bollinger);
     const rows = times.map((sessionDate, index) => ({
         sessionDate,
         ma: Object.fromEntries(config.maPeriods.map(size => [size, ma[size][index]])),
         dif: macdResult.dif[index], dea: macdResult.dea[index], histRaw: macdResult.histRaw[index], hist: macdResult.hist[index],
         k: kdjResult.k[index] ?? null, d: kdjResult.d[index] ?? null, j: kdjResult.j[index] ?? null,
+        bollMid: bollingerResult.mid[index], bollUpper: bollingerResult.upper[index], bollLower: bollingerResult.lower[index],
+        percentB: bollingerResult.percentB[index], zscore: bollingerResult.zscore[index],
     }));
     const macdBars = config.macd.slow + config.macd.signal - 1;
     return {
@@ -249,9 +321,10 @@ export function computeIndicators(bars, input = {}) {
             seedPolicy: 'independent-sma', missingPolicy: 'reset-and-reseed-on-null',
             input: 'close', historyAnchor, maPeriods: config.maPeriods, macd: config.macd,
             kdj: config.kdj, kdjSeed: 'previous-or-50',
+            bollinger: config.bollinger, bollingerSeed: 'sample-stdev',
         },
-        times, ma, macd: macdResult, kdj: kdjResult, rows,
-        warmup: { macdBars, kdjBars: config.kdj.n, availableBars: bars.length, complete: macdResult.hist.at(-1) != null },
+        times, ma, macd: macdResult, kdj: kdjResult, bollinger: bollingerResult, rows,
+        warmup: { macdBars, kdjBars: config.kdj.n, bollingerBars: config.bollinger.period, availableBars: bars.length, complete: macdResult.hist.at(-1) != null },
     };
 }
 /**

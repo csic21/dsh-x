@@ -52,6 +52,45 @@ const distribution = [
   { from: 5, to: 7, count: 105 }, { from: 7, to: null, count: 137 },
 ]
 const stock = (code: string, name: string, price: number, percent: number, amount: number, cap: number) => ({ code, name, price, changePercent: percent, amount, marketCap: cap, suspended: false })
+const tailCandidate = (options: { symbol: string; name: string; consecutive: boolean; score: number; tailRatio: number; tailReturn: number; streak: number }) => ({
+  symbol: options.symbol, name: options.name, price: 4.91, changePercent: -6.12, amount: 260_000_000,
+  turnoverPercent: 8.2, volumeRatio: 2.5, fiveMinuteChange: null, sessionDate: '2026-10-16',
+  tail: {
+    sessionDate: '2026-10-16', complete: true, tailStart: '14:30', tailEnd: '15:00',
+    tailReturn: options.tailReturn, tailVolume: 9000, baselineVolume: 3270, tailVolumeRatio: options.tailRatio,
+    tailVolumeShare: 0.12, dayReturn: -0.0612, points: 242, blocks: 6,
+  },
+  daily: {
+    sessionDate: '2026-10-16', volumeRatio5: 3.87, volumeRatio20: 5.49, downStreak: options.streak,
+    volumeExpansionDownStreak: options.consecutive ? options.streak : 0, volumeDeclineStreak: 1,
+    distributionDays20: 2, downDays5: options.streak, downDays10: 3, todayReturn: -0.0612,
+    prior5AvgVolume: 100, isFinal: true, samples: 250,
+  },
+  quant: {
+    samples: 250, from: '2025-10-01', to: '2026-10-16', totalReturn: 0.2, annualVolatility: 0.4,
+    maxDrawdown: -0.3, sharpe: 1.1, rsi14: 77.5, atr14: 0.12, ma20: 3.58, ma60: 3.04,
+    priceVsMa20: 0.37, priceVsMa60: 0.61, momentum20: 0.1, momentum60: 0.2,
+    high52w: 5, low52w: 2, drawdownFromHigh: -0.02,
+  },
+  historyAvailable: true, adjustment: 'forward', score: options.score,
+  factors: [], flags: { tailDump: true, volumeExpansion: true, consecutive: options.consecutive },
+})
+const tailScan = {
+  source: '腾讯行情 + 腾讯分时 (unofficial)', fetchedAt: '2026-10-18T21:06:57+08:00',
+  sessionDate: '2026-10-16', sessionIsToday: false, complete: true,
+  universe: {
+    expected: 5577, covered: 5577, screened: 499, intradayChecked: 32,
+    tailConfirmed: 2, historyChecked: 2, failedIntraday: 0, failedHistory: 0, partial: false,
+  },
+  filters: {
+    minAmount: 30_000_000, minDayChange: -0.5, minVolumeRatio: 1, minTailRatio: 1.3,
+    minTailChange: -0.003, volumeExpansionMultiple: 1.2, minStreak: 2,
+  },
+  candidates: [
+    tailCandidate({ symbol: 'SH.600293', name: '三峡新材', consecutive: true, score: 84, tailRatio: 2.75, tailReturn: -0.0447, streak: 2 }),
+    tailCandidate({ symbol: 'SH.603138', name: '海量数据', consecutive: false, score: 57, tailRatio: 1.4, tailReturn: -0.0246, streak: 1 }),
+  ],
+}
 const breadth = {
   source: '腾讯行情 (unofficial)', fetchedAt: '2026-10-18T21:06:57+08:00', expected: 5577, covered: 5577,
   up: 3301, down: 2128, flat: 148, suspended: 10, coverage: 1, partial: false, amount: 1_569_065_980_000,
@@ -100,6 +139,7 @@ async function harness(options: { response?: any; dictionary?: any; rpc?: any; s
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
+      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan } }
       if (payload && typeof payload === 'object' && !Object.keys(payload).length) return { ok: true, value: { status: 'ready', snapshot: goldSnapshot } }
       return { ok: true, value: { status: 'ready', board: { ...board, code: payload.board } } }
     },
@@ -217,6 +257,32 @@ test('selecting an industry opens its constituent panel and close removes it', a
   } finally { await h.close() }
 })
 
+test('the tail scan is manual, renders candidates and can filter consecutive deals', async () => {
+  const h = await harness()
+  try {
+    assert.match(h.document.body.textContent ?? '', /尾盘放量下跌扫描/)
+    assert.equal(h.document.body.textContent?.includes('三峡新材'), false)
+    assert.equal(h.calls.some(call => call.kind === 'tail-scan'), false)
+    await h.click(h.button('开始扫描'))
+    assert.ok(h.calls.some(call => call.kind === 'tail-scan'))
+    const text = h.document.body.textContent ?? ''
+    assert.match(text, /三峡新材/)
+    assert.match(text, /海量数据/)
+    assert.match(text, /2\.75/)
+    assert.match(text, /84/)
+    assert.match(text, /连续放量/)
+    const checkbox = h.document.querySelector('.dxs-tail-controls input') as any
+    assert.ok(checkbox)
+    await act(async () => { checkbox.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const filtered = h.document.body.textContent ?? ''
+    assert.match(filtered, /三峡新材/)
+    assert.equal(filtered.includes('海量数据'), false)
+  } finally {
+    await h.close()
+  }
+})
+
 test('source switch enables and disables the market feed without profile edits', async () => {
   const h = await harness({ sourceEnabled: false })
   try {
@@ -320,6 +386,7 @@ test('finance page tabs switch between the watchlist, the market panorama, globa
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
+      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan } }
       if (payload && typeof payload === 'object' && !Object.keys(payload).length) return { ok: true, value: { status: 'ready', snapshot: goldSnapshot } }
       return { ok: true, value: { status: 'ready', board } }
     },
@@ -402,6 +469,7 @@ test('market panorama drills into a stock and the workbench requests its daily b
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
+      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan } }
       return { ok: true, value: { status: 'ready', board } }
     },
   }
@@ -489,6 +557,7 @@ test('a mover row and an index card drill down without touching the watchlist', 
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
+      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan } }
       return { ok: true, value: { status: 'ready', board } }
     },
   }

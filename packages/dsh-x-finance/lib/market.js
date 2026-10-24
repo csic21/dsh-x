@@ -13,6 +13,8 @@ export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference';
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)';
 /** One batched request covers the whole fixed bottom bar. */
 export const MARKET_MAX_QUOTES = 8;
+/** Internal batch size for the market-wide scan; one URL stays far below the response cap. */
+export const MARKET_MAX_QUOTE_BATCH = 600;
 export const MARKET_MAX_BOARD_STOCKS = 200;
 export const MARKET_MAX_SECTORS = 200;
 export const MARKET_MAX_STOCKS = 12_000;
@@ -340,6 +342,11 @@ export function parseMarketRequest(payload) {
         if (keys.join(',') !== 'kind')
             throw stockMarketError('invalid-input');
         return { kind: 'global' };
+    }
+    if (kind === 'tail-scan') {
+        if (keys.join(',') !== 'kind')
+            throw stockMarketError('invalid-input');
+        return { kind: 'tail-scan' };
     }
     if (kind === 'board') {
         if (keys.join(',') !== 'board,kind')

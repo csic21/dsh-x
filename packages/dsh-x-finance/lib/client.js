@@ -759,6 +759,7 @@ var CHART_MA_PERIODS = Object.freeze([5, 10, 20, 50, 250]);
 var DEFAULT_MA_PERIODS = Object.freeze([5, 10, 20]);
 var DEFAULT_MACD = Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 });
 var DEFAULT_KDJ = Object.freeze({ n: 9, k: 3, d: 3 });
+var DEFAULT_BOLLINGER = Object.freeze({ period: 20, multiplier: 2 });
 function period(value, label = "period") {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > MAX_INDICATOR_PERIOD) throw new RangeError(`${label} must be an integer from 1 to ${MAX_INDICATOR_PERIOD}`);
   return value;
@@ -855,16 +856,69 @@ function kdj(bars, input = {}) {
   }
   return { params, rsv, k: k2, d: d2, j: j2 };
 }
+function validateBollingerParams(raw = {}) {
+  const input = raw;
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("Bollinger parameters must be an object");
+  for (const key of Object.keys(input)) if (!["period", "multiplier"].includes(key)) throw new TypeError("Unknown Bollinger parameter");
+  const window2 = period(input.period ?? DEFAULT_BOLLINGER.period, "Bollinger period");
+  const multiplier = input.multiplier ?? DEFAULT_BOLLINGER.multiplier;
+  if (typeof multiplier !== "number" || !Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 10) throw new RangeError("Bollinger multiplier must be a finite number greater than 0 and at most 10");
+  return { period: window2, multiplier };
+}
+function sampleDeviation(values) {
+  if (values.length < 2) return null;
+  let sum = 0;
+  for (const value of values) sum += value;
+  const average2 = sum / values.length;
+  let squares = 0;
+  for (const value of values) squares += (value - average2) ** 2;
+  return number(Math.sqrt(squares / (values.length - 1)));
+}
+function bollinger(values, input = {}) {
+  valuesInput(values);
+  const params = validateBollingerParams(input);
+  const mid = sma(values, params.period);
+  const upper = [], lower = [], percentB = [], zscore = [];
+  const window2 = [];
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index];
+    if (value === null) {
+      window2.length = 0;
+      upper.push(null);
+      lower.push(null);
+      percentB.push(null);
+      zscore.push(null);
+      continue;
+    }
+    window2.push(value);
+    if (window2.length > params.period) window2.shift();
+    const center = mid[index];
+    const deviation = window2.length === params.period ? sampleDeviation(window2) : null;
+    if (center === null || deviation === null) {
+      upper.push(null);
+      lower.push(null);
+      percentB.push(null);
+      zscore.push(null);
+      continue;
+    }
+    const top = number(center + params.multiplier * deviation), bottom = number(center - params.multiplier * deviation);
+    upper.push(top);
+    lower.push(bottom);
+    percentB.push(deviation > 0 ? number((value - bottom) / (top - bottom)) : null);
+    zscore.push(deviation > 0 ? number((value - center) / deviation) : null);
+  }
+  return { params, mid, upper, lower, percentB, zscore };
+}
 function validateIndicatorConfig(raw = {}) {
   const input = raw;
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("Indicator configuration must be an object");
-  for (const key of Object.keys(input)) if (!["maPeriods", "macd", "kdj", "historyAnchor"].includes(key)) throw new TypeError("Unknown indicator configuration");
+  for (const key of Object.keys(input)) if (!["maPeriods", "macd", "kdj", "bollinger", "historyAnchor"].includes(key)) throw new TypeError("Unknown indicator configuration");
   const maPeriods = input.maPeriods === void 0 ? [...DEFAULT_MA_PERIODS] : input.maPeriods;
   if (!Array.isArray(maPeriods) || maPeriods.length > 8) throw new RangeError("MA requires an array of at most 8 periods");
   for (const value of maPeriods) period(value, "MA period");
   if (new Set(maPeriods).size !== maPeriods.length) throw new RangeError("MA periods must be unique");
   if (input.historyAnchor !== void 0 && input.historyAnchor !== null && !isSessionDate(input.historyAnchor)) throw new TypeError("historyAnchor must be a session date");
-  return { maPeriods: [...maPeriods], macd: validateMacdParams(input.macd), kdj: validateKdjParams(input.kdj), historyAnchor: input.historyAnchor ?? null };
+  return { maPeriods: [...maPeriods], macd: validateMacdParams(input.macd), kdj: validateKdjParams(input.kdj), bollinger: validateBollingerParams(input.bollinger), historyAnchor: input.historyAnchor ?? null };
 }
 function sma(values, size2) {
   valuesInput(values);
@@ -937,6 +991,7 @@ function computeIndicators(bars, input = {}) {
   const ma = Object.fromEntries(config.maPeriods.map((size2) => [size2, sma(values, size2)]));
   const macdResult = macd(values, config.macd);
   const kdjResult = kdj(bars.map((bar) => ({ high: bar.high ?? null, low: bar.low ?? null, close: bar.close })), config.kdj);
+  const bollingerResult = bollinger(values, config.bollinger);
   const rows = times.map((sessionDate, index) => ({
     sessionDate,
     ma: Object.fromEntries(config.maPeriods.map((size2) => [size2, ma[size2][index]])),
@@ -946,7 +1001,12 @@ function computeIndicators(bars, input = {}) {
     hist: macdResult.hist[index],
     k: kdjResult.k[index] ?? null,
     d: kdjResult.d[index] ?? null,
-    j: kdjResult.j[index] ?? null
+    j: kdjResult.j[index] ?? null,
+    bollMid: bollingerResult.mid[index],
+    bollUpper: bollingerResult.upper[index],
+    bollLower: bollingerResult.lower[index],
+    percentB: bollingerResult.percentB[index],
+    zscore: bollingerResult.zscore[index]
   }));
   const macdBars = config.macd.slow + config.macd.signal - 1;
   return {
@@ -959,14 +1019,17 @@ function computeIndicators(bars, input = {}) {
       maPeriods: config.maPeriods,
       macd: config.macd,
       kdj: config.kdj,
-      kdjSeed: "previous-or-50"
+      kdjSeed: "previous-or-50",
+      bollinger: config.bollinger,
+      bollingerSeed: "sample-stdev"
     },
     times,
     ma,
     macd: macdResult,
     kdj: kdjResult,
+    bollinger: bollingerResult,
     rows,
-    warmup: { macdBars, kdjBars: config.kdj.n, availableBars: bars.length, complete: macdResult.hist.at(-1) != null }
+    warmup: { macdBars, kdjBars: config.kdj.n, bollingerBars: config.bollinger.period, availableBars: bars.length, complete: macdResult.hist.at(-1) != null }
   };
 }
 
@@ -995,6 +1058,8 @@ function createFormatters(getLocale) {
     change: (value) => Number.isFinite(value) ? number2(value / 100, { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" }) : "\u2014",
     percent: (value) => Number.isFinite(value) ? number2(value / 100, { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "\u2014",
     signed: (value) => Number.isFinite(value) ? number2(value, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" }) : "\u2014",
+    /** A plain multiple such as a volume ratio; never a percent and never signed. */
+    ratio: (value) => Number.isFinite(value) ? number2(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "\u2014",
     signedAt: (value, precision) => {
       if (!Number.isFinite(value)) return "\u2014";
       const digits = quoteDigits(precision);
@@ -9030,17 +9095,18 @@ function sessionKey(time) {
   return time && typeof time === "object" ? `${time.year}-${String(time.month).padStart(2, "0")}-${String(time.day).padStart(2, "0")}` : null;
 }
 var MA_COLORS = { 5: "#b07b00", 10: "#9957d4", 20: "#2582cb", 50: "#0f8b8d", 250: "#c2410c" };
+var BOLL_COLOR = "#607a9c";
 var UP_COLOR = "#cf3b4c";
 var DOWN_COLOR = "#168463";
 function buildChartData(dataset, indicators) {
   const rows = new Map(indicators.rows.map((row) => [row.sessionDate, row]));
-  const result = { candles: [], volume: [], ma5: [], ma10: [], ma20: [], ma50: [], ma250: [], dif: [], dea: [], hist: [], k: [], d: [], j: [] };
+  const result = { candles: [], volume: [], ma5: [], ma10: [], ma20: [], ma50: [], ma250: [], dif: [], dea: [], hist: [], k: [], d: [], j: [], bollMid: [], bollUpper: [], bollLower: [], percentB: [], zscore: [] };
   for (const bar of dataset.bars) {
     const time = businessDay(bar.sessionDate), row = rows.get(bar.sessionDate);
     result.candles.push({ time, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
     result.volume.push(Number.isFinite(bar.volume) ? { time, value: bar.volume, color: bar.close >= bar.open ? UP_COLOR : DOWN_COLOR } : { time });
     for (const period2 of [5, 10, 20, 50, 250]) result[`ma${period2}`].push(Number.isFinite(row?.ma?.[period2]) ? { time, value: row.ma[period2] } : { time });
-    for (const key of ["dif", "dea", "hist", "k", "d", "j"]) result[key].push(Number.isFinite(row?.[key]) ? { time, value: row[key], ...key === "hist" ? { color: row[key] >= 0 ? UP_COLOR : DOWN_COLOR } : {} } : { time });
+    for (const key of ["dif", "dea", "hist", "k", "d", "j", "bollMid", "bollUpper", "bollLower", "percentB", "zscore"]) result[key].push(Number.isFinite(row?.[key]) ? { time, value: row[key], ...key === "hist" ? { color: row[key] >= 0 ? UP_COLOR : DOWN_COLOR } : {} } : { time });
   }
   return result;
 }
@@ -9096,8 +9162,8 @@ function preserveLogicalRange(range, previousBars, nextBars) {
 
 // src/client/chart/theme.ts
 var PALETTES = {
-  light: { background: "#ffffff", text: "#26334a", grid: "#edf0f5", border: "#d9dfea", crosshair: "#78879b" },
-  dark: { background: "#151c2a", text: "#d6dfef", grid: "#253044", border: "#38465e", crosshair: "#8e9cb5" }
+  light: { background: "#ffffff", text: "#26334a", grid: "#edf0f5", border: "#d9dfea", crosshair: "#78879b", reference: "#9aa5b5" },
+  dark: { background: "#151c2a", text: "#d6dfef", grid: "#253044", border: "#38465e", crosshair: "#8e9cb5", reference: "#7d8aa3" }
 };
 function resolveChartTheme(element, requested = "auto") {
   if (requested === "dark" || requested === "light") return requested;
@@ -9152,6 +9218,7 @@ function createStockChartAdapter(element, {
   ResizeObserverClass = element.ownerDocument.defaultView?.ResizeObserver
 } = {}) {
   const { createChart, CandlestickSeries, HistogramSeries, LineSeries, CrosshairMode } = library;
+  const LineStyle = library.LineStyle ?? { Solid: 0, Dotted: 1, Dashed: 2 };
   let disposed = false, bars = [], data = null, datasetId = null, suppressRange = false, following = true, newBars = false, maximized = false, restoreHeights = null;
   const palette = PALETTES[theme] ?? PALETTES.light;
   const chart = createChart(element, {
@@ -9184,13 +9251,28 @@ function createStockChartAdapter(element, {
     j: chart.addSeries(LineSeries, { ...common, color: "#2582cb", lineWidth: 1, crosshairMarkerVisible: true }, 3)
   };
   for (const period2 of CHART_MA_PERIODS) series[`ma${period2}`] = chart.addSeries(LineSeries, { ...common, color: MA_COLORS[period2], lineWidth: 1, crosshairMarkerVisible: false }, 0);
+  series.bollUpper = chart.addSeries(LineSeries, { ...common, color: BOLL_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false }, 0);
+  series.bollMid = chart.addSeries(LineSeries, { ...common, color: BOLL_COLOR, lineWidth: 1, crosshairMarkerVisible: false }, 0);
+  series.bollLower = chart.addSeries(LineSeries, { ...common, color: BOLL_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false }, 0);
+  series.percentB = chart.addSeries(LineSeries, { ...common, color: "#df9635", lineWidth: 1, crosshairMarkerVisible: true }, 4);
+  series.zscore = chart.addSeries(LineSeries, { ...common, color: "#2582cb", lineWidth: 1, crosshairMarkerVisible: true }, 5);
+  const referenceLines = [];
+  const addReference = (target, price2, title, style) => referenceLines.push(target.createPriceLine({ price: price2, color: palette.reference, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+  addReference(series.percentB, 0.5, "%B 0.5", LineStyle.Dotted);
+  addReference(series.zscore, 2, "+2\u03C3", LineStyle.Dashed);
+  addReference(series.zscore, 0, "0", LineStyle.Solid);
+  addReference(series.zscore, -2, "\u22122\u03C3", LineStyle.Dashed);
   series.volume.priceScale().applyOptions({ scaleMargins: { top: 0.18, bottom: 0 }, autoScale: true });
   series.hist.priceScale().applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 }, autoScale: true });
   series.j.priceScale().applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 }, autoScale: true });
+  series.percentB.priceScale().applyOptions({ scaleMargins: { top: 0.2, bottom: 0.2 }, autoScale: true });
+  series.zscore.priceScale().applyOptions({ scaleMargins: { top: 0.2, bottom: 0.2 }, autoScale: true });
   chart.panes()[0].setStretchFactor(6);
   chart.panes()[1].setStretchFactor(1.4);
   chart.panes()[2].setStretchFactor(2);
   chart.panes()[3].setStretchFactor(2);
+  chart.panes()[4]?.setStretchFactor(1.6);
+  chart.panes()[5]?.setStretchFactor(1.6);
   const timeScale = chart.timeScale();
   const report = () => onViewport({ following, newBars });
   const rangeChanged = (range) => {
@@ -9239,9 +9321,9 @@ function createStockChartAdapter(element, {
       data = next;
       datasetId = nextId;
       const precision = dataset.pricePrecision ?? 2;
-      for (const key of ["candles", ...CHART_MA_PERIODS.map((period2) => `ma${period2}`)]) series[key].applyOptions({ priceFormat: { type: "price", precision, minMove: 10 ** -precision } });
+      for (const key of ["candles", ...CHART_MA_PERIODS.map((period2) => `ma${period2}`), "bollMid", "bollUpper", "bollLower"]) series[key].applyOptions({ priceFormat: { type: "price", precision, minMove: 10 ** -precision } });
       const indicatorPrecision = Math.max(3, precision);
-      for (const key of ["dif", "dea", "hist", "k", "d", "j"]) series[key].applyOptions({ priceFormat: { type: "price", precision: indicatorPrecision, minMove: 10 ** -indicatorPrecision } });
+      for (const key of ["dif", "dea", "hist", "k", "d", "j", "percentB", "zscore"]) series[key].applyOptions({ priceFormat: { type: "price", precision: indicatorPrecision, minMove: 10 ** -indicatorPrecision } });
       selection?.setBars(bars, reset);
       if (reset) {
         following = true;
@@ -9263,6 +9345,14 @@ function createStockChartAdapter(element, {
       const kdj2 = config.kdjVisible !== false;
       for (const key of ["k", "d", "j"]) series[key].applyOptions({ visible: kdj2 });
       chart.panes()[3]?.setStretchFactor(kdj2 ? 2 : 1e-3);
+      const boll = config.bollVisible !== false;
+      for (const key of ["bollMid", "bollUpper", "bollLower"]) series[key].applyOptions({ visible: boll });
+      const percentB = config.percentBVisible === true;
+      series.percentB.applyOptions({ visible: percentB });
+      chart.panes()[4]?.setStretchFactor(percentB ? 1.6 : 1e-3);
+      const zscore = config.zscoreVisible !== false;
+      series.zscore.applyOptions({ visible: zscore });
+      chart.panes()[5]?.setStretchFactor(zscore ? 1.6 : 1e-3);
     },
     setLocale(nextLocale) {
       if (!disposed) chart.applyOptions({ localization: { locale: nextLocale } });
@@ -9271,6 +9361,7 @@ function createStockChartAdapter(element, {
       if (disposed) return;
       const p2 = PALETTES[value] ?? PALETTES.light;
       chart.applyOptions({ layout: { background: { type: "solid", color: p2.background }, textColor: p2.text, attributionLogo: true, panes: { enableResize: true, separatorColor: p2.border, separatorHoverColor: p2.crosshair } }, grid: { vertLines: { color: p2.grid }, horzLines: { color: p2.grid } }, rightPriceScale: { borderColor: p2.border }, timeScale: { borderColor: p2.border }, crosshair: { vertLine: { color: p2.crosshair }, horzLine: { color: p2.crosshair } } });
+      for (const line of referenceLines) line?.applyOptions?.({ color: p2.reference });
     },
     setFocused(focused) {
       if (!disposed) chart.applyOptions({ handleScale: { mouseWheel: focused } });
@@ -9343,7 +9434,10 @@ var DEFAULT_CHART_CONFIG = Object.freeze({
   macd: Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 }),
   difVisible: true,
   deaVisible: true,
-  kdjVisible: true
+  kdjVisible: true,
+  bollVisible: true,
+  percentBVisible: false,
+  zscoreVisible: true
 });
 function normalizeChartConfig(raw = {}) {
   const value = raw;
@@ -9356,7 +9450,10 @@ function normalizeChartConfig(raw = {}) {
     macd: macd2,
     difVisible: value.difVisible !== false,
     deaVisible: value.deaVisible !== false,
-    kdjVisible: value.kdjVisible !== false
+    kdjVisible: value.kdjVisible !== false,
+    bollVisible: value.bollVisible !== false,
+    percentBVisible: value.percentBVisible === true,
+    zscoreVisible: value.zscoreVisible !== false
   };
 }
 
@@ -9386,7 +9483,10 @@ function Readout({ selection, dataset, indicators, config, t, format }) {
     ["DIF", format.indicator(row?.dif)],
     ["DEA", format.indicator(row?.dea)],
     [t("chart.hist", { scale: config.macd.histScale }), format.indicator(row?.hist)],
-    ...config.kdjVisible ? [["K", format.indicator(row?.k)], ["D", format.indicator(row?.d)], ["J", format.indicator(row?.j)]] : []
+    ...config.kdjVisible ? [["K", format.indicator(row?.k)], ["D", format.indicator(row?.d)], ["J", format.indicator(row?.j)]] : [],
+    ...config.bollVisible ? [[t("chart.boll-mid"), format.price(row?.bollMid)], [t("chart.boll-upper"), format.price(row?.bollUpper)], [t("chart.boll-lower"), format.price(row?.bollLower)]] : [],
+    ...config.percentBVisible ? [[t("chart.boll-percent"), format.indicator(row?.percentB)]] : [],
+    ...config.zscoreVisible ? [[t("chart.zscore"), format.indicator(row?.zscore)]] : []
   ];
   return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxs-chart-readout", "aria-label": t("chart.readout") }, /* @__PURE__ */ import_react.default.createElement("header", null, /* @__PURE__ */ import_react.default.createElement("strong", { "data-selected-date": bar?.sessionDate }, bar?.sessionDate ?? "\u2014"), /* @__PURE__ */ import_react.default.createElement("span", { className: "dxs-chart-status", "data-locked": selected.locked }, t(selected.locked ? "chart.locked" : "chart.unlocked")), bar && /* @__PURE__ */ import_react.default.createElement("span", { className: "dxs-chart-status" }, t(bar.isFinal ? "chart.final" : "chart.provisional")), selected.locked && /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => selection.unlock() }, t("chart.unlock"))), /* @__PURE__ */ import_react.default.createElement("dl", null, values.map(([label, value]) => /* @__PURE__ */ import_react.default.createElement("div", { key: label }, /* @__PURE__ */ import_react.default.createElement("dt", null, label), /* @__PURE__ */ import_react.default.createElement("dd", null, value)))));
 }
@@ -9395,9 +9495,9 @@ var DataTable = (0, import_react.memo)(function DataTable2({ dataset, indicators
   const selected = (0, import_react.useSyncExternalStore)(selection.subscribe, selection.getSnapshot, selection.getSnapshot);
   const rowsByTime = (0, import_react.useMemo)(() => new Map(indicators.rows.map((row) => [row.sessionDate, row])), [indicators]);
   const pages = Math.max(1, Math.ceil(dataset.bars.length / 100)), actualPage = Math.min(page, pages - 1), start = actualPage * 100;
-  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-table-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { disabled: actualPage === 0, onClick: () => setPage(actualPage - 1) }, t("chart.table-older")), /* @__PURE__ */ import_react.default.createElement("button", { disabled: actualPage >= pages - 1, onClick: () => setPage(actualPage + 1) }, t("chart.table-newer")), /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.table-page", { from: format.count(start + 1), to: format.count(Math.min(start + 100, dataset.bars.length)), total: format.count(dataset.bars.length) }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-table-scroll", tabIndex: 0, "aria-label": t("chart.table-caption", { symbol: dataset.symbol }) }, /* @__PURE__ */ import_react.default.createElement("table", { className: "dxs-chart-table" }, /* @__PURE__ */ import_react.default.createElement("caption", null, t("chart.table-caption", { symbol: dataset.symbol })), /* @__PURE__ */ import_react.default.createElement("thead", null, /* @__PURE__ */ import_react.default.createElement("tr", null, /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.date")), ["open", "high", "low", "close", "volume"].map((key) => /* @__PURE__ */ import_react.default.createElement("th", { key, scope: "col" }, t(key === "volume" && dataset.volumeBasis === "reported" ? "chart.volume-reported" : `chart.${key}`))), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.amount", { currency: dataset.currency })), CHART_MA_PERIODS.map((period2) => /* @__PURE__ */ import_react.default.createElement("th", { key: period2, scope: "col" }, "MA", period2)), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "DIF"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "DEA"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.hist", { scale: config.macd.histScale })), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "K"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "D"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "J"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.final")))), /* @__PURE__ */ import_react.default.createElement("tbody", null, dataset.bars.slice(start, start + 100).map((bar) => {
+  return /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-table-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { disabled: actualPage === 0, onClick: () => setPage(actualPage - 1) }, t("chart.table-older")), /* @__PURE__ */ import_react.default.createElement("button", { disabled: actualPage >= pages - 1, onClick: () => setPage(actualPage + 1) }, t("chart.table-newer")), /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.table-page", { from: format.count(start + 1), to: format.count(Math.min(start + 100, dataset.bars.length)), total: format.count(dataset.bars.length) }))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-table-scroll", tabIndex: 0, "aria-label": t("chart.table-caption", { symbol: dataset.symbol }) }, /* @__PURE__ */ import_react.default.createElement("table", { className: "dxs-chart-table" }, /* @__PURE__ */ import_react.default.createElement("caption", null, t("chart.table-caption", { symbol: dataset.symbol })), /* @__PURE__ */ import_react.default.createElement("thead", null, /* @__PURE__ */ import_react.default.createElement("tr", null, /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.date")), ["open", "high", "low", "close", "volume"].map((key) => /* @__PURE__ */ import_react.default.createElement("th", { key, scope: "col" }, t(key === "volume" && dataset.volumeBasis === "reported" ? "chart.volume-reported" : `chart.${key}`))), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.amount", { currency: dataset.currency })), CHART_MA_PERIODS.map((period2) => /* @__PURE__ */ import_react.default.createElement("th", { key: period2, scope: "col" }, "MA", period2)), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "DIF"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "DEA"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.hist", { scale: config.macd.histScale })), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "K"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "D"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, "J"), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.boll-mid")), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.boll-upper")), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.boll-lower")), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.boll-percent")), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.zscore")), /* @__PURE__ */ import_react.default.createElement("th", { scope: "col" }, t("chart.final")))), /* @__PURE__ */ import_react.default.createElement("tbody", null, dataset.bars.slice(start, start + 100).map((bar) => {
     const row = rowsByTime.get(bar.sessionDate);
-    return /* @__PURE__ */ import_react.default.createElement("tr", { key: bar.sessionDate, "aria-selected": bar.sessionDate === selected.sessionDate }, /* @__PURE__ */ import_react.default.createElement("th", { scope: "row" }, /* @__PURE__ */ import_react.default.createElement("button", { "aria-label": t("chart.select-row", { date: bar.sessionDate }), onClick: () => onSelect(bar.sessionDate) }, bar.sessionDate)), ["open", "high", "low", "close"].map((key) => /* @__PURE__ */ import_react.default.createElement("td", { key }, format.price(bar[key]))), /* @__PURE__ */ import_react.default.createElement("td", null, format.quantity(bar.volume)), /* @__PURE__ */ import_react.default.createElement("td", null, format.quantity(bar.amount)), CHART_MA_PERIODS.map((period2) => /* @__PURE__ */ import_react.default.createElement("td", { key: period2 }, format.price(row?.ma[period2]))), ["dif", "dea", "hist", "k", "d", "j"].map((key) => /* @__PURE__ */ import_react.default.createElement("td", { key }, format.indicator(row?.[key]))), /* @__PURE__ */ import_react.default.createElement("td", null, t(bar.isFinal ? "chart.final" : "chart.provisional")));
+    return /* @__PURE__ */ import_react.default.createElement("tr", { key: bar.sessionDate, "aria-selected": bar.sessionDate === selected.sessionDate }, /* @__PURE__ */ import_react.default.createElement("th", { scope: "row" }, /* @__PURE__ */ import_react.default.createElement("button", { "aria-label": t("chart.select-row", { date: bar.sessionDate }), onClick: () => onSelect(bar.sessionDate) }, bar.sessionDate)), ["open", "high", "low", "close"].map((key) => /* @__PURE__ */ import_react.default.createElement("td", { key }, format.price(bar[key]))), /* @__PURE__ */ import_react.default.createElement("td", null, format.quantity(bar.volume)), /* @__PURE__ */ import_react.default.createElement("td", null, format.quantity(bar.amount)), CHART_MA_PERIODS.map((period2) => /* @__PURE__ */ import_react.default.createElement("td", { key: period2 }, format.price(row?.ma[period2]))), ["dif", "dea", "hist", "k", "d", "j"].map((key) => /* @__PURE__ */ import_react.default.createElement("td", { key }, format.indicator(row?.[key]))), ["bollMid", "bollUpper", "bollLower"].map((key) => /* @__PURE__ */ import_react.default.createElement("td", { key }, format.price(row?.[key]))), ["percentB", "zscore"].map((key) => /* @__PURE__ */ import_react.default.createElement("td", { key }, format.indicator(row?.[key]))), /* @__PURE__ */ import_react.default.createElement("td", null, t(bar.isFinal ? "chart.final" : "chart.provisional")));
   })))));
 });
 function MacdSettings({ current, t, onApply, onClose }) {
@@ -9429,7 +9529,7 @@ function StockChart({ dataset, t, format, locale = "en", theme = "auto", config:
     try {
       return computeIndicators(dataset.bars, { maPeriods: [...CHART_MA_PERIODS], macd: { fast, slow, signal, histScale }, historyAnchor: dataset.historyAnchor });
     } catch {
-      return { failed: true, rows: dataset.bars.map((bar) => ({ sessionDate: bar.sessionDate, ma: Object.fromEntries(CHART_MA_PERIODS.map((n) => [n, null])), dif: null, dea: null, hist: null, k: null, d: null, j: null })), warmup: { macdBars: slow + signal - 1 } };
+      return { failed: true, rows: dataset.bars.map((bar) => ({ sessionDate: bar.sessionDate, ma: Object.fromEntries(CHART_MA_PERIODS.map((n) => [n, null])), dif: null, dea: null, hist: null, k: null, d: null, j: null, bollMid: null, bollUpper: null, bollLower: null, percentB: null, zscore: null })), warmup: { macdBars: slow + signal - 1 } };
     }
   }, [dataset.bars, dataset.historyAnchor, fast, slow, signal, histScale]);
   const numbers = (0, import_react.useMemo)(() => chartFormatters(locale, dataset.pricePrecision ?? 2, format), [locale, dataset.pricePrecision, format]);
@@ -9495,11 +9595,12 @@ function StockChart({ dataset, t, format, locale = "en", theme = "auto", config:
     }
   };
   const starvedMa = CHART_MA_PERIODS.filter((period2) => config.maVisible[period2] && dataset.bars.length < period2);
+  const starvedBoll = config.bollVisible && dataset.bars.length < DEFAULT_BOLLINGER.period;
   const longMaOnOtherInterval = CHART_MA_PERIODS.filter((period2) => config.maVisible[period2] && period2 >= 50);
   const toggleMacd = () => setMaximized(adapter.current?.maximizeMacd() ?? false);
-  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxs-chart", ref: section, "data-chart-theme": activeTheme, "aria-label": t("chart.title") }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-toolbar" }, /* @__PURE__ */ import_react.default.createElement("h3", null, t("chart.price-pane")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-group" }, CHART_MA_PERIODS.map((period2) => /* @__PURE__ */ import_react.default.createElement("label", { key: period2 }, /* @__PURE__ */ import_react.default.createElement("input", { type: "checkbox", checked: config.maVisible[period2], onChange: (event) => applyConfig({ ...config, maVisible: { ...config.maVisible, [period2]: event.target.checked } }) }), /* @__PURE__ */ import_react.default.createElement("span", null, /* @__PURE__ */ import_react.default.createElement("i", { className: "dxs-chart-swatch", style: { background: MA_COLORS[period2] } }), "MA", period2))), /* @__PURE__ */ import_react.default.createElement("label", null, /* @__PURE__ */ import_react.default.createElement("input", { type: "checkbox", checked: config.kdjVisible, onChange: (event) => applyConfig({ ...config, kdjVisible: event.target.checked }) }), /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.kdj")))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-actions" }, /* @__PURE__ */ import_react.default.createElement("button", { "aria-label": t("chart.zoom-in"), onClick: () => adapter.current?.zoom(0.8) }, "+"), /* @__PURE__ */ import_react.default.createElement("button", { "aria-label": t("chart.zoom-out"), onClick: () => adapter.current?.zoom(1.25) }, "\u2212"), /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => adapter.current?.latest() }, t(viewport.newBars ? "chart.new-bars" : "chart.latest")), /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => adapter.current?.reset() }, t("chart.reset-view")))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-pane-labels" }, /* @__PURE__ */ import_react.default.createElement("span", null, t(`chart.interval.${dataset.interval ?? "1d"}`)), /* @__PURE__ */ import_react.default.createElement("span", null, t(dataset.volumeBasis === "reported" ? "chart.volume-pane-reported" : "chart.volume-pane")), /* @__PURE__ */ import_react.default.createElement("strong", { onDoubleClick: toggleMacd }, t("chart.macd-pane", { fast, slow, signal, scale: histScale })), config.kdjVisible ? /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.kdj-pane")) : null, ["dif", "dea"].map((key) => /* @__PURE__ */ import_react.default.createElement("button", { className: "dxs-chart-line", key, "aria-pressed": config[`${key}Visible`], "aria-label": t("chart.hide-line", { line: key.toUpperCase() }), onClick: () => applyConfig({ ...config, [`${key}Visible`]: !config[`${key}Visible`] }) }, key.toUpperCase())), /* @__PURE__ */ import_react.default.createElement("button", { "aria-expanded": settings, "aria-controls": settingsId, onClick: () => setSettings(!settings) }, t("chart.settings")), /* @__PURE__ */ import_react.default.createElement("button", { "aria-pressed": maximized, onClick: toggleMacd }, t(maximized ? "chart.restore-panes" : "chart.expand-macd"))), settings && /* @__PURE__ */ import_react.default.createElement("div", { id: settingsId }, /* @__PURE__ */ import_react.default.createElement(MacdSettings, { current: config.macd, t, onApply: (macd2) => applyConfig({ ...config, macd: macd2 }), onClose: () => setSettings(false) })), /* @__PURE__ */ import_react.default.createElement(Readout, { selection, dataset, indicators, config, t, format: numbers }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-plot", hidden: renderError }, /* @__PURE__ */ import_react.default.createElement("div", { ref: element, className: "dxs-chart-canvas", tabIndex: 0, role: "group", "aria-label": t("chart.canvas"), "aria-describedby": helpId, onKeyDown: keyboard, onFocus: (event) => adapter.current?.setFocused(event.target === event.currentTarget), onBlur: () => adapter.current?.setFocused(false), onPointerDown: (event) => {
+  return /* @__PURE__ */ import_react.default.createElement("section", { className: "dxs-chart", ref: section, "data-chart-theme": activeTheme, "aria-label": t("chart.title") }, /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-toolbar" }, /* @__PURE__ */ import_react.default.createElement("h3", null, t("chart.price-pane")), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-group" }, CHART_MA_PERIODS.map((period2) => /* @__PURE__ */ import_react.default.createElement("label", { key: period2 }, /* @__PURE__ */ import_react.default.createElement("input", { type: "checkbox", checked: config.maVisible[period2], onChange: (event) => applyConfig({ ...config, maVisible: { ...config.maVisible, [period2]: event.target.checked } }) }), /* @__PURE__ */ import_react.default.createElement("span", null, /* @__PURE__ */ import_react.default.createElement("i", { className: "dxs-chart-swatch", style: { background: MA_COLORS[period2] } }), "MA", period2))), /* @__PURE__ */ import_react.default.createElement("label", null, /* @__PURE__ */ import_react.default.createElement("input", { type: "checkbox", checked: config.kdjVisible, onChange: (event) => applyConfig({ ...config, kdjVisible: event.target.checked }) }), /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.kdj"))), /* @__PURE__ */ import_react.default.createElement("label", null, /* @__PURE__ */ import_react.default.createElement("input", { type: "checkbox", checked: config.bollVisible, onChange: (event) => applyConfig({ ...config, bollVisible: event.target.checked }) }), /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.boll"))), /* @__PURE__ */ import_react.default.createElement("label", null, /* @__PURE__ */ import_react.default.createElement("input", { type: "checkbox", checked: config.percentBVisible, onChange: (event) => applyConfig({ ...config, percentBVisible: event.target.checked }) }), /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.boll-percent"))), /* @__PURE__ */ import_react.default.createElement("label", null, /* @__PURE__ */ import_react.default.createElement("input", { type: "checkbox", checked: config.zscoreVisible, onChange: (event) => applyConfig({ ...config, zscoreVisible: event.target.checked }) }), /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.zscore")))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-actions" }, /* @__PURE__ */ import_react.default.createElement("button", { "aria-label": t("chart.zoom-in"), onClick: () => adapter.current?.zoom(0.8) }, "+"), /* @__PURE__ */ import_react.default.createElement("button", { "aria-label": t("chart.zoom-out"), onClick: () => adapter.current?.zoom(1.25) }, "\u2212"), /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => adapter.current?.latest() }, t(viewport.newBars ? "chart.new-bars" : "chart.latest")), /* @__PURE__ */ import_react.default.createElement("button", { onClick: () => adapter.current?.reset() }, t("chart.reset-view")))), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-pane-labels" }, /* @__PURE__ */ import_react.default.createElement("span", null, t(`chart.interval.${dataset.interval ?? "1d"}`)), /* @__PURE__ */ import_react.default.createElement("span", null, t(dataset.volumeBasis === "reported" ? "chart.volume-pane-reported" : "chart.volume-pane")), config.bollVisible ? /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.boll-pane", { period: DEFAULT_BOLLINGER.period, multiplier: DEFAULT_BOLLINGER.multiplier })) : null, /* @__PURE__ */ import_react.default.createElement("strong", { onDoubleClick: toggleMacd }, t("chart.macd-pane", { fast, slow, signal, scale: histScale })), config.kdjVisible ? /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.kdj-pane")) : null, config.percentBVisible ? /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.boll-percent-pane", { period: DEFAULT_BOLLINGER.period })) : null, config.zscoreVisible ? /* @__PURE__ */ import_react.default.createElement("span", null, t("chart.zscore-pane", { period: DEFAULT_BOLLINGER.period })) : null, ["dif", "dea"].map((key) => /* @__PURE__ */ import_react.default.createElement("button", { className: "dxs-chart-line", key, "aria-pressed": config[`${key}Visible`], "aria-label": t("chart.hide-line", { line: key.toUpperCase() }), onClick: () => applyConfig({ ...config, [`${key}Visible`]: !config[`${key}Visible`] }) }, key.toUpperCase())), /* @__PURE__ */ import_react.default.createElement("button", { "aria-expanded": settings, "aria-controls": settingsId, onClick: () => setSettings(!settings) }, t("chart.settings")), /* @__PURE__ */ import_react.default.createElement("button", { "aria-pressed": maximized, onClick: toggleMacd }, t(maximized ? "chart.restore-panes" : "chart.expand-macd"))), settings && /* @__PURE__ */ import_react.default.createElement("div", { id: settingsId }, /* @__PURE__ */ import_react.default.createElement(MacdSettings, { current: config.macd, t, onApply: (macd2) => applyConfig({ ...config, macd: macd2 }), onClose: () => setSettings(false) })), /* @__PURE__ */ import_react.default.createElement(Readout, { selection, dataset, indicators, config, t, format: numbers }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-plot", hidden: renderError }, /* @__PURE__ */ import_react.default.createElement("div", { ref: element, className: "dxs-chart-canvas", tabIndex: 0, role: "group", "aria-label": t("chart.canvas"), "aria-describedby": helpId, onKeyDown: keyboard, onFocus: (event) => adapter.current?.setFocused(event.target === event.currentTarget), onBlur: () => adapter.current?.setFocused(false), onPointerDown: (event) => {
     if (!event.target.closest("a")) event.currentTarget.focus({ preventScroll: true });
-  } }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-watermark", "data-kind": dataset.kind }, t(dataset.kind === "demo" ? "chart.demo-watermark" : dataset.kind === "market" ? "chart.market-watermark" : "chart.local-watermark"))), renderError && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-error", role: "alert" }, t("chart.render-error")), indicators.failed && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-error", role: "alert" }, t("chart.indicator-error")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-help", id: helpId }, t("chart.help")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning" }, t("chart.warmup", { required: numbers.count(indicators.warmup.macdBars), available: numbers.count(dataset.bars.length) })), starvedMa.map((period2) => /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning", key: period2 }, t("chart.ma-short", { period: numbers.count(period2), available: numbers.count(dataset.bars.length) }))), dataset.interval !== "1d" ? longMaOnOtherInterval.map((period2) => /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning", key: period2 }, t("chart.ma-other-interval", { period: numbers.count(period2), interval: t(`chart.interval.${dataset.interval}`) }))) : null, /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-method" }, t("chart.method", { scale: histScale })), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-table-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { "aria-expanded": showTable || renderError, "aria-controls": tableId, onClick: () => setShowTable(!showTable) }, t(showTable || renderError ? "chart.table-hide" : "chart.table-show"))), (showTable || renderError) && /* @__PURE__ */ import_react.default.createElement("div", { id: tableId }, /* @__PURE__ */ import_react.default.createElement(DataTable, { dataset, indicators, config, selection, t, format: numbers, onSelect: selectDate })), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-credit" }, /* @__PURE__ */ import_react.default.createElement("a", { href: "https://www.tradingview.com/", target: "_blank", rel: "noopener noreferrer" }, t("chart.attribution"))));
+  } }), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-watermark", "data-kind": dataset.kind }, t(dataset.kind === "demo" ? "chart.demo-watermark" : dataset.kind === "market" ? "chart.market-watermark" : "chart.local-watermark"))), renderError && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-error", role: "alert" }, t("chart.render-error")), indicators.failed && /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-error", role: "alert" }, t("chart.indicator-error")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-help", id: helpId }, t("chart.help")), /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning" }, t("chart.warmup", { required: numbers.count(indicators.warmup.macdBars), available: numbers.count(dataset.bars.length) })), starvedMa.map((period2) => /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning", key: period2 }, t("chart.ma-short", { period: numbers.count(period2), available: numbers.count(dataset.bars.length) }))), starvedBoll ? /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning" }, t("chart.boll-short", { period: numbers.count(DEFAULT_BOLLINGER.period), available: numbers.count(dataset.bars.length) })) : null, dataset.interval !== "1d" ? longMaOnOtherInterval.map((period2) => /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-warning", key: period2 }, t("chart.ma-other-interval", { period: numbers.count(period2), interval: t(`chart.interval.${dataset.interval}`) }))) : null, /* @__PURE__ */ import_react.default.createElement("p", { className: "dxs-chart-method" }, t("chart.method", { scale: histScale, period: DEFAULT_BOLLINGER.period, multiplier: DEFAULT_BOLLINGER.multiplier })), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-table-controls" }, /* @__PURE__ */ import_react.default.createElement("button", { "aria-expanded": showTable || renderError, "aria-controls": tableId, onClick: () => setShowTable(!showTable) }, t(showTable || renderError ? "chart.table-hide" : "chart.table-show"))), (showTable || renderError) && /* @__PURE__ */ import_react.default.createElement("div", { id: tableId }, /* @__PURE__ */ import_react.default.createElement(DataTable, { dataset, indicators, config, selection, t, format: numbers, onSelect: selectDate })), /* @__PURE__ */ import_react.default.createElement("div", { className: "dxs-chart-credit" }, /* @__PURE__ */ import_react.default.createElement("a", { href: "https://www.tradingview.com/", target: "_blank", rel: "noopener noreferrer" }, t("chart.attribution"))));
 }
 
 // src/client/market/history.ts
@@ -9814,13 +9915,7 @@ function relativeStrengthIndex(bars, period2 = 14) {
 }
 function bollingerPercentB(bars, period2 = 20, multiplier = 2) {
   if (bars.length < period2) return null;
-  const closes = bars.slice(-period2).map((bar) => bar.close);
-  const middle = mean2(closes);
-  const deviation = stdev(closes);
-  if (deviation === null || deviation === 0) return null;
-  const upper = middle + multiplier * deviation;
-  const lower = middle - multiplier * deviation;
-  return (closes.at(-1) - lower) / (upper - lower);
+  return bollinger(bars.map((bar) => bar.close), { period: period2, multiplier }).percentB.at(-1) ?? null;
 }
 function monthlyReturns(bars) {
   const groups = /* @__PURE__ */ new Map();
@@ -10763,6 +10858,41 @@ function useMarketBreadth(rpc, options = {}) {
 function useBoardDetail(rpc, code, options = {}) {
   return useMarketResource(rpc, "board", code, { pollMs: 12e4, ...options });
 }
+function useTailScan(rpc) {
+  const [state, setState] = (0, import_react8.useState)({ status: "idle", value: null, error: "", running: false });
+  const controller = (0, import_react8.useRef)(null);
+  (0, import_react8.useEffect)(() => () => {
+    controller.current?.abort();
+  }, []);
+  const run = async () => {
+    controller.current?.abort();
+    const local = new AbortController();
+    controller.current = local;
+    setState((previous) => previous.value ? { ...previous, running: true, error: "" } : { ...previous, status: "loading", running: true, error: "" });
+    try {
+      if (!rpc?.call) throw new Error("finance/connection");
+      const result = await rpc.call("/api", MARKET_ENDPOINT, { kind: "tail-scan" }, local.signal);
+      if (local.signal.aborted) return;
+      if (!result?.ok) throw new Error(typeof result?.error?.code === "string" ? result.error.code : "finance/tail-scan-unavailable");
+      const payload = result.value;
+      if (payload?.status === "unconfigured") {
+        setState({ status: "unconfigured", value: null, error: "", running: false });
+        return;
+      }
+      if (!payload?.tailScan || typeof payload.tailScan !== "object") throw new Error("finance/invalid");
+      setState({ status: "ready", value: payload.tailScan, error: "", running: false });
+    } catch {
+      if (local.signal.aborted) return;
+      setState((previous) => ({
+        ...previous,
+        status: previous.value ? "ready" : "error",
+        error: "finance/tail-scan-unavailable",
+        running: false
+      }));
+    }
+  };
+  return { ...state, run };
+}
 function useMarketPreference(rpc) {
   const [state, setState] = (0, import_react8.useState)({ status: "loading", enabled: false, forced: false, busy: false, error: "" });
   (0, import_react8.useEffect)(() => {
@@ -11039,6 +11169,36 @@ function StockTable({ stocks, t, format, caption, onOpen }) {
 function Movers({ breadth, t, format, onOpen }) {
   return /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-movers-grid" }, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", null, t("market.movers.title")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.movers.subtitle")))), /* @__PURE__ */ import_react10.default.createElement(StockTable, { stocks: breadth.topGainers, t, format, caption: t("market.movers.title"), onOpen })), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", null, t("market.movers.losers")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.movers.subtitle")))), /* @__PURE__ */ import_react10.default.createElement(StockTable, { stocks: breadth.topLosers, t, format, caption: t("market.movers.losers"), onOpen })), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", null, t("market.movers.amount")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.movers.subtitle")))), /* @__PURE__ */ import_react10.default.createElement(StockTable, { stocks: breadth.topAmount, t, format, caption: t("market.movers.amount"), onOpen })));
 }
+function TailScanPanel({ rpc, t, format, onOpenStock }) {
+  const scan = useTailScan(rpc);
+  const [consecutiveOnly, setConsecutiveOnly] = (0, import_react10.useState)(false);
+  const result = scan.value;
+  const streakOf = (candidate) => Math.max(
+    candidate.daily?.volumeExpansionDownStreak ?? 0,
+    candidate.daily?.volumeDeclineStreak ?? 0
+  );
+  const consecutiveCount = result?.candidates.filter((candidate) => candidate.flags.consecutive).length ?? 0;
+  const rows = result ? result.candidates.filter((candidate) => !consecutiveOnly || candidate.flags.consecutive) : [];
+  const sessionLabel = result?.sessionDate ? t(result.sessionIsToday ? "tail.session" : "tail.session-last", { date: result.sessionDate }) : "";
+  return /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-card dxs-tail", "aria-labelledby": "dxs-tail-title" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", { id: "dxs-tail-title" }, t("tail.title")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.subtitle"))), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-actions" }, result ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-updated" }, t("tail.scanned-at", { time: format.time(result.fetchedAt, t) })) : null, /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dxs-tail-run", onClick: () => {
+    void scan.run();
+  }, disabled: scan.running }, scan.running ? t("tail.running") : result ? t("tail.rerun") : t("tail.run")))), scan.status === "idle" ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.idle")) : null, scan.status === "loading" ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "status", className: "dxs-tail-loading" }, /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-dot is-live" }), t("tail.loading")) : null, scan.status === "error" ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "alert", className: "dxs-mkt-error" }, t("tail.error"), " ", /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => {
+    void scan.run();
+  } }, t("market.retry"))) : null, scan.status === "unconfigured" ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.unconfigured")) : null, result ? /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-summary" }, /* @__PURE__ */ import_react10.default.createElement("span", null, sessionLabel), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.summary", {
+    screened: format.count(result.universe.screened),
+    confirmed: format.count(result.universe.tailConfirmed),
+    consecutive: format.count(consecutiveCount)
+  })), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.coverage", { covered: format.count(result.universe.covered), expected: format.count(result.universe.expected) })), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.source"), ": ", result.source)), !result.complete ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-note" }, t("tail.incomplete")) : null, result.universe.partial ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-note" }, t("tail.partial", {
+    intraday: format.count(result.universe.failedIntraday),
+    history: format.count(result.universe.failedHistory)
+  })) : null, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-controls" }, /* @__PURE__ */ import_react10.default.createElement("label", null, /* @__PURE__ */ import_react10.default.createElement("input", { type: "checkbox", checked: consecutiveOnly, onChange: (event) => setConsecutiveOnly(event.target.checked) }), t("tail.filter-consecutive")), /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-muted" }, t("tail.score-note"))), rows.length ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-table-wrap dxs-tail-table" }, /* @__PURE__ */ import_react10.default.createElement("table", null, /* @__PURE__ */ import_react10.default.createElement("caption", null, sessionLabel), /* @__PURE__ */ import_react10.default.createElement("thead", null, /* @__PURE__ */ import_react10.default.createElement("tr", null, /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.rank")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.stock")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.change")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.amount")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.tail")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.tail-ratio")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.volume-ratio")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.streak")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.rsi")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.ma20")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.score")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.quant")))), /* @__PURE__ */ import_react10.default.createElement("tbody", null, rows.map((candidate, index) => {
+    const daily = candidate.daily;
+    const quant = candidate.quant;
+    const streak = streakOf(candidate);
+    const tailTone = candidate.tail.tailReturn === null ? "" : candidate.tail.tailReturn > 0 ? "dxs-up" : candidate.tail.tailReturn < 0 ? "dxs-down" : "";
+    return /* @__PURE__ */ import_react10.default.createElement("tr", { key: candidate.symbol, className: candidate.flags.consecutive ? "is-consecutive" : void 0 }, /* @__PURE__ */ import_react10.default.createElement("td", null, format.count(index + 1)), /* @__PURE__ */ import_react10.default.createElement("td", null, onOpenStock ? /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dxs-mkt-link", onClick: () => onOpenStock(candidate.symbol, candidate.name), title: t("market.drill.title", { name: candidate.name }) }, /* @__PURE__ */ import_react10.default.createElement("span", null, candidate.name), /* @__PURE__ */ import_react10.default.createElement("small", null, candidate.symbol)) : /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("span", null, candidate.name), /* @__PURE__ */ import_react10.default.createElement("small", null, candidate.symbol)), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-badges" }, candidate.flags.consecutive ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-tail-badge is-consecutive" }, t("tail.badge-consecutive")) : null, candidate.flags.tailDump ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-tail-badge" }, t("tail.badge-tail")) : null)), /* @__PURE__ */ import_react10.default.createElement("td", { className: textTone(candidate.changePercent) }, format.change(candidate.changePercent)), /* @__PURE__ */ import_react10.default.createElement("td", null, format.compact(candidate.amount), /* @__PURE__ */ import_react10.default.createElement("small", null, candidate.turnoverPercent == null ? "\u2014" : `${format.ratio(candidate.turnoverPercent)}%`)), /* @__PURE__ */ import_react10.default.createElement("td", { className: tailTone }, candidate.tail.tailReturn === null ? "\u2014" : format.change(candidate.tail.tailReturn * 100)), /* @__PURE__ */ import_react10.default.createElement("td", null, format.ratio(candidate.tail.tailVolumeRatio)), /* @__PURE__ */ import_react10.default.createElement("td", null, format.ratio(daily?.volumeRatio5 ?? null)), /* @__PURE__ */ import_react10.default.createElement("td", null, streak ? t("tail.streak-value", { count: format.count(streak) }) : "\u2014"), /* @__PURE__ */ import_react10.default.createElement("td", null, format.ratio(quant?.rsi14 ?? null)), /* @__PURE__ */ import_react10.default.createElement("td", { className: textTone(quant?.priceVsMa20 ?? null) }, quant?.priceVsMa20 == null ? "\u2014" : format.change(quant.priceVsMa20 * 100)), /* @__PURE__ */ import_react10.default.createElement("td", null, /* @__PURE__ */ import_react10.default.createElement("strong", null, format.count(candidate.score))), /* @__PURE__ */ import_react10.default.createElement("td", null, onOpenStock ? /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dxs-mkt-drill", onClick: () => onOpenStock(candidate.symbol, candidate.name) }, t("tail.open-quant")) : "\u2014"));
+  })))) : /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, consecutiveOnly ? t("tail.empty-filter") : t("tail.empty")), /* @__PURE__ */ import_react10.default.createElement("details", { className: "dxs-tail-method" }, /* @__PURE__ */ import_react10.default.createElement("summary", null, t("tail.definition")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.definition-body")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.score-body"))), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.quant-hint")), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.limit"))) : null);
+}
 function SectorDetail({ rpc, selection, onClose, t, format, onOpen }) {
   const detail = useBoardDetail(rpc, selection.code);
   const [active, setActive] = (0, import_react10.useState)(null);
@@ -11117,7 +11277,7 @@ function MarketView({ rpc, t, format, locale, now = () => /* @__PURE__ */ new Da
   return /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-eyebrow" }, t("market.source")), /* @__PURE__ */ import_react10.default.createElement("h2", null, t("market.title")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.subtitle"))), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-head-actions" }, /* @__PURE__ */ import_react10.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format }), /* @__PURE__ */ import_react10.default.createElement(SourceSwitch, { preference, onChange: changeSource, t }), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-updated" }, t("market.updated", { time: format.time(data.fetchedAt, t) })), /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => {
     overview.refresh();
     breadth.refresh();
-  }, disabled: overview.refreshing }, overview.refreshing ? t("market.refreshing") : t("market.refresh")))), overview.error ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, breadth.error ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-kpis" }, /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.sentiment"), value: sentiment ? `${format.count(sentiment.score)} \xB7 ${t(`market.sentiment.label.${sentiment.label}`)}` : "\u2014", note: t("market.sentiment.subtitle"), tone: sentiment ? sentiment.score >= 56 ? "dxs-up" : sentiment.score <= 44 ? "dxs-down" : "" : "" }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.breadth"), value: breadthValue ? /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-up" }, format.count(breadthValue.up)), /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-slash" }, "/"), /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-down" }, format.count(breadthValue.down))) : "\u2014", note: breadthValue ? t("market.kpi.flat-suspended", { flat: format.count(breadthValue.flat), suspended: format.count(breadthValue.suspended) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.amount"), value: breadthValue ? format.compact(breadthValue.amount) : "\u2014", note: breadthValue ? t("market.breadth.subtitle", { covered: format.count(breadthValue.covered), expected: format.count(breadthValue.expected) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.sectors"), value: sectorChanges.length ? `${format.count(positiveSectors)}/${format.count(sectorChanges.length)}` : "\u2014", note: sectorChanges.length ? t("market.kpi.sector-note", { avg: sectorAverage !== null ? format.change(sectorAverage) : "\u2014" }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.strongest"), value: strongest ? strongest.name : t("market.kpi.strongest-empty"), note: strongest ? format.change(strongest.changePercent) : void 0, tone: strongest ? textTone(strongest.changePercent) : "" }), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-kpi dxs-mkt-kpi-status" }, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-kpi-label" }, t("market.kpi.status")), /* @__PURE__ */ import_react10.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format, showTime: false }), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-kpi-note" }, t("market.status.hint")))), /* @__PURE__ */ import_react10.default.createElement(SentimentPanel, { data, breadth: breadthValue, t, format }), /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", null, t("market.indices.title")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.indices.subtitle")))), data.indices.length ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-index-grid" }, data.indices.map((index) => /* @__PURE__ */ import_react10.default.createElement(IndexCard, { key: index.code, index, t, format, onOpen: canDrillIndex(index.code) ? (code, name) => setIndexChart({ code, name }) : void 0 }))) : /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.empty")), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.drill.index-hint")), data.indices.some((index) => index.code.startsWith("HK.")) ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.hk-note")) : null, data.indices.some((index) => index.code === "SH.932000") ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.csi2000-note")) : /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.csi2000-missing"))), indexChart ? /* @__PURE__ */ import_react10.default.createElement("section", { ref: chartRef, className: "dxs-mkt-card dxs-mkt-index-chart", "aria-label": t("market.drill.index-chart", { name: indexChart.name }) }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", null, indexChart.name, " \xB7 ", indexChart.code), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.drill.index-chart-note"))), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-index-chart-actions" }, /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => chartRef.current?.querySelector(".dxs-quant")?.scrollIntoView?.({ block: "start" }) }, t("market.drill.quant-jump")), /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => setIndexChart(null) }, t("market.detail.close")))), /* @__PURE__ */ import_react10.default.createElement(StockWorkbench, { key: `index:${indexChart.code}`, symbol: indexChart.code, scope, rpc, t, format, locale })) : null, /* @__PURE__ */ import_react10.default.createElement(Heatmap, { data, selected, onSelect: setSelected, t, format }), selected ? /* @__PURE__ */ import_react10.default.createElement(SectorDetail, { key: selected.code, rpc, selection: selected, onClose: () => setSelected(null), t, format, onOpen: onOpenStock }) : null, breadthValue ? /* @__PURE__ */ import_react10.default.createElement(DistributionBar, { breadth: breadthValue, t, format }) : /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-loading", role: "status" }, /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-dot is-live" }), breadth.status === "error" ? t("market.error") : t("market.breadth.waiting"), breadth.status === "error" ? /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: breadth.refresh }, t("market.retry")) : null), breadthValue ? /* @__PURE__ */ import_react10.default.createElement(Movers, { breadth: breadthValue, t, format, onOpen: onOpenStock }) : null, /* @__PURE__ */ import_react10.default.createElement("footer", { className: "dxs-mkt-footer" }, /* @__PURE__ */ import_react10.default.createElement("details", null, /* @__PURE__ */ import_react10.default.createElement("summary", null, t("market.source.details")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.limits")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.model")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.no-persist")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.persist"))), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.not-advice"))));
+  }, disabled: overview.refreshing }, overview.refreshing ? t("market.refreshing") : t("market.refresh")))), overview.error ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, breadth.error ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t("market.error"), " \xB7 ", t("market.error-hint")) : null, /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-kpis" }, /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.sentiment"), value: sentiment ? `${format.count(sentiment.score)} \xB7 ${t(`market.sentiment.label.${sentiment.label}`)}` : "\u2014", note: t("market.sentiment.subtitle"), tone: sentiment ? sentiment.score >= 56 ? "dxs-up" : sentiment.score <= 44 ? "dxs-down" : "" : "" }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.breadth"), value: breadthValue ? /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-up" }, format.count(breadthValue.up)), /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-slash" }, "/"), /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-down" }, format.count(breadthValue.down))) : "\u2014", note: breadthValue ? t("market.kpi.flat-suspended", { flat: format.count(breadthValue.flat), suspended: format.count(breadthValue.suspended) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.amount"), value: breadthValue ? format.compact(breadthValue.amount) : "\u2014", note: breadthValue ? t("market.breadth.subtitle", { covered: format.count(breadthValue.covered), expected: format.count(breadthValue.expected) }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.sectors"), value: sectorChanges.length ? `${format.count(positiveSectors)}/${format.count(sectorChanges.length)}` : "\u2014", note: sectorChanges.length ? t("market.kpi.sector-note", { avg: sectorAverage !== null ? format.change(sectorAverage) : "\u2014" }) : t("market.kpi.waiting") }), /* @__PURE__ */ import_react10.default.createElement(Kpi, { label: t("market.kpi.strongest"), value: strongest ? strongest.name : t("market.kpi.strongest-empty"), note: strongest ? format.change(strongest.changePercent) : void 0, tone: strongest ? textTone(strongest.changePercent) : "" }), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-kpi dxs-mkt-kpi-status" }, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-kpi-label" }, t("market.kpi.status")), /* @__PURE__ */ import_react10.default.createElement(MarketStatus, { quotedAt: data.quotedAt, now, t, format, showTime: false }), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-kpi-note" }, t("market.status.hint")))), /* @__PURE__ */ import_react10.default.createElement(SentimentPanel, { data, breadth: breadthValue, t, format }), /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-card" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", null, t("market.indices.title")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.indices.subtitle")))), data.indices.length ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-index-grid" }, data.indices.map((index) => /* @__PURE__ */ import_react10.default.createElement(IndexCard, { key: index.code, index, t, format, onOpen: canDrillIndex(index.code) ? (code, name) => setIndexChart({ code, name }) : void 0 }))) : /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.empty")), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.drill.index-hint")), data.indices.some((index) => index.code.startsWith("HK.")) ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.hk-note")) : null, data.indices.some((index) => index.code === "SH.932000") ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.csi2000-note")) : /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("market.indices.csi2000-missing"))), indexChart ? /* @__PURE__ */ import_react10.default.createElement("section", { ref: chartRef, className: "dxs-mkt-card dxs-mkt-index-chart", "aria-label": t("market.drill.index-chart", { name: indexChart.name }) }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", null, indexChart.name, " \xB7 ", indexChart.code), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.drill.index-chart-note"))), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-index-chart-actions" }, /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => chartRef.current?.querySelector(".dxs-quant")?.scrollIntoView?.({ block: "start" }) }, t("market.drill.quant-jump")), /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => setIndexChart(null) }, t("market.detail.close")))), /* @__PURE__ */ import_react10.default.createElement(StockWorkbench, { key: `index:${indexChart.code}`, symbol: indexChart.code, scope, rpc, t, format, locale })) : null, /* @__PURE__ */ import_react10.default.createElement(TailScanPanel, { rpc, t, format, onOpenStock }), /* @__PURE__ */ import_react10.default.createElement(Heatmap, { data, selected, onSelect: setSelected, t, format }), selected ? /* @__PURE__ */ import_react10.default.createElement(SectorDetail, { key: selected.code, rpc, selection: selected, onClose: () => setSelected(null), t, format, onOpen: onOpenStock }) : null, breadthValue ? /* @__PURE__ */ import_react10.default.createElement(DistributionBar, { breadth: breadthValue, t, format }) : /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-card dxs-mkt-loading", role: "status" }, /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-dot is-live" }), breadth.status === "error" ? t("market.error") : t("market.breadth.waiting"), breadth.status === "error" ? /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: breadth.refresh }, t("market.retry")) : null), breadthValue ? /* @__PURE__ */ import_react10.default.createElement(Movers, { breadth: breadthValue, t, format, onOpen: onOpenStock }) : null, /* @__PURE__ */ import_react10.default.createElement("footer", { className: "dxs-mkt-footer" }, /* @__PURE__ */ import_react10.default.createElement("details", null, /* @__PURE__ */ import_react10.default.createElement("summary", null, t("market.source.details")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.limits")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.model")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.no-persist")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.source.persist"))), /* @__PURE__ */ import_react10.default.createElement("p", null, t("market.not-advice"))));
 }
 
 // src/client/market/GlobalView.tsx
@@ -11254,8 +11414,8 @@ var SEARCH_MAX_QUERY = 24;
 
 // src/client/chart/locales.ts
 var chartZh = {
-  "chart.title": "K \u7EBF \xB7 \u6210\u4EA4\u91CF \xB7 MACD \xB7 KDJ",
-  "chart.canvas": "K \u7EBF\u56FE\uFF0C\u6210\u4EA4\u91CF\u3001MACD \u4E0E KDJ \u5171\u7528\u65E5\u671F\u8F74",
+  "chart.title": "K \u7EBF \xB7 \u6210\u4EA4\u91CF \xB7 MACD \xB7 KDJ \xB7 BOLL",
+  "chart.canvas": "K \u7EBF\u56FE\uFF0C\u6210\u4EA4\u91CF\u3001MACD \u4E0E KDJ \u5171\u7528\u65E5\u671F\u8F74\uFF1B\u53EF\u53E0\u52A0 BOLL \u901A\u9053\u4E0E %B / Z-Score \u526F\u56FE",
   "chart.help": "\u70B9\u51FB\u56FE\u8868\u9501\u5B9A\u8BFB\u6570\uFF0C\u518D\u70B9\u6216\u6309 Esc \u89E3\u9501\u3002\u56FE\u8868\u83B7\u7126\u540E\u7528 \u2190 \u2192 \u9010\u6839\u67E5\u770B\uFF0CHome / End \u5230\u9996\u672B\u6839\uFF1B\u6EDA\u8F6E\u7F29\u653E\u3002\u62D6\u52A8\u5206\u9694\u7EBF\u8C03\u6574\u526F\u56FE\u9AD8\u5EA6\u3002",
   "chart.demo-watermark": "DEMO \xB7 \u5408\u6210\u6570\u636E",
   "chart.local-watermark": "\u672C\u5730\u5386\u53F2 \xB7 \u975E\u5B9E\u65F6",
@@ -11268,6 +11428,15 @@ var chartZh = {
   "chart.interval.1y": "\u5E74K",
   "chart.kdj": "KDJ",
   "chart.kdj-pane": "KDJ\uFF089, 3, 3\uFF09",
+  "chart.boll": "BOLL",
+  "chart.boll-pane": "BOLL\uFF08{period}, {multiplier}\uFF09",
+  "chart.boll-percent": "%B",
+  "chart.boll-percent-pane": "%B\uFF08{period}\uFF09",
+  "chart.zscore": "Z\uFF08\u03C3\uFF09",
+  "chart.zscore-pane": "Z-Score\uFF08{period}\uFF09\xB7 \xB12\u03C3",
+  "chart.boll-mid": "\u4E2D\u8F68\uFF08BOLL\uFF09",
+  "chart.boll-upper": "\u4E0A\u8F68\uFF08BOLL\uFF09",
+  "chart.boll-lower": "\u4E0B\u8F68\uFF08BOLL\uFF09",
   "chart.volume-pane": "\u6210\u4EA4\u91CF\uFF08\u80A1\uFF09",
   "chart.volume-pane-reported": "\u6210\u4EA4\u91CF\uFF08\u6307\u6570\u53E3\u5F84\uFF09",
   "chart.macd-pane": "MACD\uFF08{fast}, {slow}, {signal}\uFF09\xB7 \u67F1 \xD7{scale}",
@@ -11307,7 +11476,8 @@ var chartZh = {
   "chart.warmup": "\u6307\u6807\u5728\u5B8C\u6574\u9884\u70ED\u524D\u663E\u793A \u2014\u3002MACD \u9700\u8981 {required} \u6839\uFF0C\u5F53\u524D {available} \u6839\u3002",
   "chart.ma-short": "MA{period} \u9700\u8981 {period} \u6839\u65E5 K \u624D\u6709\u503C\uFF1B\u5F53\u524D\u53EA\u6709 {available} \u6839\uFF0C\u8FD9\u6761\u7EBF\u7559\u7A7A\u800C\u4E0D\u662F\u7528\u5DF2\u6709\u6570\u636E\u786C\u51D1\u3002",
   "chart.ma-other-interval": "MA{period} \u6309\u65E5\u7EBF\u5468\u671F\u8BA1\u7B97\uFF0C\u5728\u5F53\u524D {interval} \u89C6\u56FE\u4E0B\u542B\u4E49\u4E0D\u540C\uFF0C\u8BF7\u5207\u56DE\u65E5 K \u67E5\u770B\u3002",
-  "chart.method": "\u8BA1\u7B97\u53E3\u5F84\uFF1A\u72EC\u7ACB SMA \u64AD\u79CD EMA\uFF1BDIF = \u5FEB EMA \u2212 \u6162 EMA\uFF0CDEA = DIF \u7684 EMA\uFF0C\u67F1 = {scale} \xD7 (DIF \u2212 DEA)\u3002KDJ\uFF1A9 \u6839 RSV\uFF0CK/D \u4ECE 50 \u5E73\u6ED1\uFF081/3\uFF09\uFF0CJ = 3K \u2212 2D\uFF1B\u6700\u9AD8\u4EF7\u7B49\u4E8E\u6700\u4F4E\u4EF7\u65F6 RSV \u8BB0 50\u3002\u57FA\u4E8E\u5DF2\u52A0\u8F7D\u5168\u90E8\u5386\u53F2\u8BA1\u7B97\uFF0C\u4E0D\u968F\u7F29\u653E\u91CD\u7B97\u3002",
+  "chart.method": "\u8BA1\u7B97\u53E3\u5F84\uFF1A\u72EC\u7ACB SMA \u64AD\u79CD EMA\uFF1BDIF = \u5FEB EMA \u2212 \u6162 EMA\uFF0CDEA = DIF \u7684 EMA\uFF0C\u67F1 = {scale} \xD7 (DIF \u2212 DEA)\u3002KDJ\uFF1A9 \u6839 RSV\uFF0CK/D \u4ECE 50 \u5E73\u6ED1\uFF081/3\uFF09\uFF0CJ = 3K \u2212 2D\uFF1B\u6700\u9AD8\u4EF7\u7B49\u4E8E\u6700\u4F4E\u4EF7\u65F6 RSV \u8BB0 50\u3002BOLL\uFF1A{period} \u6839\u6536\u76D8\u5747\u503C\u4E3A\u4E2D\u8F68\uFF08\u4E0E MA{period} \u540C\u4E00\u53E3\u5F84\uFF09\uFF0C\u4E0A\u4E0B\u8F68\u4E3A\u4E2D\u8F68 \xB1 {multiplier} \u500D\u6837\u672C\u6807\u51C6\u5DEE\uFF08n\u22121\uFF09\uFF1B%B = (\u6536\u76D8 \u2212 \u4E0B\u8F68) / (\u4E0A\u8F68 \u2212 \u4E0B\u8F68)\uFF0CZ = (\u6536\u76D8 \u2212 \u4E2D\u8F68) / \u6807\u51C6\u5DEE\uFF0C\u6807\u51C6\u5DEE\u4E3A 0 \u65F6\u4E24\u8005\u7559\u7A7A\u3002\u57FA\u4E8E\u5DF2\u52A0\u8F7D\u5168\u90E8\u5386\u53F2\u8BA1\u7B97\uFF0C\u4E0D\u968F\u7F29\u653E\u91CD\u7B97\u3002",
+  "chart.boll-short": "BOLL \u9700\u8981 {period} \u6839\u65E5 K \u624D\u6709\u503C\uFF1B\u5F53\u524D\u53EA\u6709 {available} \u6839\uFF0C\u4E2D\u8F68\u4E0E\u4E0A\u4E0B\u8F68\u7559\u7A7A\u800C\u4E0D\u662F\u7528\u5DF2\u6709\u6570\u636E\u786C\u51D1\u3002",
   "chart.table-show": "\u67E5\u770B\u6570\u636E\u8868",
   "chart.table-hide": "\u6536\u8D77\u6570\u636E\u8868",
   "chart.table-caption": "{symbol} \xB7 \u5DF2\u52A0\u8F7D\u65E5 K \u4E0E\u6307\u6807\u6570\u636E",
@@ -11320,8 +11490,8 @@ var chartZh = {
   "chart.attribution": "\u56FE\u8868\u7531 TradingView Lightweight Charts \u63D0\u4F9B"
 };
 var chartEn = {
-  "chart.title": "Candles \xB7 Volume \xB7 MACD \xB7 KDJ",
-  "chart.canvas": "Candlestick chart with volume, MACD and KDJ on one date axis",
+  "chart.title": "Candles \xB7 Volume \xB7 MACD \xB7 KDJ \xB7 BOLL",
+  "chart.canvas": "Candlestick chart with volume, MACD and KDJ on one date axis; a BOLL channel and %B / Z-Score panes can be overlaid",
   "chart.help": "Click to lock readings; click again or press Esc to unlock. With the chart focused, use \u2190 \u2192 to move, Home / End for the first / last bar, and the wheel to zoom. Drag pane dividers to resize.",
   "chart.demo-watermark": "DEMO \xB7 SYNTHETIC DATA",
   "chart.local-watermark": "LOCAL HISTORY \xB7 NOT LIVE",
@@ -11334,6 +11504,15 @@ var chartEn = {
   "chart.interval.1y": "Yearly",
   "chart.kdj": "KDJ",
   "chart.kdj-pane": "KDJ (9, 3, 3)",
+  "chart.boll": "BOLL",
+  "chart.boll-pane": "BOLL ({period}, {multiplier})",
+  "chart.boll-percent": "%B",
+  "chart.boll-percent-pane": "%B ({period})",
+  "chart.zscore": "Z (\u03C3)",
+  "chart.zscore-pane": "Z-Score ({period}) \xB7 \xB12\u03C3",
+  "chart.boll-mid": "BOLL mid",
+  "chart.boll-upper": "BOLL upper",
+  "chart.boll-lower": "BOLL lower",
   "chart.volume-pane": "Volume (shares)",
   "chart.volume-pane-reported": "Volume (index units)",
   "chart.macd-pane": "MACD ({fast}, {slow}, {signal}) \xB7 histogram \xD7{scale}",
@@ -11373,7 +11552,8 @@ var chartEn = {
   "chart.warmup": "Indicators show \u2014 until fully warmed up. MACD needs {required} bars; {available} are loaded.",
   "chart.ma-short": "MA{period} needs {period} daily bars; only {available} are loaded, so the line stays empty instead of being padded.",
   "chart.ma-other-interval": "MA{period} is defined on daily bars; in the current {interval} view it means something else. Switch back to daily.",
-  "chart.method": "Method: independent SMA-seeded EMAs; DIF = fast EMA \u2212 slow EMA, DEA = EMA of DIF, histogram = {scale} \xD7 (DIF \u2212 DEA). KDJ: 9-bar RSV, K/D smoothed from 50 by 1/3, J = 3K \u2212 2D; RSV is 50 when high equals low. Calculated over all loaded history, independent of zoom.",
+  "chart.method": "Method: independent SMA-seeded EMAs; DIF = fast EMA \u2212 slow EMA, DEA = EMA of DIF, histogram = {scale} \xD7 (DIF \u2212 DEA). KDJ: 9-bar RSV, K/D smoothed from 50 by 1/3, J = 3K \u2212 2D; RSV is 50 when high equals low. BOLL: a {period}-close mean is the mid line (same definition as MA{period}); the bands are mid \xB1 {multiplier} sample deviations (n\u22121). %B = (close \u2212 lower) / (upper \u2212 lower); Z = (close \u2212 mid) / deviation; both stay blank when the deviation is zero. Calculated over all loaded history, independent of zoom.",
+  "chart.boll-short": "BOLL needs {period} daily bars; only {available} are loaded, so the channel stays empty instead of being padded.",
   "chart.table-show": "View data table",
   "chart.table-hide": "Hide data table",
   "chart.table-caption": "{symbol} \xB7 Loaded daily candles and indicators",
@@ -11727,7 +11907,49 @@ var marketZh = {
   "market.drill.preview": "\u6B63\u5728\u4E34\u65F6\u67E5\u770B {name} \u7684\u8BE6\u60C5\u4E0E\u65E5 K\uFF1B\u9700\u8981\u4FDD\u5B58\u65F6\u518D\u70B9\u300C\u52A0\u5165\u81EA\u9009\u300D\u3002",
   "market.drill.added": "\u5DF2\u628A {name} \u52A0\u5165\u81EA\u9009\u3002",
   "market.drill.opened": "\u5DF2\u6253\u5F00 {name} \u7684\u8BE6\u60C5\u4E0E\u65E5 K\u3002",
-  "market.drill.no-symbol": "\u8BE5\u6761\u76EE\u6CA1\u6709\u53EF\u4E0B\u94BB\u7684\u80A1\u7968\u4EE3\u7801\u3002"
+  "market.drill.no-symbol": "\u8BE5\u6761\u76EE\u6CA1\u6709\u53EF\u4E0B\u94BB\u7684\u80A1\u7968\u4EE3\u7801\u3002",
+  "tail.title": "\u5C3E\u76D8\u653E\u91CF\u4E0B\u8DCC\u626B\u63CF",
+  "tail.subtitle": "\u6700\u8FD1\u4EA4\u6613\u65E5 14:30\u201315:00 \xB7 \u5168\u5E02\u573A\u7B5B\u9009 \xB7 \u53EA\u8BFB",
+  "tail.run": "\u5F00\u59CB\u626B\u63CF",
+  "tail.rerun": "\u91CD\u65B0\u626B\u63CF",
+  "tail.running": "\u6B63\u5728\u626B\u63CF\u5168\u5E02\u573A\u2026",
+  "tail.idle": "\u5148\u6309\u6210\u4EA4\u989D\u3001\u5F53\u65E5\u8DCC\u5E45\u548C\u91CF\u6BD4\u7B5B\u51FA\u5019\u9009\uFF0C\u518D\u7528 1 \u5206\u949F\u5206\u65F6\u786E\u8BA4\u5C3E\u76D8 30 \u5206\u949F\u662F\u5426\u653E\u91CF\u4E0B\u8DCC\uFF0C\u6700\u540E\u8BFB\u53D6\u65E5\u7EBF\u505A\u91CF\u5316\u5206\u6790\u3002\u626B\u63CF\u4E0D\u4F1A\u81EA\u52A8\u8FD0\u884C\u3002",
+  "tail.loading": "\u6B63\u5728\u8BFB\u53D6\u5168\u5E02\u573A\u5FEB\u7167\u3001\u5206\u65F6\u548C\u65E5\u7EBF\u2026",
+  "tail.error": "\u5C3E\u76D8\u626B\u63CF\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
+  "tail.unconfigured": "\u5C3E\u76D8\u626B\u63CF\u5171\u7528\u672C\u673A\u514D\u8D39\u6E90\uFF1B\u8BF7\u5148\u5F00\u542F\u514D\u8D39\u6E90\u3002",
+  "tail.session": "\u4EA4\u6613\u65E5 {date}",
+  "tail.session-last": "\u6700\u8FD1\u4EA4\u6613\u65E5 {date}\uFF08\u975E\u4ECA\u65E5\uFF09",
+  "tail.scanned-at": "\u626B\u63CF\u4E8E {time}",
+  "tail.summary": "\u5019\u9009\u6C60 {screened} \xB7 \u5C3E\u76D8\u786E\u8BA4 {confirmed} \xB7 \u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC {consecutive}",
+  "tail.coverage": "\u5168\u5E02\u573A\u8986\u76D6 {covered}/{expected}",
+  "tail.partial": "\u90E8\u5206\u5206\u65F6\u6216\u65E5\u7EBF\u8BF7\u6C42\u5931\u8D25\uFF0C\u7ED3\u679C\u4E0D\u5B8C\u6574\uFF1A\u5206\u65F6\u5931\u8D25 {intraday}\uFF0C\u65E5\u7EBF\u5931\u8D25 {history}\u3002",
+  "tail.incomplete": "14:30\u201315:00 \u7684\u5C3E\u76D8\u7A97\u53E3\u672A\u7ED3\u675F\u6216\u5206\u65F6\u4E0D\u8DB3\uFF0C\u672C\u6B21\u4E0D\u628A\u76D8\u4E2D\u6570\u636E\u5F53\u4F5C\u5B8C\u6574\u5C3E\u76D8\u3002",
+  "tail.empty": "\u672C\u6B21\u6CA1\u6709\u540C\u65F6\u6EE1\u8DB3\u300C\u5C3E\u76D8\u653E\u91CF\u300D\u4E0E\u300C\u5C3E\u76D8\u4E0B\u8DCC\u300D\u7684\u80A1\u7968\u3002",
+  "tail.empty-filter": "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC\u7684\u80A1\u7968\uFF1B\u53D6\u6D88\u7B5B\u9009\u53EF\u770B\u5168\u90E8\u5C3E\u76D8\u5F02\u52A8\u3002",
+  "tail.filter-consecutive": "\u53EA\u770B\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC\uFF08\u22652 \u65E5\uFF09",
+  "tail.col.rank": "#",
+  "tail.col.stock": "\u80A1\u7968",
+  "tail.col.change": "\u5F53\u65E5\u6DA8\u8DCC",
+  "tail.col.amount": "\u6210\u4EA4\u989D / \u6362\u624B",
+  "tail.col.tail": "\u5C3E\u76D8\u6DA8\u8DCC",
+  "tail.col.tail-ratio": "\u5C3E\u76D8\u91CF\u6BD4",
+  "tail.col.volume-ratio": "\u65E5\u91CF\u6BD4(5\u65E5)",
+  "tail.col.streak": "\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC",
+  "tail.col.rsi": "RSI(14)",
+  "tail.col.ma20": "\u8DDD MA20",
+  "tail.col.score": "\u8BC4\u5206",
+  "tail.col.quant": "\u91CF\u5316",
+  "tail.open-quant": "\u67E5\u770B\u91CF\u5316",
+  "tail.badge-consecutive": "\u8FDE\u7EED\u653E\u91CF",
+  "tail.badge-tail": "\u5C3E\u76D8\u8D85\u91CF",
+  "tail.streak-value": "{count} \u65E5",
+  "tail.score-note": "\u8BC4\u5206\u4E3A\u672C\u5730\u89C4\u5219\uFF0C\u4EC5\u63CF\u8FF0\u672C\u6B21\u6837\u672C\uFF0C\u4E0D\u9884\u6D4B\u6536\u76CA\u3002",
+  "tail.definition": "\u53E3\u5F84\u4E0E\u516C\u5F0F",
+  "tail.definition-body": "\u5C3E\u76D8 = 14:30\u201315:00\uFF1B\u5C3E\u76D8\u91CF\u6BD4 = \u5C3E\u76D8\u6210\u4EA4\u91CF \xF7 10:00\u201314:30 \u5404 30 \u5206\u949F\u6210\u4EA4\u91CF\u4E2D\u4F4D\u6570\uFF1B\u5C3E\u76D8\u6DA8\u8DCC = 15:00 \u4EF7 \xF7 14:30 \u4EF7 \u2212 1\u3002\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC\u4F18\u5148\u770B\u300C\u8FDE\u7EED\u4E0B\u8DCC\u4E14\u6210\u4EA4\u91CF\u9010\u65E5\u653E\u5927\u300D\u7684\u4EA4\u6613\u65E5\u6570\uFF0C\u540C\u65F6\u7ED9\u51FA\u300C\u6210\u4EA4\u91CF \u2265 \u524D 5 \u65E5\u5747\u91CF 1.2 \u500D\u300D\u7684\u8FDE\u7EED\u5929\u6570\uFF1B\u4E24\u8005\u53D6\u8F83\u5927\u503C\u3002",
+  "tail.score-body": "\u8BC4\u5206 = \u5C3E\u76D8\u91CF\u6BD4 30 + \u5C3E\u76D8\u8DCC\u5E45 25 + \u5F53\u65E5\u8DCC\u5E45 15 + \u65E5\u91CF\u6BD4 15 + \u8FDE\u7EED\u5929\u6570 15\uFF0C\u6EE1\u5206 100\uFF1B\u7F3A\u5931\u9879\u6309 0 \u8BA1\u3002",
+  "tail.limit": "\u5206\u65F6\u6765\u81EA\u817E\u8BAF\u516C\u5F00\u63A5\u53E3\uFF0C\u65E5\u7EBF\u6765\u81EA\u540C\u4E00\u672C\u673A\u514D\u8D39\u6E90\uFF1B\u975E\u4EA4\u6613\u6240\u6388\u6743\u884C\u60C5\uFF0C\u53EF\u80FD\u5EF6\u8FDF\u3001\u9650\u6D41\u6216\u4E2D\u65AD\uFF0C\u53EA\u9002\u5408\u4E2A\u4EBA\u672C\u673A\u67E5\u770B\u3002\u626B\u63CF\u4E0D\u5305\u542B Level-2\u3001\u8D44\u91D1\u6D41\u3001\u65B0\u95FB\u6216\u4EA4\u6613\u6307\u4EE4\u3002",
+  "tail.source": "\u6570\u636E\u6765\u6E90",
+  "tail.quant-hint": "\u6253\u5F00\u4E2A\u80A1\u8BE6\u60C5\u540E\u4F1A\u663E\u793A\u65E5 K \u4E0E\u5B8C\u6574\u91CF\u5316\u9762\u677F\uFF08\u6536\u76CA\u3001\u6CE2\u52A8\u3001\u56DE\u64A4\u3001RSI\u3001ATR\u3001\u76F8\u5173\u6027\u3001\u89C4\u5219\u56DE\u6D4B\uFF09\u3002"
 };
 var marketEn = {
   "page.view.watchlist": "Watchlist",
@@ -11895,7 +12117,49 @@ var marketEn = {
   "market.drill.preview": "Previewing details and daily bars for {name}; add it to the watchlist when you want to keep it.",
   "market.drill.added": "Added {name} to the watchlist.",
   "market.drill.opened": "Opened details and daily bars for {name}.",
-  "market.drill.no-symbol": "This entry has no stock code to drill into."
+  "market.drill.no-symbol": "This entry has no stock code to drill into.",
+  "tail.title": "Late-session volume-dump scan",
+  "tail.subtitle": "Latest session 14:30\u201315:00 \xB7 whole market \xB7 read-only",
+  "tail.run": "Run scan",
+  "tail.rerun": "Run again",
+  "tail.running": "Scanning the market\u2026",
+  "tail.idle": "First screens by turnover, daily decline and volume ratio, then verifies the last 30 minutes with 1-minute data, and finally loads daily bars for quantitative context. The scan never runs automatically.",
+  "tail.loading": "Loading the market snapshot, minute lines and daily bars\u2026",
+  "tail.error": "The late-session scan is unavailable. Try again later.",
+  "tail.unconfigured": "The scan shares the local free source; turn that source on first.",
+  "tail.session": "Session {date}",
+  "tail.session-last": "Latest session {date} (not today)",
+  "tail.scanned-at": "Scanned {time}",
+  "tail.summary": "Screened {screened} \xB7 tail-confirmed {confirmed} \xB7 consecutive {consecutive}",
+  "tail.coverage": "Market coverage {covered}/{expected}",
+  "tail.partial": "Some minute or daily requests failed, so the result is incomplete: minute failures {intraday}, daily failures {history}.",
+  "tail.incomplete": "The 14:30\u201315:00 window is not complete or the minute line is short; in-session data is not presented as a completed close.",
+  "tail.empty": "No stock met both the tail-volume and tail-decline conditions in this scan.",
+  "tail.empty-filter": "No consecutive volume-decline stock matches the filter; turn it off to see every tail anomaly.",
+  "tail.filter-consecutive": "Only consecutive volume declines (>= 2 sessions)",
+  "tail.col.rank": "#",
+  "tail.col.stock": "Stock",
+  "tail.col.change": "Day change",
+  "tail.col.amount": "Turnover / rate",
+  "tail.col.tail": "Tail change",
+  "tail.col.tail-ratio": "Tail volume ratio",
+  "tail.col.volume-ratio": "Daily volume ratio (5d)",
+  "tail.col.streak": "Consecutive volume declines",
+  "tail.col.rsi": "RSI(14)",
+  "tail.col.ma20": "vs MA20",
+  "tail.col.score": "Score",
+  "tail.col.quant": "Quant",
+  "tail.open-quant": "Open quant",
+  "tail.badge-consecutive": "Consecutive",
+  "tail.badge-tail": "Tail volume",
+  "tail.streak-value": "{count} sessions",
+  "tail.score-note": "The score is a local rule describing this sample, not an expected return.",
+  "tail.definition": "Definitions and formula",
+  "tail.definition-body": "Tail = 14:30\u201315:00; tail volume ratio = tail volume \xF7 median volume of the 30-minute blocks from 10:00 to 14:30; tail change = 15:00 price \xF7 14:30 price \u2212 1. The consecutive measure uses the larger of (a) consecutive down sessions with volume above the previous session and (b) consecutive down sessions with volume at least 1.2\xD7 the prior five-day mean.",
+  "tail.score-body": "Score = tail volume ratio 30 + tail decline 25 + day decline 15 + daily volume ratio 15 + consecutive sessions 15, capped at 100; a missing component counts as zero.",
+  "tail.limit": "Minute data comes from Tencent public endpoints and daily bars from the same local free source; neither is exchange-authorised, both may delay, rate-limit or fail, and this is for local personal viewing only. The scan does not include Level-2, fund flow, news or trading instructions.",
+  "tail.source": "Source",
+  "tail.quant-hint": "Opening a stock shows its daily chart and the full quant panel (return, volatility, drawdown, RSI, ATR, correlation and rule replay)."
 };
 
 // src/client/gold-locales.ts
@@ -13280,6 +13544,25 @@ var MARKET_CSS = `
 .dxs-mkt-manual-config{margin:10px 0}
 .dxs-mkt-manual-config summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#666);font-size:10px}
 .dxs-mkt-manual-config pre{margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);font-size:11px;line-height:1.5;overflow:auto}
+.dxs-tail{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4169e1) 28%,var(--dsw-alias-border-l2,#ddd))}
+.dxs-tail-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dxs-tail-run{height:28px;padding:0 12px;border:1px solid var(--dsw-alias-brand-primary,#4169e1);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-brand-primary,#4169e1);font-size:12px;white-space:nowrap}
+.dxs-tail-run:hover:not(:disabled){background:var(--dsw-alias-brand-primary,#4169e1);color:#fff}
+.dxs-tail-run:disabled{opacity:.6;cursor:wait}
+.dxs-tail-loading{display:flex;align-items:center;gap:8px;min-height:34px;color:var(--dsw-alias-label-secondary,#666);font-size:12px}
+.dxs-tail-summary{display:flex;flex-wrap:wrap;gap:4px 16px;margin:2px 0 8px;color:var(--dsw-alias-label-secondary,#666);font-size:10px;font-variant-numeric:tabular-nums}
+.dxs-tail-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:6px 0}
+.dxs-tail-controls label{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-primary,#202124);cursor:pointer}
+.dxs-tail-controls input{width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-brand-primary,#4169e1)}
+.dxs-tail-table{max-height:420px}
+.dxs-tail-table td{vertical-align:top}
+.dxs-tail-table tbody tr.is-consecutive td{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#bc2737) 6%,transparent)}
+.dxs-tail-badges{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}
+.dxs-tail-badge{display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:4px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);color:var(--dsw-alias-label-secondary,#666);font-size:9px;line-height:1;white-space:nowrap}
+.dxs-tail-badge.is-consecutive{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#bc2737) 12%,transparent);color:var(--dsw-alias-state-error-primary,#bc2737);font-weight:650}
+.dxs-tail-method{margin-top:8px}
+.dxs-tail-method summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#666);font-size:10px}
+.dxs-tail-method p{max-width:980px}
 @media(max-width:1180px){
 .dxs-mkt-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
 .dxs-mkt-index-grid{grid-template-columns:repeat(3,minmax(0,1fr))}

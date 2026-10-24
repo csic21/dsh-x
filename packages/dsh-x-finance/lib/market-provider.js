@@ -6,8 +6,9 @@
 //
 // Only projected fields leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
-import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, isAshareMinute, } from './market.js';
+import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, isAshareMinute, } from './market.js';
 import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, parseGlobalQuotes } from './global.js';
+import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, } from './tail-scan.js';
 import { validateSymbol } from './watchlist.js';
 import { MAX_ABSOLUTE_PRICE } from './chart-data.js';
 export const MARKET_QUOTE_ENDPOINT = 'https://qt.gtimg.cn/q=';
@@ -22,6 +23,15 @@ export const MARKET_HISTORY_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/a
  */
 export const MARKET_INTRADAY_ENDPOINT = 'https://push2.eastmoney.com/api/qt/stock/trends2/get';
 export const MARKET_INTRADAY_SOURCE = '东方财富分时 (unofficial)';
+/** Tencent's own minute feed, used only by the opt-in tail scan. */
+export const MARKET_MINUTE_ENDPOINT = 'https://web.ifzq.gtimg.cn/appstock/app/minute/query';
+export const MARKET_MINUTE_SOURCE = '腾讯分时 (unofficial)';
+export const MARKET_MINUTE_MAX_BYTES = 128 * 1024;
+/** Fallback minute feed: Sina's 1-minute K-line JSONP, already used by the gold panel. */
+export const MARKET_SINA_MINUTE_ENDPOINT = 'https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData';
+export const MARKET_SINA_MINUTE_MAX_BYTES = 256 * 1024;
+export const MARKET_SINA_MINUTE_SOURCE = '新浪分时 (unofficial)';
+export const MARKET_TAIL_SOURCE = `${MARKET_SOURCE_NAME} + 腾讯/新浪分时 (unofficial)`;
 const EASTMONEY_UT = 'fa5fd1943c7b386f172d6893dbfba10b';
 export const MARKET_INTRADAY_TTL_MS = 15_000;
 export const MARKET_INTRADAY_MAX_POINTS = 300;
@@ -173,7 +183,7 @@ function assertTextResponse(response) {
     if (!response.ok)
         throw new Error(`market http ${response.status}`);
     const type = (response.headers.get('content-type') ?? '').toLowerCase();
-    if (type && !type.includes('json') && !type.startsWith('text/'))
+    if (type && !type.includes('json') && !type.includes('javascript') && !type.startsWith('text/'))
         throw new Error('market response type');
 }
 function sleep(ms) {
@@ -352,6 +362,189 @@ export function parseStockQuote(key, fields, now) {
         // claiming a session state it cannot verify.
         marketStatus: 'unknown',
     };
+}
+/**
+ * Parses the fields the tail scan needs. A missing or malformed field makes the
+ * row unusable rather than being replaced by a zero; the scan then has fewer
+ * candidates, which is honest. Exported for tests.
+ */
+export function parseTailQuote(key, fields, now) {
+    const match = /^(sh|sz|bj)(\d{6})$/.exec(key);
+    if (!match)
+        return null;
+    const market = match[1];
+    const digits = match[2];
+    if (fields[2] !== digits)
+        return null;
+    const name = cleanText(fields[1], 64);
+    const price = finiteNumber(fields[3], 0.0001, 1e9);
+    const changePercent = finiteNumber(fields[32], -1000, 1000);
+    const previousClose = finiteNumber(fields[4], 0.0001, 1e9);
+    const volumeLots = finiteNumber(fields[6], 0, 1e15);
+    const amountWan = finiteNumber(fields[37], 0, 1e12);
+    const turnoverPercent = finiteNumber(fields[38], 0, 1000);
+    const volumeRatio = finiteNumber(fields[49], 0, 1e4);
+    if (!name || price === null || changePercent === null || previousClose === null
+        || volumeLots === null || amountWan === null || turnoverPercent === null
+        || volumeRatio === null || !(amountWan > 0) || !(volumeRatio > 0))
+        return null;
+    const quotedAt = parseTencentTimestamp(fields[30], now);
+    return {
+        symbol: `${market.toUpperCase()}.${digits}`,
+        name,
+        price,
+        pricePrecision: quotePrecision(fields[3]),
+        changePercent,
+        previousClose,
+        volumeLots,
+        amount: amountWan * 10_000,
+        turnoverPercent,
+        volumeRatio,
+        quotedAt,
+        sessionDate: quotedAt.slice(0, 10),
+    };
+}
+/**
+ * Tencent's minute rows are `HHmm price cumulativeVolume cumulativeAmount`, not
+ * per-minute values, and the feed appends after-hours rows beyond 15:00. This
+ * parser keeps only A-share minutes, differences the cumulative counters, and
+ * drops non-monotonic rows instead of turning them into negative volume.
+ * Exported for tests.
+ */
+export function parseTencentMinutePayload(payload, symbol, now) {
+    const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`;
+    const entry = payload?.data?.[code];
+    const block = entry?.data;
+    const rows = block?.data;
+    if (!block || !Array.isArray(rows))
+        throw new Error('minute missing');
+    if (rows.length > 400)
+        throw new Error('minute response too large');
+    const stamp = /^(\d{4})(\d{2})(\d{2})$/.exec(String(block.date ?? ''));
+    if (!stamp)
+        throw new Error('minute session date');
+    const sessionDate = `${stamp[1]}-${stamp[2]}-${stamp[3]}`;
+    if (sessionDate > shanghaiToday(now))
+        throw new Error('minute session date is in the future');
+    const quote = entry?.qt?.[code];
+    const name = Array.isArray(quote) ? cleanText(quote[1], 64) : null;
+    const previousClose = Array.isArray(quote) ? finiteNumber(quote[4], 0.0001, 1e12) : null;
+    const points = [];
+    let previousVolume = 0;
+    let previousAmount = 0;
+    let previousTime = '';
+    for (const raw of rows) {
+        if (typeof raw !== 'string')
+            continue;
+        const fields = raw.trim().split(/\s+/);
+        if (fields.length < 4)
+            continue;
+        const clock = fields[0];
+        if (!/^\d{4}$/.test(clock))
+            continue;
+        const time = `${clock.slice(0, 2)}:${clock.slice(2)}`;
+        if (!isAshareMinute(time) || time <= previousTime)
+            continue;
+        const price = finiteNumber(fields[1], 0.0001, 1e12);
+        const cumulativeVolume = finiteNumber(fields[2], 0, Number.MAX_SAFE_INTEGER);
+        const cumulativeAmount = finiteNumber(fields[3], 0, Number.MAX_SAFE_INTEGER);
+        if (price === null || cumulativeVolume === null || cumulativeAmount === null)
+            continue;
+        // A reset or a skipped upstream row must not fabricate negative volume.
+        if (cumulativeVolume < previousVolume || cumulativeAmount < previousAmount) {
+            previousVolume = cumulativeVolume;
+            previousAmount = cumulativeAmount;
+            continue;
+        }
+        const volume = cumulativeVolume - previousVolume;
+        const amount = cumulativeAmount - previousAmount;
+        previousVolume = cumulativeVolume;
+        previousAmount = cumulativeAmount;
+        previousTime = time;
+        points.push({ time, price, volume, amount });
+    }
+    if (points.length < 2)
+        throw new Error('minute empty');
+    if (points.length > MARKET_INTRADAY_MAX_POINTS)
+        throw new Error('minute too many points');
+    return {
+        symbol,
+        name: name ?? symbol,
+        sessionDate,
+        previousClose,
+        points,
+    };
+}
+/**
+ * Sina's minute K-line is a JSONP array of `{day, open, high, low, close,
+ * volume, amount}` rows. Volume is shares and amount is CNY. The feed may carry
+ * the previous session too, so only the newest session date is kept. Exported
+ * for tests.
+ */
+export function parseSinaMinutePayload(text, symbol, now, previousClose = null) {
+    const match = /var\s+_data\s*=\s*\((\[.*\])\)/s.exec(String(text));
+    if (!match)
+        throw new Error('sina minute missing');
+    let rows;
+    try {
+        rows = JSON.parse(match[1]);
+    }
+    catch {
+        throw new Error('sina minute invalid json');
+    }
+    if (!Array.isArray(rows) || !rows.length || rows.length > 400)
+        throw new Error('sina minute invalid rows');
+    let sessionDate = '';
+    const parsed = [];
+    for (const row of rows) {
+        if (!row || typeof row !== 'object')
+            continue;
+        const stamp = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}):\d{2}$/.exec(String(row.day ?? ''));
+        if (!stamp)
+            continue;
+        const date = stamp[1];
+        if (date > sessionDate) {
+            sessionDate = date;
+            parsed.length = 0;
+        }
+        if (date !== sessionDate)
+            continue;
+        const time = `${stamp[2]}:${stamp[3]}`;
+        if (!isAshareMinute(time))
+            continue;
+        const price = finiteNumber(row.close, 0.0001, 1e12);
+        const volume = finiteNumber(row.volume, 0, Number.MAX_SAFE_INTEGER);
+        const amount = finiteNumber(row.amount, 0, Number.MAX_SAFE_INTEGER);
+        if (price === null || volume === null || amount === null)
+            continue;
+        parsed.push({ time, price, volume, amount });
+    }
+    if (!sessionDate || !parsed.length)
+        throw new Error('sina minute empty');
+    if (sessionDate > shanghaiToday(now))
+        throw new Error('sina minute session date is in the future');
+    const unique = new Map(parsed.map(point => [point.time, point]));
+    const points = [...unique.values()].sort((left, right) => left.time.localeCompare(right.time));
+    if (points.length < 2)
+        throw new Error('sina minute short');
+    return { symbol, name: symbol, sessionDate, previousClose, points };
+}
+export async function loadTailMinuteSeries(symbol, previousClose, options) {
+    try {
+        const payload = await options.request(tencentMinuteUrl(symbol), 'utf-8', MARKET_MINUTE_MAX_BYTES);
+        const value = JSON.parse(payload);
+        return parseTencentMinutePayload(value, symbol, options.now());
+    }
+    catch {
+        const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`;
+        const query = `?symbol=${encodeURIComponent(code)}&scale=1&ma=no&datalen=300`;
+        const text = await options.request(`${MARKET_SINA_MINUTE_ENDPOINT}${query}`, 'gbk', MARKET_SINA_MINUTE_MAX_BYTES);
+        return parseSinaMinutePayload(text, symbol, options.now(), previousClose);
+    }
+}
+export function tencentMinuteUrl(symbol) {
+    const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`;
+    return `${MARKET_MINUTE_ENDPOINT}?code=${encodeURIComponent(code)}`;
 }
 function parseBoardQuote(key, fields, now, rank) {
     const code = key.slice(4);
@@ -589,7 +782,7 @@ export function createTencentMarketProvider(options = {}) {
         return value;
     }
     async function quoteBatch(codes, { requireAny = true } = {}) {
-        if (!codes.length || codes.length > 300)
+        if (!codes.length || codes.length > MARKET_MAX_QUOTE_BATCH)
             throw new Error('invalid market quote batch');
         const text = await request(`${MARKET_QUOTE_ENDPOINT}${codes.join(',')}`, 'gbk', MARKET_MAX_BYTES);
         // An empty body means the request itself failed; a body without any usable
@@ -759,7 +952,12 @@ export function createTencentMarketProvider(options = {}) {
             sectors: sectors.slice(0, MARKET_MAX_SECTORS),
         };
     }
-    async function loadBreadth() {
+    /**
+     * The full valid A-share list, not only the breadth aggregates. The board and
+     * the tail scan share this one cached fetch sequence, so opening the scan
+     * does not re-download the market the page already loaded.
+     */
+    async function loadBreadthRowsRaw() {
         const first = await retry(() => requestJson(`${MARKET_STOCK_RANK_ENDPOINT}?_appver=11.17.0&board_code=aStock&sort_type=turnover&direct=down&offset=0&count=${MARKET_PAGE_SIZE}`), 2);
         const firstPage = parseStockRankPage(first);
         const pages = Math.min(MARKET_MAX_PAGES, Math.ceil(firstPage.total / MARKET_PAGE_SIZE));
@@ -777,16 +975,28 @@ export function createTencentMarketProvider(options = {}) {
                 return null;
             }
         });
-        const rows = [];
+        const unique = new Map();
         let failed = 0;
         for (const result of results) {
             if (!result) {
                 failed++;
                 continue;
             }
-            rows.push(...result.page.rows);
+            for (const stock of result.page.rows)
+                if (!unique.has(stock.code))
+                    unique.set(stock.code, stock);
         }
-        return buildBreadth(rows, firstPage.total, failed > 0, now());
+        const rows = [...unique.values()];
+        if (!rows.length || rows.length < firstPage.total * 0.9)
+            throw new Error('market breadth coverage too low');
+        return { rows, expected: firstPage.total, partial: failed > 0 };
+    }
+    function loadBreadthRows() {
+        return getOrLoad('breadth-rows', breadthTtlMs, loadBreadthRowsRaw);
+    }
+    async function loadBreadth() {
+        const state = await loadBreadthRows();
+        return buildBreadth(state.rows, state.expected, state.partial, now());
     }
     async function retry(action, attempts) {
         let error;
@@ -904,6 +1114,168 @@ export function createTencentMarketProvider(options = {}) {
             now: now(),
         });
     }
+    /**
+     * Market-wide late-session scan. Stage 1 uses the already-cached breadth list
+     * and batched quotes to find liquid decliners with volume expansion; stage 2
+     * fetches minute lines and keeps only a falling tail with excessive volume;
+     * stage 3 fetches daily bars for the survivors and computes the daily
+     * volume-decline context plus the same quant snapshot used by the chart.
+     * Every stage is bounded and a failed symbol is counted, never filled in.
+     */
+    async function loadTailScan() {
+        const stamp = now();
+        const breadthState = await loadBreadthRows();
+        const pool = breadthState.rows.filter(stock => !stock.suspended
+            && stock.price > 0
+            && stock.changePercent <= TAIL_SCAN_MIN_DAY_CHANGE
+            && stock.amount >= TAIL_SCAN_MIN_AMOUNT
+            && !/^(?:\*?ST|S\*ST)(?![A-Za-z])/i.test(stock.name)
+            && !/^退市/.test(stock.name)
+            && !/^[NC]/.test(stock.name));
+        const quotes = new Map();
+        let quoteFailures = 0;
+        for (let offset = 0; offset < pool.length; offset += MARKET_MAX_QUOTE_BATCH) {
+            const batch = pool.slice(offset, offset + MARKET_MAX_QUOTE_BATCH);
+            const codes = batch.map(stock => `${stock.code.slice(0, 2).toLowerCase()}${stock.code.slice(3)}`);
+            try {
+                const rows = await retry(() => quoteBatch(codes), 2);
+                for (const [key, fields] of rows) {
+                    try {
+                        const quote = parseTailQuote(key, fields, stamp);
+                        if (quote)
+                            quotes.set(quote.symbol, quote);
+                    }
+                    catch { /* one malformed line must not hide the pool */ }
+                }
+            }
+            catch {
+                quoteFailures += batch.length;
+            }
+        }
+        let sessionDate = null;
+        for (const quote of quotes.values())
+            if (!sessionDate || quote.sessionDate > sessionDate)
+                sessionDate = quote.sessionDate;
+        if (!sessionDate) {
+            return {
+                source: MARKET_TAIL_SOURCE,
+                fetchedAt: isoNow(stamp),
+                sessionDate: null,
+                sessionIsToday: false,
+                complete: false,
+                universe: {
+                    expected: breadthState.expected, covered: breadthState.rows.length, screened: 0,
+                    intradayChecked: 0, tailConfirmed: 0, historyChecked: 0,
+                    failedIntraday: 0, failedHistory: 0, partial: breadthState.partial || quoteFailures > 0,
+                },
+                filters: TAIL_SCAN_FILTERS,
+                candidates: [],
+            };
+        }
+        const activeSession = sessionDate;
+        const screened = [...quotes.values()].filter(quote => quote.sessionDate === activeSession
+            && quote.changePercent <= TAIL_SCAN_MIN_DAY_CHANGE
+            && quote.volumeRatio >= TAIL_SCAN_MIN_VOLUME_RATIO
+            && quote.amount >= TAIL_SCAN_MIN_AMOUNT).sort((left, right) => {
+            const score = (quote) => (-quote.changePercent) * 0.5
+                + Math.log(Math.max(quote.volumeRatio, 0.1)) * 2
+                + Math.log10(Math.max(quote.amount, 1)) * 0.2;
+            return score(right) - score(left) || left.symbol.localeCompare(right.symbol);
+        });
+        const intradayPool = screened.slice(0, TAIL_SCAN_MAX_INTRADAY);
+        const checked = [];
+        let failedIntraday = 0;
+        await mapLimit(intradayPool, Math.min(4, concurrency), async (quote) => {
+            try {
+                const series = await loadTailMinuteSeries(quote.symbol, quote.previousClose, { request, now });
+                if (series.sessionDate !== activeSession)
+                    throw new Error('minute session mismatch');
+                const tail = computeTailMetrics(series.points, { sessionDate: activeSession, previousClose: quote.previousClose });
+                checked.push({ quote, tail });
+            }
+            catch {
+                failedIntraday++;
+            }
+        });
+        const confirmed = checked.filter(item => item.tail.complete
+            && item.tail.tailVolumeRatio !== null
+            && item.tail.tailVolumeRatio >= TAIL_SCAN_MIN_TAIL_RATIO
+            && item.tail.tailReturn !== null
+            && item.tail.tailReturn <= TAIL_SCAN_MIN_TAIL_CHANGE);
+        const historyCandidates = confirmed.map(item => {
+            const scored = scoreTailCandidate({
+                tailReturn: item.tail.tailReturn,
+                tailVolumeRatio: item.tail.tailVolumeRatio,
+                changePercent: item.quote.changePercent,
+                daily: null,
+            });
+            return {
+                symbol: item.quote.symbol,
+                name: item.quote.name,
+                price: item.quote.price,
+                changePercent: item.quote.changePercent,
+                amount: item.quote.amount,
+                turnoverPercent: item.quote.turnoverPercent,
+                volumeRatio: item.quote.volumeRatio,
+                fiveMinuteChange: null,
+                sessionDate: activeSession,
+                tail: item.tail,
+                daily: null,
+                quant: null,
+                historyAvailable: false,
+                adjustment: null,
+                ...scored,
+            };
+        }).sort((left, right) => right.score - left.score);
+        const forHistory = historyCandidates.slice(0, TAIL_SCAN_MAX_HISTORY);
+        let failedHistory = 0;
+        await mapLimit(forHistory, Math.min(4, concurrency), async (candidate) => {
+            try {
+                const history = await loadHistory(candidate.symbol, 'forward', 250);
+                const daily = computeDailyVolumeContext(history.bars, activeSession);
+                const quant = tailQuantFromBars(history.bars);
+                const scored = scoreTailCandidate({
+                    tailReturn: candidate.tail.tailReturn,
+                    tailVolumeRatio: candidate.tail.tailVolumeRatio,
+                    changePercent: candidate.changePercent,
+                    daily: daily.samples > 0 ? daily : null,
+                });
+                candidate.daily = daily.samples > 0 ? daily : null;
+                candidate.quant = quant;
+                candidate.adjustment = history.adjustment;
+                candidate.historyAvailable = daily.samples > 0;
+                candidate.score = scored.score;
+                candidate.factors = scored.factors;
+                candidate.flags = scored.flags;
+            }
+            catch {
+                failedHistory++;
+            }
+        });
+        const candidates = historyCandidates
+            .sort((left, right) => right.score - left.score)
+            .slice(0, TAIL_SCAN_MAX_RESULTS);
+        return {
+            source: MARKET_TAIL_SOURCE,
+            fetchedAt: isoNow(stamp),
+            sessionDate: activeSession,
+            sessionIsToday: activeSession === shanghaiToday(stamp),
+            complete: checked.length > 0 && checked.every(item => item.tail.complete),
+            universe: {
+                expected: breadthState.expected,
+                covered: breadthState.rows.length,
+                screened: screened.length,
+                intradayChecked: intradayPool.length,
+                tailConfirmed: confirmed.length,
+                historyChecked: forHistory.length,
+                failedIntraday,
+                failedHistory,
+                partial: breadthState.partial || quoteFailures > 0 || failedIntraday > 0 || failedHistory > 0,
+            },
+            filters: TAIL_SCAN_FILTERS,
+            candidates,
+        };
+    }
     function getOrLoad(key, ttl, loader) {
         const cached = cache.get(key);
         if (cached && cached.expires > now())
@@ -968,6 +1340,7 @@ export function createTencentMarketProvider(options = {}) {
             const symbol = validateSymbol(input);
             return getOrLoad(`intraday:${symbol}`, MARKET_INTRADAY_TTL_MS, () => loadIntraday(symbol));
         },
+        tailScan: () => getOrLoad('tail-scan', TAIL_SCAN_TTL_MS, loadTailScan),
     };
 }
 /** Shanghai / Shenzhen are market 1 / 0. Beijing shares the Shenzhen market id; the codes do not overlap. */

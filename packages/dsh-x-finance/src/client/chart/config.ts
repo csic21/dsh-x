@@ -1,10 +1,24 @@
 import type { MacdParams } from '../../indicators.ts'
 import { CHART_MA_PERIODS } from '../../indicators.ts'
-export interface ChartConfig { maVisible: Record<number, boolean>; macd: MacdParams; difVisible: boolean; deaVisible: boolean; kdjVisible: boolean }
+export interface ChartConfig {
+  maVisible: Record<number, boolean>
+  macd: MacdParams
+  difVisible: boolean
+  deaVisible: boolean
+  kdjVisible: boolean
+  bollVisible: boolean
+  percentBVisible: boolean
+  zscoreVisible: boolean
+}
 /**
  * The short trio stays on by default because it is what the chart always showed.
  * MA50/MA250 are opt-in: they need 50 and 250 bars of warm-up, so a fresh view
  * should not open with two blank lines the reader has to explain away.
+ *
+ * BOLL and Z-Score open on: they are the price channel and its normalised
+ * deviation, and the reader asked for the mean line explicitly. %B is the same
+ * deviation on a 0–1 scale, so it starts hidden — three deviation readouts in
+ * one view would be two panes too many.
  */
 const DEFAULT_MA_VISIBLE = Object.freeze({ 5: true, 10: true, 20: true, 50: false, 250: false })
 export const DEFAULT_CHART_CONFIG = Object.freeze({
@@ -13,6 +27,9 @@ export const DEFAULT_CHART_CONFIG = Object.freeze({
   difVisible: true,
   deaVisible: true,
   kdjVisible: true,
+  bollVisible: true,
+  percentBVisible: false,
+  zscoreVisible: true,
 })
 export function normalizeChartConfig(raw: unknown = {}): ChartConfig {
   const value = raw as Record<string, any>
@@ -25,11 +42,15 @@ export function normalizeChartConfig(raw: unknown = {}): ChartConfig {
     || macd.fast >= macd.slow || ![1, 2].includes(macd.histScale)) throw new Error('chart.parameters-invalid')
   // A setting saved before MA50/MA250 existed has no keys for them; those fall
   // back to their own defaults instead of being read as "hidden by the user".
+  // The same rule keeps charts saved before BOLL/%B/Z-Score from hiding them.
   return {
     maVisible: Object.fromEntries(CHART_MA_PERIODS.map(n => [n, Object.hasOwn(value.maVisible ?? {}, n) ? value.maVisible[n] !== false : DEFAULT_MA_VISIBLE[n as keyof typeof DEFAULT_MA_VISIBLE]])),
     macd,
     difVisible: value.difVisible !== false,
     deaVisible: value.deaVisible !== false,
     kdjVisible: value.kdjVisible !== false,
+    bollVisible: value.bollVisible !== false,
+    percentBVisible: value.percentBVisible === true,
+    zscoreVisible: value.zscoreVisible !== false,
   }
 }

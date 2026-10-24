@@ -1,4 +1,5 @@
 import type { MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider, MarketIntraday } from './market.ts';
+import type { TailMinutePoint } from './tail-scan.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank";
 export declare const MARKET_STOCK_RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList";
@@ -11,6 +12,15 @@ export declare const MARKET_HISTORY_ENDPOINT = "https://proxy.finance.qq.com/ifz
  */
 export declare const MARKET_INTRADAY_ENDPOINT = "https://push2.eastmoney.com/api/qt/stock/trends2/get";
 export declare const MARKET_INTRADAY_SOURCE = "\u4E1C\u65B9\u8D22\u5BCC\u5206\u65F6 (unofficial)";
+/** Tencent's own minute feed, used only by the opt-in tail scan. */
+export declare const MARKET_MINUTE_ENDPOINT = "https://web.ifzq.gtimg.cn/appstock/app/minute/query";
+export declare const MARKET_MINUTE_SOURCE = "\u817E\u8BAF\u5206\u65F6 (unofficial)";
+export declare const MARKET_MINUTE_MAX_BYTES: number;
+/** Fallback minute feed: Sina's 1-minute K-line JSONP, already used by the gold panel. */
+export declare const MARKET_SINA_MINUTE_ENDPOINT = "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData";
+export declare const MARKET_SINA_MINUTE_MAX_BYTES: number;
+export declare const MARKET_SINA_MINUTE_SOURCE = "\u65B0\u6D6A\u5206\u65F6 (unofficial)";
+export declare const MARKET_TAIL_SOURCE = "\u817E\u8BAF\u884C\u60C5 (unofficial) + \u817E\u8BAF/\u65B0\u6D6A\u5206\u65F6 (unofficial)";
 export declare const MARKET_INTRADAY_TTL_MS = 15000;
 export declare const MARKET_INTRADAY_MAX_POINTS = 300;
 export declare const MARKET_TIMEOUT_MS = 10000;
@@ -113,6 +123,58 @@ interface StockRankPage {
 export declare function parseStockRankPage(payload: any): StockRankPage;
 /** Parses one `v_sh600519="..."` stock line into the projected quote. */
 export declare function parseStockQuote(key: string, fields: string[], now: number): MarketQuote;
+/** Extra Tencent quote fields used only by the local tail scan. */
+export interface TailQuote {
+    symbol: string;
+    name: string;
+    price: number;
+    pricePrecision: number | null;
+    changePercent: number;
+    previousClose: number;
+    /** Today's volume in lots (手), the source's own unit. */
+    volumeLots: number;
+    /** Turnover in CNY. */
+    amount: number;
+    turnoverPercent: number;
+    /** Tencent's daily volume ratio (量比), not the tail ratio. */
+    volumeRatio: number;
+    quotedAt: string;
+    sessionDate: string;
+}
+/**
+ * Parses the fields the tail scan needs. A missing or malformed field makes the
+ * row unusable rather than being replaced by a zero; the scan then has fewer
+ * candidates, which is honest. Exported for tests.
+ */
+export declare function parseTailQuote(key: string, fields: string[], now: number): TailQuote | null;
+export interface TailMinuteSeries {
+    symbol: string;
+    name: string;
+    sessionDate: string;
+    previousClose: number | null;
+    /** Per-minute deltas; volume is lots and amount is CNY. */
+    points: TailMinutePoint[];
+}
+/**
+ * Tencent's minute rows are `HHmm price cumulativeVolume cumulativeAmount`, not
+ * per-minute values, and the feed appends after-hours rows beyond 15:00. This
+ * parser keeps only A-share minutes, differences the cumulative counters, and
+ * drops non-monotonic rows instead of turning them into negative volume.
+ * Exported for tests.
+ */
+export declare function parseTencentMinutePayload(payload: any, symbol: string, now: number): TailMinuteSeries;
+/**
+ * Sina's minute K-line is a JSONP array of `{day, open, high, low, close,
+ * volume, amount}` rows. Volume is shares and amount is CNY. The feed may carry
+ * the previous session too, so only the newest session date is kept. Exported
+ * for tests.
+ */
+export declare function parseSinaMinutePayload(text: string, symbol: string, now: number, previousClose?: number | null): TailMinuteSeries;
+export declare function loadTailMinuteSeries(symbol: string, previousClose: number | null, options: {
+    request: (url: string, encoding: 'utf-8' | 'gbk', maxBytes: number) => Promise<string>;
+    now: () => number;
+}): Promise<TailMinuteSeries>;
+export declare function tencentMinuteUrl(symbol: string): string;
 /** Daily rows arrive as arrays; a malformed row is dropped, never repaired. */
 export interface RawDailyRow {
     sessionDate: string;

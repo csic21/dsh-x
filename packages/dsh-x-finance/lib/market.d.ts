@@ -1,9 +1,12 @@
 import type { GlobalMarketOverview } from './global.ts';
+import type { TailScanResult } from './tail-scan.ts';
 export declare const MARKET_ENDPOINT = "dsh-x-finance.market";
 export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
 export declare const MARKET_SOURCE_NAME = "\u817E\u8BAF\u884C\u60C5 (unofficial)";
 /** One batched request covers the whole fixed bottom bar. */
 export declare const MARKET_MAX_QUOTES = 8;
+/** Internal batch size for the market-wide scan; one URL stays far below the response cap. */
+export declare const MARKET_MAX_QUOTE_BATCH = 600;
 export declare const MARKET_MAX_BOARD_STOCKS = 200;
 export declare const MARKET_MAX_SECTORS = 200;
 export declare const MARKET_MAX_STOCKS = 12000;
@@ -218,7 +221,11 @@ export type MarketGlobalResult = MarketUnconfigured | {
     status: 'ready';
     global: GlobalMarketOverview;
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult;
+export type MarketTailScanResult = MarketUnconfigured | {
+    status: 'ready';
+    tailScan: TailScanResult;
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -239,6 +246,8 @@ export type MarketRequest = {
     symbol: string;
 } | {
     kind: 'global';
+} | {
+    kind: 'tail-scan';
 };
 /** Daily bars requested by one history call. Bounded for response size. */
 export declare const MARKET_HISTORY_DEFAULT_LIMIT = 250;
@@ -281,6 +290,11 @@ export interface MarketProvider {
      * instead of failing the whole source.
      */
     globalOverview?(): Promise<GlobalMarketOverview>;
+    /**
+     * Market-wide late-session volume-dump scan. Optional: an adapter without
+     * minute data leaves this panel unavailable instead of failing the board.
+     */
+    tailScan?(): Promise<TailScanResult>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {
