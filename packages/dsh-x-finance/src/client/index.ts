@@ -59,7 +59,7 @@ export function apply(ctx: any) {
     hooks: { watchlist: controller.source },
     retryScope: () => { void loadScope() },
     add: (item: any) => { controller.add(item); controller.select(item.symbol) },
-    remove: controller.remove, move: controller.move, select: controller.select, collapse: controller.collapse,
+    remove: controller.remove, move: controller.move, select: controller.select, preview: controller.preview, collapse: controller.collapse,
     setFixed: controller.setFixed, toggleBar: controller.toggleBar, hideBar: controller.toggleBar,
     open: (symbol: any) => { if (symbol) controller.select(symbol); ctx.layout.selectPanel('dsh-x-finance') },
     back: () => ctx.layout.selectPanel(null),

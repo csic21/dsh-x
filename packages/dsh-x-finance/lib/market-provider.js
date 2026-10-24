@@ -36,7 +36,11 @@ const INDEXES = [
     { quote: 'sh000300', code: 'SH.000300', market: 'cn' },
     { quote: 'sh000688', code: 'SH.000688', market: 'cn' },
     { quote: 'bj899050', code: 'BJ.899050', market: 'cn' },
-    // Broad small/mid-cap coverage that the same Tencent endpoint answers for.
+    // Broad large/mid/small-cap coverage that the same Tencent endpoint answers
+    // for. 中证500 and 中证800 complete the 300/500/800/1000 ladder; without them
+    // the board jumps from 沪深300 straight to 中证1000.
+    { quote: 'sh000905', code: 'SH.000905', market: 'cn' },
+    { quote: 'sh000906', code: 'SH.000906', market: 'cn' },
     { quote: 'sh000852', code: 'SH.000852', market: 'cn' },
     { quote: 'sh000985', code: 'SH.000985', market: 'cn' },
     // Hang Seng family: Tencent answers these under its HK index namespace.

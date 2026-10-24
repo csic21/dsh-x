@@ -44,6 +44,10 @@ const indexLines = [
   ['sh000300', 'CSI300', 4170.61, 0.11, 41374930],
   ['sh000688', 'STAR50', 1358.65, -0.06, 7160760],
   ['bj899050', 'BSE50', 950, -1.81, 1381161],
+  ['sh000905', 'CSI500', 6814.44, 2.39, 33694093],
+  ['sh000906', 'CSI800', 4567.26, 1.89, 89514592],
+  ['sh000852', 'CSI1000', 6734.55, 2.38, 37768870],
+  ['sh000985', 'CSI All Share', 5253.73, 1.93, 187682549],
 ] as const
 const boardLines = MARKET_LEVEL1.map((item, index) => boardLine(item.code, `Board ${index}`, index % 2 ? -0.5 : 0.8, 1000 + index, 2000 + index, 1)).join('\n')
 const batchText = `${indexLines.map(line => indexLine(line[0], line[1], line[2], line[3], line[4])).join('\n')}\n${boardLines}`
@@ -231,7 +235,7 @@ test('CSI 2000 is supplemented from East Money when available and omitted otherw
   })
   const without = await fallback.overview()
   assert.equal(without.indices.some(index => index.code === 'SH.932000'), false)
-  assert.equal(without.indices.length, 6)
+  assert.equal(without.indices.length, 10)
 })
 
 test('HK timestamps reject malformed, impossible and future stamps', () => {
@@ -241,17 +245,27 @@ test('HK timestamps reject malformed, impossible and future stamps', () => {
   }
 })
 
-test('overview projects six indices and all 31 industries; board detail stays bounded', async () => {
+test('overview projects the ten mainland indices and all 31 industries; board detail stays bounded', async () => {
   let fetches = 0
   const provider = createTencentMarketProvider({
     fetchImpl: (async (input: any) => { fetches++; return fakeFetch(String(input)) }) as typeof fetch,
     now: () => NOW,
   })
   const overview = await provider.overview()
-  assert.equal(overview.indices.length, 6)
+  assert.equal(overview.indices.length, 10)
   assert.equal(overview.sectors.filter(sector => sector.level === 1).length, 31)
   assert.equal(overview.indices[0]!.name, 'SSE')
   assert.equal(overview.indices[0]!.amount, 732_475_190_000)
+  // The 300/500/800/1000 ladder is complete and parsed like every other index.
+  const ladder = ['SH.000300', 'SH.000905', 'SH.000906', 'SH.000852']
+  assert.deepEqual(overview.indices.filter(index => ladder.includes(index.code)).map(index => index.code), ladder)
+  const csi800 = overview.indices.find(index => index.code === 'SH.000906')!
+  assert.equal(csi800.name, 'CSI800')
+  assert.equal(csi800.price, 4567.26)
+  assert.equal(csi800.changePercent, 1.89)
+  assert.equal(csi800.amount, 895_145_920_000)
+  assert.equal(csi800.quotedAt, '2026-10-16T15:00:00+08:00')
+  assert.equal(overview.indices.find(index => index.code === 'SH.000905')!.name, 'CSI500')
   const electronics = overview.sectors.find(sector => sector.code === '801080')!
   assert.equal(electronics.name, 'Board 4')
   assert.equal(electronics.marketCap, 1004 * 1e8)

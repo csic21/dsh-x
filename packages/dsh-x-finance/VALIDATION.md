@@ -1,3 +1,11 @@
+## CSI 500 / CSI 800 added to the index board — 2026-10-24
+
+- Gap: the board listed 沪深300 and then jumped straight to 中证1000, so the 300/500/800/1000 ladder had two holes. Both missing indices are answered by the same Tencent endpoint already in use; no new source, host or token was added.
+- Catalogue: `sh000905` (中证500) and `sh000906` (中证800) are now entries in the fixed `INDEXES` list, parsed by the same `parseIndexQuote` path. Live single request confirmed both return the expected columns (name, price, previous close, open, `fields[30]` stamp, change, change percent, high, low, `fields[37]` turnover).
+- Drill-down: both match `canDrillIndex` (`SH.\d{6}`, only `SH.932000` excluded), so their cards open the inline daily chart and the quant panel. `newfqkline` returns a `day` array for `sh000906`, so the history route works for it.
+- Tests: the offline fixture now carries all four ladder indices plus 中证全指, and the overview test asserts the ladder order, the 中证800 price/percent/turnover/timestamp projection, and that the card count grew by two. The view test asserts 中证500 and 中证800 cards are clickable while 中证2000 and the HK cards are not.
+- Not verified: real Desktop pixels for the two new cards, and whether adding two more codes changes the single batched request's latency in a meaningful way.
+
 ## Expanded index board — 2026-10-23
 
 - `pnpm --filter dsh-x-finance test`: **220 tests, 0 failed**; typecheck and build pass. New cases cover the Hang Seng batch line and slash timestamp, the HK namespace and null turnover, the A-share clock staying on the mainland close, the best-effort CSI 2000 supplement, and its omission when the source does not answer.
@@ -20,6 +28,13 @@
 - The sandbox egress returned HTTP 403 when several probes were issued in quick succession, so live checks were spaced out; the endpoint itself answered every paced request. Sustained upstream rate limits and the real Desktop pixel layout are **not** verified. No licensed, real-time, level-2, news or trading feed is claimed.
 
 # Finance validation
+
+## Market drill-down is a preview, not a watchlist write — 2026-10-24
+
+- Bug: opening a stock from the market panorama (mover rows, constituent rows, the selected-tile action) called `add()`, so a stock that was not on the watchlist was **persisted** into it before being shown. Browsing the market silently edited the saved list.
+- Fix: the controller gained a session-only `preview` field. A drill-down for a stock that is not on the list now calls `preview(symbol, name)`; the detail stage renders the previewed stock (quote + daily chart) with a banner and an explicit "加入自选" action. Only that action calls `add()`. Selecting a saved row, adding the stock, changing scope, or closing the preview clears it; the preview is never persisted and never appears in the rail or the fixed bar.
+- Tests: `pnpm --filter dsh-x-finance test` — **221 tests, 0 failed**; `tsc -p tsconfig.json` and the package build pass. New coverage: controller preview writes nothing and is cleared by select/add/scope change (watchlist tests), and the jsdom market drill-down asserts `add()` is not called, the preview banner is shown, saving is the only write, and dismissing saves nothing (market-view tests). The built-client integration test still passes.
+- Not verified: the Desktop pixel layout of the new preview banner; behaviour is asserted in jsdom only.
 
 ## Quoted price width — 2026-10-23
 

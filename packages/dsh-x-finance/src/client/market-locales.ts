@@ -161,8 +161,9 @@ export const marketZh = {
   'market.drill.open': '查看详情',
   'market.drill.aria': '查看 {name} 的详情与日 K',
   'market.drill.column': '操作',
-  'market.drill.hint': '点击涨幅/成交额榜或成分股可直接进入该股详情与日 K；未加入自选的股票会先加入自选（不固定）并打开。',
-  'market.drill.added': '已加入自选并打开 {name} 的日 K。',
+  'market.drill.hint': '点击涨幅/成交额榜或成分股可直接进入该股详情与日 K；不在自选里的股票只临时查看，不改动自选清单。',
+  'market.drill.preview': '正在临时查看 {name} 的详情与日 K；需要保存时再点「加入自选」。',
+  'market.drill.added': '已把 {name} 加入自选。',
   'market.drill.opened': '已打开 {name} 的详情与日 K。',
   'market.drill.no-symbol': '该条目没有可下钻的股票代码。',
 }
@@ -328,8 +329,9 @@ export const marketEn = {
   'market.drill.open': 'Details',
   'market.drill.aria': 'Open details and daily bars for {name}',
   'market.drill.column': 'Action',
-  'market.drill.hint': 'Select a gainer/turnover row or a constituent to open its details and daily chart. A stock that is not on the watchlist yet is added to it (unfixed) and opened.',
-  'market.drill.added': 'Added {name} to the watchlist and opened its daily chart.',
+  'market.drill.hint': 'Select a gainer/turnover row or a constituent to open its details and daily chart. A stock that is not on the watchlist is shown as a preview and never edits the list by itself.',
+  'market.drill.preview': 'Previewing details and daily bars for {name}; add it to the watchlist when you want to keep it.',
+  'market.drill.added': 'Added {name} to the watchlist.',
   'market.drill.opened': 'Opened details and daily bars for {name}.',
   'market.drill.no-symbol': 'This entry has no stock code to drill into.',
 }

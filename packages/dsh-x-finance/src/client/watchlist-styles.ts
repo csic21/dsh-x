@@ -63,6 +63,8 @@ export const WATCHLIST_CSS = `
 .dxs-stage-hint{margin:8px 0 0}
 .dxs-stage-empty{display:flex;flex-direction:column;gap:8px}
 .dxs-stage-empty h2{margin:0;font-size:18px}
+.dxs .dxs-symbol-line .dxs-preview-add{height:20px;margin-left:8px;padding:0 8px;border-color:color-mix(in srgb,var(--dxs-accent) 45%,var(--dxs-line));border-radius:999px;background:transparent;color:var(--dxs-accent);font-size:11px;font-weight:600}
+.dxs .dxs-symbol-line .dxs-preview-add:hover:not(:disabled){background:color-mix(in srgb,var(--dxs-accent) 10%,var(--dxs-bg))}
 .dxs-instrument-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px 20px;margin:0 0 8px;padding:2px 2px 12px;border:0;border-radius:0;background:transparent}
 .dxs-quote-identity{min-width:0}
 .dxs-instrument-summary h2{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:22px;font-weight:650;line-height:1.2;letter-spacing:-.01em}

@@ -41,6 +41,14 @@ declare const INDEXES: readonly [{
     readonly code: 'BJ.899050';
     readonly market: 'cn';
 }, {
+    readonly quote: 'sh000905';
+    readonly code: 'SH.000905';
+    readonly market: 'cn';
+}, {
+    readonly quote: 'sh000906';
+    readonly code: 'SH.000906';
+    readonly market: 'cn';
+}, {
     readonly quote: 'sh000852';
     readonly code: 'SH.000852';
     readonly market: 'cn';

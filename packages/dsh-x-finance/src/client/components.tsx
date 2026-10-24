@@ -103,14 +103,18 @@ function AddStock({ add, count, fixedCount, ready, rpc, t, format }: any) {
     {error && <p role="alert" className="dxs-error">{t(error, { max: format.count(error === 'error.fixed-limit' ? MAX_FIXED : MAX_WATCHLIST) })}</p>}
   </form>
 }
-function Detail({ item, useResource, t, format, scope, locale, rpc }: any) {
+function Detail({ item, previewing, onAdd, useResource, t, format, scope, locale, rpc }: any) {
   const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol)
   const changeTone = tone(quote?.changePercent)
   return <article aria-label={t('detail.aria', { symbol: item.symbol })}>
     <section className="dxs-section dxs-instrument-summary">
       <div className="dxs-quote-identity">
         <h2>{item.alias || quote?.name || item.symbol}</h2>
-        <p className="dxs-symbol-line"><span className="dxs-symbol">{item.symbol}</span>{item.alias ? t('detail.alias') : ''}{item.fixed ? t('detail.fixed') : ''}</p>
+        <p className="dxs-symbol-line"><span className="dxs-symbol">{item.symbol}</span>{item.alias ? t('detail.alias') : ''}{item.fixed ? t('detail.fixed') : ''}{previewing ? t('detail.preview') : ''}
+          {/* A preview is opened from the market and is not on the list yet;
+              saving it is this one explicit, compact action. */}
+          {previewing && onAdd ? <button type="button" className="dxs-preview-add" onClick={onAdd} title={t('detail.preview.add-hint')}>{t('detail.preview.add-short')}</button> : null}
+        </p>
       </div>
       <div className="dxs-quote-figures">
         <div className={`dxs-price ${changeTone}`}>{format.priceAt(quote?.price, quote?.pricePrecision)}</div>
@@ -127,10 +131,14 @@ function Detail({ item, useResource, t, format, scope, locale, rpc }: any) {
     </div>
   </article>
 }
-export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, select, setFixed, toggleBar, back, retryScope, t, format, getLocale = () => 'en' }: any) {
+export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, select, preview, setFixed, toggleBar, back, retryScope, t, format, getLocale = () => 'en' }: any) {
   const state = useWatchlist((value: any) => value)
   const preference = useMarketPreference(rpc)
-  const item = state.items.find((entry: any) => entry.symbol === state.selectedSymbol) ?? state.items[0]
+  // A preview is what the reader is looking at right now, so it outranks the
+  // saved row that happened to be selected before the drill-down.
+  const previewItem = state.preview ? { symbol: state.preview.symbol, alias: state.preview.name, fixed: false } : null
+  const selected = previewItem ? undefined : state.items.find((entry: any) => entry.symbol === state.selectedSymbol)
+  const item = previewItem ?? selected ?? state.items[0]
   const fixedCount = fixedItems(state.items).length
   const [view, setView] = useState<'watchlist' | 'market' | 'global' | 'gold'>('watchlist')
   const [fixError, setFixError] = useState('')
@@ -143,21 +151,26 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
   /**
    * Drill-down from the panorama: an exchange-qualified symbol opens the stock
    * detail and its daily chart. A stock that is not on the watchlist is opened
-   * without being added to it; only the selection changes.
+   * as a preview — nothing is written to the saved list until the reader adds
+   * it on purpose, so clicking around the market never edits the watchlist.
    */
   const openStock = (symbol: any, name: any) => {
     if (typeof symbol !== 'string' || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) { setDrillNotice(t('market.drill.no-symbol')); return }
     const known = state.items.some((entry: any) => entry.symbol === symbol)
     try {
-      if (!known) {
-        // The controller's select() only publishes a selection, so an unknown
-        // symbol has to be added to the list first; keep it unfixed.
-        add({ symbol, alias: name, fixed: false })
-      } else {
-        select(symbol)
-      }
-      setDrillNotice(t(known ? 'market.drill.opened' : 'market.drill.added', { name: name || symbol }))
+      if (known) select(symbol)
+      else preview(symbol, name)
+      setDrillNotice(t(known ? 'market.drill.opened' : 'market.drill.preview', { name: name || symbol }))
       setView('watchlist')
+    } catch (failure: any) {
+      setDrillNotice(errorKey(failure?.code))
+    }
+  }
+  const addPreview = (entry: any) => {
+    try {
+      add({ symbol: entry.symbol, alias: entry.alias, fixed: false })
+      select(entry.symbol)
+      setDrillNotice(t('market.drill.added', { name: entry.alias || entry.symbol }))
     } catch (failure: any) {
       setDrillNotice(errorKey(failure?.code))
     }
@@ -226,7 +239,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
         </aside>
         <div className="dxs-stage">
           {state.scopeStatus === 'ready' && (item
-            ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
+            ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} previewing={Boolean(previewItem)} onAdd={previewItem && state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
             : <div className="dxs-stage-empty"><h2>{t('page.select')}</h2><p className="dxs-muted">{t('page.select-hint')}</p><StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} rpc={rpc} /></div>)}
         </div>
       </div>

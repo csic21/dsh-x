@@ -163,6 +163,8 @@ test('the index grid adds mainland broad indices and Hang Seng quotes without in
       extraIndex('SH.000300', '沪深300', 4105.33, 1.71),
       extraIndex('SH.000688', '科创50', 1345.51, 3.04),
       extraIndex('BJ.899050', '北证50', 984.9, 1.88),
+      extraIndex('SH.000905', '中证500', 6814.44, 1.42),
+      extraIndex('SH.000906', '中证800', 4567.26, 1.89),
       extraIndex('SH.000852', '中证1000', 6734.55, 2.38),
       extraIndex('SH.000985', '中证全指', 5253.73, 1.93),
       extraIndex('HK.HSI', '恒生指数', 23093.37, 0.69),
@@ -183,12 +185,15 @@ test('the index grid adds mainland broad indices and Hang Seng quotes without in
   const h = await harness({ rpc })
   try {
     const cards = [...h.document.querySelectorAll<HTMLElement>('.dxs-mkt-index')]
-    assert.equal(cards.length, 13)
+    assert.equal(cards.length, 15)
     const byText = (text: string) => cards.find(card => card.textContent?.includes(text))
     assert.equal(byText('恒生指数')!.getAttribute('role'), null)
     assert.equal(byText('恒生科技指数')!.getAttribute('role'), null)
     assert.equal(byText('中证2000')!.getAttribute('role'), null)
     assert.equal(byText('中证1000')!.getAttribute('role'), 'button')
+    // 中证500/800 are mainland indices with a working history route, so they drill down.
+    assert.equal(byText('中证500')!.getAttribute('role'), 'button')
+    assert.equal(byText('中证800')!.getAttribute('role'), 'button')
     assert.match(byText('恒生指数')!.textContent ?? '', /GMT\+8/)
     assert.match(h.document.body.textContent ?? '', /港股指数按香港时间显示/)
     assert.match(h.document.body.textContent ?? '', /中证2000 由东方财富公开接口补充/)
@@ -388,15 +393,17 @@ test('market panorama drills into a stock and the workbench requests its daily b
   }
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('root')!)
-  const added: any[] = [], selected: any[] = []
-  const state: any = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: null }
+  const added: any[] = [], selected: any[] = [], previews: any[] = []
+  const state: any = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: null, preview: null }
   const useWatchlist = (selector: any) => selector(state)
   const useResource = () => ({ status: 'live', value: null })
   const noop = () => {}
   try {
     await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
-      useWatchlist, useResource, add: (item: any) => { added.push(item); state.items.push({ ...item }); state.selectedSymbol = item.symbol },
-      remove: noop, move: noop, select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol }, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
+      useWatchlist, useResource, add: (item: any) => { added.push(item); state.items.push({ ...item }); state.preview = null; state.selectedSymbol = item.symbol },
+      remove: noop, move: noop, select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol; state.preview = null },
+      preview: (symbol: any, name: any) => { previews.push({ symbol, name }); state.preview = { symbol, name } },
+      setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
       t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
     })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
@@ -411,15 +418,40 @@ test('market panorama drills into a stock and the workbench requests its daily b
     assert.ok(drill, 'constituent rows must offer a drill-down action')
     await act(async () => drill!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-    // An unknown stock is added unfixed and selected, never silently fixed.
-    assert.deepEqual(added, [{ symbol: 'SH.688825', alias: '长鑫科技', fixed: false }])
-    assert.match(dom.window.document.body.textContent ?? '', /已加入自选并打开/)
+    // An unknown stock opens as a preview: the watchlist is not touched.
+    assert.deepEqual(previews, [{ symbol: 'SH.688825', name: '长鑫科技' }])
+    assert.deepEqual(added, [], 'drilling into a stock must not add it to the watchlist')
+    assert.match(dom.window.document.body.textContent ?? '', /正在临时查看 长鑫科技/)
+    assert.match(dom.window.document.body.textContent ?? '', /临时查看（未加入自选）/)
     assert.equal(tabs[0]!.getAttribute('aria-pressed'), 'true')
-    // The stub workbench receives the drilled symbol; the real component then
+    // The stub workbench receives the previewed symbol; the real component then
     // requests its history (covered by workbench/history tests).
     const mounted = (globalThis as any).__workbenchStub.calls.at(-1)
     assert.equal(mounted.symbol, 'SH.688825')
     assert.equal(mounted.rpc, rpc)
+    // Saving is an explicit second step, and it is the only thing that writes.
+    const save = dom.window.document.querySelector<HTMLElement>('.dxs-preview-add')
+    assert.ok(save, 'the preview offers an explicit add action')
+    assert.equal(save!.textContent, '加入自选')
+    await act(async () => save!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.deepEqual(added, [{ symbol: 'SH.688825', alias: '长鑫科技', fixed: false }])
+    assert.match(dom.window.document.body.textContent ?? '', /已把 长鑫科技 加入自选/)
+    assert.equal(dom.window.document.querySelector('.dxs-preview-add'), null, 'the add action disappears once the stock is saved')
+    // Choosing a saved row is how a preview is left; the list is never written.
+    await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const moverAgain = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-mkt-movers-grid .dxs-mkt-link')][0]
+    await act(async () => moverAgain!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.equal(state.preview?.symbol, 'BJ.920196')
+    assert.ok(dom.window.document.querySelector('.dxs-preview-add'), 'the preview keeps offering the add action')
+    const savedRow = dom.window.document.querySelector<HTMLElement>('.dxs-rail .dxs-select')
+    assert.ok(savedRow, 'the saved stock is listed in the rail')
+    await act(async () => savedRow!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.equal(state.preview, null, 'selecting a saved row leaves the preview')
+    assert.deepEqual(added, [{ symbol: 'SH.688825', alias: '长鑫科技', fixed: false }], 'leaving a preview saves nothing')
   } finally {
     await act(async () => root.unmount())
     dom.window.close()
@@ -448,15 +480,17 @@ test('a mover row and an index card drill down without touching the watchlist', 
   }
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('root')!)
-  const added: any[] = [], selected: any[] = []
-  const state: any = { items: [{ symbol: 'SH.600519', alias: '茅台', fixed: false }], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: 'SH.600519' }
+  const added: any[] = [], selected: any[] = [], previews: any[] = []
+  const state: any = { items: [{ symbol: 'SH.600519', alias: '茅台', fixed: false }], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: 'SH.600519', preview: null }
   const useWatchlist = (selector: any) => selector(state)
   const useResource = () => ({ status: 'live', value: null })
   const noop = () => {}
   try {
     await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
       useWatchlist, useResource, add: (item: any) => added.push(item), remove: noop, move: noop,
-      select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol }, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
+      select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol; state.preview = null },
+      preview: (symbol: any, name: any) => { previews.push({ symbol, name }); state.preview = { symbol, name } },
+      setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
       t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
     })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
@@ -467,8 +501,9 @@ test('a mover row and an index card drill down without touching the watchlist', 
     assert.ok(mover, 'mover rows must offer a drill-down action')
     await act(async () => mover!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-    assert.deepEqual(added, [{ symbol: 'BJ.920196', alias: 'N南乳', fixed: false }])
-    assert.match(dom.window.document.body.textContent ?? '', /已加入自选并打开/)
+    assert.deepEqual(previews, [{ symbol: 'BJ.920196', name: 'N南乳' }])
+    assert.deepEqual(added, [], 'a mover row opens a preview, not a watchlist write')
+    assert.match(dom.window.document.body.textContent ?? '', /正在临时查看 N南乳/)
     // An index is opened too, but it is not an exchange-qualified A-share, so it
     // must not be written to the watchlist.
     await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
@@ -482,7 +517,8 @@ test('a mover row and an index card drill down without touching the watchlist', 
     assert.ok(indexPrice, 'index card price is rendered')
     await act(async () => indexPrice!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-    assert.deepEqual(added, [{ symbol: 'BJ.920196', alias: 'N南乳', fixed: false }], 'indices never enter the A-share watchlist')
+    assert.deepEqual(added, [], 'indices never enter the A-share watchlist')
+    assert.deepEqual(previews, [{ symbol: 'BJ.920196', name: 'N南乳' }], 'an index is not previewed as a stock')
     assert.match(dom.window.document.body.textContent ?? '', /上证指数 · SH\.000001/)
     assert.match(dom.window.document.body.textContent ?? '', /指数日 K 来自同一个本机免费源/)
     const chart = (globalThis as any).__workbenchStub.calls.at(-1)

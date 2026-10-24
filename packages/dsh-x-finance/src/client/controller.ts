@@ -1,11 +1,24 @@
-import { MAX_FIXED, MAX_WATCHLIST, fixedItems, watchlistError, normalizeItem, parseSaved, scopedStorageKey, validateScope, legacyScopedStorageKey, previousScopedStorageKeys } from '../watchlist.ts'
+import { MAX_FIXED, MAX_WATCHLIST, fixedItems, watchlistError, normalizeItem, parseSaved, scopedStorageKey, validateScope, validateSymbol, legacyScopedStorageKey, previousScopedStorageKeys } from '../watchlist.ts'
 import type { WatchlistItem } from '../watchlist.ts'
-export interface WatchlistState { items: WatchlistItem[]; collapsed: boolean; barHidden: boolean; storageError: string; scopeStatus: string; scopeId: string | null; placement: string; selectedSymbol: string | null }
+/**
+ * A stock opened from the market panorama without being on the watchlist. It is
+ * shown in the detail stage for this session only; saving it stays an explicit
+ * decision, so browsing the market never rewrites the user's list.
+ */
+export interface WatchlistPreview { symbol: string; name: string }
+export interface WatchlistState { items: WatchlistItem[]; collapsed: boolean; barHidden: boolean; storageError: string; scopeStatus: string; scopeId: string | null; placement: string; selectedSymbol: string | null; preview: WatchlistPreview | null }
 export function createWatchlistController(storage?: any, eventTarget?: any) {
   const listeners = new Set<any>()
   let storageKey: any = null
-  let state: WatchlistState = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'loading', scopeId: null, placement: 'waiting', selectedSymbol: null }
-  const publish = (patch: any) => { state = { ...state, ...patch }; for (const listener of listeners) listener() }
+  let state: WatchlistState = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'loading', scopeId: null, placement: 'waiting', selectedSymbol: null, preview: null }
+  const publish = (patch: any) => {
+    const next = { ...state, ...patch }
+    // A preview is only ever an unsaved view: once the stock is on the list,
+    // the list item is the truth and the preview stops being a preview.
+    if (next.preview && next.items.some((item: WatchlistItem) => item.symbol === next.preview!.symbol)) next.preview = null
+    state = next
+    for (const listener of listeners) listener()
+  }
   const persist = (patch: any) => {
     if (!storageKey || state.scopeStatus !== 'ready') throw watchlistError('scope-loading')
     publish(patch)
@@ -39,11 +52,22 @@ export function createWatchlistController(storage?: any, eventTarget?: any) {
           ?? null
         saved = parseSaved(raw)
       } catch { storageError = 'storage-read' }
-      publish({ ...saved, selectedSymbol: saved.items[0]?.symbol ?? null, storageError, scopeStatus: 'ready', scopeId: scope })
+      publish({ ...saved, selectedSymbol: saved.items[0]?.symbol ?? null, storageError, scopeStatus: 'ready', scopeId: scope, preview: null })
     },
-    scopeLoading: () => { storageKey = null; publish({ scopeStatus: 'loading', scopeId: null, items: [], selectedSymbol: null, collapsed: false, barHidden: false }) },
-    scopeFailed: () => { storageKey = null; publish({ items: [], selectedSymbol: null, scopeStatus: 'failed', scopeId: null, storageError: 'scope-unavailable' }) },
-    select: (symbol: any) => publish({ selectedSymbol: symbol }),
+    scopeLoading: () => { storageKey = null; publish({ scopeStatus: 'loading', scopeId: null, items: [], selectedSymbol: null, collapsed: false, barHidden: false, preview: null }) },
+    scopeFailed: () => { storageKey = null; publish({ items: [], selectedSymbol: null, scopeStatus: 'failed', scopeId: null, storageError: 'scope-unavailable', preview: null }) },
+    select: (symbol: any) => publish({ selectedSymbol: symbol, preview: null }),
+    /**
+     * Show one stock from the market without touching the saved list. Selecting
+     * a watchlist row closes the preview again, and adding the stock promotes
+     * it to a real item, so browsing never rewrites the user's watchlist.
+     */
+    preview(symbol: any, name: any) {
+      const target = validateSymbol(symbol)
+      if (state.items.some(item => item.symbol === target)) { publish({ selectedSymbol: target, preview: null }); return }
+      const label = typeof name === 'string' ? name.trim().slice(0, 24) : ''
+      publish({ preview: { symbol: target, name: label } })
+    },
     setPlacement: (placement: any) => { if (state.placement !== placement) publish({ placement }) },
     add(raw: any) {
       const item = normalizeItem(raw)

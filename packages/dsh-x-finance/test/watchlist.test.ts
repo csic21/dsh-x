@@ -70,6 +70,38 @@ test('a version 1 record under the legacy key is imported once and rewritten as 
   assert.equal(fresh.source.getSnapshot().items[0].fixed, true)
 })
 
+test('previewing a market stock never writes it to the watchlist; adding is the only write', () => {
+  const data = new Map<string, any>(), writes: any[] = []
+  const storage: any = { getItem: (storageKey: any) => data.get(storageKey), setItem: (storageKey: any, value: any) => { writes.push(value); data.set(storageKey, value) } }
+  const c = createWatchlistController(storage)
+  c.setScope(scope)
+  c.add({ symbol: 'SH.600519', alias: '贵州茅台' })
+  const saved = writes.at(-1)
+  c.preview('SZ.002594', '比亚迪')
+  assert.deepEqual(c.source.getSnapshot().preview, { symbol: 'SZ.002594', name: '比亚迪' })
+  // A preview is view state only: nothing is persisted and the list is unchanged.
+  assert.equal(writes.at(-1), saved)
+  assert.deepEqual(c.source.getSnapshot().items.map((item: any) => item.symbol), ['SH.600519'])
+  assert.throws(() => c.preview('AAPL', 'Apple'))
+  // Previewing a stock already on the list just selects it.
+  c.preview('SH.600519', '贵州茅台')
+  assert.equal(c.source.getSnapshot().preview, null)
+  assert.equal(c.source.getSnapshot().selectedSymbol, 'SH.600519')
+  // Selecting a saved row closes the preview too.
+  c.preview('SZ.002594', '比亚迪')
+  c.select('SH.600519')
+  assert.equal(c.source.getSnapshot().preview, null)
+  // Adding the previewed stock promotes it and clears the preview.
+  c.preview('SZ.002594', '比亚迪')
+  c.add({ symbol: 'SZ.002594', alias: '比亚迪' })
+  assert.equal(c.source.getSnapshot().preview, null)
+  assert.deepEqual(c.source.getSnapshot().items.map((item: any) => item.symbol), ['SH.600519', 'SZ.002594'])
+  // Scope changes drop the transient preview instead of carrying it across.
+  c.preview('BJ.430047', '诺思兰德')
+  c.scopeLoading()
+  assert.equal(c.source.getSnapshot().preview, null)
+})
+
 test('storage denial is visible and keeps edits in memory; another window syncs', () => {
   const events = new EventTarget()
   const c=createWatchlistController({getItem(){throw Error()},setItem(){throw Error()}},events)
