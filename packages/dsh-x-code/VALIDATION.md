@@ -2,7 +2,7 @@
 
 ## Current scope
 
-Validated with official DSH `0.2.1-rc.2`, Cordis `4.0.5`, Node 24. Current repository run: 354 tests, 353 passed, 1 skipped; the Code package contributes 39 of them. Code registers three tools: `dsh_x_code_inspect`, `dsh_x_code_file` and `dsh_x_code_review`; `dsh_x_code_repair` no longer exists.
+Validated with official DSH `0.2.1-rc.3`, Cordis `4.0.5`, Node 24. Current repository run: 453 tests, 452 passed, 1 skipped; the Code package contributes 39 of them. Code registers three tools: `dsh_x_code_inspect`, `dsh_x_code_file` and `dsh_x_code_review`; `dsh_x_code_repair` no longer exists.
 
 Covered through official Cordis, ToolRuntime, LlmRuntime, managed subprocess, approval bridges, and durable records:
 

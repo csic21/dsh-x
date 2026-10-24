@@ -1,18 +1,26 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "package": "@deepseek-ai/dsh",
   "registry": "https://registry.npmjs.org",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
   "baseline": {
     "npmTag": "next",
-    "version": "0.2.1-rc.2",
-    "integrity": "sha512-tvY+yhfKRifthbqPe/OK0AYxM5ZkvqfYq/jMYgJcEUxiRRL1Vwra3Ti5TB6AXgSWQdiPHYh/Vp6SJa9yHwMNuw==",
+    "version": "0.2.1-rc.3",
+    "integrity": "sha512-H+E9HLnHf7fJqzen84Z9Bq8ggb5xbrcbyhZjXTJLE9NabHr3zteGvTRvdvGkxPl4ov80is4WLglFmSo+/olJjg==",
     "status": "cli-qualified",
-    "inspectedSourceCommit": "687f282e8625c6b8d11ff58211a90524be2e4317"
+    "verifiedAt": "2026-10-24"
   },
   "additionalBaselines": [
     {
       "npmTag": "latest",
+      "version": "0.2.1-rc.2",
+      "integrity": "sha512-tvY+yhfKRifthbqPe/OK0AYxM5ZkvqfYq/jMYgJcEUxiRRL1Vwra3Ti5TB6AXgSWQdiPHYh/Vp6SJa9yHwMNuw==",
+      "status": "prior-qualified",
+      "verifiedAt": "2026-10-18",
+      "scope": "build, typecheck and the full suite passed on this baseline before rc.3 took over; the current checkout is not re-run against it, and the shared range still admits it"
+    },
+    {
+      "npmTag": "latest-before-rc2",
       "version": "0.2.0-rc.2",
       "integrity": "sha512-EAJ3gPNcVt/uv8X19PMm9NkVhWgT7xXNMk0UKCVm+IQ5rpSQOcsMUa0HWlnYYVybKMsccjcRB21vVVsaXQ6IdA==",
       "status": "peer-admission-smoke",
@@ -20,9 +28,9 @@
       "scope": "installation and Web startup only; native vendor paths, Electron and model calls stay unverified"
     }
   ],
-  "supportedPeerRange": "^0.2.0-rc.2 || ^0.2.1-rc.2",
+  "supportedRuntimeRange": "^0.2.0-rc.2 || ^0.2.1-rc.2",
   "prereleases": "explicit-opt-in",
-  "admission": "exact-engines-and-human-qualification",
+  "admission": "range-engines-and-human-qualification",
   "pluginDirectories": [
     "packages/dsh-x-code",
     "packages/dsh-x-finance",

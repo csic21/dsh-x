@@ -6,8 +6,15 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { marketInstallTarget, parseMarketIndex } from '@deepseek-ai/dsh-plugin-market-index'
+import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+const policy = JSON.parse(readFileSync(path.join(root, 'compatibility/policy.json'), 'utf8'))
+// What Discover computes for one market entry: the official evaluator reads
+// `engines.dsh` alone, exactly like installation and profile boot do.
+const admitted = (name, version, runtime) => evaluatePluginCompatibility(
+  { name, version: version.version, engines: { dsh: version.engines.dsh } }, {}, runtime,
+) === undefined
 
 test('generated market index parses as format 1 with commit-pinned Git install targets', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'dsh-x-market-'))
@@ -45,11 +52,22 @@ test('generated market index parses as format 1 with commit-pinned Git install t
       assert.ok(plugin.icon?.startsWith('https://csic21.github.io/dsh-x/icons/'), plugin.name)
       assert.equal(plugin.repository?.url, 'https://github.com/csic21/dsh-x')
       assert.equal(plugin.repository?.directory, `packages/${plugin.name}`)
+      // The newest entry is what Discover offers, so it must carry the shared
+      // range: an exact pin there hides the plugin from every other runtime the
+      // range admits. Historical entries keep whatever their own manifest
+      // declared, which is why older exact pins stay listed and refused.
+      // A package with uncommitted changes has no entry for its new version yet
+      // (the generator skips it), so this holds for clean packages only.
+      if (clean(plugin.name)) {
+        assert.equal(plugin.versions[0].engines.dsh, policy.supportedRuntimeRange, `${plugin.name} ${plugin.versions[0].version}`)
+        for (const runtime of [policy.baseline.version, ...(policy.additionalBaselines ?? []).map(baseline => baseline.version)]) {
+          assert.ok(admitted(plugin.name, plugin.versions[0], runtime), `${plugin.name} ${plugin.versions[0].version} must install on ${runtime}`)
+        }
+      }
       for (const version of plugin.versions) {
         assert.equal(version.source.type, 'git')
         assert.match(version.source.commit, /^[0-9a-f]{40}$/)
         assert.equal(version.source.path, `packages/${plugin.name}`)
-        assert.equal(version.engines.dsh, '0.2.1-rc.2')
         assert.ok(Number.isSafeInteger(version.publishTimestamp) && version.publishTimestamp > 0)
         const target = marketInstallTarget(plugin.name, version)
         assert.equal(target.spec, `git+https://github.com/csic21/dsh-x.git#${version.source.commit}&path:/packages/${plugin.name}`)

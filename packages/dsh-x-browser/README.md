@@ -1,6 +1,6 @@
 # dsh-x-browser
 
-Experimental, opt-in Desktop browser plugin for DSH `0.2.1-rc.2`.
+Experimental, opt-in Desktop browser plugin for DSH `0.2.1-rc.3` and the `^0.2.0-rc.2 || ^0.2.1-rc.2` runtime range.
 
 This package is **opt-in and never installed by default**; install it explicitly from the market index. Electron and packaged-app behavior is not verified in this repository: the automated evidence here is Web-side unit and integration testing only, and earlier packaged-app proofs lived in the separate app repository. Treat it as experimental until a packaged Desktop run is recorded again. Source/API compatibility and automated unit tests alone do not establish packaged Desktop compatibility.
 

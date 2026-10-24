@@ -6,7 +6,7 @@
 
 ## 配置与使用
 
-通过包内 `dsh.bundle.patch` 和 `cordis.patch.yml` 注册 Cordis 插件；需要宿主提供 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`。本实现按官方内核 `v0.2.1-rc.2` 的 `defineTool` 接口编写，运行时 Node.js 22 或更新版本。
+通过包内 `dsh.bundle.patch` 和 `cordis.patch.yml` 注册 Cordis 插件；需要宿主提供 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`。本实现按官方内核 `v0.2.1-rc.3` 的 `defineTool` 接口编写，运行时 Node.js 22 或更新版本。
 
 在启动宿主的环境中设置 `FINNHUB_API_KEY`。请通过自己的密钥管理方式设置，不要向模型发送密钥、放进工具参数、提交到仓库或写入打包产物。插件不会创建账户、保存密钥或购买订阅。没有密钥时直接返回配置提示，不发请求。
 

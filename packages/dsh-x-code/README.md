@@ -1,6 +1,6 @@
 # Code · dsh-x-code
 
-An independently enabled source and review workspace for official DSH `0.2.1-rc.2`. The visible name is **Code** in both English and Chinese. No kernel modifications or GitHub/PR writes are required.
+An independently enabled source and review workspace for official DSH `0.2.1-rc.3`. The visible name is **Code** in both English and Chinese. No kernel modifications or GitHub/PR writes are required.
 
 ## Workflow
 

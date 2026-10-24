@@ -3,7 +3,7 @@
 ## Compatibility target
 
 - Plugin: `dsh-x-browser@0.7.0` (experimental, explicit opt-in)
-- Official DSH npm runtime: `0.2.1-rc.2` (`compatibility/policy.json` baseline)
+- Official DSH npm runtime: `0.2.1-rc.3` (`compatibility/policy.json` baseline)
 - Inspected upstream source: commit `687f282e8625c6b8d11ff58211a90524be2e4317`
 - Official Desktop browser protocol: `dshDesktop.protocolVersion === 1`
 - Historical packaged runs below name their own runtime and Electron target.

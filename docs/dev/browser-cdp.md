@@ -1,6 +1,6 @@
 # 浏览器走 CDP 怎么落地
 
-这是决策记录，不是路线图承诺。依据是当前仓库的 `dsh-x-browser` `0.7.0` 与官方 `0.2.1-rc.2`（`compatibility/policy.json`）。不写发布日期。
+这是决策记录，不是路线图承诺。依据是当前仓库的 `dsh-x-browser` `0.7.0` 与官方 `0.2.1-rc.3`（`compatibility/policy.json`）。不写发布日期。
 
 结论：**保留现有模型工具面，把执行层抽成 backend；CDP 后端用 Vercel Labs 的 `agent-browser` 做引擎。** 模型仍然拿不到 JavaScript、选择器或 CDP 命令。
 

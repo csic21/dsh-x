@@ -19,7 +19,7 @@ features:
   - title: 走官方安装入口
     details: 在 Plugins → Discover 添加一个索引地址，或用官方 `dsh plugin` 安装；审批、凭据与语言都复用官方能力。
   - title: 可核对的版本口径
-    details: 加载准入由 peer 范围决定，市场索引按 engines.dsh 计算兼容性，完整验证绑定精确运行时。
+    details: 加载准入由 engines.dsh 的联合范围决定（官方有它就不再读 peer），市场索引用同一个范围计算兼容性，完整验证绑定精确基线。
   - title: 一个索引，五个插件
     details: GitHub Pages 生成格式 1 的市场索引；每个版本钉在发布 commit 上，不依赖 npm 发布。
 ---

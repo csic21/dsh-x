@@ -16,7 +16,7 @@
 ```sh
 npm view @deepseek-ai/dsh dist-tags
 # latest = 0.2.0-rc.2
-# next   = 0.2.1-rc.2
+# next   = 0.2.1-rc.3
 ```
 
 ```sh
@@ -25,7 +25,7 @@ npm install --prefix ~/.local/dsh-runtime @deepseek-ai/dsh@next
 ```
 
 ::: warning 版本决定成败
-本仓库的完整验证跑在 **0.2.1-rc.2** 上；`0.2.0-rc.2` 只做过安装与启动冒烟。两个版本都能装，但证据强度不同，见[版本与兼容](/guide/compatibility)。
+本仓库的完整验证跑在 **0.2.1-rc.3** 上；`0.2.1-rc.2` 是上一基线，`0.2.0-rc.2` 只做过安装与启动冒烟。三个版本都能装，但证据强度不同，见[版本与兼容](/guide/compatibility)。
 :::
 
 `dsh plugin` 会把参数转发给 **pnpm**，所以 PATH 上要有 pnpm（本仓库使用 `11.28.5`）。
@@ -38,7 +38,7 @@ npm install --prefix ~/.local/dsh-runtime @deepseek-ai/dsh@next
 https://csic21.github.io/dsh-x/market-index.json
 ```
 
-Discover 会读取索引、按 `engines.dsh` 计算兼容性，并把可安装的版本列出来。索引来自 GitHub Pages；刷新页面或点 Discover 的刷新按钮即可重新读取。
+Discover 会读取索引、按每个版本的 `engines.dsh` 计算兼容性（官方判定：有 `engines.dsh` 就只看它），并把可安装的版本列出来。索引来自 GitHub Pages；刷新页面或点 Discover 的刷新按钮即可重新读取。
 
 ## 3. 安装
 

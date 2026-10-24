@@ -77,10 +77,14 @@ node --test test/market-index.test.js
 
 ## 改兼容声明前先看测试
 
-`test/peer-ranges.test.js` 锁住三条不变量：
+`test/peer-ranges.test.js` 直接 import 官方 `@deepseek-ai/dsh-app-boot` 的 `evaluatePluginCompatibility`，锁住这几条不变量：
 
-1. 所有插件的 `@deepseek-ai/dsh*` peer 必须逐字等于 `policy.json` 的 `supportedPeerRange`。
-2. 所有包的 `engines.dsh` 必须等于 `policy.json` 的 `baseline.version`。
-3. 每个声明的基线都要被 peer 范围覆盖，且额外基线必须有状态和证据范围。
+1. 所有包的 `engines.dsh` 必须逐字等于 `policy.json` 的 `supportedRuntimeRange`。
+2. 所有插件的 `@deepseek-ai/dsh*` peer 必须逐字等于同一个范围。
+3. 官方判定必须在 `baseline` 与每个 `additionalBaselines` 上放行。
+4. 官方判定放行下一个 patch，并拒绝下一个 minor。
+5. 额外基线必须有状态和证据范围。
+
+用官方函数而不是自己写 semver 判断：官方是「有 `engines.dsh` 就只看它、忽略 peer」，自己重写一遍规则很容易得出错误结论。
 
 想放宽或收窄兼容，改 `policy.json` 与各包 `package.json`，让测试通过，并附上真实的准入证据——不要为了发布临时放宽。

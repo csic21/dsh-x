@@ -3,7 +3,7 @@
 ## Compatibility target
 
 - Plugin: `dsh-x-pet@0.8.1`
-- Official DSH runtime: `0.2.1-rc.2`
+- Official DSH runtime: `0.2.1-rc.3`
 - Codex pet contract: sprite atlas 1536 wide, 192×208 per cell, 9 rows (1536×1872) or 11 rows (1536×2288), transparent background, local pet packages under `${CODEX_HOME:-~/.codex}/pets/<name>/` with `pet.json` and `spritesheet.webp`.
 
 The Codex rows, frame counts, per-frame durations, the slowed idle loop, the three-times-then-idle fallback for one-shot states, the 16 look directions at 22.5° and the `background-position` geometry are implemented from the published Codex pet contract. No Codex artwork is copied into this package; the bundled pet is drawn procedurally by `scripts/pet-atlas.py`.

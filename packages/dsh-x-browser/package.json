@@ -1,12 +1,12 @@
 {
   "name": "dsh-x-browser",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Experimental, opt-in browser tools: embedded Desktop tab or external Chrome over CDP",
   "type": "module",
   "main": "./lib/index.js",
   "engines": {
     "node": ">=22",
-    "dsh": "0.2.1-rc.2"
+    "dsh": "^0.2.0-rc.2 || ^0.2.1-rc.2"
   },
   "files": [
     "lib",

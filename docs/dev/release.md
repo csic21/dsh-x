@@ -8,8 +8,9 @@
 - tag 名仍是 `plugins-v<版本>`，例如只发布 Code `0.6.1` 时打 `plugins-v0.6.1`。tag 不必等于另外四个包的版本。
 - 每个包的每个版本只钉一次，钉在**第一次**带上这个版本的 tag。以后的 tag 即使还含着旧版本，也不改它的安装 commit。
 - 升版本但包目录没变化，或者包目录变了却不升版本，`node scripts/check-plugin-release.mjs` 会失败。`docs/` 和 `scripts/` 的改动不算包变化。
-- 每个包 `engines.dsh` 仍精确等于 `compatibility/policy.json` 的 `baseline.version`（这是运行时基线，不是插件版本）。
-- 每个包对官方 `@deepseek-ai/dsh*` 的 peer 范围必须与 `policy.json` 的 `supportedPeerRange` 一致。
+- 每个包的 `engines.dsh` 与 `@deepseek-ai/dsh*` peer 范围必须逐字等于 `compatibility/policy.json` 的 `supportedRuntimeRange`。
+- 不要写精确版本：官方判定先看 `engines.dsh`，精确值会让其它运行时的用户看到「不兼容」，peer 范围写得再宽也不会被读到。
+- `policy.json` 的 `baseline` 记录跑过完整测试的运行时（这是运行时基线，不是插件版本）。
 - 兼容版本不得为了发布放宽；新运行时需要先有真实证据。
 
 ## 发一个版本
@@ -66,10 +67,10 @@ pnpm --filter dsh-x-code test
 
 ## 升级到新的官方运行时
 
-1. 在 `compatibility/policy.json` 更新 `baseline`（版本 + SHA-512 + 状态）。
-2. 把所有包的 `engines.dsh` 改成新版本。
-3. 跑完整测试，保留证据。
-4. 若新运行时也要保持“可加载”，把 peer 范围扩到覆盖它，并在 `additionalBaselines` 记录证据范围。
+1. 在 `compatibility/policy.json` 更新 `baseline`（版本 + SHA-512 + 状态），把原基线挪进 `additionalBaselines`。
+2. 跑完整测试，保留证据。
+3. 新运行时落在同一个 minor 内时，`engines.dsh` 的联合范围已经覆盖它，不需要改包；跨 minor 时先改 `supportedRuntimeRange` 并同步所有包的 `engines.dsh` 与 peer。
+4. 在 `additionalBaselines` 记录每个旧基线的证据范围。
 5. 在单独的、经过审查的提交里完成这些改动；不要和功能改动混在一起。
 
 ## 验证边界

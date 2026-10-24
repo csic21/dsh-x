@@ -90,8 +90,8 @@ dsh-x/
 
 ## 版本口径
 
-- **加载准入**：插件对官方 `@deepseek-ai/dsh*` 的 peer 范围（`^0.2.0-rc.2 || ^0.2.1-rc.2`）决定官方 CLI 允不允许安装、Host 允不允许加载。
-- **发布资格**：各包 `engines.dsh` 精确等于跑过完整测试的基线（`0.2.1-rc.2`）。
+- **加载准入**：各包 `engines.dsh` 与官方 `@deepseek-ai/dsh*` peer 共用同一个范围（`^0.2.0-rc.2 || ^0.2.1-rc.2`），决定官方 CLI 允不允许安装、Host 允不允许加载。官方先看 `engines.dsh`，有就忽略 peer，所以两者必须一致。
+- **发布基线**：`compatibility/policy.json` 的 `baseline` 记录跑过完整测试的运行时（`0.2.1-rc.3`）。
 - **市场兼容性**：Discover 用 `engines.dsh` 计算每个版本是否兼容；不兼容的版本不会给出可安装的默认项。
 
 细节与证据范围见 [兼容说明](compatibility/README.md)。
