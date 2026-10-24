@@ -1,6 +1,6 @@
 {
   "name": "dsh-x-code",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "type": "module",
   "main": "./lib/index.js",
   "engines": {

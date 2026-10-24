@@ -349,7 +349,11 @@ function CodeWorkspaceBody({ sessionId, useCode, inputActions, refresh, selectTa
   const columns = columnsFor(layout.sidebar, layout.panel)
   const paintTrack = (sidebar: number, panel: number) => { if (workbench.current) workbench.current.style.gridTemplateColumns = columnsFor(sidebar, panel) }
   return <main className="dxc dxc-page" ref={page} data-code-session={sessionId} data-pane={pane} data-narrow={narrow || undefined} data-sidebar={showSidebar || undefined} data-panel={showPanel || undefined}>
-    <header className="dxc-titlebar">
+    {/* This page owns the keyed `main` slot, so the Conversation header that
+        normally carries `data-window-drag` is not mounted. Claim the same drag
+        region here; the shell's global rule keeps every button `no-drag`, so
+        only the text and gaps move the window. */}
+    <header className="dxc-titlebar" data-window-drag>
       <div className="dxc-brand"><CodeIcon /><h1>{t('title')}</h1>{snapshot && <span className="dxc-repo" title={snapshot.workspace.repoRoot}>{basename(snapshot.workspace.repoRoot)}</span>}</div>
       <div className="dxc-header-actions">
         {!narrow && <><button type="button" aria-pressed={showPanel && layout.panelTab === 'chat'} onClick={() => setLayout({ panelCollapsed: false, panelTab: 'chat' })}>{t('chat')}</button><button type="button" className="dxc-icon-button" aria-pressed={showSidebar} aria-label={t('toggleSidebar')} title={t('toggleSidebar')} onClick={() => setLayout({ sidebarCollapsed: !layout.sidebarCollapsed })}><SidebarIcon /></button>

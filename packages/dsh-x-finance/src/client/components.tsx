@@ -168,7 +168,11 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
   }
   const sourceOff = preference.status === 'ready' && !preference.enabled
   return <main className="dxs dxs-page">
-    <header className="dxs-titlebar">
+    {/* This page owns the keyed `main` slot, so the Conversation header that
+        normally carries `data-window-drag` is not mounted. Claim the same drag
+        region here; the shell's global rule keeps every button `no-drag`, so
+        only the text and gaps move the window. */}
+    <header className="dxs-titlebar" data-window-drag>
       <div className="dxs-brand"><StockIcon size={16} /><h1>{t('title')}</h1><span className="dxs-context">{view === 'market' ? t('market.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
         <button type="button" aria-pressed={view === 'watchlist'} onClick={() => setView('watchlist')}>{t('page.view.watchlist')}</button>
