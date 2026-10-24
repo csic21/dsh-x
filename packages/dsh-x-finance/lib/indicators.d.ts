@@ -34,6 +34,13 @@ export interface IndicatorRow {
 }
 export declare const INDICATOR_ALGORITHM_VERSION = "dsh-independent-sma-ema-v1";
 export declare const MAX_INDICATOR_PERIOD = 500;
+/**
+ * Periods the chart offers: the short trio plus the long-term 季线/年线. The
+ * engine already accepts any period up to MAX_INDICATOR_PERIOD, so this list
+ * only decides what the chart asks for. DEFAULT_MA_PERIODS stays the smaller
+ * default for callers that never opt in to the long lines.
+ */
+export declare const CHART_MA_PERIODS: readonly number[];
 export declare const DEFAULT_MA_PERIODS: readonly number[];
 export declare const DEFAULT_MACD: Readonly<{
     fast: 12;

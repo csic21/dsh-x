@@ -51,6 +51,27 @@ test('configuration validation and bilingual locale keys stay aligned', () => {
   assert.doesNotThrow(() => computeIndicators(createDemoDataset({ count: 40 }).bars, { macd: sanitized.macd }))
   for (const malformed of [null, [], 'bad', { macd: null }, { macd: [] }, { macd: 'bad' }] as const) assert.throws(() => normalizeChartConfig(malformed))
   for (const macd of [{ fast: 30 }, { fast: 0 }, { slow: 2.5 }, { signal: 251 }, { histScale: 3 }] as const) assert.throws(() => normalizeChartConfig({ macd }))
+  // The short trio is the default; the long 季线/年线 are opt-in so a fresh
+  // chart never opens with two blank lines.
+  assert.deepEqual(normalizeChartConfig().maVisible, { 5: true, 10: true, 20: true, 50: false, 250: false })
+  // A setting saved before MA50/MA250 existed keeps the user's short-line
+  // choices and leaves the new periods at their own defaults.
+  assert.deepEqual(normalizeChartConfig({ maVisible: { 5: false, 10: true, 20: true } }).maVisible, { 5: false, 10: true, 20: true, 50: false, 250: false })
+  assert.deepEqual(normalizeChartConfig({ maVisible: { 250: true } }).maVisible, { 5: true, 10: true, 20: true, 50: false, 250: true })
+  assert.deepEqual(normalizeChartConfig({ maVisible: { 50: true, 250: true, 5: false } }).maVisible, { 5: false, 10: true, 20: true, 50: true, 250: true })
+  // Unknown keys never survive normalization.
+  assert.deepEqual(Object.keys(normalizeChartConfig({ maVisible: { 999: true } }).maVisible), ['5', '10', '20', '50', '250'])
+})
+test('MA50 and MA250 are computed from daily closes and stay empty without enough bars', () => {
+  const bars = createDemoDataset({ count: 300 }).bars
+  const full = computeIndicators(bars, { maPeriods: [50, 250] })
+  const ma250 = full.rows.map((row: any) => row.ma[250]).filter((value: any) => value !== null)
+  assert.equal(ma250.length, bars.length - 249)
+  assert.ok(new Set(ma250.map((value: any) => value.toFixed(6))).size > 1, 'MA250 must vary, not repeat one value')
+  // A 100-bar history cannot support MA250 at all: no padded or partial line.
+  const short = computeIndicators(bars.slice(0, 100), { maPeriods: [50, 250] })
+  assert.equal(short.rows.every((row: any) => row.ma[250] === null), true)
+  assert.equal(short.rows.filter((row: any) => row.ma[50] !== null).length, 51)
 })
 test('prepend preserves logical viewport by its original date anchor', () => {
   const all = createDemoDataset({ count: 100 }).bars, range: any = { from: 9.5, to: 29.5 }
@@ -79,8 +100,15 @@ test('single-chart adapter uses four native panes, tail updates and preserves hi
   const dom = new JSDOM('<div tabindex="0"></div>'), element = dom.window.document.querySelector<HTMLElement & HTMLInputElement>('div'), mock = mockLibrary(), selection = createSelectionStore(), states: any = []
   const adapter = createStockChartAdapter(element, { selection, library: mock.library, ResizeObserverClass: mock.Observer, onViewport: (value: any) => states.push(value) })
   const dataset = createDemoDataset({ count: 100 }), first: any = { ...dataset, bars: dataset.bars.slice(0, 80) }
-  adapter.setData(first, computeIndicators(first.bars)); adapter.setConfig(normalizeChartConfig())
-  assert.deepEqual(mock.log.series.map((s: any) => (s as any).pane), [0, 1, 2, 2, 2, 3, 3, 3, 0, 0, 0])
+  adapter.setData(first, computeIndicators(first.bars, { maPeriods: [5, 10, 20, 50, 250] })); adapter.setConfig(normalizeChartConfig())
+  // candles, volume, hist, dif, dea, k, d, j, then MA5/10/20/50/250 on the price pane.
+  assert.deepEqual(mock.log.series.map((s: any) => (s as any).pane), [0, 1, 2, 2, 2, 3, 3, 3, 0, 0, 0, 0, 0])
+  // The two long lines exist as series but start hidden, and turning MA250 on
+  // reaches the adapter as a real visibility change.
+  assert.deepEqual(mock.log.series.slice(8).map((s: any) => (s as any).options[0].color), ['#b07b00', '#9957d4', '#2582cb', '#0f8b8d', '#c2410c'])
+  adapter.setConfig(normalizeChartConfig({ maVisible: { 250: true } }))
+  assert.equal(mock.log.series[12].options.at(-1).visible, true)
+  assert.equal(mock.log.series[11].options.at(-1).visible, false)
   assert.equal((mock.log.options[0] as any).layout.attributionLogo, true)
   assert.equal((mock.log.options[0] as any).layout.panes.enableResize, true)
   assert.equal((mock.log.options[0] as any).handleScale.mouseWheel, false)

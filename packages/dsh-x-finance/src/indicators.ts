@@ -8,6 +8,13 @@ import { isSessionDate, MAX_BARS } from './chart-data.ts'
 
 export const INDICATOR_ALGORITHM_VERSION = 'dsh-independent-sma-ema-v1'
 export const MAX_INDICATOR_PERIOD = 500
+/**
+ * Periods the chart offers: the short trio plus the long-term 季线/年线. The
+ * engine already accepts any period up to MAX_INDICATOR_PERIOD, so this list
+ * only decides what the chart asks for. DEFAULT_MA_PERIODS stays the smaller
+ * default for callers that never opt in to the long lines.
+ */
+export const CHART_MA_PERIODS = Object.freeze([5, 10, 20, 50, 250])
 export const DEFAULT_MA_PERIODS = Object.freeze([5, 10, 20])
 export const DEFAULT_MACD = Object.freeze({ fast: 12, slow: 26, signal: 9, histScale: 2 })
 export const DEFAULT_KDJ = Object.freeze({ n: 9, k: 3, d: 3 })

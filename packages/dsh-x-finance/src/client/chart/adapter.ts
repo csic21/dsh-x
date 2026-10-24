@@ -1,5 +1,6 @@
 import * as LightweightCharts from 'lightweight-charts'
 import { buildChartData, businessDay, sessionKey, preserveLogicalRange, MA_COLORS, UP_COLOR, DOWN_COLOR } from './model.ts'
+import { CHART_MA_PERIODS } from '../../indicators.ts'
 import { PALETTES } from './theme.ts'
 
 const samePoint = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b)
@@ -37,7 +38,7 @@ export function createStockChartAdapter(element: any, {
     d: chart.addSeries(LineSeries, { ...common, color: '#8d70e4', lineWidth: 1, crosshairMarkerVisible: true }, 3),
     j: chart.addSeries(LineSeries, { ...common, color: '#2582cb', lineWidth: 1, crosshairMarkerVisible: true }, 3),
   }
-  for (const period of [5, 10, 20]) series[`ma${period}` as keyof typeof series] = chart.addSeries(LineSeries, { ...common, color: MA_COLORS[period as keyof typeof MA_COLORS], lineWidth: 1, crosshairMarkerVisible: false }, 0)
+  for (const period of CHART_MA_PERIODS) series[`ma${period}` as keyof typeof series] = chart.addSeries(LineSeries, { ...common, color: MA_COLORS[period as keyof typeof MA_COLORS], lineWidth: 1, crosshairMarkerVisible: false }, 0)
   series.volume.priceScale().applyOptions({ scaleMargins: { top: .18, bottom: 0 }, autoScale: true })
   series.hist.priceScale().applyOptions({ scaleMargins: { top: .15, bottom: .15 }, autoScale: true })
   series.j.priceScale().applyOptions({ scaleMargins: { top: .15, bottom: .15 }, autoScale: true })
@@ -77,7 +78,7 @@ export function createStockChartAdapter(element: any, {
       }
       bars = dataset.bars; data = next; datasetId = nextId
       const precision = dataset.pricePrecision ?? 2
-      for (const key of ['candles', 'ma5', 'ma10', 'ma20']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } })
+      for (const key of ['candles', ...CHART_MA_PERIODS.map(period => `ma${period}`)]) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision, minMove: 10 ** -precision } })
       const indicatorPrecision = Math.max(3, precision)
       for (const key of ['dif', 'dea', 'hist', 'k', 'd', 'j']) series[key as keyof typeof series].applyOptions({ priceFormat: { type: 'price', precision: indicatorPrecision, minMove: 10 ** -indicatorPrecision } })
       selection?.setBars(bars, reset)
@@ -93,7 +94,7 @@ export function createStockChartAdapter(element: any, {
     },
     setConfig(config: any) {
       if (disposed) return
-      for (const period of [5, 10, 20]) series[`ma${period}` as keyof typeof series].applyOptions({ visible: config.maVisible[period] })
+      for (const period of CHART_MA_PERIODS) series[`ma${period}` as keyof typeof series].applyOptions({ visible: config.maVisible[period] })
       series.dif.applyOptions({ visible: config.difVisible }); series.dea.applyOptions({ visible: config.deaVisible })
       const kdj = config.kdjVisible !== false
       for (const key of ['k', 'd', 'j']) series[key as keyof typeof series].applyOptions({ visible: kdj })

@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { computeIndicators } from '../../indicators.ts'
+import { CHART_MA_PERIODS, computeIndicators } from '../../indicators.ts'
 import { formatLocale } from '../format.ts'
 import { createStockChartAdapter } from './adapter.ts'
 import { DEFAULT_CHART_CONFIG, normalizeChartConfig } from './config.ts'
@@ -26,7 +26,7 @@ function Readout({ selection, dataset, indicators, config, t, format }: any) {
   const values = [
     ...['open', 'high', 'low', 'close'].map(key => [t(`chart.${key}`), format.price(bar?.[key])]),
     [t(dataset.volumeBasis === 'reported' ? 'chart.volume-reported' : 'chart.volume'), format.quantity(bar?.volume)], [t('chart.amount', { currency: dataset.currency }), format.quantity(bar?.amount)],
-    ...[5, 10, 20].filter(period => config.maVisible[period]).map(period => [`MA${period}`, format.price(row?.ma[period])]),
+    ...CHART_MA_PERIODS.filter(period => config.maVisible[period]).map(period => [`MA${period}`, format.price(row?.ma[period])]),
     ['DIF', format.indicator(row?.dif)], ['DEA', format.indicator(row?.dea)], [t('chart.hist', { scale: config.macd.histScale }), format.indicator(row?.hist)],
     ...(config.kdjVisible ? [['K', format.indicator(row?.k)], ['D', format.indicator(row?.d)], ['J', format.indicator(row?.j)]] : []),
   ]
@@ -53,12 +53,12 @@ const DataTable = memo(function DataTable({ dataset, indicators, config, selecti
     <div className="dxs-chart-table-scroll" tabIndex={0} aria-label={t('chart.table-caption', { symbol: dataset.symbol })}>
       <table className="dxs-chart-table">
         <caption>{t('chart.table-caption', { symbol: dataset.symbol })}</caption>
-        <thead><tr><th scope="col">{t('chart.date')}</th>{['open', 'high', 'low', 'close', 'volume'].map(key => <th key={key} scope="col">{t(key === 'volume' && dataset.volumeBasis === 'reported' ? 'chart.volume-reported' : `chart.${key}`)}</th>)}<th scope="col">{t('chart.amount', { currency: dataset.currency })}</th>{[5, 10, 20].map(period => <th key={period} scope="col">MA{period}</th>)}<th scope="col">DIF</th><th scope="col">DEA</th><th scope="col">{t('chart.hist', { scale: config.macd.histScale })}</th><th scope="col">K</th><th scope="col">D</th><th scope="col">J</th><th scope="col">{t('chart.final')}</th></tr></thead>
+        <thead><tr><th scope="col">{t('chart.date')}</th>{['open', 'high', 'low', 'close', 'volume'].map(key => <th key={key} scope="col">{t(key === 'volume' && dataset.volumeBasis === 'reported' ? 'chart.volume-reported' : `chart.${key}`)}</th>)}<th scope="col">{t('chart.amount', { currency: dataset.currency })}</th>{CHART_MA_PERIODS.map(period => <th key={period} scope="col">MA{period}</th>)}<th scope="col">DIF</th><th scope="col">DEA</th><th scope="col">{t('chart.hist', { scale: config.macd.histScale })}</th><th scope="col">K</th><th scope="col">D</th><th scope="col">J</th><th scope="col">{t('chart.final')}</th></tr></thead>
         <tbody>{dataset.bars.slice(start, start + 100).map((bar: any) => {
           const row = rowsByTime.get(bar.sessionDate)
           return <tr key={bar.sessionDate} aria-selected={bar.sessionDate === selected.sessionDate}><th scope="row"><button aria-label={t('chart.select-row', { date: bar.sessionDate })} onClick={() => onSelect(bar.sessionDate)}>{bar.sessionDate}</button></th>
             {['open', 'high', 'low', 'close'].map(key => <td key={key}>{format.price(bar[key])}</td>)}<td>{format.quantity(bar.volume)}</td><td>{format.quantity(bar.amount)}</td>
-            {[5, 10, 20].map(period => <td key={period}>{format.price(row?.ma[period])}</td>)}{['dif', 'dea', 'hist', 'k', 'd', 'j'].map(key => <td key={key}>{format.indicator(row?.[key as keyof typeof row])}</td>)}<td>{t(bar.isFinal ? 'chart.final' : 'chart.provisional')}</td></tr>
+            {CHART_MA_PERIODS.map(period => <td key={period}>{format.price(row?.ma[period])}</td>)}{['dif', 'dea', 'hist', 'k', 'd', 'j'].map(key => <td key={key}>{format.indicator(row?.[key as keyof typeof row])}</td>)}<td>{t(bar.isFinal ? 'chart.final' : 'chart.provisional')}</td></tr>
         })}</tbody>
       </table>
     </div>
@@ -87,11 +87,11 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
   const config = useMemo(() => normalizeChartConfig(suppliedConfig ?? localConfig), [suppliedConfig, localConfig])
   const { fast, slow, signal, histScale } = config.macd
   const indicators = useMemo<any>(() => {
-    try { return computeIndicators(dataset.bars, { maPeriods: [5, 10, 20], macd: { fast, slow, signal, histScale }, historyAnchor: dataset.historyAnchor }) }
+    try { return computeIndicators(dataset.bars, { maPeriods: [...CHART_MA_PERIODS], macd: { fast, slow, signal, histScale }, historyAnchor: dataset.historyAnchor }) }
     catch {
       // Finite imported prices can still overflow recursive arithmetic. Keep
       // original OHLCV inspectable, with no invented indicator values.
-      return { failed: true, rows: dataset.bars.map((bar: any) => ({ sessionDate: bar.sessionDate, ma: { 5: null, 10: null, 20: null }, dif: null, dea: null, hist: null, k: null, d: null, j: null })), warmup: { macdBars: slow + signal - 1 } }
+      return { failed: true, rows: dataset.bars.map((bar: any) => ({ sessionDate: bar.sessionDate, ma: Object.fromEntries(CHART_MA_PERIODS.map(n => [n, null])), dif: null, dea: null, hist: null, k: null, d: null, j: null })), warmup: { macdBars: slow + signal - 1 } }
     }
   }, [dataset.bars, dataset.historyAnchor, fast, slow, signal, histScale])
   const numbers = useMemo(() => chartFormatters(locale, dataset.pricePrecision ?? 2, format), [locale, dataset.pricePrecision, format])
@@ -119,10 +119,15 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
     else if (event.key === '+' || event.key === '=') { event.preventDefault(); adapter.current?.zoom(.8) }
     else if (event.key === '-') { event.preventDefault(); adapter.current?.zoom(1.25) }
   }
+  // A long MA that is switched on but cannot be drawn yet must say why, instead
+  // of leaving a silently missing line. Same for a non-daily view, where a
+  // "250-period" line means 250 weeks/months rather than the daily year line.
+  const starvedMa = CHART_MA_PERIODS.filter(period => config.maVisible[period] && dataset.bars.length < period)
+  const longMaOnOtherInterval = CHART_MA_PERIODS.filter(period => config.maVisible[period] && period >= 50)
   const toggleMacd = () => setMaximized(adapter.current?.maximizeMacd() ?? false)
   return <section className="dxs-chart" ref={section} data-chart-theme={activeTheme} aria-label={t('chart.title')}>
     <div className="dxs-chart-toolbar"><h3>{t('chart.price-pane')}</h3>
-      <div className="dxs-chart-group">{[5, 10, 20].map(period => <label key={period}><input type="checkbox" checked={config.maVisible[period]} onChange={event => applyConfig({ ...config, maVisible: { ...config.maVisible, [period]: event.target.checked } })} /><span><i className="dxs-chart-swatch" style={{ background: MA_COLORS[period as keyof typeof MA_COLORS] }} />MA{period}</span></label>)}<label><input type="checkbox" checked={config.kdjVisible} onChange={event => applyConfig({ ...config, kdjVisible: event.target.checked })} /><span>{t('chart.kdj')}</span></label></div>
+      <div className="dxs-chart-group">{CHART_MA_PERIODS.map(period => <label key={period}><input type="checkbox" checked={config.maVisible[period]} onChange={event => applyConfig({ ...config, maVisible: { ...config.maVisible, [period]: event.target.checked } })} /><span><i className="dxs-chart-swatch" style={{ background: MA_COLORS[period as keyof typeof MA_COLORS] }} />MA{period}</span></label>)}<label><input type="checkbox" checked={config.kdjVisible} onChange={event => applyConfig({ ...config, kdjVisible: event.target.checked })} /><span>{t('chart.kdj')}</span></label></div>
       <div className="dxs-chart-actions"><button aria-label={t('chart.zoom-in')} onClick={() => adapter.current?.zoom(.8)}>+</button><button aria-label={t('chart.zoom-out')} onClick={() => adapter.current?.zoom(1.25)}>−</button><button onClick={() => adapter.current?.latest()}>{t(viewport.newBars ? 'chart.new-bars' : 'chart.latest')}</button><button onClick={() => adapter.current?.reset()}>{t('chart.reset-view')}</button></div>
     </div>
     <div className="dxs-chart-pane-labels"><span>{t(`chart.interval.${dataset.interval ?? '1d'}`)}</span><span>{t(dataset.volumeBasis === 'reported' ? 'chart.volume-pane-reported' : 'chart.volume-pane')}</span><strong onDoubleClick={toggleMacd}>{t('chart.macd-pane', { fast, slow, signal, scale: histScale })}</strong>{config.kdjVisible ? <span>{t('chart.kdj-pane')}</span> : null}
@@ -139,6 +144,8 @@ export function StockChart({ dataset, t, format, locale = 'en', theme = 'auto', 
     {indicators.failed && <p className="dxs-chart-error" role="alert">{t('chart.indicator-error')}</p>}
     <p className="dxs-chart-help" id={helpId}>{t('chart.help')}</p>
     <p className="dxs-chart-warning">{t('chart.warmup', { required: numbers.count(indicators.warmup.macdBars), available: numbers.count(dataset.bars.length) })}</p>
+    {starvedMa.map(period => <p className="dxs-chart-warning" key={period}>{t('chart.ma-short', { period: numbers.count(period), available: numbers.count(dataset.bars.length) })}</p>)}
+    {dataset.interval !== '1d' ? longMaOnOtherInterval.map(period => <p className="dxs-chart-warning" key={period}>{t('chart.ma-other-interval', { period: numbers.count(period), interval: t(`chart.interval.${dataset.interval}`) })}</p>) : null}
     <p className="dxs-chart-method">{t('chart.method', { scale: histScale })}</p>
     <div className="dxs-chart-table-controls"><button aria-expanded={showTable || renderError} aria-controls={tableId} onClick={() => setShowTable(!showTable)}>{t(showTable || renderError ? 'chart.table-hide' : 'chart.table-show')}</button></div>
     {(showTable || renderError) && <div id={tableId}><DataTable dataset={dataset} indicators={indicators} config={config} selection={selection} t={t} format={numbers} onSelect={selectDate} /></div>}

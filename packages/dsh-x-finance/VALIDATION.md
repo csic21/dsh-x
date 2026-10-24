@@ -1,3 +1,13 @@
+## MA50 / MA250 (季线 / 年线) on the daily chart — 2026-10-24
+
+- Gap: the chart offered only MA5/10/20, so the long-term 季线/年线 that readers commonly look at had no line at all. The indicator engine already accepted any period up to 500; only the chart's fixed period list was the limit.
+- Change: `CHART_MA_PERIODS` (5/10/20/50/250) now drives the toolbar checkboxes, the readout, the data-table columns and the adapter's series. `DEFAULT_MA_PERIODS` stays 5/10/20 for callers that never opt in. MA50/MA250 default to **off**, because they need 50 and 250 bars of warm-up and a fresh chart should not open with two blank lines.
+- Stored settings: `normalizeChartConfig` now distinguishes "absent" from "explicitly false" per period, so a config saved before these periods existed keeps the user's MA5/10/20 choices and leaves 50/250 at their own defaults. Unknown keys are still dropped.
+- Empty-line honesty: when a switched-on period exceeds the loaded bar count, the chart says so instead of leaving an unexplained gap; on weekly/monthly/yearly views it also states that the period unit changes and daily is the intended view.
+- Tests: `pnpm --filter dsh-x-finance test` — **222 tests, 0 failed**; typecheck and build pass. New coverage asserts the default visibility map, legacy-config migration for both the absent and explicit-false cases, unknown-key dropping, MA250 producing `bars - 249` varying points (never one repeated value), a 100-bar history leaving MA250 entirely null, and the adapter creating five price-pane MA series that start hidden and become visible when configured.
+- Live check of the built host modules: 中证800 (`SH.000906`) with 1,000 daily bars returned MA5 4571.67 / MA10 4628.89 / MA20 4794.57 / MA50 5006.26 / MA250 5202.25 against a 4567.26 close.
+- Not verified: real Desktop pixels for the two extra toolbar checkboxes and the five-column data table, and how the legend reads at narrow widths. The 1,000-bar cap means MA250 has about 751 usable points on a full history; a newly listed stock may never show it.
+
 ## CSI 500 / CSI 800 added to the index board — 2026-10-24
 
 - Gap: the board listed 沪深300 and then jumped straight to 中证1000, so the 300/500/800/1000 ladder had two holes. Both missing indices are answered by the same Tencent endpoint already in use; no new source, host or token was added.
