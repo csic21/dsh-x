@@ -1,5 +1,6 @@
 import type { GlobalMarketOverview } from './global.ts';
 import type { TailScanResult } from './tail-scan.ts';
+import type { HotScanResult } from './hot.ts';
 export declare const MARKET_ENDPOINT = "dsh-x-finance.market";
 export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
 export declare const MARKET_SOURCE_NAME = "\u817E\u8BAF\u884C\u60C5 (unofficial)";
@@ -248,6 +249,9 @@ export type MarketRequest = {
     kind: 'global';
 } | {
     kind: 'tail-scan';
+} | {
+    kind: 'hot-scan';
+    board?: string;
 };
 /** Daily bars requested by one history call. Bounded for response size. */
 export declare const MARKET_HISTORY_DEFAULT_LIMIT = 250;
@@ -295,6 +299,14 @@ export interface MarketProvider {
      * minute data leaves this panel unavailable instead of failing the board.
      */
     tailScan?(): Promise<TailScanResult>;
+    /**
+     * Market-wide hot-topic screen. Optional and independent from the breadth
+     * board: the snapshot layer is cheap, the history layer is bounded and the
+     * result states how many symbols received it.
+     */
+    hotScan?(options: {
+        board?: string;
+    }): Promise<HotScanResult>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StockWorkbench } from './workbench.tsx'
 import { MarketView } from './market/MarketView.tsx'
+import { HotView } from './market/HotView.tsx'
 import { GlobalView } from './market/GlobalView.tsx'
 import { InstrumentSearch } from './SearchBox.tsx'
 import { normalizeAShare, MAX_FIXED, MAX_WATCHLIST, fixedItems, quoteStatus } from '../watchlist.ts'
@@ -131,16 +132,20 @@ function Detail({ item, previewing, onAdd, useResource, t, format, scope, locale
     </div>
   </article>
 }
-export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, select, preview, setFixed, toggleBar, back, retryScope, t, format, getLocale = () => 'en' }: any) {
+export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move, select, preview, closePreview, setFixed, toggleBar, back, retryScope, t, format, getLocale = () => 'en' }: any) {
   const state = useWatchlist((value: any) => value)
   const preference = useMarketPreference(rpc)
   // A preview is what the reader is looking at right now, so it outranks the
   // saved row that happened to be selected before the drill-down.
   const previewItem = state.preview ? { symbol: state.preview.symbol, alias: state.preview.name, fixed: false } : null
+  // A preview is a standalone detail page, not a watchlist row: it only opens
+  // once storage is ready, because the detail reads saved chart preferences.
+  const previewOpen = Boolean(previewItem) && state.scopeStatus === 'ready'
+  const leavePreview = () => { closePreview(); setDrillNotice('') }
   const selected = previewItem ? undefined : state.items.find((entry: any) => entry.symbol === state.selectedSymbol)
   const item = previewItem ?? selected ?? state.items[0]
   const fixedCount = fixedItems(state.items).length
-  const [view, setView] = useState<'watchlist' | 'market' | 'global' | 'gold'>('watchlist')
+  const [view, setView] = useState<'watchlist' | 'market' | 'hot' | 'global' | 'gold'>('watchlist')
   const [fixError, setFixError] = useState('')
   const [drillNotice, setDrillNotice] = useState('')
   const previousSelection = useRef(state.selectedSymbol)
@@ -158,10 +163,16 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
     if (typeof symbol !== 'string' || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) { setDrillNotice(t('market.drill.no-symbol')); return }
     const known = state.items.some((entry: any) => entry.symbol === symbol)
     try {
-      if (known) select(symbol)
-      else preview(symbol, name)
-      setDrillNotice(t(known ? 'market.drill.opened' : 'market.drill.preview', { name: name || symbol }))
-      setView('watchlist')
+      if (known) {
+        select(symbol)
+        setView('watchlist')
+        setDrillNotice(t('market.drill.opened', { name: name || symbol }))
+      } else {
+        // A stock that is not on the list gets its own full-width page: no
+        // watchlist rail and no tab switch, so the reader keeps their place.
+        preview(symbol, name)
+        setDrillNotice(t('market.drill.preview', { name: name || symbol }))
+      }
     } catch (failure: any) {
       setDrillNotice(errorKey(failure?.code))
     }
@@ -186,18 +197,25 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
         region here; the shell's global rule keeps every button `no-drag`, so
         only the text and gaps move the window. */}
     <header className="dxs-titlebar" data-window-drag>
-      <div className="dxs-brand"><StockIcon size={16} /><h1>{t('title')}</h1><span className="dxs-context">{view === 'market' ? t('market.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
+      <div className="dxs-brand"><StockIcon size={16} /><h1>{t('title')}</h1><span className="dxs-context">{view === 'market' ? t('market.subtitle') : view === 'hot' ? t('hot.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
-        <button type="button" aria-pressed={view === 'watchlist'} onClick={() => setView('watchlist')}>{t('page.view.watchlist')}</button>
-        <button type="button" aria-pressed={view === 'market'} onClick={() => setView('market')}>{t('page.view.market')}</button>
-        <button type="button" aria-pressed={view === 'global'} onClick={() => setView('global')}>{t('global.view.tab')}</button>
-        <button type="button" aria-pressed={view === 'gold'} onClick={() => setView('gold')}>{t('gold.view.tab')}</button>
+        <button type="button" aria-pressed={view === 'watchlist' && !previewOpen} onClick={() => { leavePreview(); setView('watchlist') }}>{t('page.view.watchlist')}</button>
+        <button type="button" aria-pressed={view === 'market' && !previewOpen} onClick={() => { leavePreview(); setView('market') }}>{t('page.view.market')}</button>
+        <button type="button" aria-pressed={view === 'hot' && !previewOpen} onClick={() => { leavePreview(); setView('hot') }}>{t('page.view.hot')}</button>
+        <button type="button" aria-pressed={view === 'global' && !previewOpen} onClick={() => { leavePreview(); setView('global') }}>{t('global.view.tab')}</button>
+        <button type="button" aria-pressed={view === 'gold' && !previewOpen} onClick={() => { leavePreview(); setView('gold') }}>{t('gold.view.tab')}</button>
       </nav>
       <div className="dxs-header-actions"><button type="button" onClick={back}>{t('page.back')}</button></div>
     </header>
     <div className="dxs-body">
     {drillNotice ? <p role="status" className="dxs-banner">{drillNotice}</p> : null}
-    {view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView rpc={rpc} t={t} format={format} locale={getLocale()} /></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
+    {previewOpen ? <div className="dxs-stage dxs-stage-detail dxs-preview-page">
+      <div className="dxs-preview-bar">
+        <button type="button" className="dxs-preview-back" onClick={leavePreview}>← {t('preview.back')}</button>
+        <p className="dxs-muted">{t('preview.bar', { name: previewItem?.alias || previewItem?.symbol || '' })}</p>
+      </div>
+      <Detail key={`preview:${previewItem?.symbol}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
+    </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView rpc={rpc} t={t} format={format} locale={getLocale()} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
       {sourceOff ? <div className="dxs-banner is-warn dxs-source-card"><div><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p>{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</div><SourceButton preference={preference} t={t} large /></div> : preference.status === 'error' ? <p role="alert" className="dxs-banner dxs-error">{t('source.unavailable')}</p> : null}
       {state.placement === 'occupied' && <p role="status" className="dxs-banner">{t('page.occupied')}</p>}
       {state.barHidden && <p role="status" className="dxs-banner">{t('page.bar-hidden')} <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button></p>}
@@ -239,7 +257,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, remove, move, s
         </aside>
         <div className="dxs-stage">
           {state.scopeStatus === 'ready' && (item
-            ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} previewing={Boolean(previewItem)} onAdd={previewItem && state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
+            ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
             : <div className="dxs-stage-empty"><h2>{t('page.select')}</h2><p className="dxs-muted">{t('page.select-hint')}</p><StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} rpc={rpc} /></div>)}
         </div>
       </div>

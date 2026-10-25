@@ -348,6 +348,13 @@ export function parseMarketRequest(payload) {
             throw stockMarketError('invalid-input');
         return { kind: 'tail-scan' };
     }
+    if (kind === 'hot-scan') {
+        if (keys.join(',') === 'kind')
+            return { kind: 'hot-scan' };
+        if (keys.join(',') !== 'board,kind')
+            throw stockMarketError('invalid-input');
+        return { kind: 'hot-scan', board: validateBoardCode(payload.board) };
+    }
     if (kind === 'board') {
         if (keys.join(',') !== 'board,kind')
             throw stockMarketError('invalid-input');

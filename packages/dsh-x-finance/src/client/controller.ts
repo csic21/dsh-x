@@ -57,6 +57,8 @@ export function createWatchlistController(storage?: any, eventTarget?: any) {
     scopeLoading: () => { storageKey = null; publish({ scopeStatus: 'loading', scopeId: null, items: [], selectedSymbol: null, collapsed: false, barHidden: false, preview: null }) },
     scopeFailed: () => { storageKey = null; publish({ items: [], selectedSymbol: null, scopeStatus: 'failed', scopeId: null, storageError: 'scope-unavailable', preview: null }) },
     select: (symbol: any) => publish({ selectedSymbol: symbol, preview: null }),
+    /** Leaves a temporary view without changing the saved selection. */
+    closePreview: () => { if (state.preview) publish({ preview: null }) },
     /**
      * Show one stock from the market without touching the saved list. Selecting
      * a watchlist row closes the preview again, and adding the stock promotes

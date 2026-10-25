@@ -1,6 +1,7 @@
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, isAshareMinute, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday } from './market.js';
 import { projectGlobalOverview } from './global.js';
 import { projectTailScan } from './tail-scan.js';
+import { projectHotScan } from './hot.js';
 import { createRpcRoute, failure } from './rpc.js';
 /**
  * Re-validates every quote before it reaches the browser and reports a symbol
@@ -207,6 +208,13 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                     return failure('finance/global-unavailable', '当前行情源不提供全球指数。');
                 return { ok: true, value: { status: 'ready', global: projectGlobalOverview(await resolved.globalOverview(), now()) } };
             }
+            if (request.kind === 'hot-scan') {
+                // The history layer is an optional capability of a replacement source;
+                // its absence disables this panel, not the market board.
+                if (typeof resolved.hotScan !== 'function')
+                    return failure('finance/hot-scan-unavailable', '当前行情源不提供热点扫描。');
+                return { ok: true, value: { status: 'ready', hotScan: projectHotScan(await resolved.hotScan({ board: request.board }), now()) } };
+            }
             if (request.kind === 'tail-scan') {
                 // Minute data and daily history are optional capabilities. A source
                 // that has neither leaves this panel unavailable without breaking the
@@ -226,6 +234,9 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                 return failure('finance/tail-scan-unavailable', '该行情源暂不提供尾盘扫描。');
             if (typeof error?.message === 'string' && error.message.startsWith('tail-scan '))
                 return failure('finance/tail-scan-unavailable', '尾盘扫描结果无效，请稍后重试。');
+            if (error?.code === 'finance/hot-scan-invalid' || (typeof error?.message === 'string' && error.message.startsWith('hot scan'))) {
+                return failure('finance/hot-scan-unavailable', '热点扫描暂不可用，请稍后重试。');
+            }
             return failure('finance/market-unavailable', '市场数据暂不可用，请稍后重试。');
         }
     };

@@ -1,3 +1,4 @@
+import type { HotSnapshot } from './hot.ts';
 import type { MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider, MarketIntraday } from './market.ts';
 import type { TailMinutePoint } from './tail-scan.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
@@ -121,6 +122,18 @@ interface StockRankPage {
 }
 /** Parses one `getBoardRankList` page. Exported for tests. */
 export declare function parseStockRankPage(payload: any): StockRankPage;
+/**
+ * One ranking row as the hot screen needs it. The feed is the same endpoint the
+ * breadth board uses, but the hot layer also reads 量比, 换手, 振幅, 涨速,
+ * 主力净流入 and the 5/10/20/60-day moves. Missing optional fields stay null: a
+ * rule that needs one simply does not fire instead of reading a zero.
+ */
+export declare function parseHotRow(row: any): HotSnapshot | null;
+/** Parses one hot ranking page. Exported for tests. */
+export declare function parseHotPage(payload: any): {
+    total: number;
+    rows: HotSnapshot[];
+};
 /** Parses one `v_sh600519="..."` stock line into the projected quote. */
 export declare function parseStockQuote(key: string, fields: string[], now: number): MarketQuote;
 /** Extra Tencent quote fields used only by the local tail scan. */

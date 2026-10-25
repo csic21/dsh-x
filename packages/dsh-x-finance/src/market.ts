@@ -10,6 +10,7 @@
 import { validateSymbol } from './watchlist.ts'
 import type { GlobalMarketOverview } from './global.ts'
 import type { TailScanResult } from './tail-scan.ts'
+import type { HotScanResult } from './hot.ts'
 export const MARKET_ENDPOINT = 'dsh-x-finance.market'
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference'
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)'
@@ -244,6 +245,7 @@ export type MarketRequest =
   | { kind: 'intraday'; symbol: string }
   | { kind: 'global' }
   | { kind: 'tail-scan' }
+  | { kind: 'hot-scan'; board?: string }
 
 /** Daily bars requested by one history call. Bounded for response size. */
 export const MARKET_HISTORY_DEFAULT_LIMIT = 250
@@ -296,6 +298,12 @@ export interface MarketProvider {
    * minute data leaves this panel unavailable instead of failing the board.
    */
   tailScan?(): Promise<TailScanResult>
+  /**
+   * Market-wide hot-topic screen. Optional and independent from the breadth
+   * board: the snapshot layer is cheap, the history layer is bounded and the
+   * result states how many symbols received it.
+   */
+  hotScan?(options: { board?: string }): Promise<HotScanResult>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -615,6 +623,11 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
   if (kind === 'tail-scan') {
     if (keys.join(',') !== 'kind') throw stockMarketError('invalid-input')
     return { kind: 'tail-scan' }
+  }
+  if (kind === 'hot-scan') {
+    if (keys.join(',') === 'kind') return { kind: 'hot-scan' }
+    if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')
+    return { kind: 'hot-scan', board: validateBoardCode((payload as { board?: unknown }).board) }
   }
   if (kind === 'board') {
     if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')

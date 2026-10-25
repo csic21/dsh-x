@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT } from '../../market.ts'
 import type { BoardDetail, MarketBreadth, MarketOverview } from '../../market.ts'
 import type { TailScanResult } from '../../tail-scan.ts'
+import type { HotScanResult } from '../../hot.ts'
 import type { GlobalMarketOverview } from '../../global.ts'
 
 export interface MarketDataState<T> {
@@ -219,4 +220,74 @@ export function useMarketPreference(rpc: any) {
     }
   }
   return { ...state, setEnabled }
+}
+
+export interface HotScanState {
+  status: 'idle' | 'loading' | 'ready' | 'error' | 'unconfigured'
+  value: HotScanResult | null
+  error: string
+  running: boolean
+  /** Board code the displayed run was limited to, null for the whole market. */
+  board: string | null
+  /** Seconds the current run has been waiting, for the progress line. */
+  elapsed: number
+}
+
+/**
+ * The hot screen is explicit-run like the tail scan: nothing is fetched until
+ * the reader asks, and a previous result stays visible while a new run is in
+ * flight. `elapsed` only measures this browser's wait, not the Host's compute.
+ */
+export function useHotScan(rpc: any) {
+  const [state, setState] = useState<HotScanState>({ status: 'idle', value: null, error: '', running: false, board: null, elapsed: 0 })
+  const controller = useRef<AbortController | null>(null)
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const stopTimer = () => { if (timer.current) { clearInterval(timer.current); timer.current = null } }
+  useEffect(() => () => { controller.current?.abort(); stopTimer() }, [])
+  const run = async (board?: string) => {
+    controller.current?.abort()
+    stopTimer()
+    const local = new AbortController()
+    controller.current = local
+    const started = Date.now()
+    setState(previous => ({
+      status: previous.value ? previous.status : 'loading',
+      value: previous.value,
+      error: '',
+      running: true,
+      board: board ?? null,
+      elapsed: 0,
+    }))
+    timer.current = setInterval(() => {
+      setState(previous => previous.running ? { ...previous, elapsed: Math.round((Date.now() - started) / 1000) } : previous)
+    }, 1000)
+    try {
+      if (!rpc?.call) throw new Error('finance/connection')
+      const request = board ? { kind: 'hot-scan', board } : { kind: 'hot-scan' }
+      const result = await rpc.call('/api', MARKET_ENDPOINT, request, local.signal)
+      if (local.signal.aborted) return
+      if (!result?.ok) throw new Error(typeof result?.error?.code === 'string' ? result.error.code : 'finance/hot-scan-unavailable')
+      const payload = result.value
+      if (payload?.status === 'unconfigured') {
+        stopTimer()
+        setState({ status: 'unconfigured', value: null, error: '', running: false, board: board ?? null, elapsed: 0 })
+        return
+      }
+      if (!payload?.hotScan || typeof payload.hotScan !== 'object') throw new Error('finance/invalid')
+      stopTimer()
+      setState({ status: 'ready', value: payload.hotScan as HotScanResult, error: '', running: false, board: board ?? null, elapsed: 0 })
+    } catch {
+      if (local.signal.aborted) return
+      stopTimer()
+      setState(previous => ({
+        status: previous.value ? 'ready' : 'error',
+        value: previous.value,
+        error: 'finance/hot-scan-unavailable',
+        running: false,
+        board: board ?? null,
+        elapsed: 0,
+      }))
+    }
+  }
+  return { ...state, run }
 }

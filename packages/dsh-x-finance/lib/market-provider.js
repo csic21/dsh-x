@@ -7,6 +7,7 @@
 // Only projected fields leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
 import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, isAshareMinute, } from './market.js';
+import { HOT_HISTORY_BARS, hotQualifies, HOT_HISTORY_DEPTH, HOT_MAX_RESULTS, HOT_MAX_STOCKS, HOT_ROWS_TTL_MS, HOT_SCAN_TTL_MS, HOT_STRATEGY_COUNT, hotHits, hotScores, hotWeight, sortHotHits, } from './hot.js';
 import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, parseGlobalQuotes } from './global.js';
 import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, } from './tail-scan.js';
 import { validateSymbol } from './watchlist.js';
@@ -284,6 +285,78 @@ export function parseStockRankPage(payload) {
             marketCap: Number.isFinite(marketCap) && marketCap >= 0 && marketCap < 1e8 ? marketCap * 1e8 : null,
             suspended: row.state === 'S',
         });
+    }
+    return { total, rows };
+}
+/**
+ * One ranking row as the hot screen needs it. The feed is the same endpoint the
+ * breadth board uses, but the hot layer also reads 量比, 换手, 振幅, 涨速,
+ * 主力净流入 and the 5/10/20/60-day moves. Missing optional fields stay null: a
+ * rule that needs one simply does not fire instead of reading a zero.
+ */
+export function parseHotRow(row) {
+    if (!row || typeof row !== 'object' || Array.isArray(row))
+        return null;
+    const symbol = normalizeMarketCode(row.code);
+    const name = cleanText(row.name, 64);
+    const price = Number(row.zxj);
+    const changePercent = Number(row.zdf);
+    const amount = Number(row.turnover);
+    if (!symbol || !name)
+        return null;
+    if (!Number.isFinite(price) || price <= 0 || price >= 1e10)
+        return null;
+    if (!Number.isFinite(changePercent) || Math.abs(changePercent) > 1000)
+        return null;
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1e12)
+        return null;
+    const optional = (input, min, max) => {
+        const value = Number(input);
+        return Number.isFinite(value) && value >= min && value <= max ? value : null;
+    };
+    const scaled = (input, factor, min, max) => {
+        const value = optional(input, min, max);
+        return value === null ? null : value * factor;
+    };
+    const digits = symbol.slice(3);
+    const board = /^(688|689)/.test(digits) ? 'star'
+        : /^(300|301)/.test(digits) ? 'chinext'
+            : /^(4|8|920)/.test(digits) ? 'bse' : 'main';
+    return {
+        symbol,
+        name,
+        price,
+        changePercent,
+        turnoverRate: optional(row.hsl, 0, 100),
+        volumeRatio: optional(row.lb, 0, 1000),
+        speed: optional(row.speed, -100, 100),
+        amplitude: optional(row.zf, 0, 1000),
+        amount: amount * 10_000,
+        floatCap: scaled(row.ltsz, 1e8, 0, 1e8),
+        totalCap: scaled(row.zsz, 1e8, 0, 1e8),
+        mainInflow: scaled(row.zljlr, 10_000, -1e12, 1e12),
+        change5d: optional(row.zdf_d5, -1000, 10_000),
+        change10d: optional(row.zdf_d10, -1000, 10_000),
+        change20d: optional(row.zdf_d20, -1000, 10_000),
+        change60d: optional(row.zdf_d60, -1000, 10_000),
+        board,
+        suspended: row.state === 'S',
+    };
+}
+/** Parses one hot ranking page. Exported for tests. */
+export function parseHotPage(payload) {
+    const data = payload?.data;
+    const total = Number(data?.total);
+    if (!Number.isInteger(total) || total < 0 || total > HOT_MAX_STOCKS)
+        throw new Error('hot total');
+    const list = Array.isArray(data?.rank_list) ? data.rank_list : [];
+    if (list.length > MARKET_PAGE_SIZE)
+        throw new Error('hot page too large');
+    const rows = [];
+    for (const row of list) {
+        const parsed = parseHotRow(row);
+        if (parsed)
+            rows.push(parsed);
     }
     return { total, rows };
 }
@@ -1276,6 +1349,110 @@ export function createTencentMarketProvider(options = {}) {
             candidates,
         };
     }
+    // ---- Hot topic screen ---------------------------------------------------
+    // One paged ranking scan supplies the whole snapshot layer; daily bars are
+    // fetched only for the strongest snapshot candidates. The result reports the
+    // candidate count so the UI never claims every rule ran on every symbol.
+    async function loadHotRows(boardCode) {
+        const url = (offset) => `${MARKET_STOCK_RANK_ENDPOINT}?_appver=11.17.0&board_code=${boardCode}&sort_type=turnover&direct=down&offset=${offset}&count=${MARKET_PAGE_SIZE}`;
+        const firstPage = parseHotPage(await retry(() => requestJson(url(0)), 2));
+        const pages = Math.min(MARKET_MAX_PAGES, Math.ceil(firstPage.total / MARKET_PAGE_SIZE));
+        if (pages < 1)
+            throw new Error('hot scan empty');
+        const offsets = Array.from({ length: pages }, (_, index) => index * MARKET_PAGE_SIZE);
+        const results = await mapLimit(offsets, concurrency, async (offset) => {
+            if (offset === 0)
+                return firstPage;
+            try {
+                return parseHotPage(await retry(() => requestJson(url(offset)), 2));
+            }
+            catch {
+                return null;
+            }
+        });
+        const unique = new Map();
+        let failed = 0;
+        for (const page of results) {
+            if (!page) {
+                failed += 1;
+                continue;
+            }
+            for (const row of page.rows)
+                if (!unique.has(row.symbol))
+                    unique.set(row.symbol, row);
+        }
+        const rows = [...unique.values()];
+        if (!rows.length || rows.length < firstPage.total * 0.9)
+            throw new Error('hot scan coverage too low');
+        return { rows, expected: firstPage.total, partial: failed > 0 };
+    }
+    async function loadHotScan(input) {
+        const started = now();
+        const boardCode = input.board ? `pt01${input.board}` : 'aStock';
+        const state = await getOrLoad(`hot-rows:${boardCode}`, HOT_ROWS_TTL_MS, () => loadHotRows(boardCode));
+        const snapshots = state.rows.filter(stock => !stock.suspended && stock.price > 0 && !/^退市/.test(stock.name));
+        const preliminary = snapshots.map(snapshot => {
+            const hits = hotHits(snapshot, null);
+            return { snapshot, hits, weight: hotWeight(hits) };
+        });
+        preliminary.sort((left, right) => right.weight - left.weight
+            || right.snapshot.amount - left.snapshot.amount
+            || left.snapshot.symbol.localeCompare(right.snapshot.symbol));
+        const candidates = preliminary.slice(0, Math.min(HOT_HISTORY_DEPTH, preliminary.length));
+        const historyBySymbol = new Map();
+        let historyFailed = 0;
+        await mapLimit(candidates, Math.min(4, concurrency), async (item) => {
+            try {
+                const history = await loadHistory(item.snapshot.symbol, 'forward', HOT_HISTORY_BARS);
+                historyBySymbol.set(item.snapshot.symbol, history.bars.map(bar => ({
+                    sessionDate: bar.sessionDate, open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume,
+                })));
+            }
+            catch {
+                historyFailed += 1;
+            }
+        });
+        const evaluated = preliminary.map(item => {
+            const bars = historyBySymbol.get(item.snapshot.symbol) ?? null;
+            const hits = bars ? hotHits(item.snapshot, bars) : item.hits;
+            return { snapshot: item.snapshot, hits, weight: hotWeight(hits) };
+        });
+        const hitters = evaluated.filter(item => hotQualifies(item.hits));
+        const scores = hotScores(hitters.map(item => item.weight));
+        const hits = hitters.map((item, index) => ({
+            symbol: item.snapshot.symbol,
+            name: item.snapshot.name,
+            price: item.snapshot.price,
+            changePercent: item.snapshot.changePercent,
+            amount: item.snapshot.amount,
+            turnoverRate: item.snapshot.turnoverRate,
+            volumeRatio: item.snapshot.volumeRatio,
+            score: scores[index] ?? 0,
+            hits: item.hits,
+        }));
+        let board = null;
+        if (input.board) {
+            const rank = await fetchBoardRank().catch(() => null);
+            board = { code: input.board, name: rank?.get(input.board)?.name ?? input.board };
+        }
+        return {
+            source: `${MARKET_SOURCE_NAME} 排行/日K`,
+            fetchedAt: isoNow(now()),
+            durationMs: now() - started,
+            strategyCount: HOT_STRATEGY_COUNT,
+            board,
+            universe: {
+                expected: state.expected,
+                covered: state.rows.length,
+                scanned: snapshots.length,
+                historyChecked: candidates.length - historyFailed,
+                historyFailed,
+                partial: state.partial || historyFailed > 0,
+            },
+            hitCount: hitters.length,
+            hits: sortHotHits(hits).slice(0, HOT_MAX_RESULTS),
+        };
+    }
     function getOrLoad(key, ttl, loader) {
         const cached = cache.get(key);
         if (cached && cached.expires > now())
@@ -1341,6 +1518,11 @@ export function createTencentMarketProvider(options = {}) {
             return getOrLoad(`intraday:${symbol}`, MARKET_INTRADAY_TTL_MS, () => loadIntraday(symbol));
         },
         tailScan: () => getOrLoad('tail-scan', TAIL_SCAN_TTL_MS, loadTailScan),
+        hotScan: (input) => {
+            const board = input && typeof input === 'object' && typeof input.board === 'string'
+                ? validateBoardCode(input.board) : undefined;
+            return getOrLoad(`hot-scan:${board ?? 'all'}`, HOT_SCAN_TTL_MS, () => loadHotScan({ board }));
+        },
     };
 }
 /** Shanghai / Shenzhen are market 1 / 0. Beijing shares the Shenzhen market id; the codes do not overlap. */

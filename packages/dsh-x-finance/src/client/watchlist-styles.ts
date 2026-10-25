@@ -59,6 +59,12 @@ export const WATCHLIST_CSS = `
 .dxs-fineprint summary{cursor:pointer;width:fit-content}
 .dxs-fineprint p{margin:6px 0 0;line-height:1.45}
 .dxs-stage{min-width:0;min-height:0;overflow:auto;padding:18px 22px 36px;background:var(--dxs-soft)}
+.dxs-stage-detail{display:flex;flex-direction:column;gap:12px}
+.dxs-preview-page{padding-top:0}
+.dxs-preview-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 0;margin:0 0 2px;border-bottom:1px solid var(--dxs-line);background:var(--dxs-soft)}
+.dxs-preview-bar p{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dxs .dxs-preview-back{flex:none;height:28px;padding:0 12px;font-size:12px;border:1px solid var(--dxs-line);border-radius:8px;background:var(--dxs-bg);color:var(--dxs-fg);white-space:nowrap}
+.dxs .dxs-preview-back:hover{border-color:var(--dxs-accent);color:var(--dxs-accent)}
 .dxs-stage-market{padding-top:14px}
 .dxs-stage-hint{margin:8px 0 0}
 .dxs-stage-empty{display:flex;flex-direction:column;gap:8px}

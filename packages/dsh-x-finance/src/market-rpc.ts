@@ -4,6 +4,7 @@ import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } fro
 import type { MarketController } from './market-preference.ts'
 import { projectGlobalOverview } from './global.ts'
 import { projectTailScan } from './tail-scan.ts'
+import { projectHotScan } from './hot.ts'
 import { createRpcRoute, failure } from './rpc.ts'
 
 // A provider can be replaced or switched at runtime; a function is resolved on
@@ -183,6 +184,12 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
         if (typeof resolved.globalOverview !== 'function') return failure('finance/global-unavailable', '当前行情源不提供全球指数。')
         return { ok: true, value: { status: 'ready', global: projectGlobalOverview(await resolved.globalOverview(), now()) } }
       }
+      if (request.kind === 'hot-scan') {
+        // The history layer is an optional capability of a replacement source;
+        // its absence disables this panel, not the market board.
+        if (typeof resolved.hotScan !== 'function') return failure('finance/hot-scan-unavailable', '当前行情源不提供热点扫描。')
+        return { ok: true, value: { status: 'ready', hotScan: projectHotScan(await resolved.hotScan({ board: request.board }), now()) } }
+      }
       if (request.kind === 'tail-scan') {
         // Minute data and daily history are optional capabilities. A source
         // that has neither leaves this panel unavailable without breaking the
@@ -196,6 +203,9 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
       if (error?.code === 'finance/intraday-unavailable') return failure('finance/intraday-unavailable', '该股票暂无分时数据。')
       if (error?.code === 'finance/tail-scan-unavailable') return failure('finance/tail-scan-unavailable', '该行情源暂不提供尾盘扫描。')
       if (typeof error?.message === 'string' && error.message.startsWith('tail-scan ')) return failure('finance/tail-scan-unavailable', '尾盘扫描结果无效，请稍后重试。')
+      if (error?.code === 'finance/hot-scan-invalid' || (typeof error?.message === 'string' && error.message.startsWith('hot scan'))) {
+        return failure('finance/hot-scan-unavailable', '热点扫描暂不可用，请稍后重试。')
+      }
       return failure('finance/market-unavailable', '市场数据暂不可用，请稍后重试。')
     }
   }

@@ -38,6 +38,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         intraday?: undefined;
         global?: undefined;
+        hotScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -52,6 +53,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         intraday?: undefined;
         global?: undefined;
+        hotScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -66,6 +68,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         intraday?: undefined;
         global?: undefined;
+        hotScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -80,6 +83,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         intraday?: undefined;
         global?: undefined;
+        hotScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -94,6 +98,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history: MarketHistory;
         intraday?: undefined;
         global?: undefined;
+        hotScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -108,6 +113,7 @@ export declare function createMarketHandler({ provider, now }?: {
         status: string;
         intraday: MarketIntraday;
         global?: undefined;
+        hotScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -122,6 +128,7 @@ export declare function createMarketHandler({ provider, now }?: {
         intraday?: undefined;
         status: string;
         global: import("./global.ts").GlobalMarketOverview;
+        hotScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -136,6 +143,22 @@ export declare function createMarketHandler({ provider, now }?: {
         intraday?: undefined;
         global?: undefined;
         status: string;
+        hotScan: import("./hot.ts").HotScanResult;
+        tailScan?: undefined;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
+        global?: undefined;
+        hotScan?: undefined;
+        status: string;
         tailScan: import("./tail-scan.ts").TailScanResult;
         board?: undefined;
     };
@@ -149,6 +172,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         intraday?: undefined;
         global?: undefined;
+        hotScan?: undefined;
         tailScan?: undefined;
         status: string;
         board: import("./market.ts").BoardDetail;

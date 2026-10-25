@@ -59,8 +59,20 @@ export function apply(ctx: any) {
     hooks: { watchlist: controller.source },
     retryScope: () => { void loadScope() },
     add: (item: any) => { controller.add(item); controller.select(item.symbol) },
+    // The hot screen adds without navigating: a batch of sixty must not change
+    // the selected stock sixty times (which would also switch the page back to
+    // the watchlist on every selection change).
+    addMany: (entries: any[]) => {
+      let added = 0
+      for (const entry of entries) {
+        if (!entry || typeof entry.symbol !== 'string') continue
+        try { controller.add({ symbol: entry.symbol, alias: typeof entry.name === 'string' ? entry.name : '', fixed: false }); added += 1 } catch { /* duplicate or list full */ }
+      }
+      return added
+    },
     remove: controller.remove, move: controller.move, select: controller.select, preview: controller.preview, collapse: controller.collapse,
     setFixed: controller.setFixed, toggleBar: controller.toggleBar, hideBar: controller.toggleBar,
+    closePreview: controller.closePreview,
     open: (symbol: any) => { if (symbol) controller.select(symbol); ctx.layout.selectPanel('dsh-x-finance') },
     back: () => ctx.layout.selectPanel(null),
   })

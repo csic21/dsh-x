@@ -373,7 +373,7 @@ const globalOverview = {
     { code: 'KS11', name: '韩国KOSPI', nameEn: 'KOSPI', region: 'asiaPacific', timeZone: 'Asia/Seoul', price: 5550.3, change: 16.53, changePercent: 0.3, open: 5403.17, high: 5547.13, low: 5305.98, previousClose: 5533.77, quotedAt: QUOTED },
   ],
 }
-test('finance page tabs switch between the watchlist, the market panorama, global markets and gold', async () => {
+test('finance page tabs switch between the watchlist, the market panorama, the hot screen, global markets and gold', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
   const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
   ;(globalThis as any).window = dom.window
@@ -399,12 +399,12 @@ test('finance page tabs switch between the watchlist, the market panorama, globa
   const noop = () => {}
   try {
     await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
-      useWatchlist, useResource, add: noop, remove: noop, move: noop, select: noop, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
+      useWatchlist, useResource, add: noop, remove: noop, move: noop, select: noop, closePreview: noop, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
       t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
     })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     const tabs = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-view-tabs button')]
-    assert.equal(tabs.length, 4)
+    assert.equal(tabs.length, 5)
     assert.equal(tabs[0]!.getAttribute('aria-pressed'), 'true')
     assert.match(dom.window.document.body.textContent ?? '', /我的自选/)
     await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
@@ -416,6 +416,13 @@ test('finance page tabs switch between the watchlist, the market panorama, globa
     await act(async () => tabs[2]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     assert.equal(tabs[2]!.getAttribute('aria-pressed'), 'true')
+    const hotText = dom.window.document.body.textContent ?? ''
+    assert.match(hotText, /热点题材/)
+    assert.match(hotText, /运行筛选|重新运行/)
+    assert.doesNotMatch(hotText, /NaN|undefined/)
+    await act(async () => tabs[3]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.equal(tabs[3]!.getAttribute('aria-pressed'), 'true')
     const globalText = dom.window.document.body.textContent ?? ''
     assert.match(globalText, /全球市场/)
     assert.match(globalText, /道琼斯工业指数/)
@@ -423,9 +430,9 @@ test('finance page tabs switch between the watchlist, the market panorama, globa
     assert.match(globalText, /韩国KOSPI/)
     assert.match(globalText, /52,867\.98/)
     assert.doesNotMatch(globalText, /NaN|undefined/)
-    await act(async () => tabs[3]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => tabs[4]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-    assert.equal(tabs[3]!.getAttribute('aria-pressed'), 'true')
+    assert.equal(tabs[4]!.getAttribute('aria-pressed'), 'true')
     const goldText = dom.window.document.body.textContent ?? ''
     assert.match(goldText, /折算与价差/)
     assert.match(goldText, /4,035.01/)
@@ -485,6 +492,7 @@ test('market panorama drills into a stock and the workbench requests its daily b
       useWatchlist, useResource, add: (item: any) => { added.push(item); state.items.push({ ...item }); state.preview = null; state.selectedSymbol = item.symbol },
       remove: noop, move: noop, select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol; state.preview = null },
       preview: (symbol: any, name: any) => { previews.push({ symbol, name }); state.preview = { symbol, name } },
+      closePreview: () => { state.preview = null },
       setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
       t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
     })))
@@ -505,7 +513,10 @@ test('market panorama drills into a stock and the workbench requests its daily b
     assert.deepEqual(added, [], 'drilling into a stock must not add it to the watchlist')
     assert.match(dom.window.document.body.textContent ?? '', /正在临时查看 长鑫科技/)
     assert.match(dom.window.document.body.textContent ?? '', /临时查看（未加入自选）/)
-    assert.equal(tabs[0]!.getAttribute('aria-pressed'), 'true')
+    // The preview is its own page: no watchlist rail and no tab claims it.
+    assert.equal(dom.window.document.querySelector('.dxs-rail'), null, 'a preview must not show the watchlist rail')
+    assert.equal(tabs.filter(tab => tab.getAttribute('aria-pressed') === 'true').length, 0)
+    assert.ok(dom.window.document.querySelector('.dxs-preview-back'), 'the preview offers a way back')
     // The stub workbench receives the previewed symbol; the real component then
     // requests its history (covered by workbench/history tests).
     const mounted = (globalThis as any).__workbenchStub.calls.at(-1)
@@ -528,11 +539,12 @@ test('market panorama drills into a stock and the workbench requests its daily b
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     assert.equal(state.preview?.symbol, 'BJ.920196')
     assert.ok(dom.window.document.querySelector('.dxs-preview-add'), 'the preview keeps offering the add action')
-    const savedRow = dom.window.document.querySelector<HTMLElement>('.dxs-rail .dxs-select')
-    assert.ok(savedRow, 'the saved stock is listed in the rail')
-    await act(async () => savedRow!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    assert.equal(dom.window.document.querySelector('.dxs-rail'), null, 'the preview still hides the rail')
+    await act(async () => tabs[0]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-    assert.equal(state.preview, null, 'selecting a saved row leaves the preview')
+    assert.equal(state.preview, null, 'switching tabs leaves the preview')
+    const savedRow = dom.window.document.querySelector<HTMLElement>('.dxs-rail .dxs-select')
+    assert.ok(savedRow, 'the saved stock is listed in the rail once the preview closes')
     assert.deepEqual(added, [{ symbol: 'SH.688825', alias: '长鑫科技', fixed: false }], 'leaving a preview saves nothing')
   } finally {
     await act(async () => root.unmount())
@@ -573,6 +585,7 @@ test('a mover row and an index card drill down without touching the watchlist', 
       useWatchlist, useResource, add: (item: any) => added.push(item), remove: noop, move: noop,
       select: (symbol: any) => { selected.push(symbol); state.selectedSymbol = symbol; state.preview = null },
       preview: (symbol: any, name: any) => { previews.push({ symbol, name }); state.preview = { symbol, name } },
+      closePreview: () => { state.preview = null },
       setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
       t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
     })))
@@ -587,6 +600,13 @@ test('a mover row and an index card drill down without touching the watchlist', 
     assert.deepEqual(previews, [{ symbol: 'BJ.920196', name: 'N南乳' }])
     assert.deepEqual(added, [], 'a mover row opens a preview, not a watchlist write')
     assert.match(dom.window.document.body.textContent ?? '', /正在临时查看 N南乳/)
+    assert.equal(dom.window.document.querySelector('.dxs-rail'), null, 'a preview hides the watchlist rail')
+    const backButton = dom.window.document.querySelector<HTMLElement>('.dxs-preview-back')
+    assert.ok(backButton, 'the preview page has a back action')
+    await act(async () => backButton!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.equal(state.preview, null, 'back leaves the preview')
+    assert.match(dom.window.document.body.textContent ?? '', /市场全景/, 'back returns to the market tab')
     // An index is opened too, but it is not an exchange-qualified A-share, so it
     // must not be written to the watchlist.
     await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
@@ -607,6 +627,72 @@ test('a mover row and an index card drill down without touching the watchlist', 
     const chart = (globalThis as any).__workbenchStub.calls.at(-1)
     assert.equal(chart.symbol, 'SH.000001')
     assert.equal(chart.rpc, rpc)
+  } finally {
+    await act(async () => root.unmount())
+    dom.window.close()
+    for (const [key, value] of Object.entries(original)) { if (value === undefined) delete (globalThis as any)[key]; else (globalThis as any)[key] = value }
+  }
+})
+
+test('the hot screen runs on demand and renders scores, tags and counts', async () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
+  const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
+  ;(globalThis as any).window = dom.window
+  globalThis.document = dom.window.document
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+  const hotScan = {
+    source: '腾讯行情 (unofficial) 排行/日K',
+    fetchedAt: '2026-10-24T16:38:00+08:00',
+    durationMs: 3868.7,
+    strategyCount: 35,
+    board: null,
+    universe: { expected: 5578, covered: 5578, scanned: 5500, historyChecked: 120, historyFailed: 0, partial: false },
+    hitCount: 171,
+    hits: [
+      { symbol: 'SZ.002249', name: '大洋电机', price: 7.58, changePercent: 7.37, amount: 2_177_020_000, turnoverRate: 15.77, volumeRatio: 7.8, score: 100, hits: ['limit-up', 'volume-ratio-2', 'turnover-10', 'amount-10e', 'main-inflow'] },
+      { symbol: 'SZ.300622', name: '博士眼镜', price: 15.57, changePercent: 8.05, amount: 378_000_000, turnoverRate: 6, volumeRatio: 2.1, score: 99.35, hits: ['surge-7', 'volume-ratio-2', 'macd-golden'] },
+    ],
+  }
+  const rpc = {
+    call: async (_channel: string, _endpoint: string, payload: any) => {
+      if (payload?.action === 'get') return { ok: true, value: { enabled: true, forced: false } }
+      if (payload?.kind === 'hot-scan') return { ok: true, value: { status: 'ready', hotScan } }
+      if (payload?.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
+      return { ok: true, value: { status: 'unconfigured', source: null } }
+    },
+  }
+  const { createRoot } = await import('react-dom/client')
+  const root = createRoot(dom.window.document.getElementById('root')!)
+  const state = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: null }
+  const useWatchlist = (selector: any) => selector(state)
+  const useResource = () => ({ status: 'live', value: null })
+  const noop = () => {}
+  try {
+    await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
+      useWatchlist, useResource, add: noop, addMany: () => 0, remove: noop, move: noop, select: noop, closePreview: noop, setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
+      t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
+    })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    const tab = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-view-tabs button')][2]!
+    await act(async () => tab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.match(dom.window.document.body.textContent ?? '', /热点题材/)
+    assert.match(dom.window.document.body.textContent ?? '', /运行筛选/)
+    const run = dom.window.document.querySelector<HTMLElement>('.dxs-hot-run')
+    assert.ok(run)
+    await act(async () => run!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)) })
+    const text = dom.window.document.body.textContent ?? ''
+    assert.match(text, /大洋电机/)
+    assert.match(text, /博士眼镜/)
+    assert.match(text, /100\.00/)
+    assert.match(text, /99\.35/)
+    assert.match(text, /涨停/)
+    assert.match(text, /MACD金叉/)
+    assert.match(text, /命中 171 只/)
+    assert.match(text, /展示前 2 只/)
+    assert.doesNotMatch(text, /NaN|undefined/)
+    assert.ok(dom.window.document.querySelectorAll('.dxs-hot-row').length === 2)
   } finally {
     await act(async () => root.unmount())
     dom.window.close()
