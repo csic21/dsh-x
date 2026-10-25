@@ -29,6 +29,7 @@ packages/<包名>/
 - `dsh-x-finance`：A 股自选管理、独立详情页与冲突退让底条，外加黄金面板（跨市场报价、沪伦价差与区间变化）；可替换行情接口，另含 Finnhub 只读报价工具。
 - `dsh-x-browser`：实验性；Desktop 内嵌浏览器（受控操作与按轮授权），可选经 agent-browser 驱动外部 Chrome（CDP）。打包行为不在本仓库验证。
 - `dsh-x-delegate`：把一个任务委派给本机 Codex、Grok 或 OpenCode。ACP 客户端和 Codex `exec --json` 折叠器都在本包内，不依赖官方 subagent 包。
+- `dsh-x-ui`：玻璃界面。用官方 `ctx.theme.overrideTokens` 叠一层只覆盖"面"的 token 覆盖层，再加一张以宿主 `data-*` 钩子为锚点的材质样式表；不替换主题样式表，不改内核，可整体摘除。
 
 全部源码与包内测试均为 TypeScript，`strict` 覆盖源码与测试。Code 不再读取已删除的 Agents 源码。
 

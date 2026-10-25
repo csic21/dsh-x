@@ -36,7 +36,8 @@
     "packages/dsh-x-finance",
     "packages/dsh-x-browser",
     "packages/dsh-x-delegate",
-    "packages/dsh-x-pet"
+    "packages/dsh-x-pet",
+    "packages/dsh-x-ui"
   ],
   "packageManager": {
     "name": "pnpm",

@@ -96,3 +96,9 @@ Current status: **experimental**. The embedded backend has Web-side unit and int
 - No Electron UI, packaged application, provider login, real model call or paid market-data request is claimed.
 
 See the repository's current test run for counts; historical suite-era numbers are intentionally not repeated here.
+
+## 玻璃材质接入（2026-10-25）
+
+`test/glass-surface.test.ts` 断言：.dxb-control blur, .dxb-pane near-opaque pane。所有规则都带 `none` / 原底色回退，未安装 `dsh-x-ui` 时行为不变。
+
+**未验证**：真实浏览器里的模糊与观感。

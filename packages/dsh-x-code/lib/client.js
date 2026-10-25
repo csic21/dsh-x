@@ -2335,6 +2335,24 @@ var CSS = `
 @container(max-width:560px){.dxc-titlebar{padding:0 8px;gap:8px;height:50px}.dxc-header-actions{gap:4px}.dxc-header-actions>button{font-size:12px;padding:0 8px}.dxc-brand{gap:6px}.dxc-brand h1{font-size:13px}.dxc-repo{max-width:110px;font-size:12px}.dxc-toolbar{padding:6px 8px;gap:6px}.dxc-toolbar select{font-size:12px}.dxc-scope{gap:6px;flex-wrap:wrap}.dxc-scope label{display:none}.dxc-scope input{width:110px;font-size:12px!important}.dxc-banner{padding:7px 10px;font-size:12px}.dxc-viewer-heading{padding:5px 8px}.dxc-readonly{font-size:8px}.dxc-split-control{display:none}.dxc-split-row{grid-template-columns:1fr}.dxc-diff-cell:first-child{border-right:0}.dxc-diff-cell.dxc-line-context:first-child{display:none}.dxc-diff-cell.dxc-line-empty{display:none}.dxc-code-scroll{font-size:11px}.dxc-findings-actions button{min-width:0;flex:1}.dxc-find>span{font-size:9px}.dxc-find{padding-inline:8px}.dxc-source-line{grid-template-columns:40px minmax(0,1fr)}.dxc-source-line .dxc-line-number{padding-right:9px}.dxc-tab{max-width:160px}}
 @media(max-height:520px){.dxc-page{overflow-y:auto}.dxc-workbench{flex:1 0 260px;min-height:260px}}
 @media(prefers-reduced-motion:reduce){.dxc *{scroll-behavior:auto!important;transition:none!important}}
+
+/* \u2500\u2500 Glass material \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+   The Harness glass theme (dsh-x-ui) makes the shared surface tokens
+   translucent. Chrome that floats over the transcript needs the blur that
+   belongs with that fill; a content pane keeps an opaque fill instead, because
+   long-form text and dense tables must not sit on a moving backdrop.
+
+   Two constraints shape this block:
+   - backdrop-filter makes its host a containing block for position:fixed
+     descendants, so only a surface without one may carry it. The context menu
+     in the code workspace is a direct child of its page root, which is why that
+     root itself stays untouched.
+   - --dxu-blur-panel falls back to none, so every rule below is inert unless
+     the glass theme is installed. */
+
+.dxc-titlebar,.dxc-toolbar{backdrop-filter:var(--dxu-blur-panel,none);-webkit-backdrop-filter:var(--dxu-blur-panel,none)}
+/* A content pane stays opaque on purpose: it is where text is read. */
+.dxc-editor,.dxc-panel,.dxc-sidebar{background:var(--dxu-pane,var(--code-bg))}
 `;
 
 // src/client/index.ts

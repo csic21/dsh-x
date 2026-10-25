@@ -43,4 +43,21 @@ export const CSS = `
 .dxb-footer p{margin:7px 0}
 .dxb-footer summary{cursor:pointer}
 @container(max-width:420px){.dxb-toolbar{gap:4px;padding:6px 8px}.dxb-toolbar button{padding:0 8px}.dxb-icon-button{width:28px;padding:0}.dxb-control{align-items:flex-start}.dxb-footer{flex-direction:column}.dxb-footer details{max-width:100%}}
+
+/* ── Glass material ──────────────────────────────────────────────────────────
+   The Harness glass theme (dsh-x-ui) makes the shared surface tokens
+   translucent. Chrome that floats over the transcript needs the blur that
+   belongs with that fill; a content pane keeps an opaque fill instead, because
+   long-form text and dense tables must not sit on a moving backdrop.
+
+   Two constraints shape this block:
+   - backdrop-filter makes its host a containing block for position:fixed
+     descendants, so only a surface without one may carry it. The context menu
+     in the code workspace is a direct child of its page root, which is why that
+     root itself stays untouched.
+   - --dxu-blur-panel falls back to none, so every rule below is inert unless
+     the glass theme is installed. */
+
+.dxb-control{backdrop-filter:var(--dxu-blur-panel,none);-webkit-backdrop-filter:var(--dxu-blur-panel,none)}
+.dxb-pane{background:var(--dxu-pane,var(--dxb-bg))}
 `

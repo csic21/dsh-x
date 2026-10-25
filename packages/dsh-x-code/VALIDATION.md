@@ -27,3 +27,9 @@ Run `pnpm --filter dsh-x-code test` and `pnpm test` for the current counts. Do n
 No real paid or authenticated DSH model call, billing, vendor login, credential change, external repository upload, or PR/GitHub write is exercised. Review evidence is limited to explicitly selected text snapshots, with a 48 KiB before+after source budget and a 64,000-character encoded prompt limit. It cannot establish repository-wide correctness, real test execution, or that all secrets have been detected. Old findings are never automatically resolved by an empty re-review.
 
 The pinned official LLM API does not support a `code-review` purpose. Auxiliary input is reconstructable from private Code records and attributed to the session; no unsupported session-log event or false purpose is fabricated. A crash-left storage lock fails closed and requires explicit recovery with all hosts closed. Exhaustive screen-reader, operating-system, desktop-install, and production-provider compatibility are not claimed.
+
+## 玻璃材质接入（2026-10-25）
+
+`test/glass-surface.test.ts` 断言：.dxc-titlebar/.dxc-toolbar blur, .dxc-editor/.dxc-panel/.dxc-sidebar near-opaque pane, and that no blur lands on .dxc-page/.dxc-workbench (the context menu is fixed-position inside the page root)。所有规则都带 `none` / 原底色回退，未安装 `dsh-x-ui` 时行为不变。
+
+**未验证**：真实浏览器里的模糊与观感。

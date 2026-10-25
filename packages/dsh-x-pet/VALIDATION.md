@@ -26,3 +26,9 @@ The Codex rows, frame counts, per-frame durations, the slowed idle loop, the thr
 
 - Packaged Desktop behaviour: the plugin is verified as Web-side source, unit tests and a JSDOM mount of the built client. A packaged Desktop run has not been recorded in this repository.
 - Rendering appearance inside the assembled Harness window: the bubble measurements above come from the real stylesheet in headless Chrome, with the shell's own scrollbar rules and the resolved light/dark theme tokens applied, not from a live Harness session.
+
+## 玻璃材质接入（2026-10-25）
+
+`test/glass-surface.test.ts` 断言：.dxp-bubble/.dxp-dialog blur, and that no blur lands on .dxp/.dxp-stage (the picker scrim is fixed-position inside the frame root)。所有规则都带 `none` / 原底色回退，未安装 `dsh-x-ui` 时行为不变。
+
+**未验证**：真实浏览器里的模糊与观感。

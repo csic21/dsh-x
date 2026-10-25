@@ -1,6 +1,6 @@
 # 插件一览
 
-五个插件，全部通过官方 Plugins 页面或 `dsh plugin` 安装。没有默认套件，也没有必须一起安装的组合。
+六个插件，全部通过官方 Plugins 页面或 `dsh plugin` 安装。没有默认套件，也没有必须一起安装的组合。
 
 | 包 | 作用 | 默认安装 | 状态 |
 | --- | --- | --- | --- |
@@ -9,6 +9,7 @@
 | `dsh-x-browser` | 受控浏览器操作与权限边界；可选内嵌 tab 或外部 Chrome（CDP） | 不装（实验性） | 实验性，Electron 与打包行为不在本仓库验证 |
 | `dsh-x-delegate` | 把一个任务委派给本机 Codex、Grok 或 OpenCode | 按需 | 可用；真实 CLI 回合不在仓库内验证 |
 | `dsh-x-pet` | 窗口里的 Codex 兼容桌宠 | 按需 | 可用；打包应用表现不在仓库内验证 |
+| `dsh-x-ui` | 玻璃界面：半透明面板、流动底色与浮层模糊 | 按需 | 可用；真实浏览器观感不在仓库内验证 |
 
 ## dsh-x-code
 
@@ -84,7 +85,7 @@
 | 数据 | 位置 |
 | --- | --- |
 | 凭据、profile、会话、官方 storages | 官方 `~/.dsh`（或官方 `$DSH_HOME`） |
-| 插件 profile 级状态 | 官方 profile 目录下的 `.dsh-x-code`、`.dsh-x-finance` |
+| 插件 profile 级状态 | 官方 profile 目录下的 `.dsh-x-code`、`.dsh-x-finance`、`.dsh-x-pet`、`.dsh-x-ui` |
 | Desktop 浏览器数据 | 官方 Electron userData，插件不重定向 |
 
 不存在 `~/.dsh-x` 之类的第二个 home；本仓库也不会把官方 `sessions/` 搬走或重建索引。

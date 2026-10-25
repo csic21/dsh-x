@@ -114,4 +114,20 @@ export const CSS = `
 .dxp-card-art{width:72px;height:78px;flex:none;background-repeat:no-repeat;background-position:0 0;image-rendering:pixelated}
 @media (prefers-reduced-motion:reduce){.dxp-sprite,.dxp-switch::after{transition:none}}
 @media (max-width:720px){.dxp{--dxp-size:88px}}
+
+/* ── Glass material ──────────────────────────────────────────────────────────
+   The Harness glass theme (dsh-x-ui) makes the shared surface tokens
+   translucent. Chrome that floats over the transcript needs the blur that
+   belongs with that fill; a content pane keeps an opaque fill instead, because
+   long-form text and dense tables must not sit on a moving backdrop.
+
+   Two constraints shape this block:
+   - backdrop-filter makes its host a containing block for position:fixed
+     descendants, so only a surface without one may carry it. The context menu
+     in the code workspace is a direct child of its page root, which is why that
+     root itself stays untouched.
+   - --dxu-blur-panel falls back to none, so every rule below is inert unless
+     the glass theme is installed. */
+
+.dxp-bubble,.dxp-dialog{backdrop-filter:var(--dxu-blur-panel,none);-webkit-backdrop-filter:var(--dxu-blur-panel,none)}
 `

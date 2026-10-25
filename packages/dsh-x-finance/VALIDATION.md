@@ -155,3 +155,9 @@ No provider authentication, real model calls, Electron UI, or paid/network marke
 - New host seam: `dsh-x-finance.search` (status + search) with a 64 KiB / 8 s bounded fetch to the fixed `smartbox.gtimg.cn` host. It projects only `symbol/name/kind` and never returns raw payloads or upstream errors.
 - Gating reuses the existing local free source: the per-profile market switch, `marketSource` or `freeSource`. With none of them on, the route reports `disabled` and no request is made; the client offers an in-place "turn on free source" action through the existing owner-only preference route.
 - Scope is exchange-tradable A-shares, ETFs, LOFs and REITs (max 10 rows). Indices, HK/US listings, off-exchange funds and warrants are filtered out. Names are directory data, not exchange-verified identities, and no live or licensed directory call is claimed by these tests.
+
+## 玻璃材质接入（2026-10-25）
+
+`test/glass-surface.test.ts` 断言：.dxs-bar blur, .dxs-page near-opaque pane。所有规则都带 `none` / 原底色回退，未安装 `dsh-x-ui` 时行为不变。
+
+**未验证**：真实浏览器里的模糊与观感。
