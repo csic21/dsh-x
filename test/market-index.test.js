@@ -42,7 +42,7 @@ test('generated market index parses as format 1 with commit-pinned Git install t
         return true
       } catch { return false }
     })
-    const candidates = ['dsh-x-browser', 'dsh-x-code', 'dsh-x-finance']
+    const candidates = ['dsh-x-browser', 'dsh-x-code', 'dsh-x-finance', 'dsh-x-ui']
     assert.deepEqual(
       names.filter(name => !['dsh-x-delegate', 'dsh-x-pet'].includes(name)),
       candidates.filter(name => clean(name) || tagged(name)),
