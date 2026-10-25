@@ -1,17 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  GLOBAL_INSTRUMENTS, GLOBAL_REGIONS, globalQuoteTime, globalRegionSummary,
-  parseGlobalQuotes, projectGlobalOverview,
+  GLOBAL_INSTRUMENTS, GLOBAL_REGIONS, globalQuoteTime, globalRegionSummary, mergeGlobalSnapshots,
+  parseGlobalQuotes, parseSinaGlobalQuotes, parseTencentGlobalQuotes, projectGlobalOverview, zonedQuoteTime,
 } from '../src/global.ts'
 import type { GlobalMarketOverview } from '../src/global.ts'
-import { createTencentMarketProvider } from '../src/market-provider.ts'
+import { GLOBAL_SOURCE_COOLDOWN_MS, createTencentMarketProvider } from '../src/market-provider.ts'
 import { createMarketHandler } from '../src/market-rpc.ts'
 import { parseMarketRequest } from '../src/market.ts'
 import { createFormatters } from '../src/client/format.ts'
 
 const NOW = Date.parse('2026-10-23T14:00:00+08:00')
 const SECONDS = Math.floor(NOW / 1000) - 60
+/**
+ * The fallback feeds stamp rows after the Asian close and during the US
+ * session, so their fixtures are evaluated at the next day's open instead of
+ * at `NOW` — otherwise every row would be rejected as a future quote.
+ */
+const FALLBACK_NOW = Date.parse('2026-10-24T12:00:00+08:00')
 
 function row(f13: number, f12: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -145,7 +151,7 @@ test('regional averages are unweighted and ignore indices without a change', () 
   assert.equal(globalRegionSummary(quotes, 'europe').averageChangePercent, null)
 })
 
-test('the provider sends one bounded global request and caches the response', async () => {
+test('the provider sends one bounded request per global source and caches the response', async () => {
   const urls: string[] = []
   let calls = 0
   const provider = createTencentMarketProvider({
@@ -159,14 +165,133 @@ test('the provider sends one bounded global request and caches the response', as
   })
   const first = await provider.globalOverview!()
   const second = await provider.globalOverview!()
-  assert.equal(calls, 1)
+  // Three upstreams are probed in parallel, then the whole board is cached.
+  assert.equal(calls, 3)
   assert.equal(first.quotes.length, 3)
   assert.deepEqual(second, first)
-  assert.equal(urls.length, 1)
-  assert.match(urls[0]!, /^https:\/\/push2\.eastmoney\.com\/api\/qt\/ulist\.np\/get\?/)
-  assert.match(urls[0]!, /fltt=2/)
-  assert.match(urls[0]!, /ut=fa5fd1943c7b386f172d6893dbfba10b/)
-  for (const item of GLOBAL_INSTRUMENTS) assert.ok(urls[0]!.includes(item.secid), item.secid)
+  assert.equal(urls.length, 3)
+  const eastMoney = urls.find(url => url.startsWith('https://push2.eastmoney.com/api/qt/ulist.np/get?'))
+  assert.ok(eastMoney, 'east money request')
+  assert.match(eastMoney!, /fltt=2/)
+  assert.match(eastMoney!, /ut=fa5fd1943c7b386f172d6893dbfba10b/)
+  for (const item of GLOBAL_INSTRUMENTS) assert.ok(eastMoney!.includes(item.secid), item.secid)
+  assert.ok(urls.some(url => url.startsWith('https://qt.gtimg.cn/q=')), 'tencent request')
+  assert.ok(urls.some(url => url.startsWith('https://hq.sinajs.cn/list=')), 'sina request')
+  assert.equal(first.source, '东方财富全球指数 (unofficial)')
+})
+
+test('a blocked primary source degrades the board to the fallbacks instead of emptying it', async () => {
+  const requested: string[] = []
+  const tencentBody = [
+    'v_usDJI="200~Dow Jones~.DJI~52215.16~52867.98~52696.70~348502492~0~0~52113.67~0~0~0~0~0~0~0~0~0~52498.22~0~0~0~0~0~0~0~0~0~~2026-10-23 16:42:55~-652.82~-1.23~52696.70~52055.10~USD";',
+    'v_hkHSI="100~Hang Seng~HSI~23093.370~22934.680~23027.980~24978359.0343~0~0~23093.370~0~0~0~0~0~0~0~0~0~23093.370~0~0~0~0~0~0~0~0~0~0.0~2026/10/23 18:31:07~158.690~0.69~23231.630~22803.770~23093.370";',
+    '',
+  ].join('\n')
+  const sinaBody = [
+    'var hq_str_gb_dji="Dow Jones,52215.1602,-1.23,2026-10-24 04:43:04,-652.8200,52696.6992,52696.6992,52055.1016,54744.3281,45057.2812,348502492,411126815,0,0.00,--,0.00,0.00,0.00,0.00,0,0,0.0000,0.00,0.0000,,Oct 23 04:42PM EDT,52867.9805,0,1,2026";',
+    'var hq_str_b_NKY="Nikkei 225,62692.9400,-214.90,-0.34,2:12 AM,14:12:00,2026-10-23,14:30:01,62667.0500,62907.8400,62786.8900,61462.6100,0";',
+    '',
+  ].join('\n')
+  const provider = createTencentMarketProvider({
+    now: () => FALLBACK_NOW,
+    globalTtlMs: 0,
+    fetchImpl: (async (url: string) => {
+      const target = String(url)
+      requested.push(target)
+      if (target.startsWith('https://push2.eastmoney.com')) throw new Error('other side closed')
+      if (target.startsWith('https://qt.gtimg.cn')) {
+        return new Response(tencentBody, { status: 200, headers: { 'content-type': 'text/html; charset=GBK' } })
+      }
+      return new Response(sinaBody, { status: 200, headers: { 'content-type': 'application/javascript' } })
+    }) as any,
+  })
+  const overview = await provider.globalOverview!()
+  // The blocked host is not silently reported as the source.
+  assert.equal(overview.source, '腾讯全球指数 (unofficial) + 新浪全球指数 (unofficial)')
+  assert.deepEqual(overview.quotes.map(quote => quote.code), ['DJIA', 'HSI', 'N225'])
+  // The first layer that answered for a code wins it; later layers only add
+  // the codes the earlier ones did not cover.
+  assert.equal(overview.quotes[0]!.price, 52215.16)
+  assert.equal(overview.quotes[0]!.changePercent, -1.23)
+  assert.equal(overview.quotes[0]!.previousClose, 52867.98)
+  assert.equal(overview.quotes[0]!.high, 52696.7)
+  assert.equal(overview.quotes[0]!.low, 52055.1)
+  // Tencent's HK stamp is local time (UTC+8), Sina's US stamp is Beijing time.
+  assert.equal(overview.quotes[1]!.quotedAt, '2026-10-23T10:31:07.000Z')
+  assert.equal(overview.quotes[2]!.quotedAt, '2026-10-23T06:30:01.000Z')
+  assert.equal(overview.quotes[2]!.price, 62692.94)
+})
+
+test('a source that just failed is skipped until its cooldown expires', async () => {
+  let clock = FALLBACK_NOW
+  const hits: string[] = []
+  const provider = createTencentMarketProvider({
+    now: () => clock,
+    globalTtlMs: 0,
+    fetchImpl: (async (url: string) => {
+      const target = String(url)
+      hits.push(target.startsWith('https://push2') ? 'eastmoney' : target.startsWith('https://qt') ? 'tencent' : 'sina')
+      if (target.startsWith('https://push2')) throw new Error('blocked')
+      if (target.startsWith('https://qt')) {
+        return new Response('v_usDJI="200~Dow Jones~.DJI~52215.16~52867.98~52696.70~348502492~0~0~52113.67~0~0~0~0~0~0~0~0~0~52498.22~0~0~0~0~0~0~0~0~0~~2026-10-23 16:42:55~-652.82~-1.23~52696.70~52055.10~USD";', { status: 200, headers: { 'content-type': 'text/html' } })
+      }
+      return new Response('', { status: 200, headers: { 'content-type': 'application/javascript' } })
+    }) as any,
+  })
+  await provider.globalOverview!()
+  assert.deepEqual(hits.sort(), ['eastmoney', 'sina', 'tencent'])
+  hits.length = 0
+  // Immediately after the failure the blocked host is not retried.
+  clock = FALLBACK_NOW + 1_000
+  await provider.globalOverview!()
+  assert.deepEqual(hits, ['tencent'])
+  hits.length = 0
+  // Once the cooldown elapses it is tried again and can recover.
+  clock = FALLBACK_NOW + GLOBAL_SOURCE_COOLDOWN_MS + 1
+  await provider.globalOverview!()
+  assert.ok(hits.includes('eastmoney'))
+})
+
+test('the fallback parsers ignore unknown symbols, stale stamps and impossible rows', () => {
+  const stale = 'v_usDJI="200~x~.DJI~52215.16~52867.98~52696.70~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~~2025-01-02 16:42:55~-652.82~-1.23~52696.70~52055.10~USD";'
+  assert.deepEqual(parseTencentGlobalQuotes(stale, FALLBACK_NOW), [])
+  const unknown = 'v_zzUNKNOWN="200~x~.ZZ~1~1~1~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~~2026-10-23 16:42:55~0~0~1~1~USD";'
+  assert.deepEqual(parseTencentGlobalQuotes(unknown, FALLBACK_NOW), [])
+  const inverted = 'v_usDJI="200~x~.DJI~52215.16~52867.98~52696.70~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~~2026-10-23 16:42:55~-652.82~-1.23~52000.00~52696.70~USD";'
+  assert.deepEqual(parseTencentGlobalQuotes(inverted, FALLBACK_NOW), [])
+  assert.deepEqual(parseTencentGlobalQuotes('garbage\n\n', FALLBACK_NOW), [])
+  assert.deepEqual(parseSinaGlobalQuotes('var hq_str_gb_dji="Dow Jones,0,-1.23,2026-10-24 04:43:04";', FALLBACK_NOW), [])
+  assert.deepEqual(parseSinaGlobalQuotes('var hq_str_b_NKY="Nikkei 225,62692.9400,-214.90,-0.34";', FALLBACK_NOW), [])
+  assert.deepEqual(parseSinaGlobalQuotes('var hq_str_gb_dji="Dow Jones,52215.16,-1.23,2025-01-02 04:43:04,-652.82,52696.70,52696.70,52055.10,54744.33,45057.28,1,1,0,0.00,--,0.00,0.00,0.00,0.00,0,0,0.0000,0.00,0.0000,,x,52867.98,0,1,2026";', FALLBACK_NOW), [])
+  // A future stamp is rejected rather than shown as the newest quote.
+  assert.equal(zonedQuoteTime('2027-01-02 10:00:00', 'Asia/Tokyo', FALLBACK_NOW), null)
+  assert.equal(zonedQuoteTime('2026-02-30 10:00:00', 'Asia/Tokyo', FALLBACK_NOW), null)
+  assert.equal(zonedQuoteTime('2026-10-23 10:00:00', 'Not/AZone', FALLBACK_NOW), null)
+  assert.equal(zonedQuoteTime(20261023, 'Asia/Tokyo', FALLBACK_NOW), null)
+})
+
+test('zoned quote times use each exchange zone, not the browser zone', () => {
+  // 2026-10-23 16:42:55 in New York (EDT, UTC-4) is 20:42:55Z.
+  assert.equal(zonedQuoteTime('2026-10-23 16:42:55', 'America/New_York', FALLBACK_NOW), '2026-10-23T20:42:55.000Z')
+  // 2026/10/23 18:31:07 in Hong Kong is 10:31:07Z.
+  assert.equal(zonedQuoteTime('2026/10/23 18:31:07', 'Asia/Hong_Kong', FALLBACK_NOW), '2026-10-23T10:31:07.000Z')
+  // 20261023161500 in Shanghai is 08:15:00Z.
+  assert.equal(zonedQuoteTime('20261023161500', 'Asia/Shanghai', FALLBACK_NOW), '2026-10-23T08:15:00.000Z')
+  // 2026-10-23 16:00:04 in Berlin (CEST, UTC+2) is 14:00:04Z.
+  assert.equal(zonedQuoteTime('2026-10-23 16:00:04', 'Europe/Berlin', FALLBACK_NOW), '2026-10-23T14:00:04.000Z')
+})
+
+test('merging snapshots keeps the first source that answered for a code', () => {
+  const primary = parseGlobalQuotes({ data: { diff: [row(100, 'DJIA', { f2: 1 })] } }, NOW)
+  const secondary = parseGlobalQuotes({ data: { diff: [row(100, 'DJIA', { f2: 2 }), row(100, 'N225', { f2: 3 })] } }, NOW)
+  const merged = mergeGlobalSnapshots([{ source: 'a', quotes: primary }, { source: 'b', quotes: secondary }], NOW)
+  assert.ok(merged)
+  assert.equal(merged!.source, 'a + b')
+  assert.deepEqual(merged!.quotes.map(quote => [quote.code, quote.price]), [['DJIA', 1], ['N225', 3]])
+  assert.equal(merged!.fetchedAt, new Date(NOW).toISOString())
+  assert.equal(merged!.quotedAt, new Date(SECONDS * 1000).toISOString())
+  assert.equal(mergeGlobalSnapshots([], NOW), null)
+  assert.equal(mergeGlobalSnapshots([{ source: 'a', quotes: [] }], NOW), null)
 })
 
 test('the market RPC exposes the global board only to the owner and projects it', async () => {

@@ -194,6 +194,7 @@ export function GlobalView({ rpc, t, format, locale }: any) {
     {global.error ? <p role="status" className="dxs-mkt-note">{t('market.error')} · {t('market.error-hint')}</p> : null}
     <p className="dxs-mkt-muted dxs-glb-coverage">
       {t('global.coverage', { count: format.count(summary.total), regions: format.count(regionsWithQuotes) })}
+      {' · '}{t('global.source.active', { source: data.source })}
     </p>
     <section className="dxs-mkt-kpis dxs-glb-kpis">
       <Kpi label={t('global.kpi.updown')}

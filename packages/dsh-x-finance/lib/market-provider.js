@@ -8,7 +8,7 @@
 // request details are never returned to the browser or written to disk.
 import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, isAshareMinute, } from './market.js';
 import { HOT_HISTORY_BARS, hotQualifies, HOT_HISTORY_DEPTH, HOT_MAX_RESULTS, HOT_MAX_STOCKS, HOT_ROWS_TTL_MS, HOT_SCAN_TTL_MS, HOT_STRATEGY_COUNT, hotHits, hotScores, hotWeight, sortHotHits, } from './hot.js';
-import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, parseGlobalQuotes } from './global.js';
+import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_SINA_ENDPOINT, GLOBAL_SINA_REFERER, GLOBAL_SINA_SOURCE, GLOBAL_TENCENT_ENDPOINT, GLOBAL_TENCENT_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, mergeGlobalSnapshots, parseGlobalQuotes, parseSinaGlobalQuotes, parseTencentGlobalQuotes, } from './global.js';
 import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, } from './tail-scan.js';
 import { validateSymbol } from './watchlist.js';
 import { MAX_ABSOLUTE_PRICE } from './chart-data.js';
@@ -35,6 +35,12 @@ export const MARKET_SINA_MINUTE_SOURCE = '新浪分时 (unofficial)';
 export const MARKET_TAIL_SOURCE = `${MARKET_SOURCE_NAME} + 腾讯/新浪分时 (unofficial)`;
 const EASTMONEY_UT = 'fa5fd1943c7b386f172d6893dbfba10b';
 export const MARKET_INTRADAY_TTL_MS = 15_000;
+/**
+ * How long a global upstream that just failed is skipped. Long enough that a
+ * blocked host costs one timeout per two minutes instead of one per refresh,
+ * short enough that a recovered host is used again without a restart.
+ */
+export const GLOBAL_SOURCE_COOLDOWN_MS = 120_000;
 export const MARKET_INTRADAY_MAX_POINTS = 300;
 export const MARKET_TIMEOUT_MS = 10_000;
 export const MARKET_MAX_BYTES = 512 * 1024;
@@ -822,7 +828,9 @@ export function createTencentMarketProvider(options = {}) {
         throw new Error('invalid market cache');
     const cache = new Map();
     const inflight = new Map();
-    async function request(url, encoding, maxBytes) {
+    /** Per-source back-off after a failure; see `GLOBAL_SOURCE_COOLDOWN_MS`. */
+    const globalCooldown = new Map();
+    async function request(url, encoding, maxBytes, headers = {}) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
@@ -830,7 +838,7 @@ export function createTencentMarketProvider(options = {}) {
                 method: 'GET',
                 redirect: 'error',
                 signal: controller.signal,
-                headers: { accept: 'application/json, text/plain, text/html', 'user-agent': 'dsh-x-finance/0.3 (local-only)' },
+                headers: { accept: 'application/json, text/plain, text/html', 'user-agent': 'dsh-x-finance/0.3 (local-only)', ...headers },
             });
             assertTextResponse(response);
             const bytes = await readBody(response, maxBytes);
@@ -882,32 +890,75 @@ export function createTencentMarketProvider(options = {}) {
         return parseBoardRank(payload);
     }
     /**
-     * One batched request for the whole global board. The catalogue supplies the
-     * secids, names, regions and time zones; the upstream only supplies numbers.
-     * Rows the source does not answer for are missing from the response, never
-     * filled with a neighbouring market's value.
+     * The global board tries three public upstreams in order and merges what
+     * they answer for. East Money covers the whole catalogue in one request, but
+     * it is silently unreachable from some networks (the TLS handshake completes
+     * and the peer then closes the connection), which used to take the entire
+     * tab down with it. Tencent and Sina answer a smaller, verified subset, so a
+     * blocked primary degrades the board instead of emptying it.
+     *
+     * A source that just failed is skipped for `GLOBAL_SOURCE_COOLDOWN_MS` so a
+     * blocked host does not cost a timeout on every refresh; the cooldown is
+     * short enough that a recovered host is picked up again within a minute or
+     * two. Nothing is fabricated: an index no source answered for stays absent.
      */
-    function loadGlobalOverview() {
+    async function loadGlobalLayer(key, load) {
+        const blockedUntil = globalCooldown.get(key) ?? 0;
+        if (blockedUntil > now())
+            return null;
+        try {
+            const layer = await load();
+            if (!layer.quotes.length)
+                throw new Error(`global ${key} empty`);
+            globalCooldown.delete(key);
+            return layer;
+        }
+        catch {
+            globalCooldown.set(key, now() + GLOBAL_SOURCE_COOLDOWN_MS);
+            return null;
+        }
+    }
+    async function loadEastMoneyGlobal() {
         const query = [
             'fltt=2',
             `secids=${GLOBAL_INSTRUMENTS.map(item => item.secid).join(',')}`,
             'fields=f2,f3,f4,f12,f13,f14,f15,f16,f17,f18,f124',
             `ut=${EASTMONEY_UT}`,
         ].join('&');
-        return requestJson(`${GLOBAL_MARKET_ENDPOINT}?${query}`).then(payload => {
-            if (payload?.rc !== 0 || !payload.data)
-                throw new Error('global market failed');
-            const stamp = now();
-            const quotes = parseGlobalQuotes(payload, stamp);
-            if (!quotes.length)
-                throw new Error('global market empty');
-            let quotedAt = null;
-            for (const quote of quotes) {
-                if (quote.quotedAt && (!quotedAt || Date.parse(quote.quotedAt) > Date.parse(quotedAt)))
-                    quotedAt = quote.quotedAt;
-            }
-            return { source: GLOBAL_MARKET_SOURCE, fetchedAt: isoNow(stamp), quotedAt, quotes };
-        });
+        const payload = await requestJson(`${GLOBAL_MARKET_ENDPOINT}?${query}`);
+        if (payload?.rc !== 0 || !payload.data)
+            throw new Error('global market failed');
+        return { source: GLOBAL_MARKET_SOURCE, quotes: parseGlobalQuotes(payload, now()) };
+    }
+    async function loadTencentGlobal() {
+        const symbols = GLOBAL_INSTRUMENTS.map(item => item.tencent).filter((symbol) => Boolean(symbol));
+        if (!symbols.length)
+            throw new Error('global tencent catalogue empty');
+        const text = await request(`${GLOBAL_TENCENT_ENDPOINT}${symbols.join(',')}`, 'gbk', MARKET_MAX_BYTES);
+        if (!text.trim())
+            throw new Error('empty global tencent response');
+        return { source: GLOBAL_TENCENT_SOURCE, quotes: parseTencentGlobalQuotes(text, now()) };
+    }
+    async function loadSinaGlobal() {
+        const symbols = GLOBAL_INSTRUMENTS.map(item => item.sina).filter((symbol) => Boolean(symbol));
+        if (!symbols.length)
+            throw new Error('global sina catalogue empty');
+        const text = await request(`${GLOBAL_SINA_ENDPOINT}${symbols.join(',')}`, 'gbk', MARKET_MAX_BYTES, { referer: GLOBAL_SINA_REFERER });
+        if (!text.trim())
+            throw new Error('empty global sina response');
+        return { source: GLOBAL_SINA_SOURCE, quotes: parseSinaGlobalQuotes(text, now()) };
+    }
+    async function loadGlobalOverview() {
+        const layers = await Promise.all([
+            loadGlobalLayer('eastmoney', loadEastMoneyGlobal),
+            loadGlobalLayer('tencent', loadTencentGlobal),
+            loadGlobalLayer('sina', loadSinaGlobal),
+        ]);
+        const stamp = now();
+        const overview = mergeGlobalSnapshots(layers.filter((layer) => Boolean(layer)), stamp);
+        if (!overview)
+            throw new Error('global market empty');
+        return overview;
     }
     /**
      * CSI 2000 is not served by the Tencent/Sina endpoints used for the rest of

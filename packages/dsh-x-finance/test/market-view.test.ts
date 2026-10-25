@@ -429,6 +429,9 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
     assert.match(globalText, /日经225/)
     assert.match(globalText, /韩国KOSPI/)
     assert.match(globalText, /52,867\.98/)
+    // The page names the source that actually answered, so a degraded board
+    // never looks like the primary feed.
+    assert.match(globalText, /当前来源：东方财富全球指数/)
     assert.doesNotMatch(globalText, /NaN|undefined/)
     await act(async () => tabs[4]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })

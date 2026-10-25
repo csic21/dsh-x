@@ -23,6 +23,12 @@ export declare const MARKET_SINA_MINUTE_MAX_BYTES: number;
 export declare const MARKET_SINA_MINUTE_SOURCE = "\u65B0\u6D6A\u5206\u65F6 (unofficial)";
 export declare const MARKET_TAIL_SOURCE = "\u817E\u8BAF\u884C\u60C5 (unofficial) + \u817E\u8BAF/\u65B0\u6D6A\u5206\u65F6 (unofficial)";
 export declare const MARKET_INTRADAY_TTL_MS = 15000;
+/**
+ * How long a global upstream that just failed is skipped. Long enough that a
+ * blocked host costs one timeout per two minutes instead of one per refresh,
+ * short enough that a recovered host is used again without a restart.
+ */
+export declare const GLOBAL_SOURCE_COOLDOWN_MS = 120000;
 export declare const MARKET_INTRADAY_MAX_POINTS = 300;
 export declare const MARKET_TIMEOUT_MS = 10000;
 export declare const MARKET_MAX_BYTES: number;
