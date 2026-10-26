@@ -15,7 +15,7 @@ type Availability = 'checking' | 'enabled' | 'disabled' | 'unavailable'
  * requirement: the manual exchange + code fields below stay available, and a
  * disabled directory explains how to turn the local free source on.
  */
-export function InstrumentSearch({ rpc, onPick, t, delay = 250 }: any) {
+export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
   const [query, setQuery] = useState('')
   const [availability, setAvailability] = useState<Availability>('checking')
   const [checkTick, setCheckTick] = useState(0)
@@ -47,7 +47,7 @@ export function InstrumentSearch({ rpc, onPick, t, delay = 250 }: any) {
     }
     void read()
     return () => { disposed = true; controller.abort() }
-  }, [rpc, checkTick])
+  }, [rpc, checkTick, refreshToken])
 
   useEffect(() => {
     const text = query.trim()

@@ -4,11 +4,12 @@ import { marketZh, marketEn } from './market-locales.ts'
 import { goldZh, goldEn } from './gold-locales.ts'
 import { globalZh, globalEn } from './global-locales.ts'
 import { quantZh, quantEn } from './quant-locales.ts'
+import { settingsZh, settingsEn } from './settings/locales.ts'
 import { quoteZh, quoteEn } from '../quote-messages.ts'
 // Dictionary keys and placeholders are checked in the locale contract tests.
 export const NS = 'dsh-x-finance'
 export const zh = {
-  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh,
+  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh, ...settingsZh,
   'title': '金融',
   // The watchlist is the long list on this page; only explicitly fixed stocks
   // reach the bottom bar, so the two never share a label.
@@ -145,7 +146,7 @@ export const zh = {
 }
 /** @type {Record<keyof typeof zh, string>} */
 export const en = {
-  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn,
+  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn, ...settingsEn,
   'title': 'Finance',
   'bar.title': 'Fixed {count}',
   'bar.aria': 'Fixed stocks bar',

@@ -107,6 +107,23 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.match(document.body.textContent,/固定栏已隐藏/)
     await click([...document.querySelectorAll('button')].find(button=>button.textContent==='显示固定栏')!)
     assert.equal((entries.get('shell.bottom')??[]).length,1)
+    // The settings drawer is the one place for appearance, bar and source. Its
+    // quiet mode renames the page and releases the bottom slot immediately.
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-haspopup="dialog"]')!)
+    assert.ok(document.querySelector('[role="dialog"]'))
+    assert.match(document.body.textContent!, /金融设置/)
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('input[aria-label="低调模式"]')!)
+    assert.equal(JSON.parse(localStorage.getItem('dsh-x-finance:settings:v1')!).discreet,true)
+    assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('main.dxs-page')!.classList.contains('dxs-discreet'),true)
+    assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('h1')!.textContent,'工作台')
+    assert.deepEqual([...document.querySelectorAll('.dxs-titlebar nav.dxs-view-tabs button')].map(button=>button.textContent),['列表','概览','关注','指数','商品'])
+    assert.equal((entries.get('shell.bottom')??[]).length,0)
+    // The drawer stays open, so the boss key's effect can be undone at once.
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('input[aria-label="低调模式"]')!)
+    assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('h1')!.textContent,'金融')
+    assert.equal((entries.get('shell.bottom')??[]).length,1)
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="关闭设置"]')!)
+    assert.equal(document.querySelector('[role="dialog"]'),null)
     await click([...document.querySelectorAll('button')].find(button=>button.textContent==='返回对话')!)
     assert.equal(selectedPanel,null);assert.deepEqual(calls,['dsh-x-finance',null])
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 SH.600519"]'))

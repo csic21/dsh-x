@@ -18,6 +18,11 @@ interface MarketViewProps {
   onOpenStock?: (symbol: string, name: string) => void
   /** Profile scope, used to remember chart display preferences only. */
   scope?: string
+  /** Quiet mode: mostly neutral tiles with only a hint of direction. */
+  discreet?: boolean
+  /** The page owns the source switch so the drawer and every tab agree. */
+  preference?: any
+  onChangeSource?: (enabled: boolean) => void | Promise<void>
 }
 
 interface Selection {
@@ -78,7 +83,18 @@ const TILE_COLORS: Record<ChangeTone, string> = {
   'up-1': '#6e3941', 'up-2': '#843a45', 'up-3': '#9c3b48', 'up-4': '#b63a49', 'up-5': '#cf3445',
   'down-1': '#2c5a4a', 'down-2': '#296b55', 'down-3': '#247c60', 'down-4': '#1d8b69', 'down-5': '#159b73',
 }
-const tileColor = (value: number) => TILE_COLORS[changeClass(value)]
+/**
+ * Quiet mode keeps the tile map readable without the red/green wall: direction
+ * survives as a low-saturation rose/sage tint, magnitude as the tint's depth.
+ * These are deliberately not the state tokens — the tiles are inline styles.
+ */
+const DISCREET_TILE_COLORS: Record<ChangeTone, string> = {
+  flat: '#6b7280',
+  'up-1': '#7e7275', 'up-2': '#846e72', 'up-3': '#8a6b70', 'up-4': '#90676d', 'up-5': '#966369',
+  'down-1': '#6a7571', 'down-2': '#65786f', 'down-3': '#607b6d', 'down-4': '#5b7e6b', 'down-5': '#568169',
+}
+const palette = (discreet: boolean) => discreet ? DISCREET_TILE_COLORS : TILE_COLORS
+const tileColor = (value: number, discreet = false) => palette(discreet)[changeClass(value)]
 const textTone = (value: number | null | undefined) => typeof value === 'number' && value > 0 ? 'dxs-up' : typeof value === 'number' && value < 0 ? 'dxs-down' : ''
 
 function Kpi({ label, value, note, tone, children }: any) {
@@ -214,7 +230,7 @@ function buildGroups(sectors: MarketSector[], t: any): GroupModel[] {
   return [...groups.values()]
 }
 
-function Heatmap({ data, selected, onSelect, t, format }: any) {
+function Heatmap({ data, selected, onSelect, t, format, discreet = false }: any) {
   const groups = useMemo(() => buildGroups(data.sectors, t), [data.sectors, t])
   const { ref, size } = useElementSize(GEO_WIDTH, GEO_HEIGHT)
   const layout = useMemo(() => layoutNested(groups.map(group => ({
@@ -223,6 +239,7 @@ function Heatmap({ data, selected, onSelect, t, format }: any) {
   const byGroup = new Map(groups.map(group => [group.key, group]))
   const byChild = new Map(groups.flatMap(group => group.children.map(child => [child.key, child])))
   const level2Count = groups.reduce((sum, group) => sum + group.children.length, 0)
+  const colors = palette(discreet)
   return <section className="dxs-mkt-card dxs-mkt-heatmap">
     <header className="dxs-mkt-card-head">
       <div>
@@ -231,7 +248,7 @@ function Heatmap({ data, selected, onSelect, t, format }: any) {
       </div>
       <div className="dxs-mkt-legend" aria-label={t('market.heatmap.legend')}>
         <span>{t('market.heatmap.legend')}</span>
-        <i style={{ background: TILE_COLORS['down-5'] }} /><i style={{ background: TILE_COLORS['down-3'] }} /><i style={{ background: TILE_COLORS.flat }} /><i style={{ background: TILE_COLORS['up-3'] }} /><i style={{ background: TILE_COLORS['up-5'] }} />
+        <i style={{ background: colors['down-5'] }} /><i style={{ background: colors['down-3'] }} /><i style={{ background: colors.flat }} /><i style={{ background: colors['up-3'] }} /><i style={{ background: colors['up-5'] }} />
       </div>
     </header>
     <div className="dxs-mkt-map" ref={ref} role="group" aria-label={t('market.heatmap.aria')}>
@@ -244,7 +261,7 @@ function Heatmap({ data, selected, onSelect, t, format }: any) {
           {group.headerHeight > 0 ? <button
             type="button"
             className={`dxs-mkt-group-label ${changeClass(model.changePercent)} ${selectedGroup ? 'is-selected' : ''}`}
-            style={{ ...position({ ...group, height: group.headerHeight }, size.width, size.height), width: `${(group.width / size.width) * 100}%`, background: tileColor(model.changePercent) }}
+            style={{ ...position({ ...group, height: group.headerHeight }, size.width, size.height), width: `${(group.width / size.width) * 100}%`, background: tileColor(model.changePercent, discreet) }}
             onClick={() => model.code && onSelect({ code: model.code, name: model.name })}
             disabled={!model.code}
             aria-label={t('market.heatmap.group', { name: model.name, change: format.change(model.changePercent) })}
@@ -261,7 +278,7 @@ function Heatmap({ data, selected, onSelect, t, format }: any) {
               type="button"
               key={child.key}
               className={`dxs-mkt-tile ${changeClass(item.changePercent)} size-${sizeClass} ${active ? 'is-selected' : ''}`}
-              style={{ ...position(child, size.width, size.height), background: tileColor(item.changePercent) }}
+              style={{ ...position(child, size.width, size.height), background: tileColor(item.changePercent, discreet) }}
               aria-pressed={active}
               aria-label={t('market.heatmap.tile', { name: item.name, change: format.change(item.changePercent), amount: item.amount !== null ? format.compact(item.amount) : '—' })}
               title={t('market.heatmap.tile', { name: item.name, change: format.change(item.changePercent), amount: item.amount !== null ? format.compact(item.amount) : '—' })}
@@ -499,7 +516,7 @@ function TailScanPanel({ rpc, t, format, onOpenStock }: any) {
   </section>
 }
 
-function SectorDetail({ rpc, selection, onClose, t, format, onOpen }: any) {
+function SectorDetail({ rpc, selection, onClose, t, format, onOpen, discreet = false }: any) {
   const detail = useBoardDetail(rpc, selection.code)
   const [active, setActive] = useState<string | null>(null)
   const { ref, size } = useElementSize(GEO_WIDTH, STOCK_HEIGHT)
@@ -527,7 +544,7 @@ function SectorDetail({ rpc, selection, onClose, t, format, onOpen }: any) {
           const sizeClass = tileSize(tile)
           const showName = tile.width >= 38 && tile.height >= 15
           const showPct = tile.width >= 48 && tile.height >= 28
-          return <button type="button" key={tile.key} className={`dxs-mkt-tile ${changeClass(stock.changePercent)} size-${sizeClass} ${active === stock.code ? 'is-selected' : ''}`} style={{ ...position(tile, size.width, size.height), background: tileColor(stock.changePercent) }}
+          return <button type="button" key={tile.key} className={`dxs-mkt-tile ${changeClass(stock.changePercent)} size-${sizeClass} ${active === stock.code ? 'is-selected' : ''}`} style={{ ...position(tile, size.width, size.height), background: tileColor(stock.changePercent, discreet) }}
             aria-pressed={active === stock.code}
             aria-label={t('market.heatmap.tile', { name: stock.name, change: format.change(stock.changePercent), amount: format.compact(stock.amount) })}
             title={`${stock.name} ${stock.code} ${format.price(stock.price)} ${format.change(stock.changePercent)}`}
@@ -562,15 +579,19 @@ function SectorDetail({ rpc, selection, onClose, t, format, onOpen }: any) {
 /** Only mainland indices with a supported history route can open the chart. */
 const canDrillIndex = (code: string) => /^(SH|SZ|BJ)\.\d{6}$/.test(code) && code !== 'SH.932000'
 
-export function MarketView({ rpc, t, format, locale, now = () => new Date(), onOpenStock, scope }: MarketViewProps) {
+export function MarketView({ rpc, t, format, locale, now = () => new Date(), onOpenStock, scope, discreet = false, preference: suppliedPreference, onChangeSource }: MarketViewProps) {
   const overview = useMarketOverview(rpc)
   const breadth = useMarketBreadth(rpc)
-  const preference = useMarketPreference(rpc)
+  const ownPreference = useMarketPreference(rpc)
+  const preference = suppliedPreference ?? ownPreference
   const [selected, setSelected] = useState<Selection | null>(null)
   const [indexChart, setIndexChart] = useState<{ code: string, name: string } | null>(null)
   const chartRef = useRef<HTMLElement>(null)
   useEffect(() => { if (indexChart) chartRef.current?.scrollIntoView?.({ block: 'nearest' }) }, [indexChart])
   const changeSource = async (enabled: boolean) => {
+    // The page-owned switch remounts this view, so only a standalone mount has
+    // to refresh its own resources here.
+    if (onChangeSource) { try { await onChangeSource(enabled) } catch { /* page owns the error */ } ; return }
     try {
       await preference.setEnabled(enabled)
       overview.refresh()
@@ -643,8 +664,8 @@ export function MarketView({ rpc, t, format, locale, now = () => new Date(), onO
       <StockWorkbench key={`index:${indexChart.code}`} symbol={indexChart.code} scope={scope} rpc={rpc} t={t} format={format} locale={locale} />
     </section> : null}
     <TailScanPanel rpc={rpc} t={t} format={format} onOpenStock={onOpenStock} />
-    <Heatmap data={data} selected={selected} onSelect={setSelected} t={t} format={format} />
-    {selected ? <SectorDetail key={selected.code} rpc={rpc} selection={selected} onClose={() => setSelected(null)} t={t} format={format} onOpen={onOpenStock} /> : null}
+    <Heatmap data={data} selected={selected} onSelect={setSelected} t={t} format={format} discreet={discreet} />
+    {selected ? <SectorDetail key={selected.code} rpc={rpc} selection={selected} onClose={() => setSelected(null)} t={t} format={format} onOpen={onOpenStock} discreet={discreet} /> : null}
     {breadthValue ? <DistributionBar breadth={breadthValue} t={t} format={format} /> : <section className="dxs-mkt-card dxs-mkt-loading" role="status"><span className="dxs-mkt-dot is-live" />{breadth.status === 'error' ? t('market.error') : t('market.breadth.waiting')}{breadth.status === 'error' ? <button type="button" onClick={breadth.refresh}>{t('market.retry')}</button> : null}</section>}
     {breadthValue ? <Movers breadth={breadthValue} t={t} format={format} onOpen={onOpenStock} /> : null}
     <footer className="dxs-mkt-footer">

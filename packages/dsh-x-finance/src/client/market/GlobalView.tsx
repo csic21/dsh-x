@@ -130,11 +130,13 @@ function AllIndicesTable({ quotes, locale, t, format }: any) {
   </details>
 }
 
-export function GlobalView({ rpc, t, format, locale }: any) {
+export function GlobalView({ rpc, t, format, locale, preference: suppliedPreference, onChangeSource }: any) {
   const global = useGlobalMarket(rpc)
-  const preference = useMarketPreference(rpc)
+  const ownPreference = useMarketPreference(rpc)
+  const preference = suppliedPreference ?? ownPreference
   const data: GlobalMarketOverview | null = global.value
   const changeSource = async (enabled: boolean) => {
+    if (onChangeSource) { try { await onChangeSource(enabled) } catch { /* page owns the error */ } ; return }
     try {
       await preference.setEnabled(enabled)
       global.refresh()

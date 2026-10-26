@@ -11,6 +11,8 @@ import { errorKey } from './locales.ts'
 import { useMarketPreference } from './market/data.ts'
 import { SourceButton } from './source-button.tsx'
 import { GoldView } from './gold/GoldView.tsx'
+import { SettingsPanel } from './settings/SettingsPanel.tsx'
+import { useFinanceSettings } from './settings/store.ts'
 const tone = (value: any) => value > 0 ? 'dxs-up' : value < 0 ? 'dxs-down' : ''
 function ShortcutHint({ t }: any) {
   const keys = fixedBarShortcutKeys()
@@ -52,12 +54,15 @@ function FixedStrip({ items, symbols, useResource, open, t, format }: any) {
     {items.map((item: any) => <StockChip key={item.symbol} item={item} quote={quoteFor(snapshot, item.symbol)} snapshot={snapshot} open={open} t={t} format={format} />)}
   </div>
 }
-export function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideBar, t, format }: any) {
+export function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideBar, settings, t, format }: any) {
   const state = useWatchlist((value: any) => value)
+  const appearance = useFinanceSettings(settings)
   const preference = useMarketPreference(rpc)
   const fixed = fixedItems(state.items)
   // Nothing is fixed: the bar is not the watchlist, so it is not shown at all.
-  if (!fixed.length) return null
+  // Discreet mode releases the slot too: the bar is the most visible quote
+  // surface in the app, so the boss key must take it away immediately.
+  if (!fixed.length || appearance.discreet) return null
   const sourceOff = preference.status === 'ready' && !preference.enabled
   return <section className="dxs dxs-bar" aria-label={t('bar.aria')}>
     <button onClick={() => collapse(!state.collapsed)} aria-expanded={!state.collapsed} aria-label={t(state.collapsed ? 'bar.expand' : 'bar.collapse')}>{state.collapsed ? '▸' : '▾'} {t('bar.title', { count: format.count(fixed.length) })}</button>
@@ -74,7 +79,10 @@ export function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideB
 export function StockIcon({ size = 20 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 4v16h16M7 15l4-5 4 3 5-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
 }
-function AddStock({ add, count, fixedCount, ready, rpc, t, format }: any) {
+function SettingsIcon() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" /><path d="M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+}
+function AddStock({ add, count, fixedCount, ready, rpc, t, format, sourceRevision }: any) {
   const [exchange, setExchange] = useState('SH'), [code, setCode] = useState(''), [alias, setAlias] = useState(''), [fix, setFix] = useState(false), [error, setError] = useState('')
   const [picked, setPicked] = useState<any>(null)
   const submit = (event: any) => {
@@ -90,7 +98,7 @@ function AddStock({ add, count, fixedCount, ready, rpc, t, format }: any) {
   }
   return <form className="dxs-form" onSubmit={submit} noValidate>
     <h2>{t('add.title')}</h2>
-    <InstrumentSearch rpc={rpc} onPick={pick} t={t} />
+    <InstrumentSearch rpc={rpc} onPick={pick} t={t} refreshToken={sourceRevision} />
     {picked && <p className="dxs-picked" role="status">{t('add.selected', { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })}</p>}
     <div className="dxs-form-grid">
       <label className="dxs-field">{t('add.exchange')}<select name="exchange" value={exchange} onChange={event => { setExchange(event.target.value); setPicked(null) }}>{['SH', 'SZ', 'BJ'].map(value => <option key={value} value={value}>{t(`exchange.${value}`)}</option>)}</select></label>
@@ -132,9 +140,11 @@ function Detail({ item, previewing, onAdd, useResource, t, format, scope, locale
     </div>
   </article>
 }
-export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move, select, preview, closePreview, setFixed, toggleBar, back, retryScope, t, format, getLocale = () => 'en' }: any) {
+export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move, select, preview, closePreview, setFixed, toggleBar, back, retryScope, settings, t, format, getLocale = () => 'en' }: any) {
   const state = useWatchlist((value: any) => value)
   const preference = useMarketPreference(rpc)
+  const appearance = useFinanceSettings(settings)
+  const discreet = appearance.discreet
   // A preview is what the reader is looking at right now, so it outranks the
   // saved row that happened to be selected before the drill-down.
   const previewItem = state.preview ? { symbol: state.preview.symbol, alias: state.preview.name, fixed: false } : null
@@ -148,6 +158,10 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const [view, setView] = useState<'watchlist' | 'market' | 'hot' | 'global' | 'gold'>('watchlist')
   const [fixError, setFixError] = useState('')
   const [drillNotice, setDrillNotice] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  // The source switch can be flipped from the drawer, so the market board is
+  // remounted when it changes instead of waiting for its next poll.
+  const [sourceRevision, setSourceRevision] = useState(0)
   const previousSelection = useRef(state.selectedSymbol)
   useEffect(() => {
     if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView('watchlist')
@@ -191,21 +205,32 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
     catch (failure: any) { setFixError(errorKey(failure.code)) }
   }
   const sourceOff = preference.status === 'ready' && !preference.enabled
-  return <main className="dxs dxs-page">
+  const changeSource = async (enabled: boolean) => {
+    try { await preference.setEnabled(enabled); setSourceRevision(value => value + 1) }
+    catch { /* the preference hook owns the visible error */ }
+  }
+  const setBarVisible = (visible: boolean) => {
+    if (Boolean(state.barHidden) === visible) toggleBar()
+  }
+  const tabLabel = (normal: string, neutral: string) => t(discreet ? neutral : normal)
+  return <main className={`dxs dxs-page${discreet ? ' dxs-discreet' : ''}`}>
     {/* This page owns the keyed `main` slot, so the Conversation header that
         normally carries `data-window-drag` is not mounted. Claim the same drag
         region here; the shell's global rule keeps every button `no-drag`, so
         only the text and gaps move the window. */}
     <header className="dxs-titlebar" data-window-drag>
-      <div className="dxs-brand"><StockIcon size={16} /><h1>{t('title')}</h1><span className="dxs-context">{view === 'market' ? t('market.subtitle') : view === 'hot' ? t('hot.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
+      <div className="dxs-brand"><StockIcon size={16} /><h1>{discreet ? t('settings.discreet.title') : t('title')}</h1><span className="dxs-context">{discreet ? t('settings.discreet.subtitle') : view === 'market' ? t('market.subtitle') : view === 'hot' ? t('hot.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
-        <button type="button" aria-pressed={view === 'watchlist' && !previewOpen} onClick={() => { leavePreview(); setView('watchlist') }}>{t('page.view.watchlist')}</button>
-        <button type="button" aria-pressed={view === 'market' && !previewOpen} onClick={() => { leavePreview(); setView('market') }}>{t('page.view.market')}</button>
-        <button type="button" aria-pressed={view === 'hot' && !previewOpen} onClick={() => { leavePreview(); setView('hot') }}>{t('page.view.hot')}</button>
-        <button type="button" aria-pressed={view === 'global' && !previewOpen} onClick={() => { leavePreview(); setView('global') }}>{t('global.view.tab')}</button>
-        <button type="button" aria-pressed={view === 'gold' && !previewOpen} onClick={() => { leavePreview(); setView('gold') }}>{t('gold.view.tab')}</button>
+        <button type="button" aria-pressed={view === 'watchlist' && !previewOpen} onClick={() => { leavePreview(); setView('watchlist') }}>{tabLabel('page.view.watchlist', 'settings.tab.watchlist')}</button>
+        <button type="button" aria-pressed={view === 'market' && !previewOpen} onClick={() => { leavePreview(); setView('market') }}>{tabLabel('page.view.market', 'settings.tab.market')}</button>
+        <button type="button" aria-pressed={view === 'hot' && !previewOpen} onClick={() => { leavePreview(); setView('hot') }}>{tabLabel('page.view.hot', 'settings.tab.hot')}</button>
+        <button type="button" aria-pressed={view === 'global' && !previewOpen} onClick={() => { leavePreview(); setView('global') }}>{tabLabel('global.view.tab', 'settings.tab.global')}</button>
+        <button type="button" aria-pressed={view === 'gold' && !previewOpen} onClick={() => { leavePreview(); setView('gold') }}>{tabLabel('gold.view.tab', 'settings.tab.gold')}</button>
       </nav>
-      <div className="dxs-header-actions"><button type="button" onClick={back}>{t('page.back')}</button></div>
+      <div className="dxs-header-actions">
+        <button type="button" className="dxs-settings-button" aria-label={t('settings.open')} title={t('settings.open')} aria-haspopup="dialog" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(true)}><SettingsIcon /><span className="dxs-settings-button-label">{t('settings.open')}</span></button>
+        <button type="button" onClick={back}>{t('page.back')}</button>
+      </div>
     </header>
     <div className="dxs-body">
     {drillNotice ? <p role="status" className="dxs-banner">{drillNotice}</p> : null}
@@ -215,7 +240,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
         <p className="dxs-muted">{t('preview.bar', { name: previewItem?.alias || previewItem?.symbol || '' })}</p>
       </div>
       <Detail key={`preview:${previewItem?.symbol}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
-    </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView rpc={rpc} t={t} format={format} locale={getLocale()} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
+    </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView key={`global:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} onChangeSource={changeSource} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView key={`market:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} discreet={discreet} preference={preference} onChangeSource={changeSource} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
       {sourceOff ? <div className="dxs-banner is-warn dxs-source-card"><div><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p>{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</div><SourceButton preference={preference} t={t} large /></div> : preference.status === 'error' ? <p role="alert" className="dxs-banner dxs-error">{t('source.unavailable')}</p> : null}
       {state.placement === 'occupied' && <p role="status" className="dxs-banner">{t('page.occupied')}</p>}
       {state.barHidden && <p role="status" className="dxs-banner">{t('page.bar-hidden')} <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button></p>}
@@ -246,7 +271,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
           </div>
           <div className="dxs-rail-foot">
             <p className="dxs-bar-toggle">{state.barHidden ? <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button> : <button type="button" onClick={() => toggleBar()}>{t('page.bar-hide')}</button>}<ShortcutHint t={t} /></p>
-            <AddStock add={add} count={state.items.length} fixedCount={fixedCount} ready={state.scopeStatus === 'ready'} rpc={rpc} t={t} format={format} />
+            <AddStock add={add} count={state.items.length} fixedCount={fixedCount} ready={state.scopeStatus === 'ready'} rpc={rpc} t={t} format={format} sourceRevision={sourceRevision} />
             <details className="dxs-fineprint">
               <summary>{t('page.notes')}</summary>
               {!sourceOff ? <p>{t('page.notice')}</p> : null}
@@ -263,5 +288,15 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
       </div>
     </>}
     </div>
+    {settingsOpen ? <SettingsPanel
+      settings={settings}
+      t={t}
+      preference={preference}
+      onSourceChange={changeSource}
+      barHidden={state.barHidden}
+      onSetBarVisible={setBarVisible}
+      scopeReady={state.scopeStatus === 'ready'}
+      onClose={() => setSettingsOpen(false)}
+    /> : null}
   </main>
 }

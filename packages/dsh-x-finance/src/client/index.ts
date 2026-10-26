@@ -2,7 +2,8 @@ import { createWatchlistController } from './controller.ts'
 import { mountWhenVacant } from './placement.ts'
 import { quoteResource } from './resource.ts'
 import { StockBar, StockPage, StockIcon } from './components.tsx'
-import { isFixedBarShortcut } from './shortcut.ts'
+import { isBossKeyShortcut, isFixedBarShortcut } from './shortcut.ts'
+import { createFinanceSettings } from './settings/store.ts'
 import { fixedItems, SCOPE_ENDPOINT } from '../watchlist.ts'
 import { CSS } from './styles.ts'
 import { NS, zh, en } from './locales.ts'
@@ -18,6 +19,7 @@ export function apply(ctx: any) {
   let storage
   try { storage = globalThis.localStorage } catch { /* Restricted browser storage is reported in the UI. */ }
   const controller = createWatchlistController(storage, globalThis.window)
+  const settings = createFinanceSettings(storage, globalThis.window)
   let scopeRequest: any
   let disposed = false
   const loadScope = async () => {
@@ -34,7 +36,7 @@ export function apply(ctx: any) {
     } catch { if (!disposed && !request.signal.aborted) controller.scopeFailed() }
     finally { clearTimeout(timeout) }
   }
-  ctx.effect(() => () => { disposed = true; scopeRequest?.abort(); controller.dispose() }, 'stock: watchlist')
+  ctx.effect(() => () => { disposed = true; scopeRequest?.abort(); controller.dispose(); settings.dispose() }, 'stock: watchlist')
   ctx.on('connection/reset', () => { void loadScope() })
   void loadScope()
   ctx.effect(() => {
@@ -54,9 +56,19 @@ export function apply(ctx: any) {
   }
   globalThis.addEventListener?.('keydown', shortcut, true)
   ctx.effect(() => () => globalThis.removeEventListener?.('keydown', shortcut, true), 'stock: fixed bar shortcut')
+  // The boss key: Option+Shift+B on macOS, Alt+Shift+B elsewhere. It only flips
+  // the quiet appearance; it never changes what data is requested or saved.
+  const bossKey = (event: any) => {
+    if (!isBossKeyShortcut(event)) return
+    event.preventDefault()
+    settings.toggleDiscreet()
+  }
+  globalThis.addEventListener?.('keydown', bossKey, true)
+  ctx.effect(() => () => globalThis.removeEventListener?.('keydown', bossKey, true), 'stock: discreet shortcut')
   const face = () => ({
     format, rpc: ctx.connection.rpc, getLocale: () => ctx.locale.getLocale().active,
     hooks: { watchlist: controller.source },
+    settings,
     retryScope: () => { void loadScope() },
     add: (item: any) => { controller.add(item); controller.select(item.symbol) },
     // The hot screen adds without navigating: a batch of sixty must not change
@@ -82,9 +94,13 @@ export function apply(ctx: any) {
     onPlacement: controller.setPlacement,
     visible: () => {
       const state = controller.source.getSnapshot()
-      return !state.barHidden && fixedItems(state.items).length > 0
+      return !settings.getSnapshot().discreet && !state.barHidden && fixedItems(state.items).length > 0
     },
-    subscribe: controller.source.subscribe,
+    subscribe: (listener: any) => {
+      const unsubscribeWatchlist = controller.source.subscribe(listener)
+      const unsubscribeSettings = settings.subscribe(listener)
+      return () => { unsubscribeWatchlist(); unsubscribeSettings() }
+    },
   })
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'dsh-x-finance', inject: face, locale: NS }, StockPage))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'dsh-x-finance', order: 80, label: () => t('title') }, StockIcon))
