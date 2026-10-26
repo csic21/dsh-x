@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT } from '../../market.ts'
-import type { BoardDetail, MarketBreadth, MarketOverview } from '../../market.ts'
+import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW } from '../../market.ts'
+import type { BoardDetail, MarketBreadth, MarketOverview, TailScanWindow } from '../../market.ts'
 import type { TailScanResult } from '../../tail-scan.ts'
 import type { HotScanResult } from '../../hot.ts'
 import type { GlobalMarketOverview } from '../../global.ts'
@@ -139,13 +139,14 @@ export interface TailScanState {
  * The scan is heavy (a full-market pre-screen plus bounded minute and daily
  * requests), so it is manual: mounting the market page never starts it. A
  * previous successful result stays visible while a new scan is running, and
- * unmounting aborts the in-flight request.
+ * unmounting aborts the in-flight request. Each run names the session tail it
+ * wants, so switching windows never reuses the other window's answer.
  */
 export function useTailScan(rpc: any) {
   const [state, setState] = useState<TailScanState>({ status: 'idle', value: null, error: '', running: false })
   const controller = useRef<AbortController | null>(null)
   useEffect(() => () => { controller.current?.abort() }, [])
-  const run = async () => {
+  const run = async (window: TailScanWindow = TAIL_SCAN_DEFAULT_WINDOW) => {
     controller.current?.abort()
     const local = new AbortController()
     controller.current = local
@@ -154,7 +155,7 @@ export function useTailScan(rpc: any) {
       : { ...previous, status: 'loading', running: true, error: '' })
     try {
       if (!rpc?.call) throw new Error('finance/connection')
-      const result = await rpc.call('/api', MARKET_ENDPOINT, { kind: 'tail-scan' }, local.signal)
+      const result = await rpc.call('/api', MARKET_ENDPOINT, { kind: 'tail-scan', window }, local.signal)
       if (local.signal.aborted) return
       if (!result?.ok) throw new Error(typeof result?.error?.code === 'string' ? result.error.code : 'finance/tail-scan-unavailable')
       const payload = result.value

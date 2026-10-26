@@ -10,6 +10,9 @@ const emptyScan = {
   fetchedAt: '2000-01-01T00:00:00.000Z',
   sessionDate: '2026-10-23',
   sessionIsToday: true,
+  window: 'afternoon',
+  windowStart: '14:30',
+  windowEnd: '15:00',
   complete: true,
   universe: {
     expected: 5000, covered: 5000, screened: 0, intradayChecked: 0,
@@ -20,9 +23,25 @@ const emptyScan = {
 
 test('tail-scan request identity is exact', () => {
   assert.deepEqual(parseMarketRequest({ kind: 'tail-scan' }), { kind: 'tail-scan' })
-  for (const payload of [{ kind: 'tail-scan', extra: true }, { kind: 'tail-scan', symbols: [] }, { kind: 'TAIL-SCAN' }]) {
+  assert.deepEqual(parseMarketRequest({ kind: 'tail-scan', window: 'morning' }), { kind: 'tail-scan', window: 'morning' })
+  assert.deepEqual(parseMarketRequest({ kind: 'tail-scan', window: 'afternoon' }), { kind: 'tail-scan', window: 'afternoon' })
+  for (const payload of [
+    { kind: 'tail-scan', extra: true }, { kind: 'tail-scan', symbols: [] }, { kind: 'TAIL-SCAN' },
+    { kind: 'tail-scan', window: 'noon' }, { kind: 'tail-scan', window: null }, { kind: 'tail-scan', window: 'MORNING' },
+  ]) {
     assert.throws(() => parseMarketRequest(payload), { code: 'invalid-input' })
   }
+})
+
+test('tail-scan forwards the requested window and defaults to the afternoon tail', async () => {
+  const windows: unknown[] = []
+  const handler = createMarketHandler({
+    provider: { name: 'test', tailScan: async (options: any) => { windows.push(options?.window); return emptyScan } } as any,
+    now: () => NOW,
+  })
+  await handler(MARKET_ENDPOINT, { kind: 'tail-scan', window: 'morning' }, undefined, owner)
+  await handler(MARKET_ENDPOINT, { kind: 'tail-scan' }, undefined, owner)
+  assert.deepEqual(windows, ['morning', 'afternoon'])
 })
 
 test('tail-scan RPC is owner-only, caps the payload and reports a missing capability honestly', async () => {

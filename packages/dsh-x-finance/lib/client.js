@@ -256,6 +256,8 @@ var MARKET_ENDPOINT = "dsh-x-finance.market";
 var MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
 var MARKET_CACHE_TTL_MS = 5 * 6e4;
 var MARKET_BOARD_TTL_MS = 2 * 6e4;
+var TAIL_SCAN_WINDOWS = ["morning", "afternoon"];
+var TAIL_SCAN_DEFAULT_WINDOW = "afternoon";
 var MARKET_HISTORY_MAX_LIMIT = 1e3;
 var MARKET_LEVEL1 = [
   { code: "801010", name: "\u519C\u6797\u7267\u6E14" },
@@ -10868,14 +10870,14 @@ function useTailScan(rpc) {
   (0, import_react8.useEffect)(() => () => {
     controller.current?.abort();
   }, []);
-  const run = async () => {
+  const run = async (window2 = TAIL_SCAN_DEFAULT_WINDOW) => {
     controller.current?.abort();
     const local = new AbortController();
     controller.current = local;
     setState((previous) => previous.value ? { ...previous, running: true, error: "" } : { ...previous, status: "loading", running: true, error: "" });
     try {
       if (!rpc?.call) throw new Error("finance/connection");
-      const result = await rpc.call("/api", MARKET_ENDPOINT, { kind: "tail-scan" }, local.signal);
+      const result = await rpc.call("/api", MARKET_ENDPOINT, { kind: "tail-scan", window: window2 }, local.signal);
       if (local.signal.aborted) return;
       if (!result?.ok) throw new Error(typeof result?.error?.code === "string" ? result.error.code : "finance/tail-scan-unavailable");
       const payload = result.value;
@@ -11236,33 +11238,53 @@ function Movers({ breadth, t, format, onOpen }) {
 }
 function TailScanPanel({ rpc, t, format, onOpenStock }) {
   const scan = useTailScan(rpc);
+  const [tailWindow, setTailWindow] = (0, import_react10.useState)(TAIL_SCAN_DEFAULT_WINDOW);
   const [consecutiveOnly, setConsecutiveOnly] = (0, import_react10.useState)(false);
   const result = scan.value;
+  const shown = result && result.window === tailWindow ? result : null;
   const streakOf = (candidate) => Math.max(
     candidate.daily?.volumeExpansionDownStreak ?? 0,
     candidate.daily?.volumeDeclineStreak ?? 0
   );
-  const consecutiveCount = result?.candidates.filter((candidate) => candidate.flags.consecutive).length ?? 0;
-  const rows = result ? result.candidates.filter((candidate) => !consecutiveOnly || candidate.flags.consecutive) : [];
-  const sessionLabel = result?.sessionDate ? t(result.sessionIsToday ? "tail.session" : "tail.session-last", { date: result.sessionDate }) : "";
-  return /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-card dxs-tail", "aria-labelledby": "dxs-tail-title" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", { id: "dxs-tail-title" }, t("tail.title")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.subtitle"))), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-actions" }, result ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-updated" }, t("tail.scanned-at", { time: format.time(result.fetchedAt, t) })) : null, /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dxs-tail-run", onClick: () => {
-    void scan.run();
-  }, disabled: scan.running }, scan.running ? t("tail.running") : result ? t("tail.rerun") : t("tail.run")))), scan.status === "idle" ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.idle")) : null, scan.status === "loading" ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "status", className: "dxs-tail-loading" }, /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-dot is-live" }), t("tail.loading")) : null, scan.status === "error" ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "alert", className: "dxs-mkt-error" }, t("tail.error"), " ", /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => {
-    void scan.run();
-  } }, t("market.retry"))) : null, scan.status === "unconfigured" ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.unconfigured")) : null, result ? /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-summary" }, /* @__PURE__ */ import_react10.default.createElement("span", null, sessionLabel), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.summary", {
-    screened: format.count(result.universe.screened),
-    confirmed: format.count(result.universe.tailConfirmed),
+  const consecutiveCount = shown?.candidates.filter((candidate) => candidate.flags.consecutive).length ?? 0;
+  const rows = shown ? shown.candidates.filter((candidate) => !consecutiveOnly || candidate.flags.consecutive) : [];
+  const sessionLabel = shown?.sessionDate ? t(shown.sessionIsToday ? "tail.session" : "tail.session-last", { date: shown.sessionDate }) : "";
+  const pick = (next) => {
+    if (next === tailWindow) return;
+    setTailWindow(next);
+    setConsecutiveOnly(false);
+  };
+  return /* @__PURE__ */ import_react10.default.createElement("section", { className: "dxs-mkt-card dxs-tail", "aria-labelledby": "dxs-tail-title" }, /* @__PURE__ */ import_react10.default.createElement("header", { className: "dxs-mkt-card-head" }, /* @__PURE__ */ import_react10.default.createElement("div", null, /* @__PURE__ */ import_react10.default.createElement("h3", { id: "dxs-tail-title" }, t("tail.title")), /* @__PURE__ */ import_react10.default.createElement("p", null, t(`tail.subtitle.${tailWindow}`)), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-windows", role: "group", "aria-label": t("tail.window-group") }, TAIL_SCAN_WINDOWS.map((option) => /* @__PURE__ */ import_react10.default.createElement(
+    "button",
+    {
+      key: option,
+      type: "button",
+      "aria-pressed": tailWindow === option,
+      onClick: () => pick(option)
+    },
+    t(`tail.window.${option}`)
+  )))), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-actions" }, shown ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-updated" }, t("tail.scanned-at", { time: format.time(shown.fetchedAt, t) })) : null, /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dxs-tail-run", onClick: () => {
+    void scan.run(tailWindow);
+  }, disabled: scan.running }, scan.running ? t("tail.running") : shown ? t("tail.rerun") : t("tail.run")))), !shown && scan.status === "unconfigured" ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.unconfigured")) : null, !shown && (scan.status === "loading" || scan.running) ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "status", className: "dxs-tail-loading" }, /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-dot is-live" }), t("tail.loading")) : null, !shown && scan.status === "error" ? /* @__PURE__ */ import_react10.default.createElement("p", { role: "alert", className: "dxs-mkt-error" }, t("tail.error"), " ", /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", onClick: () => {
+    void scan.run(tailWindow);
+  } }, t("market.retry"))) : null, !shown && !scan.running && scan.status !== "loading" && scan.status !== "unconfigured" && scan.status !== "error" ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.idle")) : null, shown ? /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-summary" }, /* @__PURE__ */ import_react10.default.createElement("span", null, sessionLabel), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.summary", {
+    screened: format.count(shown.universe.screened),
+    confirmed: format.count(shown.universe.tailConfirmed),
     consecutive: format.count(consecutiveCount)
-  })), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.coverage", { covered: format.count(result.universe.covered), expected: format.count(result.universe.expected) })), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.source"), ": ", result.source)), !result.complete ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-note" }, t("tail.incomplete")) : null, result.universe.partial ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-note" }, t("tail.partial", {
-    intraday: format.count(result.universe.failedIntraday),
-    history: format.count(result.universe.failedHistory)
+  })), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.coverage", { covered: format.count(shown.universe.covered), expected: format.count(shown.universe.expected) })), /* @__PURE__ */ import_react10.default.createElement("span", null, t("tail.source"), ": ", shown.source)), !shown.complete ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-note" }, t("tail.incomplete", { start: shown.windowStart, end: shown.windowEnd })) : null, shown.universe.partial ? /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-note" }, t("tail.partial", {
+    intraday: format.count(shown.universe.failedIntraday),
+    history: format.count(shown.universe.failedHistory)
   })) : null, /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-controls" }, /* @__PURE__ */ import_react10.default.createElement("label", null, /* @__PURE__ */ import_react10.default.createElement("input", { type: "checkbox", checked: consecutiveOnly, onChange: (event) => setConsecutiveOnly(event.target.checked) }), t("tail.filter-consecutive")), /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-mkt-muted" }, t("tail.score-note"))), rows.length ? /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-mkt-table-wrap dxs-tail-table" }, /* @__PURE__ */ import_react10.default.createElement("table", null, /* @__PURE__ */ import_react10.default.createElement("caption", null, sessionLabel), /* @__PURE__ */ import_react10.default.createElement("thead", null, /* @__PURE__ */ import_react10.default.createElement("tr", null, /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.rank")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.stock")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.change")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.amount")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.tail")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.tail-ratio")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.volume-ratio")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.streak")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.rsi")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.ma20")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.score")), /* @__PURE__ */ import_react10.default.createElement("th", null, t("tail.col.quant")))), /* @__PURE__ */ import_react10.default.createElement("tbody", null, rows.map((candidate, index) => {
     const daily = candidate.daily;
     const quant = candidate.quant;
     const streak = streakOf(candidate);
     const tailTone = candidate.tail.tailReturn === null ? "" : candidate.tail.tailReturn > 0 ? "dxs-up" : candidate.tail.tailReturn < 0 ? "dxs-down" : "";
     return /* @__PURE__ */ import_react10.default.createElement("tr", { key: candidate.symbol, className: candidate.flags.consecutive ? "is-consecutive" : void 0 }, /* @__PURE__ */ import_react10.default.createElement("td", null, format.count(index + 1)), /* @__PURE__ */ import_react10.default.createElement("td", null, onOpenStock ? /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dxs-mkt-link", onClick: () => onOpenStock(candidate.symbol, candidate.name), title: t("market.drill.title", { name: candidate.name }) }, /* @__PURE__ */ import_react10.default.createElement("span", null, candidate.name), /* @__PURE__ */ import_react10.default.createElement("small", null, candidate.symbol)) : /* @__PURE__ */ import_react10.default.createElement(import_react10.default.Fragment, null, /* @__PURE__ */ import_react10.default.createElement("span", null, candidate.name), /* @__PURE__ */ import_react10.default.createElement("small", null, candidate.symbol)), /* @__PURE__ */ import_react10.default.createElement("div", { className: "dxs-tail-badges" }, candidate.flags.consecutive ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-tail-badge is-consecutive" }, t("tail.badge-consecutive")) : null, candidate.flags.tailDump ? /* @__PURE__ */ import_react10.default.createElement("span", { className: "dxs-tail-badge" }, t("tail.badge-tail")) : null)), /* @__PURE__ */ import_react10.default.createElement("td", { className: textTone(candidate.changePercent) }, format.change(candidate.changePercent)), /* @__PURE__ */ import_react10.default.createElement("td", null, format.compact(candidate.amount), /* @__PURE__ */ import_react10.default.createElement("small", null, candidate.turnoverPercent == null ? "\u2014" : `${format.ratio(candidate.turnoverPercent)}%`)), /* @__PURE__ */ import_react10.default.createElement("td", { className: tailTone }, candidate.tail.tailReturn === null ? "\u2014" : format.change(candidate.tail.tailReturn * 100)), /* @__PURE__ */ import_react10.default.createElement("td", null, format.ratio(candidate.tail.tailVolumeRatio)), /* @__PURE__ */ import_react10.default.createElement("td", null, format.ratio(daily?.volumeRatio5 ?? null)), /* @__PURE__ */ import_react10.default.createElement("td", null, streak ? t("tail.streak-value", { count: format.count(streak) }) : "\u2014"), /* @__PURE__ */ import_react10.default.createElement("td", null, format.ratio(quant?.rsi14 ?? null)), /* @__PURE__ */ import_react10.default.createElement("td", { className: textTone(quant?.priceVsMa20 ?? null) }, quant?.priceVsMa20 == null ? "\u2014" : format.change(quant.priceVsMa20 * 100)), /* @__PURE__ */ import_react10.default.createElement("td", null, /* @__PURE__ */ import_react10.default.createElement("strong", null, format.count(candidate.score))), /* @__PURE__ */ import_react10.default.createElement("td", null, onOpenStock ? /* @__PURE__ */ import_react10.default.createElement("button", { type: "button", className: "dxs-mkt-drill", onClick: () => onOpenStock(candidate.symbol, candidate.name) }, t("tail.open-quant")) : "\u2014"));
-  })))) : /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, consecutiveOnly ? t("tail.empty-filter") : t("tail.empty")), /* @__PURE__ */ import_react10.default.createElement("details", { className: "dxs-tail-method" }, /* @__PURE__ */ import_react10.default.createElement("summary", null, t("tail.definition")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.definition-body")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.score-body"))), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.quant-hint")), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.limit"))) : null);
+  })))) : /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, consecutiveOnly ? t("tail.empty-filter") : t("tail.empty")), /* @__PURE__ */ import_react10.default.createElement("details", { className: "dxs-tail-method" }, /* @__PURE__ */ import_react10.default.createElement("summary", null, t("tail.definition")), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.definition-body", {
+    start: shown.windowStart,
+    end: shown.windowEnd,
+    baseline: t(`tail.baseline.${shown.window}`)
+  })), /* @__PURE__ */ import_react10.default.createElement("p", null, t("tail.score-body"))), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.quant-hint")), /* @__PURE__ */ import_react10.default.createElement("p", { className: "dxs-mkt-muted" }, t("tail.limit"))) : null);
 }
 function SectorDetail({ rpc, selection, onClose, t, format, onOpen }) {
   const detail = useBoardDetail(rpc, selection.code);
@@ -12131,7 +12153,11 @@ var marketZh = {
   "market.drill.opened": "\u5DF2\u6253\u5F00 {name} \u7684\u8BE6\u60C5\u4E0E\u65E5 K\u3002",
   "market.drill.no-symbol": "\u8BE5\u6761\u76EE\u6CA1\u6709\u53EF\u4E0B\u94BB\u7684\u80A1\u7968\u4EE3\u7801\u3002",
   "tail.title": "\u5C3E\u76D8\u653E\u91CF\u4E0B\u8DCC\u626B\u63CF",
-  "tail.subtitle": "\u6700\u8FD1\u4EA4\u6613\u65E5 14:30\u201315:00 \xB7 \u5168\u5E02\u573A\u7B5B\u9009 \xB7 \u53EA\u8BFB",
+  "tail.window-group": "\u626B\u63CF\u65F6\u6BB5",
+  "tail.window.morning": "\u4E0A\u5348\u76D8",
+  "tail.window.afternoon": "\u4E0B\u5348\u76D8",
+  "tail.subtitle.morning": "\u6700\u8FD1\u4EA4\u6613\u65E5 11:00\u201311:30 \xB7 \u5168\u5E02\u573A\u7B5B\u9009 \xB7 \u53EA\u8BFB",
+  "tail.subtitle.afternoon": "\u6700\u8FD1\u4EA4\u6613\u65E5 14:30\u201315:00 \xB7 \u5168\u5E02\u573A\u7B5B\u9009 \xB7 \u53EA\u8BFB",
   "tail.run": "\u5F00\u59CB\u626B\u63CF",
   "tail.rerun": "\u91CD\u65B0\u626B\u63CF",
   "tail.running": "\u6B63\u5728\u626B\u63CF\u5168\u5E02\u573A\u2026",
@@ -12145,7 +12171,7 @@ var marketZh = {
   "tail.summary": "\u5019\u9009\u6C60 {screened} \xB7 \u5C3E\u76D8\u786E\u8BA4 {confirmed} \xB7 \u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC {consecutive}",
   "tail.coverage": "\u5168\u5E02\u573A\u8986\u76D6 {covered}/{expected}",
   "tail.partial": "\u90E8\u5206\u5206\u65F6\u6216\u65E5\u7EBF\u8BF7\u6C42\u5931\u8D25\uFF0C\u7ED3\u679C\u4E0D\u5B8C\u6574\uFF1A\u5206\u65F6\u5931\u8D25 {intraday}\uFF0C\u65E5\u7EBF\u5931\u8D25 {history}\u3002",
-  "tail.incomplete": "14:30\u201315:00 \u7684\u5C3E\u76D8\u7A97\u53E3\u672A\u7ED3\u675F\u6216\u5206\u65F6\u4E0D\u8DB3\uFF0C\u672C\u6B21\u4E0D\u628A\u76D8\u4E2D\u6570\u636E\u5F53\u4F5C\u5B8C\u6574\u5C3E\u76D8\u3002",
+  "tail.incomplete": "{start}\u2013{end} \u7684\u5C3E\u76D8\u7A97\u53E3\u672A\u7ED3\u675F\u6216\u5206\u65F6\u4E0D\u8DB3\uFF0C\u672C\u6B21\u4E0D\u628A\u76D8\u4E2D\u6570\u636E\u5F53\u4F5C\u5B8C\u6574\u5C3E\u76D8\u3002",
   "tail.empty": "\u672C\u6B21\u6CA1\u6709\u540C\u65F6\u6EE1\u8DB3\u300C\u5C3E\u76D8\u653E\u91CF\u300D\u4E0E\u300C\u5C3E\u76D8\u4E0B\u8DCC\u300D\u7684\u80A1\u7968\u3002",
   "tail.empty-filter": "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC\u7684\u80A1\u7968\uFF1B\u53D6\u6D88\u7B5B\u9009\u53EF\u770B\u5168\u90E8\u5C3E\u76D8\u5F02\u52A8\u3002",
   "tail.filter-consecutive": "\u53EA\u770B\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC\uFF08\u22652 \u65E5\uFF09",
@@ -12167,7 +12193,9 @@ var marketZh = {
   "tail.streak-value": "{count} \u65E5",
   "tail.score-note": "\u8BC4\u5206\u4E3A\u672C\u5730\u89C4\u5219\uFF0C\u4EC5\u63CF\u8FF0\u672C\u6B21\u6837\u672C\uFF0C\u4E0D\u9884\u6D4B\u6536\u76CA\u3002",
   "tail.definition": "\u53E3\u5F84\u4E0E\u516C\u5F0F",
-  "tail.definition-body": "\u5C3E\u76D8 = 14:30\u201315:00\uFF1B\u5C3E\u76D8\u91CF\u6BD4 = \u5C3E\u76D8\u6210\u4EA4\u91CF \xF7 10:00\u201314:30 \u5404 30 \u5206\u949F\u6210\u4EA4\u91CF\u4E2D\u4F4D\u6570\uFF1B\u5C3E\u76D8\u6DA8\u8DCC = 15:00 \u4EF7 \xF7 14:30 \u4EF7 \u2212 1\u3002\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC\u4F18\u5148\u770B\u300C\u8FDE\u7EED\u4E0B\u8DCC\u4E14\u6210\u4EA4\u91CF\u9010\u65E5\u653E\u5927\u300D\u7684\u4EA4\u6613\u65E5\u6570\uFF0C\u540C\u65F6\u7ED9\u51FA\u300C\u6210\u4EA4\u91CF \u2265 \u524D 5 \u65E5\u5747\u91CF 1.2 \u500D\u300D\u7684\u8FDE\u7EED\u5929\u6570\uFF1B\u4E24\u8005\u53D6\u8F83\u5927\u503C\u3002",
+  "tail.definition-body": "\u5C3E\u76D8 = {start}\u2013{end}\uFF1B\u5C3E\u76D8\u91CF\u6BD4 = \u5C3E\u76D8\u6210\u4EA4\u91CF \xF7 {baseline}\uFF1B\u5C3E\u76D8\u6DA8\u8DCC = {end} \u4EF7 \xF7 {start} \u4EF7 \u2212 1\u3002\u4E0A\u5348\u76D8\u7528 10:00\u201311:00 \u7684 10 \u5206\u949F\u5757\u6298\u7B97\u6210 30 \u5206\u949F\u53E3\u5F84\uFF0C\u4E24\u4E2A\u65F6\u6BB5\u7684\u91CF\u6BD4\u53EF\u4EE5\u76F4\u63A5\u5BF9\u7167\u3002\u8FDE\u7EED\u653E\u91CF\u4E0B\u8DCC\u4F18\u5148\u770B\u300C\u8FDE\u7EED\u4E0B\u8DCC\u4E14\u6210\u4EA4\u91CF\u9010\u65E5\u653E\u5927\u300D\u7684\u4EA4\u6613\u65E5\u6570\uFF0C\u540C\u65F6\u7ED9\u51FA\u300C\u6210\u4EA4\u91CF \u2265 \u524D 5 \u65E5\u5747\u91CF 1.2 \u500D\u300D\u7684\u8FDE\u7EED\u5929\u6570\uFF1B\u4E24\u8005\u53D6\u8F83\u5927\u503C\u3002",
+  "tail.baseline.morning": "10:00\u201311:00 \u5404 10 \u5206\u949F\u6210\u4EA4\u91CF\u4E2D\u4F4D\u6570 \xD73",
+  "tail.baseline.afternoon": "10:00\u201314:30 \u5404 30 \u5206\u949F\u6210\u4EA4\u91CF\u4E2D\u4F4D\u6570",
   "tail.score-body": "\u8BC4\u5206 = \u5C3E\u76D8\u91CF\u6BD4 30 + \u5C3E\u76D8\u8DCC\u5E45 25 + \u5F53\u65E5\u8DCC\u5E45 15 + \u65E5\u91CF\u6BD4 15 + \u8FDE\u7EED\u5929\u6570 15\uFF0C\u6EE1\u5206 100\uFF1B\u7F3A\u5931\u9879\u6309 0 \u8BA1\u3002",
   "tail.limit": "\u5206\u65F6\u6765\u81EA\u817E\u8BAF\u516C\u5F00\u63A5\u53E3\uFF0C\u65E5\u7EBF\u6765\u81EA\u540C\u4E00\u672C\u673A\u514D\u8D39\u6E90\uFF1B\u975E\u4EA4\u6613\u6240\u6388\u6743\u884C\u60C5\uFF0C\u53EF\u80FD\u5EF6\u8FDF\u3001\u9650\u6D41\u6216\u4E2D\u65AD\uFF0C\u53EA\u9002\u5408\u4E2A\u4EBA\u672C\u673A\u67E5\u770B\u3002\u626B\u63CF\u4E0D\u5305\u542B Level-2\u3001\u8D44\u91D1\u6D41\u3001\u65B0\u95FB\u6216\u4EA4\u6613\u6307\u4EE4\u3002",
   "tail.source": "\u6570\u636E\u6765\u6E90",
@@ -12429,7 +12457,11 @@ var marketEn = {
   "market.drill.opened": "Opened details and daily bars for {name}.",
   "market.drill.no-symbol": "This entry has no stock code to drill into.",
   "tail.title": "Late-session volume-dump scan",
-  "tail.subtitle": "Latest session 14:30\u201315:00 \xB7 whole market \xB7 read-only",
+  "tail.window-group": "Scan session",
+  "tail.window.morning": "Morning",
+  "tail.window.afternoon": "Afternoon",
+  "tail.subtitle.morning": "Latest session 11:00\u201311:30 \xB7 whole market \xB7 read-only",
+  "tail.subtitle.afternoon": "Latest session 14:30\u201315:00 \xB7 whole market \xB7 read-only",
   "tail.run": "Run scan",
   "tail.rerun": "Run again",
   "tail.running": "Scanning the market\u2026",
@@ -12443,7 +12475,7 @@ var marketEn = {
   "tail.summary": "Screened {screened} \xB7 tail-confirmed {confirmed} \xB7 consecutive {consecutive}",
   "tail.coverage": "Market coverage {covered}/{expected}",
   "tail.partial": "Some minute or daily requests failed, so the result is incomplete: minute failures {intraday}, daily failures {history}.",
-  "tail.incomplete": "The 14:30\u201315:00 window is not complete or the minute line is short; in-session data is not presented as a completed close.",
+  "tail.incomplete": "The {start}\u2013{end} window is not complete or the minute line is short; in-session data is not presented as a completed tail.",
   "tail.empty": "No stock met both the tail-volume and tail-decline conditions in this scan.",
   "tail.empty-filter": "No consecutive volume-decline stock matches the filter; turn it off to see every tail anomaly.",
   "tail.filter-consecutive": "Only consecutive volume declines (>= 2 sessions)",
@@ -12465,7 +12497,9 @@ var marketEn = {
   "tail.streak-value": "{count} sessions",
   "tail.score-note": "The score is a local rule describing this sample, not an expected return.",
   "tail.definition": "Definitions and formula",
-  "tail.definition-body": "Tail = 14:30\u201315:00; tail volume ratio = tail volume \xF7 median volume of the 30-minute blocks from 10:00 to 14:30; tail change = 15:00 price \xF7 14:30 price \u2212 1. The consecutive measure uses the larger of (a) consecutive down sessions with volume above the previous session and (b) consecutive down sessions with volume at least 1.2\xD7 the prior five-day mean.",
+  "tail.definition-body": "Tail = {start}\u2013{end}; tail volume ratio = tail volume \xF7 {baseline}; tail change = {end} price \xF7 {start} price \u2212 1. The morning session scales its 10-minute blocks from 10:00 to 11:00 to a 30-minute equivalent, so the two windows stay comparable. The consecutive measure uses the larger of (a) consecutive down sessions with volume above the previous session and (b) consecutive down sessions with volume at least 1.2\xD7 the prior five-day mean.",
+  "tail.baseline.morning": "median of the 10-minute blocks from 10:00 to 11:00, times 3",
+  "tail.baseline.afternoon": "median of the 30-minute blocks from 10:00 to 14:30",
   "tail.score-body": "Score = tail volume ratio 30 + tail decline 25 + day decline 15 + daily volume ratio 15 + consecutive sessions 15, capped at 100; a missing component counts as zero.",
   "tail.limit": "Minute data comes from Tencent public endpoints and daily bars from the same local free source; neither is exchange-authorised, both may delay, rate-limit or fail, and this is for local personal viewing only. The scan does not include Level-2, fund flow, news or trading instructions.",
   "tail.source": "Source",
@@ -13972,6 +14006,10 @@ var MARKET_CSS = `
 .dxs-mkt-manual-config pre{margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);font-size:11px;line-height:1.5;overflow:auto}
 .dxs-tail{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4169e1) 28%,var(--dsw-alias-border-l2,#ddd))}
 .dxs-tail-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dxs-tail-windows{display:inline-flex;align-items:center;gap:2px;height:24px;padding:2px;margin-top:6px;border:1px solid var(--dsw-alias-border-l1,#eceef1);border-radius:7px;background:var(--dsw-alias-bg-layer-2,#f4f4f5)}
+.dxs-tail-windows button{height:20px;border:0;border-radius:5px;background:transparent;padding:0 9px;font-size:11px;line-height:1;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;box-shadow:none}
+.dxs-tail-windows button:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary,#202124) 7%,transparent)}
+.dxs-tail-windows button[aria-pressed="true"]{background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#202124);font-weight:600;box-shadow:0 1px 2px #00000014}
 .dxs-tail-run{height:28px;padding:0 12px;border:1px solid var(--dsw-alias-brand-primary,#4169e1);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-brand-primary,#4169e1);font-size:12px;white-space:nowrap}
 .dxs-tail-run:hover:not(:disabled){background:var(--dsw-alias-brand-primary,#4169e1);color:#fff}
 .dxs-tail-run:disabled{opacity:.6;cursor:wait}

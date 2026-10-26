@@ -249,10 +249,20 @@ export type MarketRequest = {
     kind: 'global';
 } | {
     kind: 'tail-scan';
+    window?: TailScanWindow;
 } | {
     kind: 'hot-scan';
     board?: string;
 };
+/**
+ * Session tails the scan can describe: the last 30 minutes of the morning break
+ * and of the close. One result describes exactly one of them, and `afternoon` is
+ * what a client that sends no window has always asked for.
+ */
+export declare const TAIL_SCAN_WINDOWS: readonly ['morning', 'afternoon'];
+export type TailScanWindow = (typeof TAIL_SCAN_WINDOWS)[number];
+export declare const TAIL_SCAN_DEFAULT_WINDOW: TailScanWindow;
+export declare function validateTailScanWindow(value: unknown): TailScanWindow;
 /** Daily bars requested by one history call. Bounded for response size. */
 export declare const MARKET_HISTORY_DEFAULT_LIMIT = 250;
 export declare const MARKET_HISTORY_MAX_LIMIT = 1000;
@@ -295,10 +305,13 @@ export interface MarketProvider {
      */
     globalOverview?(): Promise<GlobalMarketOverview>;
     /**
-     * Market-wide late-session volume-dump scan. Optional: an adapter without
-     * minute data leaves this panel unavailable instead of failing the board.
+     * Market-wide session-tail volume-dump scan for one window. Optional: an
+     * adapter without minute data leaves this panel unavailable instead of failing
+     * the board.
      */
-    tailScan?(): Promise<TailScanResult>;
+    tailScan?(options?: {
+        window?: TailScanWindow;
+    }): Promise<TailScanResult>;
     /**
      * Market-wide hot-topic screen. Optional and independent from the breadth
      * board: the snapshot layer is cheap, the history layer is bounded and the

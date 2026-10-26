@@ -7,12 +7,23 @@ import {
 
 const SESSION = '2026-10-23'
 
-function minuteLine(options: { tailVolume?: number; blockVolume?: number; tailPrice?: number } = {}): TailMinutePoint[] {
+function minuteLine(options: {
+  tailVolume?: number
+  blockVolume?: number
+  tailPrice?: number
+  /** The morning window is flat by default so afternoon assertions keep their volume. */
+  morningTailVolume?: number
+  morningTailPrice?: number
+} = {}): TailMinutePoint[] {
   const { tailVolume = 300, blockVolume = 100, tailPrice = 9.5 } = options
+  const morningTailVolume = options.morningTailVolume ?? blockVolume
+  const morningTailPrice = options.morningTailPrice ?? 10
   const points: TailMinutePoint[] = []
   const push = (time: string) => {
-    const price = time > '14:30' ? tailPrice : 10
-    const volume = time > '14:30' ? tailVolume : blockVolume
+    const close = time > '14:30'
+    const morning = time > '11:00' && time <= '11:30'
+    const price = close ? tailPrice : morning ? morningTailPrice : 10
+    const volume = close ? tailVolume : morning ? morningTailVolume : blockVolume
     points.push({ time, price, volume, amount: price * volume * 100 })
   }
   for (let minutes = 9 * 60 + 30; minutes <= 11 * 60 + 30; minutes++) {
@@ -55,6 +66,29 @@ test('the tail metrics use the 14:30 print as reference and the median prior 30-
   assert.ok(Math.abs(metrics.tailReturn! - -0.05) < 1e-12)
   assert.ok(Math.abs(metrics.dayReturn! - -0.05) < 1e-12)
   assert.ok(Math.abs(metrics.tailVolumeShare! - 9000 / (212 * 100 + 9000)) < 1e-12)
+})
+
+test('the morning window measures 11:00–11:30 against 10-minute blocks scaled to 30 minutes', () => {
+  const points = minuteLine({ morningTailVolume: 300, morningTailPrice: 9.5 })
+  const metrics = computeTailMetrics(points, { sessionDate: SESSION, previousClose: 10, window: 'morning' })
+  assert.equal(metrics.complete, true)
+  assert.equal(metrics.tailStart, '11:00')
+  assert.equal(metrics.tailEnd, '11:30')
+  assert.equal(metrics.blocks, 6)
+  assert.equal(metrics.tailVolume, 30 * 300)
+  // Six 10-minute blocks of 100/min, each scaled to a 30-minute equivalent.
+  assert.equal(metrics.baselineVolume, 3000)
+  assert.equal(metrics.tailVolumeRatio, 3)
+  assert.ok(Math.abs(metrics.tailReturn! - -0.05) < 1e-12)
+})
+
+test('the morning window is complete at the 11:30 break, before the afternoon exists', () => {
+  const points = minuteLine({ morningTailVolume: 300, morningTailPrice: 9.5 }).filter(point => point.time <= '11:30')
+  const metrics = computeTailMetrics(points, { sessionDate: SESSION, previousClose: 10, window: 'morning' })
+  assert.equal(metrics.complete, true)
+  assert.equal(metrics.tailVolumeRatio, 3)
+  // The share uses the volume traded before 11:30, not the later session.
+  assert.ok(Math.abs(metrics.tailVolumeShare! - 9000 / (91 * 100 + 9000)) < 1e-12)
 })
 
 test('an unfinished tail is never reported as a completed close', () => {
@@ -126,6 +160,9 @@ function fixture() {
     fetchedAt: '2000-01-01T00:00:00.000Z',
     sessionDate: SESSION,
     sessionIsToday: false,
+    window: 'afternoon',
+    windowStart: '14:30',
+    windowEnd: '15:00',
     complete: true,
     universe: {
       expected: 5577, covered: 5577, screened: 499, intradayChecked: 32,
@@ -163,6 +200,9 @@ test('the Host projection re-checks metrics, recomputes the score and ignores ad
   assert.equal(projected.source, 'Tencent + minute (unofficial)')
   assert.equal(projected.sessionDate, SESSION)
   assert.equal(projected.sessionIsToday, false)
+  assert.equal(projected.window, 'afternoon')
+  assert.equal(projected.windowStart, '14:30')
+  assert.equal(projected.windowEnd, '15:00')
   assert.equal(projected.complete, true)
   assert.equal(projected.filters.minTailRatio, 1.3)
   assert.equal(projected.candidates.length, 1)
@@ -182,4 +222,7 @@ test('the projection rejects malformed candidates rather than passing them throu
   ;(missing.candidates[0] as any).daily = { ...missing.candidates[0]!.daily, sessionDate: '2026-10-22' }
   assert.throws(() => projectTailScan(missing, Date.now()), /daily session mismatch/)
   assert.throws(() => projectTailScan({ ...fixture(), sessionDate: '2026-02-30' }, Date.now()), /tail-scan invalid/)
+  assert.throws(() => projectTailScan({ ...fixture(), window: 'noon' }, Date.now()), /invalid window/)
+  // A row that still describes the afternoon tail cannot claim the morning one.
+  assert.throws(() => projectTailScan({ ...fixture(), window: 'morning', windowStart: '11:00', windowEnd: '11:30' }, Date.now()), /window mismatch/)
 })

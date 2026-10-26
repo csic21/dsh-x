@@ -1,5 +1,5 @@
 import type { QuantStats } from './analytics.ts';
-import type { MarketAdjustment } from './market.ts';
+import type { MarketAdjustment, TailScanWindow } from './market.ts';
 /** How long one scan result may be reused by the Host. */
 export declare const TAIL_SCAN_TTL_MS = 90000;
 /** Candidate minute lines fetched after the daily pre-screen. */
@@ -22,8 +22,12 @@ export declare const TAIL_SCAN_MIN_TAIL_CHANGE = -0.003;
 export declare const TAIL_SCAN_VOLUME_EXPANSION = 1.2;
 /** Consecutive sessions needed for the "continuous" badge. */
 export declare const TAIL_SCAN_MIN_STREAK = 2;
-export declare const TAIL_SCAN_TAIL_START = "14:30";
-export declare const TAIL_SCAN_TAIL_END = "15:00";
+/** Both windows are the last 30 minutes of one session. */
+export declare const TAIL_SCAN_TAIL_MINUTES = 30;
+/** Minimum minute points for a tail to count as complete. */
+export declare const TAIL_SCAN_TAIL_MIN_POINTS = 25;
+/** A baseline block must carry this share of its minutes to be used. */
+export declare const TAIL_SCAN_BLOCK_COVERAGE: number;
 /** The thresholds are returned with the result so the UI never invents them. */
 export interface TailScanFilters {
     minAmount: number;
@@ -47,12 +51,13 @@ export interface TailMetrics {
     complete: boolean;
     tailStart: string;
     tailEnd: string;
-    /** Last price / price at 14:30 - 1. */
+    /** Last tail price / price at the window start - 1. */
     tailReturn: number | null;
     tailVolume: number | null;
-    /** Median volume of the complete 30-minute blocks before the tail. */
+    /** Median of the complete baseline blocks before the tail, normalized to 30 minutes. */
     baselineVolume: number | null;
     tailVolumeRatio: number | null;
+    /** Tail volume / volume traded from the open through the window end. */
     tailVolumeShare: number | null;
     /** Last price / previous close - 1; null when the previous close is unknown. */
     dayReturn: number | null;
@@ -169,22 +174,49 @@ export interface TailScanResult {
     sessionDate: string | null;
     /** False on a weekend or holiday, so the UI says "latest session". */
     sessionIsToday: boolean;
-    /** False when the 14:30–15:00 window is not complete. */
+    /** Which session tail this result describes. */
+    window: TailScanWindow;
+    /** Start of the scanned tail, e.g. `11:00` or `14:30`. */
+    windowStart: string;
+    /** End of the scanned tail, e.g. `11:30` or `15:00`. */
+    windowEnd: string;
+    /** False when the tail window is not complete. */
     complete: boolean;
     universe: TailScanUniverse;
     filters: TailScanFilters;
     candidates: TailScanCandidate[];
 }
+export interface TailScanWindowSpec {
+    start: string;
+    end: string;
+    /** Baseline blocks `(start, end]`, before the tail. */
+    blocks: readonly (readonly [string, string])[];
+    /** Minutes one baseline block covers; every block is normalized to 30 minutes. */
+    blockMinutes: number;
+}
 /**
- * Computes the late-session metrics for one completed (or in-progress) minute
- * line. The tail is `(14:30, 15:00]`, so the 14:30 print is the reference price
- * and its volume belongs to the minute before the tail. The baseline is the
- * median of complete 30-minute blocks from 10:00 to 14:30; the opening half
- * hour is excluded because the opening auction distorts the first block.
+ * The two sessions a scan can describe, each as its own last 30 minutes. The
+ * afternoon window keeps the 30-minute baseline blocks from 10:00 to 14:30 that
+ * the panel has always used; the morning window only has 10:00–11:00 available,
+ * so it uses six 10-minute blocks scaled to a 30-minute equivalent. Normalizing
+ * keeps the tail ratio (and therefore the score) comparable across the two
+ * windows instead of roughly doubling it for the morning scan.
+ */
+export declare const TAIL_SCAN_WINDOW_SPECS: Readonly<Record<TailScanWindow, TailScanWindowSpec>>;
+/** Resolves a requested window; anything unknown falls back to the afternoon session. */
+export declare function tailWindowSpec(window?: TailScanWindow): TailScanWindowSpec;
+/**
+ * Computes the session-tail metrics for one completed (or in-progress) minute
+ * line. The tail is `(start, end]` inside the requested window, so the print at
+ * the window start is the reference price and its volume belongs to the minute
+ * before the tail. The baseline is the median of complete baseline blocks before
+ * the tail, normalized to 30 minutes; the opening half hour is excluded because
+ * the opening auction distorts the first block.
  */
 export declare function computeTailMetrics(input: TailMinutePoint[], options: {
     sessionDate: string;
     previousClose?: number | null;
+    window?: TailScanWindow;
 }): TailMetrics;
 /**
  * Daily context for the same session. A missing volume on any comparison bar
@@ -214,5 +246,5 @@ export declare function scoreTailCandidate(input: {
  * flags are recomputed from the metrics instead of trusting the adapter.
  */
 export declare function projectTailScan(raw: unknown, now: number): TailScanResult;
-/** Exported for tests; the provider uses the same scale. */
-export declare function tailBlockCount(): number;
+/** Export for tests; the provider uses the same scale. */
+export declare function tailBlockCount(window?: TailScanWindow): number;

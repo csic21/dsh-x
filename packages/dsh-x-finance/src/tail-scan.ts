@@ -1,13 +1,14 @@
-// Local, deterministic screening for a market-wide "late-session volume dump".
+// Local, deterministic screening for a market-wide "session-tail volume dump".
 //
 // Every number here is computed from an already-fetched minute line and daily
 // bars. Nothing is fetched, persisted, predicted or recommended. The scan is a
-// description of one session: a high tail-volume ratio plus a falling tail is
-// evidence of heavy selling into the close, not a forecast or an advice.
+// description of one session tail — the last 30 minutes of the morning or the
+// afternoon session: a high tail-volume ratio plus a falling tail is evidence of
+// heavy selling into that break, not a forecast or an advice.
 import { computeQuantStats } from './analytics.ts'
 import type { QuantStats } from './analytics.ts'
 import { isAshareMinute, shanghaiToday } from './market.ts'
-import type { MarketAdjustment } from './market.ts'
+import type { MarketAdjustment, TailScanWindow } from './market.ts'
 import { validateSymbol } from './watchlist.ts'
 
 /** How long one scan result may be reused by the Host. */
@@ -32,8 +33,12 @@ export const TAIL_SCAN_MIN_TAIL_CHANGE = -0.003
 export const TAIL_SCAN_VOLUME_EXPANSION = 1.2
 /** Consecutive sessions needed for the "continuous" badge. */
 export const TAIL_SCAN_MIN_STREAK = 2
-export const TAIL_SCAN_TAIL_START = '14:30'
-export const TAIL_SCAN_TAIL_END = '15:00'
+/** Both windows are the last 30 minutes of one session. */
+export const TAIL_SCAN_TAIL_MINUTES = 30
+/** Minimum minute points for a tail to count as complete. */
+export const TAIL_SCAN_TAIL_MIN_POINTS = 25
+/** A baseline block must carry this share of its minutes to be used. */
+export const TAIL_SCAN_BLOCK_COVERAGE = 5 / 6
 
 /** The thresholds are returned with the result so the UI never invents them. */
 export interface TailScanFilters {
@@ -69,12 +74,13 @@ export interface TailMetrics {
   complete: boolean
   tailStart: string
   tailEnd: string
-  /** Last price / price at 14:30 - 1. */
+  /** Last tail price / price at the window start - 1. */
   tailReturn: number | null
   tailVolume: number | null
-  /** Median volume of the complete 30-minute blocks before the tail. */
+  /** Median of the complete baseline blocks before the tail, normalized to 30 minutes. */
   baselineVolume: number | null
   tailVolumeRatio: number | null
+  /** Tail volume / volume traded from the open through the window end. */
   tailVolumeShare: number | null
   /** Last price / previous close - 1; null when the previous close is unknown. */
   dayReturn: number | null
@@ -200,7 +206,13 @@ export interface TailScanResult {
   sessionDate: string | null
   /** False on a weekend or holiday, so the UI says "latest session". */
   sessionIsToday: boolean
-  /** False when the 14:30–15:00 window is not complete. */
+  /** Which session tail this result describes. */
+  window: TailScanWindow
+  /** Start of the scanned tail, e.g. `11:00` or `14:30`. */
+  windowStart: string
+  /** End of the scanned tail, e.g. `11:30` or `15:00`. */
+  windowEnd: string
+  /** False when the tail window is not complete. */
   complete: boolean
   universe: TailScanUniverse
   filters: TailScanFilters
@@ -216,14 +228,52 @@ function isSessionDate(value: unknown): value is string {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month! - 1 && date.getUTCDate() === day
 }
 const MINUTE = /^\d{2}:\d{2}$/
-const BLOCKS: readonly (readonly [string, string])[] = [
-  ['10:00', '10:30'],
-  ['10:30', '11:00'],
-  ['11:00', '11:30'],
-  ['13:00', '13:30'],
-  ['13:30', '14:00'],
-  ['14:00', '14:30'],
-]
+
+export interface TailScanWindowSpec {
+  start: string
+  end: string
+  /** Baseline blocks `(start, end]`, before the tail. */
+  blocks: readonly (readonly [string, string])[]
+  /** Minutes one baseline block covers; every block is normalized to 30 minutes. */
+  blockMinutes: number
+}
+
+/**
+ * The two sessions a scan can describe, each as its own last 30 minutes. The
+ * afternoon window keeps the 30-minute baseline blocks from 10:00 to 14:30 that
+ * the panel has always used; the morning window only has 10:00–11:00 available,
+ * so it uses six 10-minute blocks scaled to a 30-minute equivalent. Normalizing
+ * keeps the tail ratio (and therefore the score) comparable across the two
+ * windows instead of roughly doubling it for the morning scan.
+ */
+export const TAIL_SCAN_WINDOW_SPECS: Readonly<Record<TailScanWindow, TailScanWindowSpec>> = {
+  morning: {
+    start: '11:00',
+    end: '11:30',
+    blocks: [
+      ['10:00', '10:10'],
+      ['10:10', '10:20'],
+      ['10:20', '10:30'],
+      ['10:30', '10:40'],
+      ['10:40', '10:50'],
+      ['10:50', '11:00'],
+    ],
+    blockMinutes: 10,
+  },
+  afternoon: {
+    start: '14:30',
+    end: '15:00',
+    blocks: [
+      ['10:00', '10:30'],
+      ['10:30', '11:00'],
+      ['11:00', '11:30'],
+      ['13:00', '13:30'],
+      ['13:30', '14:00'],
+      ['14:00', '14:30'],
+    ],
+    blockMinutes: 30,
+  },
+}
 
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
@@ -275,43 +325,55 @@ function totalVolume(points: TailMinutePoint[]): number | null {
   return points.reduce((sum, point) => sum + point.volume!, 0)
 }
 
+/** Resolves a requested window; anything unknown falls back to the afternoon session. */
+export function tailWindowSpec(window?: TailScanWindow): TailScanWindowSpec {
+  const key: TailScanWindow = window === 'morning' ? 'morning' : 'afternoon'
+  return TAIL_SCAN_WINDOW_SPECS[key]
+}
+
 /**
- * Computes the late-session metrics for one completed (or in-progress) minute
- * line. The tail is `(14:30, 15:00]`, so the 14:30 print is the reference price
- * and its volume belongs to the minute before the tail. The baseline is the
- * median of complete 30-minute blocks from 10:00 to 14:30; the opening half
- * hour is excluded because the opening auction distorts the first block.
+ * Computes the session-tail metrics for one completed (or in-progress) minute
+ * line. The tail is `(start, end]` inside the requested window, so the print at
+ * the window start is the reference price and its volume belongs to the minute
+ * before the tail. The baseline is the median of complete baseline blocks before
+ * the tail, normalized to 30 minutes; the opening half hour is excluded because
+ * the opening auction distorts the first block.
  */
 export function computeTailMetrics(
   input: TailMinutePoint[],
-  options: { sessionDate: string; previousClose?: number | null },
+  options: { sessionDate: string; previousClose?: number | null; window?: TailScanWindow },
 ): TailMetrics {
   const points = cleanPoints(input)
   if (points.length < 2) throw new Error('tail-scan invalid minute line')
+  const spec = tailWindowSpec(options.window)
   const last = points.at(-1)!
-  const reference = [...points].reverse().find(point => point.time <= TAIL_SCAN_TAIL_START) ?? null
-  const tail = points.filter(point => point.time > TAIL_SCAN_TAIL_START && point.time <= TAIL_SCAN_TAIL_END)
+  const reference = [...points].reverse().find(point => point.time <= spec.start) ?? null
+  const tail = points.filter(point => point.time > spec.start && point.time <= spec.end)
+  const tailLast = tail.at(-1) ?? null
+  const minimum = Math.ceil(spec.blockMinutes * TAIL_SCAN_BLOCK_COVERAGE)
   const blockVolumes: number[] = []
-  for (const [start, end] of BLOCKS) {
+  for (const [start, end] of spec.blocks) {
     const block = points.filter(point => point.time > start && point.time <= end)
-    if (block.length < 25) continue
+    if (block.length < minimum) continue
     const volume = totalVolume(block)
-    if (volume !== null) blockVolumes.push(volume)
+    if (volume !== null) blockVolumes.push(volume * (TAIL_SCAN_TAIL_MINUTES / spec.blockMinutes))
   }
   const baselineVolume = blockVolumes.length >= 4 ? median(blockVolumes) : null
   const tailVolume = totalVolume(tail)
-  const dayVolume = totalVolume(points)
+  // Cumulative volume through the end of the window: a morning scan must not be
+  // diluted by an afternoon that it has not judged yet.
+  const elapsedVolume = totalVolume(points.filter(point => point.time <= spec.end))
   const previousClose = finite(options.previousClose, 0.0001, 1e12) ? options.previousClose : null
   return {
     sessionDate: options.sessionDate,
-    complete: last.time >= TAIL_SCAN_TAIL_END && tail.length >= 25 && blockVolumes.length >= 4,
-    tailStart: TAIL_SCAN_TAIL_START,
-    tailEnd: TAIL_SCAN_TAIL_END,
-    tailReturn: reference && tail.length > 0 && last.price > 0 ? last.price / reference.price - 1 : null,
+    complete: last.time >= spec.end && tail.length >= TAIL_SCAN_TAIL_MIN_POINTS && blockVolumes.length >= 4,
+    tailStart: spec.start,
+    tailEnd: spec.end,
+    tailReturn: reference && tailLast && tailLast.price > 0 ? tailLast.price / reference.price - 1 : null,
     tailVolume,
     baselineVolume,
     tailVolumeRatio: tailVolume !== null && baselineVolume !== null && baselineVolume > 0 ? tailVolume / baselineVolume : null,
-    tailVolumeShare: tailVolume !== null && dayVolume !== null && dayVolume > 0 ? tailVolume / dayVolume : null,
+    tailVolumeShare: tailVolume !== null && elapsedVolume !== null && elapsedVolume > 0 ? tailVolume / elapsedVolume : null,
     dayReturn: previousClose !== null ? last.price / previousClose - 1 : null,
     points: points.length,
     blocks: blockVolumes.length,
@@ -556,6 +618,11 @@ export function projectTailScan(raw: unknown, now: number): TailScanResult {
     ? raw.source.replace(/[\u0000-\u001f\u007f]/g, '').trim()
     : null
   if (!source) throw new Error('tail-scan invalid source')
+  const window = raw.window === 'morning' || raw.window === 'afternoon'
+    ? raw.window
+    : null
+  if (!window) throw new Error('tail-scan invalid window')
+  const spec = tailWindowSpec(window)
   const sessionDate = raw.sessionDate === null ? null : isSessionDate(raw.sessionDate) ? raw.sessionDate : undefined
   if (sessionDate === undefined) throw new Error('tail-scan invalid session date')
   const universe = raw.universe
@@ -582,6 +649,9 @@ export function projectTailScan(raw: unknown, now: number): TailScanResult {
     if (!nullableNumber(tail.dayReturn, -1, 10) || !nullableNumber(tail.tailVolume, 0, Number.MAX_SAFE_INTEGER) || !nullableNumber(tail.baselineVolume, 0, Number.MAX_SAFE_INTEGER)) throw new Error('tail-scan invalid tail volume')
     if (!finite(tail.points, 0, 1000) || !Number.isInteger(tail.points) || !finite(tail.blocks, 0, 1000) || !Number.isInteger(tail.blocks)) throw new Error('tail-scan invalid tail count')
     if (typeof tail.tailStart !== 'string' || typeof tail.tailEnd !== 'string') throw new Error('tail-scan invalid tail window')
+    // The row must describe the window the scan claims; a mismatched tail is a
+    // broken adapter, not something the UI should relabel.
+    if (tail.tailStart !== spec.start || tail.tailEnd !== spec.end) throw new Error('tail-scan window mismatch')
     const daily = projectDaily(item.daily, sessionDate)
     const quant = projectQuant(item.quant)
     const adjustment = item.adjustment === null ? null : ['none', 'forward', 'backward'].includes(item.adjustment) ? item.adjustment as MarketAdjustment : undefined
@@ -624,6 +694,9 @@ export function projectTailScan(raw: unknown, now: number): TailScanResult {
     fetchedAt: new Date(now).toISOString(),
     sessionDate,
     sessionIsToday: sessionDate !== null && sessionDate === shanghaiToday(now),
+    window,
+    windowStart: spec.start,
+    windowEnd: spec.end,
     complete: raw.complete && sessionDate !== null && candidates.every(candidate => candidate.tail.complete),
     universe: {
       expected: universe.expected,
@@ -641,7 +714,7 @@ export function projectTailScan(raw: unknown, now: number): TailScanResult {
   }
 }
 
-/** Exported for tests; the provider uses the same scale. */
-export function tailBlockCount(): number {
-  return BLOCKS.length
+/** Export for tests; the provider uses the same scale. */
+export function tailBlockCount(window?: TailScanWindow): number {
+  return tailWindowSpec(window).blocks.length
 }

@@ -77,7 +77,8 @@ const tailCandidate = (options: { symbol: string; name: string; consecutive: boo
 })
 const tailScan = {
   source: '腾讯行情 + 腾讯分时 (unofficial)', fetchedAt: '2026-10-18T21:06:57+08:00',
-  sessionDate: '2026-10-16', sessionIsToday: false, complete: true,
+  sessionDate: '2026-10-16', sessionIsToday: false,
+  window: 'afternoon', windowStart: '14:30', windowEnd: '15:00', complete: true,
   universe: {
     expected: 5577, covered: 5577, screened: 499, intradayChecked: 32,
     tailConfirmed: 2, historyChecked: 2, failedIntraday: 0, failedHistory: 0, partial: false,
@@ -90,6 +91,14 @@ const tailScan = {
     tailCandidate({ symbol: 'SH.600293', name: '三峡新材', consecutive: true, score: 84, tailRatio: 2.75, tailReturn: -0.0447, streak: 2 }),
     tailCandidate({ symbol: 'SH.603138', name: '海量数据', consecutive: false, score: 57, tailRatio: 1.4, tailReturn: -0.0246, streak: 1 }),
   ],
+}
+const morningTailScan = {
+  ...tailScan,
+  window: 'morning', windowStart: '11:00', windowEnd: '11:30',
+  candidates: tailScan.candidates.map(candidate => ({
+    ...candidate,
+    tail: { ...candidate.tail, tailStart: '11:00', tailEnd: '11:30' },
+  })),
 }
 const breadth = {
   source: '腾讯行情 (unofficial)', fetchedAt: '2026-10-18T21:06:57+08:00', expected: 5577, covered: 5577,
@@ -119,7 +128,7 @@ new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(marketM
 const translation = (dictionary: any) => (key: string, params: Record<string, any> = {}) =>
   String(dictionary[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => params[name] ?? `{${name}}`)
 
-async function harness(options: { response?: any; dictionary?: any; rpc?: any; sourceEnabled?: boolean; sourceForced?: boolean } = {}) {
+async function harness(options: { response?: any; dictionary?: any; rpc?: any; sourceEnabled?: boolean; sourceForced?: boolean; tailDelayMs?: number } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
   const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
   ;(globalThis as any).window = dom.window
@@ -139,7 +148,10 @@ async function harness(options: { response?: any; dictionary?: any; rpc?: any; s
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
-      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan } }
+      if (payload.kind === 'tail-scan') {
+        if (options.tailDelayMs) await new Promise(resolve => setTimeout(resolve, options.tailDelayMs))
+        return { ok: true, value: { status: 'ready', tailScan: payload.window === 'morning' ? morningTailScan : tailScan } }
+      }
       if (payload && typeof payload === 'object' && !Object.keys(payload).length) return { ok: true, value: { status: 'ready', snapshot: goldSnapshot } }
       return { ok: true, value: { status: 'ready', board: { ...board, code: payload.board } } }
     },
@@ -283,6 +295,50 @@ test('the tail scan is manual, renders candidates and can filter consecutive dea
   }
 })
 
+test('the tail scan switches to the morning window and requests that window explicitly', async () => {
+  const h = await harness()
+  try {
+    // The panel opens on the afternoon tail and has not scanned anything yet.
+    assert.match(h.document.body.textContent ?? '', /最近交易日 14:30–15:00/)
+    assert.equal(h.document.body.textContent?.includes('三峡新材'), false)
+    await h.click(h.button('开始扫描'))
+    assert.ok(h.calls.some(call => call.kind === 'tail-scan' && call.window === 'afternoon'))
+    assert.match(h.document.body.textContent ?? '', /三峡新材/)
+
+    // Switching the session must not show the afternoon table as if it were the
+    // morning one, and the next request must name the morning window.
+    await h.click(h.button('上午盘'))
+    assert.equal(h.document.body.textContent?.includes('三峡新材'), false)
+    assert.match(h.document.body.textContent ?? '', /最近交易日 11:00–11:30/)
+    await h.click(h.button('开始扫描'))
+    assert.ok(h.calls.some(call => call.kind === 'tail-scan' && call.window === 'morning'))
+    const text = h.document.body.textContent ?? ''
+    assert.match(text, /三峡新材/)
+    assert.match(text, /11:00–11:30/)
+    assert.equal(h.document.querySelector('.dxs-tail-windows button[aria-pressed="true"]')?.textContent, '上午盘')
+  } finally {
+    await h.close()
+  }
+})
+
+test('a result that lands after switching sessions is discarded, not relabelled', async () => {
+  const h = await harness({ tailDelayMs: 60 })
+  try {
+    await h.click(h.button('开始扫描'))
+    // The afternoon scan is still in flight when the user switches to the
+    // morning window.
+    await h.click(h.button('上午盘'))
+    assert.match(h.document.body.textContent ?? '', /最近交易日 11:00–11:30/)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)) })
+    const text = h.document.body.textContent ?? ''
+    assert.equal(text.includes('三峡新材'), false, 'the afternoon table must not appear under the morning window')
+    assert.match(text, /尚未|先按成交额/, 'the panel explains it is idle instead of going blank')
+    assert.equal(h.document.querySelector('.dxs-tail-windows button[aria-pressed="true"]')?.textContent, '上午盘')
+  } finally {
+    await h.close()
+  }
+})
+
 test('source switch enables and disables the market feed without profile edits', async () => {
   const h = await harness({ sourceEnabled: false })
   try {
@@ -386,7 +442,7 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
-      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan } }
+      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan: payload.window === 'morning' ? morningTailScan : tailScan } }
       if (payload && typeof payload === 'object' && !Object.keys(payload).length) return { ok: true, value: { status: 'ready', snapshot: goldSnapshot } }
       return { ok: true, value: { status: 'ready', board } }
     },

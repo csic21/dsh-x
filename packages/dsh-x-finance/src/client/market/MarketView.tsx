@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketSector, MarketStock } from '../../market.ts'
+import type { BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketSector, MarketStock, TailScanWindow } from '../../market.ts'
 import type { TailScanCandidate, TailScanResult } from '../../tail-scan.ts'
-import { computeSentiment, marketClock } from '../../market.ts'
+import { TAIL_SCAN_DEFAULT_WINDOW, TAIL_SCAN_WINDOWS, computeSentiment, marketClock } from '../../market.ts'
 import type { ChangeTone, NestedGroup, TreemapRect } from './treemap.ts'
 import { changeTone, layoutNested, squarify, tileSize } from './treemap.ts'
 import { useBoardDetail, useMarketBreadth, useMarketOverview, useMarketPreference, useTailScan } from './data.ts'
@@ -370,49 +370,70 @@ function Movers({ breadth, t, format, onOpen }: any) {
 
 function TailScanPanel({ rpc, t, format, onOpenStock }: any) {
   const scan = useTailScan(rpc)
+  // The window is a local choice: one scan describes one session tail, so a
+  // result from the other window is never relabelled or reused.
+  const [tailWindow, setTailWindow] = useState<TailScanWindow>(TAIL_SCAN_DEFAULT_WINDOW)
   const [consecutiveOnly, setConsecutiveOnly] = useState(false)
   const result: TailScanResult | null = scan.value
+  const shown = result && result.window === tailWindow ? result : null
   const streakOf = (candidate: TailScanCandidate) => Math.max(
     candidate.daily?.volumeExpansionDownStreak ?? 0,
     candidate.daily?.volumeDeclineStreak ?? 0,
   )
-  const consecutiveCount = result?.candidates.filter(candidate => candidate.flags.consecutive).length ?? 0
-  const rows = result ? result.candidates.filter(candidate => !consecutiveOnly || candidate.flags.consecutive) : []
-  const sessionLabel = result?.sessionDate
-    ? t(result.sessionIsToday ? 'tail.session' : 'tail.session-last', { date: result.sessionDate })
+  const consecutiveCount = shown?.candidates.filter(candidate => candidate.flags.consecutive).length ?? 0
+  const rows = shown ? shown.candidates.filter(candidate => !consecutiveOnly || candidate.flags.consecutive) : []
+  const sessionLabel = shown?.sessionDate
+    ? t(shown.sessionIsToday ? 'tail.session' : 'tail.session-last', { date: shown.sessionDate })
     : ''
+  const pick = (next: TailScanWindow) => {
+    if (next === tailWindow) return
+    setTailWindow(next)
+    setConsecutiveOnly(false)
+  }
   return <section className="dxs-mkt-card dxs-tail" aria-labelledby="dxs-tail-title">
     <header className="dxs-mkt-card-head">
       <div>
         <h3 id="dxs-tail-title">{t('tail.title')}</h3>
-        <p>{t('tail.subtitle')}</p>
+        <p>{t(`tail.subtitle.${tailWindow}`)}</p>
+        <div className="dxs-tail-windows" role="group" aria-label={t('tail.window-group')}>
+          {TAIL_SCAN_WINDOWS.map(option => <button
+            key={option}
+            type="button"
+            aria-pressed={tailWindow === option}
+            onClick={() => pick(option)}
+          >{t(`tail.window.${option}`)}</button>)}
+        </div>
       </div>
       <div className="dxs-tail-actions">
-        {result ? <span className="dxs-mkt-updated">{t('tail.scanned-at', { time: format.time(result.fetchedAt, t) })}</span> : null}
-        <button type="button" className="dxs-tail-run" onClick={() => { void scan.run() }} disabled={scan.running}>
-          {scan.running ? t('tail.running') : result ? t('tail.rerun') : t('tail.run')}
+        {shown ? <span className="dxs-mkt-updated">{t('tail.scanned-at', { time: format.time(shown.fetchedAt, t) })}</span> : null}
+        <button type="button" className="dxs-tail-run" onClick={() => { void scan.run(tailWindow) }} disabled={scan.running}>
+          {scan.running ? t('tail.running') : shown ? t('tail.rerun') : t('tail.run')}
         </button>
       </div>
     </header>
-    {scan.status === 'idle' ? <p className="dxs-mkt-muted">{t('tail.idle')}</p> : null}
-    {scan.status === 'loading' ? <p role="status" className="dxs-tail-loading"><span className="dxs-mkt-dot is-live" />{t('tail.loading')}</p> : null}
-    {scan.status === 'error' ? <p role="alert" className="dxs-mkt-error">{t('tail.error')} <button type="button" onClick={() => { void scan.run() }}>{t('market.retry')}</button></p> : null}
-    {scan.status === 'unconfigured' ? <p className="dxs-mkt-muted">{t('tail.unconfigured')}</p> : null}
-    {result ? <>
+    {/* A result for the other window is never displayed here, including one
+        that lands after the user switched sessions mid-scan: the panel falls
+        back to the idle hint instead of going blank. */}
+    {!shown && scan.status === 'unconfigured' ? <p className="dxs-mkt-muted">{t('tail.unconfigured')}</p> : null}
+    {!shown && (scan.status === 'loading' || scan.running) ? <p role="status" className="dxs-tail-loading"><span className="dxs-mkt-dot is-live" />{t('tail.loading')}</p> : null}
+    {!shown && scan.status === 'error' ? <p role="alert" className="dxs-mkt-error">{t('tail.error')} <button type="button" onClick={() => { void scan.run(tailWindow) }}>{t('market.retry')}</button></p> : null}
+    {!shown && !scan.running && scan.status !== 'loading' && scan.status !== 'unconfigured' && scan.status !== 'error'
+      ? <p className="dxs-mkt-muted">{t('tail.idle')}</p> : null}
+    {shown ? <>
       <div className="dxs-tail-summary">
         <span>{sessionLabel}</span>
         <span>{t('tail.summary', {
-          screened: format.count(result.universe.screened),
-          confirmed: format.count(result.universe.tailConfirmed),
+          screened: format.count(shown.universe.screened),
+          confirmed: format.count(shown.universe.tailConfirmed),
           consecutive: format.count(consecutiveCount),
         })}</span>
-        <span>{t('tail.coverage', { covered: format.count(result.universe.covered), expected: format.count(result.universe.expected) })}</span>
-        <span>{t('tail.source')}: {result.source}</span>
+        <span>{t('tail.coverage', { covered: format.count(shown.universe.covered), expected: format.count(shown.universe.expected) })}</span>
+        <span>{t('tail.source')}: {shown.source}</span>
       </div>
-      {!result.complete ? <p className="dxs-mkt-note">{t('tail.incomplete')}</p> : null}
-      {result.universe.partial ? <p className="dxs-mkt-note">{t('tail.partial', {
-        intraday: format.count(result.universe.failedIntraday),
-        history: format.count(result.universe.failedHistory),
+      {!shown.complete ? <p className="dxs-mkt-note">{t('tail.incomplete', { start: shown.windowStart, end: shown.windowEnd })}</p> : null}
+      {shown.universe.partial ? <p className="dxs-mkt-note">{t('tail.partial', {
+        intraday: format.count(shown.universe.failedIntraday),
+        history: format.count(shown.universe.failedHistory),
       })}</p> : null}
       <div className="dxs-tail-controls">
         <label><input type="checkbox" checked={consecutiveOnly} onChange={event => setConsecutiveOnly(event.target.checked)} />{t('tail.filter-consecutive')}</label>
@@ -465,7 +486,11 @@ function TailScanPanel({ rpc, t, format, onOpenStock }: any) {
       </table></div> : <p className="dxs-mkt-muted">{consecutiveOnly ? t('tail.empty-filter') : t('tail.empty')}</p>}
       <details className="dxs-tail-method">
         <summary>{t('tail.definition')}</summary>
-        <p>{t('tail.definition-body')}</p>
+        <p>{t('tail.definition-body', {
+          start: shown.windowStart,
+          end: shown.windowEnd,
+          baseline: t(`tail.baseline.${shown.window}`),
+        })}</p>
         <p>{t('tail.score-body')}</p>
       </details>
       <p className="dxs-mkt-muted">{t('tail.quant-hint')}</p>

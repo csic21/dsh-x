@@ -10,8 +10,9 @@ import {
   MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES,
   MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS,
   MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket,
+  TAIL_SCAN_DEFAULT_WINDOW,
   level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit,
-  validateAdjustment, isAshareMinute,
+  validateAdjustment, validateTailScanWindow, isAshareMinute,
 } from './market.ts'
 import {
   HOT_HISTORY_BARS, hotQualifies, HOT_HISTORY_DEPTH, HOT_MAX_RESULTS, HOT_MAX_STOCKS, HOT_ROWS_TTL_MS,
@@ -20,7 +21,7 @@ import {
 import type { HotBar, HotHit, HotScanResult, HotSnapshot } from './hot.ts'
 import type {
   BoardDetail, MarketAdjustment, MarketBreadth, MarketDailyBar, MarketHistory, MarketIndex, MarketOverview,
-  MarketQuote, MarketSector, MarketStock, MarketTopStock, MarketProvider, MarketIntraday,
+  MarketQuote, MarketSector, MarketStock, MarketTopStock, MarketProvider, MarketIntraday, TailScanWindow,
 } from './market.ts'
 import {
   GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_SINA_ENDPOINT, GLOBAL_SINA_REFERER,
@@ -31,7 +32,7 @@ import {
   TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS,
   TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO,
   TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics,
-  scoreTailCandidate, tailQuantFromBars,
+  scoreTailCandidate, tailQuantFromBars, tailWindowSpec,
 } from './tail-scan.ts'
 import type { TailMetrics, TailMinutePoint, TailScanCandidate, TailScanResult } from './tail-scan.ts'
 import type { GlobalMarketOverview, GlobalQuote } from './global.ts'
@@ -1222,15 +1223,16 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
   }
 
   /**
-   * Market-wide late-session scan. Stage 1 uses the already-cached breadth list
+   * Market-wide session-tail scan for one window. Stage 1 uses the already-cached breadth list
    * and batched quotes to find liquid decliners with volume expansion; stage 2
    * fetches minute lines and keeps only a falling tail with excessive volume;
    * stage 3 fetches daily bars for the survivors and computes the daily
    * volume-decline context plus the same quant snapshot used by the chart.
    * Every stage is bounded and a failed symbol is counted, never filled in.
    */
-  async function loadTailScan(): Promise<TailScanResult> {
+  async function loadTailScan(window: TailScanWindow): Promise<TailScanResult> {
     const stamp = now()
+    const spec = tailWindowSpec(window)
     const breadthState = await loadBreadthRows()
     const pool = breadthState.rows.filter(stock =>
       !stock.suspended
@@ -1264,6 +1266,9 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
         fetchedAt: isoNow(stamp),
         sessionDate: null,
         sessionIsToday: false,
+        window,
+        windowStart: spec.start,
+        windowEnd: spec.end,
         complete: false,
         universe: {
           expected: breadthState.expected, covered: breadthState.rows.length, screened: 0,
@@ -1293,7 +1298,7 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       try {
         const series = await loadTailMinuteSeries(quote.symbol, quote.previousClose, { request, now })
         if (series.sessionDate !== activeSession) throw new Error('minute session mismatch')
-        const tail = computeTailMetrics(series.points, { sessionDate: activeSession, previousClose: quote.previousClose })
+        const tail = computeTailMetrics(series.points, { sessionDate: activeSession, previousClose: quote.previousClose, window })
         checked.push({ quote, tail })
       } catch { failedIntraday++ }
     })
@@ -1359,6 +1364,9 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       fetchedAt: isoNow(stamp),
       sessionDate: activeSession,
       sessionIsToday: activeSession === shanghaiToday(stamp),
+      window,
+      windowStart: spec.start,
+      windowEnd: spec.end,
       complete: checked.length > 0 && checked.every(item => item.tail.complete),
       universe: {
         expected: breadthState.expected,
@@ -1525,7 +1533,13 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       const symbol = validateSymbol(input)
       return getOrLoad(`intraday:${symbol}`, MARKET_INTRADAY_TTL_MS, () => loadIntraday(symbol))
     },
-    tailScan: () => getOrLoad('tail-scan', TAIL_SCAN_TTL_MS, loadTailScan),
+    // Each window is its own cache entry: an afternoon result must never be
+    // served for a morning request.
+    tailScan: (input?: any) => {
+      const requested = input && typeof input === 'object' ? input.window : undefined
+      const window = requested === undefined ? TAIL_SCAN_DEFAULT_WINDOW : validateTailScanWindow(requested)
+      return getOrLoad(`tail-scan:${window}`, TAIL_SCAN_TTL_MS, () => loadTailScan(window))
+    },
     hotScan: (input: any) => {
       const board = input && typeof input === 'object' && typeof input.board === 'string'
         ? validateBoardCode(input.board) : undefined

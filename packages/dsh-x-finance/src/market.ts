@@ -244,8 +244,22 @@ export type MarketRequest =
   | { kind: 'history'; symbol: string; adjustment: 'none' | 'forward' | 'backward'; limit: number }
   | { kind: 'intraday'; symbol: string }
   | { kind: 'global' }
-  | { kind: 'tail-scan' }
+  | { kind: 'tail-scan'; window?: TailScanWindow }
   | { kind: 'hot-scan'; board?: string }
+
+/**
+ * Session tails the scan can describe: the last 30 minutes of the morning break
+ * and of the close. One result describes exactly one of them, and `afternoon` is
+ * what a client that sends no window has always asked for.
+ */
+export const TAIL_SCAN_WINDOWS = ['morning', 'afternoon'] as const
+export type TailScanWindow = (typeof TAIL_SCAN_WINDOWS)[number]
+export const TAIL_SCAN_DEFAULT_WINDOW: TailScanWindow = 'afternoon'
+
+export function validateTailScanWindow(value: unknown): TailScanWindow {
+  if (!TAIL_SCAN_WINDOWS.includes(value as TailScanWindow)) throw stockMarketError('invalid-input')
+  return value as TailScanWindow
+}
 
 /** Daily bars requested by one history call. Bounded for response size. */
 export const MARKET_HISTORY_DEFAULT_LIMIT = 250
@@ -294,10 +308,11 @@ export interface MarketProvider {
    */
   globalOverview?(): Promise<GlobalMarketOverview>
   /**
-   * Market-wide late-session volume-dump scan. Optional: an adapter without
-   * minute data leaves this panel unavailable instead of failing the board.
+   * Market-wide session-tail volume-dump scan for one window. Optional: an
+   * adapter without minute data leaves this panel unavailable instead of failing
+   * the board.
    */
-  tailScan?(): Promise<TailScanResult>
+  tailScan?(options?: { window?: TailScanWindow }): Promise<TailScanResult>
   /**
    * Market-wide hot-topic screen. Optional and independent from the breadth
    * board: the snapshot layer is cheap, the history layer is bounded and the
@@ -621,8 +636,9 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
     return { kind: 'global' }
   }
   if (kind === 'tail-scan') {
-    if (keys.join(',') !== 'kind') throw stockMarketError('invalid-input')
-    return { kind: 'tail-scan' }
+    if (keys.join(',') === 'kind') return { kind: 'tail-scan' }
+    if (keys.join(',') !== 'kind,window') throw stockMarketError('invalid-input')
+    return { kind: 'tail-scan', window: validateTailScanWindow((payload as { window?: unknown }).window) }
   }
   if (kind === 'hot-scan') {
     if (keys.join(',') === 'kind') return { kind: 'hot-scan' }

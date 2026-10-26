@@ -169,6 +169,10 @@ export const MARKET_CSS = `
 .dxs-mkt-manual-config pre{margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);font-size:11px;line-height:1.5;overflow:auto}
 .dxs-tail{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4169e1) 28%,var(--dsw-alias-border-l2,#ddd))}
 .dxs-tail-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dxs-tail-windows{display:inline-flex;align-items:center;gap:2px;height:24px;padding:2px;margin-top:6px;border:1px solid var(--dsw-alias-border-l1,#eceef1);border-radius:7px;background:var(--dsw-alias-bg-layer-2,#f4f4f5)}
+.dxs-tail-windows button{height:20px;border:0;border-radius:5px;background:transparent;padding:0 9px;font-size:11px;line-height:1;color:var(--dsw-alias-label-secondary,#717885);white-space:nowrap;box-shadow:none}
+.dxs-tail-windows button:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary,#202124) 7%,transparent)}
+.dxs-tail-windows button[aria-pressed="true"]{background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#202124);font-weight:600;box-shadow:0 1px 2px #00000014}
 .dxs-tail-run{height:28px;padding:0 12px;border:1px solid var(--dsw-alias-brand-primary,#4169e1);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-brand-primary,#4169e1);font-size:12px;white-space:nowrap}
 .dxs-tail-run:hover:not(:disabled){background:var(--dsw-alias-brand-primary,#4169e1);color:#fff}
 .dxs-tail-run:disabled{opacity:.6;cursor:wait}

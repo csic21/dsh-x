@@ -30,6 +30,18 @@ export function isAshareMinute(time) {
     const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
     return (minutes >= 9 * 60 + 15 && minutes <= 11 * 60 + 30) || (minutes >= 13 * 60 && minutes <= 15 * 60);
 }
+/**
+ * Session tails the scan can describe: the last 30 minutes of the morning break
+ * and of the close. One result describes exactly one of them, and `afternoon` is
+ * what a client that sends no window has always asked for.
+ */
+export const TAIL_SCAN_WINDOWS = ['morning', 'afternoon'];
+export const TAIL_SCAN_DEFAULT_WINDOW = 'afternoon';
+export function validateTailScanWindow(value) {
+    if (!TAIL_SCAN_WINDOWS.includes(value))
+        throw stockMarketError('invalid-input');
+    return value;
+}
 /** Daily bars requested by one history call. Bounded for response size. */
 export const MARKET_HISTORY_DEFAULT_LIMIT = 250;
 export const MARKET_HISTORY_MAX_LIMIT = 1000;
@@ -344,9 +356,11 @@ export function parseMarketRequest(payload) {
         return { kind: 'global' };
     }
     if (kind === 'tail-scan') {
-        if (keys.join(',') !== 'kind')
+        if (keys.join(',') === 'kind')
+            return { kind: 'tail-scan' };
+        if (keys.join(',') !== 'kind,window')
             throw stockMarketError('invalid-input');
-        return { kind: 'tail-scan' };
+        return { kind: 'tail-scan', window: validateTailScanWindow(payload.window) };
     }
     if (kind === 'hot-scan') {
         if (keys.join(',') === 'kind')

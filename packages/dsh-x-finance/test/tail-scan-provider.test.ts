@@ -42,15 +42,16 @@ function rankPayload() {
   }
 }
 
-function minutePayload(code: string, options: { tailVolume?: number } = {}) {
-  const { tailVolume = 300 } = options
+function minutePayload(code: string, options: { tailVolume?: number; morningTail?: boolean } = {}) {
+  const { tailVolume = 300, morningTail = false } = options
   const rows: string[] = []
   let cumulativeVolume = 0
   let cumulativeAmount = 0
   const push = (time: string) => {
     const tail = time > '14:30'
-    const price = tail ? 9.5 : 10
-    const volume = tail ? tailVolume : 100
+    const morning = morningTail && time > '11:00' && time <= '11:30'
+    const price = tail || morning ? 9.5 : 10
+    const volume = tail || morning ? tailVolume : 100
     cumulativeVolume += volume
     cumulativeAmount += price * volume * 100
     rows.push(`${time.replace(':', '')} ${price.toFixed(2)} ${cumulativeVolume} ${cumulativeAmount.toFixed(2)}`)
@@ -103,7 +104,7 @@ function sinaPayload() {
   return `/*<script>location.href='//sina.com';</script>*/\nvar _data=(${JSON.stringify(rows)});`
 }
 
-function makeFetch(options: { failMinute?: string; failAllTencentMinutes?: boolean; failSinaCode?: string; failAllSina?: boolean } = {}) {
+function makeFetch(options: { failMinute?: string; failAllTencentMinutes?: boolean; failSinaCode?: string; failAllSina?: boolean; morningTail?: boolean } = {}) {
   let calls = 0
   const fetchImpl = (async (input: any) => {
     calls++
@@ -115,7 +116,7 @@ function makeFetch(options: { failMinute?: string; failAllTencentMinutes?: boole
     if (url.includes('web.ifzq.gtimg.cn')) {
       const code = new URL(url).searchParams.get('code')!
       if (options.failAllTencentMinutes || code === options.failMinute) return json({ code: 1, msg: 'broken' }, 501)
-      return json(minutePayload(code))
+      return json(minutePayload(code, { morningTail: options.morningTail === true }))
     }
     if (url.includes('quotes.sina.cn')) {
       const code = new URL(url).searchParams.get('symbol')!
@@ -152,6 +153,9 @@ test('the provider scans the market, confirms the falling tail and computes dail
     tailConfirmed: 4, historyChecked: 4, failedIntraday: 0, failedHistory: 0, partial: false,
   })
   assert.equal(scan.candidates.length, 4)
+  assert.equal(scan.window, 'afternoon')
+  assert.equal(scan.windowStart, '14:30')
+  assert.equal(scan.windowEnd, '15:00')
   const candidate = scan.candidates[0]!
   assert.equal(candidate.symbol, 'SH.600001')
   assert.equal(candidate.changePercent, -6)
@@ -168,6 +172,31 @@ test('the provider scans the market, confirms the falling tail and computes dail
   const calls = fake.calls()
   await provider.tailScan!()
   assert.equal(fake.calls(), calls, 'the scan result is cached')
+})
+
+test('the morning window scans 11:00–11:30 with its own cache entry', async () => {
+  const fake = makeFetch({ morningTail: true })
+  const provider = createTencentMarketProvider({ fetchImpl: fake.fetchImpl, now: () => NOW, concurrency: 2 })
+  const scan = await provider.tailScan!({ window: 'morning' })
+  assert.equal(scan.window, 'morning')
+  assert.equal(scan.windowStart, '11:00')
+  assert.equal(scan.windowEnd, '11:30')
+  assert.equal(scan.complete, true)
+  assert.equal(scan.universe.tailConfirmed, 4)
+  assert.equal(scan.candidates.length, 4)
+  const candidate = scan.candidates[0]!
+  assert.equal(candidate.tail.tailStart, '11:00')
+  assert.equal(candidate.tail.tailEnd, '11:30')
+  assert.equal(candidate.tail.tailVolumeRatio, 3)
+  assert.ok(Math.abs(candidate.tail.tailReturn! - -0.05) < 1e-12)
+
+  // The afternoon entry must not answer a morning request, and each window is
+  // cached on its own.
+  const calls = fake.calls()
+  await provider.tailScan!({ window: 'morning' })
+  assert.equal(fake.calls(), calls, 'the morning result is cached')
+  await provider.tailScan!({ window: 'afternoon' })
+  assert.notEqual(fake.calls(), calls, 'the afternoon window is fetched separately')
 })
 
 test('a failed minute line is counted and does not become a candidate', async () => {

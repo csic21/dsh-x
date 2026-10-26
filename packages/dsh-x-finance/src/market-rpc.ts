@@ -1,4 +1,7 @@
-import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, isAshareMinute, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday } from './market.ts'
+import {
+  MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW, isAshareMinute,
+  parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday,
+} from './market.ts'
 import type { MarketIntraday } from './market.ts'
 import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts'
 import type { MarketController } from './market-preference.ts'
@@ -195,7 +198,10 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
         // that has neither leaves this panel unavailable without breaking the
         // market board.
         if (typeof resolved.tailScan !== 'function') return failure('finance/tail-scan-unavailable', '当前行情源不提供尾盘扫描。')
-        return { ok: true, value: { status: 'ready', tailScan: projectTailScan(await resolved.tailScan(), now()) } }
+        // A request without a window keeps the afternoon tail, so an older
+        // client that has never sent one is unchanged.
+        const window = request.window ?? TAIL_SCAN_DEFAULT_WINDOW
+        return { ok: true, value: { status: 'ready', tailScan: projectTailScan(await resolved.tailScan({ window }), now()) } }
       }
       return { ok: true, value: { status: 'ready', board: await resolved.board(request.board) } }
     } catch (error: any) {
