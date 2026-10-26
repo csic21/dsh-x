@@ -1,4 +1,4 @@
-import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW, isAshareMinute, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday, } from './market.js';
+import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW, isAshareMinute, historyMarket, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday, } from './market.js';
 import { projectGlobalOverview } from './global.js';
 import { projectTailScan } from './tail-scan.js';
 import { projectHotScan } from './hot.js';
@@ -93,6 +93,10 @@ export function projectHistoryResponse(raw, symbol, requested, limit, now) {
     // adjustment is only a fallback. Claiming qfq for unadjusted rows would be a
     // provenance lie on the chart.
     const adjustment = ['none', 'forward', 'backward'].includes(value.adjustment) ? value.adjustment : requested;
+    // Currency and session zone come from the symbol, not from the adapter: a
+    // Hang Seng index is HKD on the Hong Kong session even if a replacement
+    // adapter copied the A-share pair into its payload.
+    const { currency, timeZone } = historyMarket(symbol);
     return {
         symbol,
         name,
@@ -104,9 +108,9 @@ export function projectHistoryResponse(raw, symbol, requested, limit, now) {
         pricePrecision: precision,
         volumeUnit: 'shares',
         volumeBasis: value.volumeBasis,
-        amountUnit: 'CNY',
-        currency: 'CNY',
-        exchangeTimezone: 'Asia/Shanghai',
+        amountUnit: currency,
+        currency,
+        exchangeTimezone: timeZone,
         firstSessionDate: projected[0].sessionDate,
         lastSessionDate: projected.at(-1).sessionDate,
         bars: projected,

@@ -16,6 +16,24 @@ export declare const MARKET_PAGE_SIZE = 200;
 export declare const MARKET_CACHE_TTL_MS: number;
 export declare const MARKET_OVERVIEW_TTL_MS = 60000;
 export declare const MARKET_BOARD_TTL_MS: number;
+/**
+ * Hang Seng indices the same free daily host answers for. They are quote-and-
+ * history symbols only: the daily bars are HKD on the Hong Kong session, and
+ * they never enter the A-share watchlist, quote batch or intraday route.
+ */
+export declare const HK_INDEX_SYMBOLS: readonly ['HK.HSI', 'HK.HSCEI', 'HK.HSTECH', 'HK.HSCCI'];
+export declare function isHkIndexSymbol(symbol: string): boolean;
+/** Currency and session zone follow the symbol the history route accepted. */
+export declare function historyMarket(symbol: string): {
+    currency: 'CNY' | 'HKD';
+    timeZone: 'Asia/Shanghai' | 'Asia/Hong_Kong';
+};
+/**
+ * History accepts a wider symbol domain than the A-share watchlist: the four
+ * Hang Seng index codes have a real daily route, but only that route. Quote,
+ * intraday, tail-scan and the watchlist keep calling `validateSymbol`.
+ */
+export declare function validateHistorySymbol(input: unknown): string;
 export interface MarketIndex {
     code: string;
     name: string;
@@ -164,9 +182,14 @@ export interface MarketHistory {
      * which is not a share count and is labelled as such.
      */
     volumeBasis: 'shares' | 'lots' | 'unknown' | 'reported';
-    amountUnit: 'CNY';
-    currency: 'CNY';
-    exchangeTimezone: 'Asia/Shanghai';
+    /**
+     * The history route also answers four Hang Seng indices. Their bars are
+     * quoted in HKD on the Hong Kong session, so the currency and zone follow the
+     * symbol instead of being fixed at the A-share pair.
+     */
+    amountUnit: 'CNY' | 'HKD';
+    currency: 'CNY' | 'HKD';
+    exchangeTimezone: 'Asia/Shanghai' | 'Asia/Hong_Kong';
     /** First and last session dates actually returned. */
     firstSessionDate: string;
     lastSessionDate: string;
@@ -459,13 +482,15 @@ export interface MarketClock {
     quoteToday: boolean;
     stale: boolean;
 }
+/** Calendar date (yyyy-mm-dd) of an instant in one exchange zone, independent of the browser zone. */
+export declare function zoneToday(now: number, timeZone: string): string;
+/** Shanghai calendar date (yyyy-mm-dd) for an instant, independent of the browser zone. */
+export declare function shanghaiToday(now: number): string;
 /**
  * Infers a session from the wall clock and the newest quote. It deliberately
  * does not claim a statutory holiday calendar: if there is no quote dated
  * today, the UI says the feed has no today snapshot rather than "trading".
  */
-/** Shanghai calendar date (yyyy-mm-dd) for an instant, independent of the browser zone. */
-export declare function shanghaiToday(now: number): string;
 export declare function marketClock(now: Date, quotedAt: string | null): MarketClock;
 export declare const MARKET_DISTRIBUTION: readonly {
     from: number | null;

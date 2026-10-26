@@ -203,7 +203,7 @@ test('market dashboard renders indices, sentiment, heatmap, breadth and movers',
   } finally { await h.close() }
 })
 
-test('the index grid adds mainland broad indices and Hang Seng quotes without inventing turnover or drill-down', async () => {
+test('the index grid adds mainland broad indices and Hang Seng quotes without inventing turnover', async () => {
   const extraIndex = (code: string, name: string, price: number, percent: number) => ({
     code, name, price, change: percent * price / 100, changePercent: percent,
     open: price - 10, high: price + 20, low: price - 20, previousClose: price - 2,
@@ -240,15 +240,21 @@ test('the index grid adds mainland broad indices and Hang Seng quotes without in
     const cards = [...h.document.querySelectorAll<HTMLElement>('.dxs-mkt-index')]
     assert.equal(cards.length, 15)
     const byText = (text: string) => cards.find(card => card.textContent?.includes(text))
-    assert.equal(byText('恒生指数')!.getAttribute('role'), null)
-    assert.equal(byText('恒生科技指数')!.getAttribute('role'), null)
+    // Hang Seng indices have their own daily route, so their cards drill down
+    // like the mainland ones; only 中证2000 has no history source at all.
+    assert.equal(byText('恒生指数')!.getAttribute('role'), 'button')
+    assert.equal(byText('国企指数')!.getAttribute('role'), 'button')
+    assert.equal(byText('恒生科技指数')!.getAttribute('role'), 'button')
+    assert.equal(byText('红筹指数')!.getAttribute('role'), 'button')
     assert.equal(byText('中证2000')!.getAttribute('role'), null)
     assert.equal(byText('中证1000')!.getAttribute('role'), 'button')
     // 中证500/800 are mainland indices with a working history route, so they drill down.
     assert.equal(byText('中证500')!.getAttribute('role'), 'button')
     assert.equal(byText('中证800')!.getAttribute('role'), 'button')
+    assert.match(byText('恒生指数')!.textContent ?? '', /日 K 与量化/)
+    assert.doesNotMatch(byText('中证2000')!.textContent ?? '', /日 K 与量化/)
     assert.match(byText('恒生指数')!.textContent ?? '', /GMT\+8/)
-    assert.match(h.document.body.textContent ?? '', /港股指数按香港时间显示/)
+    assert.match(h.document.body.textContent ?? '', /港股指数按香港时间、港币计价/)
     assert.match(h.document.body.textContent ?? '', /中证2000 由东方财富公开接口补充/)
     assert.doesNotMatch(h.document.body.textContent ?? '', /NaN|undefined/)
   } finally { await h.close() }

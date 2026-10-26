@@ -8,6 +8,7 @@ import {
 } from '../src/market-provider.ts'
 import type { RawDailyRow } from '../src/market-provider.ts'
 import { createMarketHandler, projectHistoryResponse } from '../src/market-rpc.ts'
+import { validateSymbol } from '../src/watchlist.ts'
 
 const NOW = Date.parse('2026-10-19T11:00:00+08:00')
 
@@ -259,4 +260,63 @@ test('index volume stays the source aggregate and is not labelled as shares', ()
   assert.equal(history.bars[0]!.volume, 245_000_000)
   assert.equal(history.bars[1]!.isFinal, false)
   assert.equal(history.bars[0]!.isFinal, true)
+})
+
+test('history accepts exactly the four Hang Seng index codes and nothing else', () => {
+  assert.deepEqual(
+    parseMarketRequest({ kind: 'history', symbol: 'HK.HSI', adjustment: 'none', limit: 250 }),
+    { kind: 'history', symbol: 'HK.HSI', adjustment: 'none', limit: 250 },
+  )
+  // A wider HK prefix would open the chart for codes the source cannot answer.
+  for (const symbol of ['HK.HSX', 'HK.00700', 'HK.hsi', 'HK.HSCEI.X']) {
+    assert.throws(() => parseMarketRequest({ kind: 'history', symbol, adjustment: 'none', limit: 10 }), { code: 'invalid-input' }, symbol)
+  }
+  // The A-share watchlist and quote batch keep rejecting them.
+  assert.throws(() => validateSymbol('HK.HSI'))
+})
+
+test('Hang Seng bars stay in HKD on the Hong Kong session and never claim share volume', async () => {
+  const hkRows = [
+    row('2026-10-15', 24649.449, 24761.131, 24791.199, 24648.289, 159_551_820_015, 15_955_182),
+    row('2026-10-16', 24523.5, 24510.09, 24537.141, 24275.561, 102_202_959_184, 10_220_295.92),
+    row('2026-10-19', 24554.58, 24642.51, 24767.221, 24554.58, 177_482_238_485, 17_748_223.85),
+  ]
+  const urls: string[] = []
+  // The HK host ignores qfq and answers `day`, which the projection reports as
+  // unadjusted instead of pretending a forward adjustment was applied.
+  const provider = createTencentMarketProvider({
+    now: () => NOW,
+    fetchImpl: fakeFetch(payload('day', hkRows, '恒生指数', 'hkHSI'), urls),
+  })
+  const history = await provider.history!('HK.HSI', { adjustment: 'forward', limit: 250 })
+  assert.equal(urls[0], `${MARKET_HISTORY_ENDPOINT}?param=hkHSI,day,,,250,qfq`)
+  assert.equal(history.symbol, 'HK.HSI')
+  assert.equal(history.adjustment, 'none')
+  assert.equal(history.currency, 'HKD')
+  assert.equal(history.amountUnit, 'HKD')
+  assert.equal(history.exchangeTimezone, 'Asia/Hong_Kong')
+  // The row's volume slot is turnover in HKD, so it is not published as volume.
+  assert.equal(history.volumeBasis, 'unknown')
+  assert.deepEqual(history.bars.map(bar => bar.volume), [null, null, null])
+  assert.equal(history.bars[0]!.amount, 159_551_820_000)
+  assert.deepEqual(history.bars.map(bar => bar.isFinal), [true, true, false])
+})
+
+test('the history trust boundary takes the currency and zone from the symbol', () => {
+  const raw = {
+    symbol: 'HK.HSI', name: '恒生指数', source: '腾讯行情 (unofficial)',
+    adjustment: 'none', adjustmentLabel: 'unadjusted', pricePrecision: 2, volumeBasis: 'unknown',
+    // A replacement adapter may copy the A-share pair; the Host does not repeat it.
+    currency: 'CNY', amountUnit: 'CNY', exchangeTimezone: 'Asia/Shanghai',
+    bars: [
+      { sessionDate: '2026-10-16', open: 24523.5, high: 24537.1, low: 24275.5, close: 24510.09, volume: null, amount: 102_202_959_184, isFinal: true },
+    ],
+  }
+  const projected = projectHistoryResponse(raw, 'HK.HSI', 'none', 250, NOW)
+  assert.equal(projected.currency, 'HKD')
+  assert.equal(projected.amountUnit, 'HKD')
+  assert.equal(projected.exchangeTimezone, 'Asia/Hong_Kong')
+  const mainland = projectHistoryResponse({ ...raw, symbol: 'SH.000001', name: '上证指数' }, 'SH.000001', 'none', 250, NOW)
+  assert.equal(mainland.currency, 'CNY')
+  assert.equal(mainland.exchangeTimezone, 'Asia/Shanghai')
 })

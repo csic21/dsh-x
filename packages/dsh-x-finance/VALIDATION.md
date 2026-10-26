@@ -1,3 +1,14 @@
+## 港股指数可点开日 K 与量化 — 2026-10-26
+
+- 问题（截图）：第 8–12 张指数卡（恒生指数、国企指数、恒生科技、红筹指数、中证2000）点不动，而同一行前几张可以。根因是 `canDrillIndex` 只接受 `SH|SZ|BJ.\d{6}` 并显式排除 `SH.932000`，所以这几张卡连 `onClick`/`role`/`tabIndex` 都没挂。
+- 实测（不是推断）：`newfqkline?param=hkHSI,day` 返回完整日线（最新 2026-10-26 收 23156.96），`hkHSI` 加 `qfq` 时上游仍只给 `day`；`sh932000` 返回 **`day: []`**，东财 `push2his` 的 `1.932000` / `2.932000` 都是 `data: null`（rc 102）。所以港股四张能修，中证2000 修不了。
+- 符号域：新增 `HK_INDEX_SYMBOLS`（恰好四个代码）与 `validateHistorySymbol`，只放宽 history 一路。报价批量、分时、尾盘扫描、A 股自选继续走 `validateSymbol`，`HK.HSX`/`HK.00700`/`HK.hsi` 仍被拒，港股不会混进 A 股自选。
+- 币种与时区：`MarketHistory` 的 `currency` / `amountUnit` / `exchangeTimezone` 从固定 `CNY`+`Asia/Shanghai` 改为按符号取 `HKD`+`Asia/Hong_Kong`。这不是照抄适配器：RPC 的 `projectHistoryResponse` 也按符号重算，替换源即使把 A 股那一对抄进载荷也会被改回港币与香港时区。`isFinal` 的「今天」改用 `zoneToday(now, timeZone)`，A 股结果不变。
+- 成交量：港股指数行把成交额放在成交量位（`row[5]` 与 `row[8]×1e4` 是同一个数），因此港股日 K 的 `volume` 留空、`volumeBasis: 'unknown'`，成交额仍进 `amount`。没有把港币成交额标成股数。
+- 客户端：`canDrillIndex` 放开 `HK.*`（中证2000 继续排除）；港股图表隐藏「分时」页签（分时端点仍是 A 股专用，留着只会点出错误卡），历史里存着 `intraday` 时回落到日 K。提示文案与图表脚注同步说明港股为港币/香港时间、量能留空。
+- 测试：`pnpm --filter dsh-x-finance test` — **278 tests, 0 failed**；`tsc -p tsconfig.json` 与包构建通过。新增覆盖：四个港股代码被 history 接受而 `HK.HSX`/`HK.00700`/`HK.hsi` 被拒、`HK.HSI` 请求走 `hkHSI` 且 `qfq` 回落记为未复权、港股投影的 HKD/香港时区/空成交量、RPC 边界按符号改写币种、以及视图层断言四张港股卡可点而中证2000 不可点。
+- 未验证：桌面安装后的实际像素与真实点击（本轮只跑 jsdom 与真实上游 HTTP）；港股日 K 的长期限流与节假日行为未验证；中证2000 仍然只有报价，除非再接一个提供 932000 日线的源。
+
 ## 设置面板与老板键低调模式 — 2026-10-26
 
 - 需求：把分散在外观、底栏、行情源上的设置收拢到一个面板；增加老板键，一键让 UI 不再像炒股界面。

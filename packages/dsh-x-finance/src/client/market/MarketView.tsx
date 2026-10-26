@@ -576,8 +576,13 @@ function SectorDetail({ rpc, selection, onClose, t, format, onOpen, discreet = f
   </section>
 }
 
-/** Only mainland indices with a supported history route can open the chart. */
-const canDrillIndex = (code: string) => /^(SH|SZ|BJ)\.\d{6}$/.test(code) && code !== 'SH.932000'
+/**
+ * Only indices with a supported history route open the chart: the mainland
+ * indices, plus the four Hang Seng codes the same daily host answers for.
+ * 中证2000 stays quote-only because Tencent and East Money publish no daily
+ * bars for 932000 at all.
+ */
+const canDrillIndex = (code: string) => (/^(?:(?:SH|SZ|BJ)\.\d{6}|HK\.[A-Z]{2,8})$/.test(code)) && code !== 'SH.932000'
 
 export function MarketView({ rpc, t, format, locale, now = () => new Date(), onOpenStock, scope, discreet = false, preference: suppliedPreference, onChangeSource }: MarketViewProps) {
   const overview = useMarketOverview(rpc)

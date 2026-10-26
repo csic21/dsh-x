@@ -105,7 +105,12 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
       setSaveError(false)
     } catch { setSaveError(true) }
   }
-  const showIntraday = view === 'intraday' && mode === 'market'
+  // The Hang Seng indices have a daily route only: the intraday endpoint is
+  // A-share-only, so offering 分时 would open an error card for a real symbol.
+  const dailyOnly = typeof symbol === 'string' && symbol.startsWith('HK.')
+  useEffect(() => { if (dailyOnly && view === 'intraday') setView('1d') }, [dailyOnly, view])
+  const views = dailyOnly ? VIEWS.filter(value => value !== 'intraday') : VIEWS
+  const showIntraday = view === 'intraday' && mode === 'market' && !dailyOnly
   const history = useMarketHistory(rpc, showIntraday ? null : symbol ?? null, adjustment, MARKET_HISTORY_MAX_LIMIT)
   const intraday = useMarketIntraday(rpc, showIntraday ? symbol ?? null : null)
   // The benchmark is fetched only for a market-backed daily view. CSI 300 is
@@ -158,7 +163,7 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
     <header><h2>{t('workbench.title')}</h2><p className="dxs-muted">{t('workbench.daily')}</p></header>
     <div className="dxs-data-actions">
       <div className="dxs-view-tabs" role="group" aria-label={t('workbench.interval.aria')}>
-        {VIEWS.map(value => <button key={value} type="button" aria-pressed={view === value} onClick={() => changeInterval(value)}>{t(`chart.interval.${value}`)}</button>)}
+        {views.map(value => <button key={value} type="button" aria-pressed={view === value} onClick={() => changeInterval(value)}>{t(`chart.interval.${value}`)}</button>)}
       </div>
       <div className="dxs-view-tabs" role="group" aria-label={t('workbench.source.aria')}>
         <button type="button" aria-pressed={mode === 'market'} onClick={showMarket}>{t('workbench.source.market')}</button>

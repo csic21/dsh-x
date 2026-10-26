@@ -6,7 +6,7 @@
 //
 // Only projected fields leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
-import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, TAIL_SCAN_DEFAULT_WINDOW, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, validateTailScanWindow, isAshareMinute, } from './market.js';
+import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, TAIL_SCAN_DEFAULT_WINDOW, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, validateTailScanWindow, isAshareMinute, historyMarket, isHkIndexSymbol, validateHistorySymbol, zoneToday, } from './market.js';
 import { HOT_HISTORY_BARS, hotQualifies, HOT_HISTORY_DEPTH, HOT_MAX_RESULTS, HOT_MAX_STOCKS, HOT_ROWS_TTL_MS, HOT_SCAN_TTL_MS, HOT_STRATEGY_COUNT, hotHits, hotScores, hotWeight, sortHotHits, } from './hot.js';
 import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_SINA_ENDPOINT, GLOBAL_SINA_REFERER, GLOBAL_SINA_SOURCE, GLOBAL_TENCENT_ENDPOINT, GLOBAL_TENCENT_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, mergeGlobalSnapshots, parseGlobalQuotes, parseSinaGlobalQuotes, parseTencentGlobalQuotes, } from './global.js';
 import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, tailWindowSpec, } from './tail-scan.js';
@@ -741,9 +741,17 @@ export function isIndexSymbol(symbol) {
 /** Builds the projected history; bars the unit cannot be established for are dropped. */
 export function projectHistory(options) {
     const { symbol, name, rows, adjustment, precision, now } = options;
+    // A Hang Seng index row puts turnover in the volume slot and reports no share
+    // count at all. Publishing HKD turnover under a volume label would mislabel
+    // the axis, so volume stays empty and the turnover is carried by `amount`.
+    const hk = isHkIndexSymbol(symbol);
+    const { currency, timeZone } = historyMarket(symbol);
     const index = isIndexSymbol(symbol);
-    const unit = index ? { unit: 'reported', samples: 0 } : inferVolumeUnit(rows);
+    const unit = hk ? null : index ? { unit: 'reported', samples: 0 } : inferVolumeUnit(rows);
     const scale = unit?.unit === 'lots' ? 100 : 1;
+    // "Still trading today" is a Hong Kong question for a Hong Kong index, and
+    // it must be asked in that zone rather than in Shanghai's.
+    const today = zoneToday(now, timeZone);
     const bars = rows.map((row, index) => ({
         sessionDate: row.sessionDate,
         open: row.open,
@@ -756,7 +764,7 @@ export function projectHistory(options) {
         amount: row.amountWan !== null ? Math.round(row.amountWan * 10_000) : null,
         // Only today's newest bar can still be moving. The source has no final
         // flag, so a last bar from an earlier session is final, not provisional.
-        isFinal: index < rows.length - 1 || row.sessionDate !== shanghaiToday(now),
+        isFinal: index < rows.length - 1 || row.sessionDate !== today,
     }));
     return {
         symbol,
@@ -768,9 +776,9 @@ export function projectHistory(options) {
         pricePrecision: precision,
         volumeUnit: 'shares',
         volumeBasis: unit?.unit ?? 'unknown',
-        amountUnit: 'CNY',
-        currency: 'CNY',
-        exchangeTimezone: 'Asia/Shanghai',
+        amountUnit: currency,
+        currency,
+        exchangeTimezone: timeZone,
         firstSessionDate: bars[0].sessionDate,
         lastSessionDate: bars.at(-1).sessionDate,
         bars,
@@ -1565,7 +1573,9 @@ export function createTencentMarketProvider(options = {}) {
         // A closed daily bar does not change during the session, so history is
         // cached briefly; the newest (provisional) bar refreshes with it.
         history: (input, options) => {
-            const symbol = validateSymbol(input);
+            // Wider than the quote/watchlist domain on purpose: the four Hang Seng
+            // index codes are chart-only symbols and never enter an A-share batch.
+            const symbol = validateHistorySymbol(input);
             const { adjustment, limit } = (options ?? {});
             const normalized = validateAdjustment(adjustment);
             const count = validateHistoryLimit(limit);

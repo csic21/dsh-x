@@ -23,6 +23,33 @@ export const MARKET_PAGE_SIZE = 200;
 export const MARKET_CACHE_TTL_MS = 5 * 60_000;
 export const MARKET_OVERVIEW_TTL_MS = 60_000;
 export const MARKET_BOARD_TTL_MS = 2 * 60_000;
+/**
+ * Hang Seng indices the same free daily host answers for. They are quote-and-
+ * history symbols only: the daily bars are HKD on the Hong Kong session, and
+ * they never enter the A-share watchlist, quote batch or intraday route.
+ */
+export const HK_INDEX_SYMBOLS = ['HK.HSI', 'HK.HSCEI', 'HK.HSTECH', 'HK.HSCCI'];
+export function isHkIndexSymbol(symbol) {
+    return HK_INDEX_SYMBOLS.includes(symbol);
+}
+/** Currency and session zone follow the symbol the history route accepted. */
+export function historyMarket(symbol) {
+    return isHkIndexSymbol(symbol)
+        ? { currency: 'HKD', timeZone: 'Asia/Hong_Kong' }
+        : { currency: 'CNY', timeZone: 'Asia/Shanghai' };
+}
+/**
+ * History accepts a wider symbol domain than the A-share watchlist: the four
+ * Hang Seng index codes have a real daily route, but only that route. Quote,
+ * intraday, tail-scan and the watchlist keep calling `validateSymbol`.
+ */
+export function validateHistorySymbol(input) {
+    if (typeof input !== 'string')
+        throw stockMarketError('invalid-input');
+    if (isHkIndexSymbol(input))
+        return input;
+    return validateSymbol(input);
+}
 /** Auction through the morning close, then the afternoon session. Lunch is excluded. */
 export function isAshareMinute(time) {
     if (!/^\d{2}:\d{2}$/.test(time))
@@ -251,15 +278,23 @@ function shanghaiParts(at) {
         weekday: pick('weekday'),
     };
 }
+/** Calendar date (yyyy-mm-dd) of an instant in one exchange zone, independent of the browser zone. */
+export function zoneToday(now, timeZone) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date(now));
+    const pick = (type) => parts.find(part => part.type === type)?.value ?? '';
+    return `${pick('year')}-${pick('month')}-${pick('day')}`;
+}
+/** Shanghai calendar date (yyyy-mm-dd) for an instant, independent of the browser zone. */
+export function shanghaiToday(now) {
+    return zoneToday(now, 'Asia/Shanghai');
+}
 /**
  * Infers a session from the wall clock and the newest quote. It deliberately
  * does not claim a statutory holiday calendar: if there is no quote dated
  * today, the UI says the feed has no today snapshot rather than "trading".
  */
-/** Shanghai calendar date (yyyy-mm-dd) for an instant, independent of the browser zone. */
-export function shanghaiToday(now) {
-    return shanghaiParts(new Date(now)).date;
-}
 export function marketClock(now, quotedAt) {
     const current = shanghaiParts(now);
     const weekend = current.weekday === 'Sat' || current.weekday === 'Sun';
@@ -398,7 +433,7 @@ export function parseMarketRequest(payload) {
         if (typeof symbol !== 'string')
             throw stockMarketError('invalid-input');
         try {
-            validateSymbol(symbol);
+            validateHistorySymbol(symbol);
         }
         catch {
             throw stockMarketError('invalid-input');
