@@ -11709,14 +11709,11 @@ function ModelDetails({ result, t, format }) {
   })), /* @__PURE__ */ import_react13.default.createElement("td", null, format.count(bin.n)), /* @__PURE__ */ import_react13.default.createElement("td", null, format.percent(bin.predicted)), /* @__PURE__ */ import_react13.default.createElement("td", null, format.percent(bin.actual))))))) : null);
 }
 function Row({ row, rank, t, format, onOpenStock }) {
-  const reasons = row.reasons.slice(0, 3);
+  const reasons = row.reasons.slice(0, 2);
   const risks = row.risks.slice(0, 2);
-  return /* @__PURE__ */ import_react13.default.createElement("li", { className: "dxs-predict-row" }, /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-prob", "data-band": band(row.pLimitUp) }, /* @__PURE__ */ import_react13.default.createElement("small", null, "#", format.count(rank)), /* @__PURE__ */ import_react13.default.createElement("strong", null, format.percent(row.pLimitUp * 100)), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.promote")), /* @__PURE__ */ import_react13.default.createElement("i", { "aria-hidden": "true" }, /* @__PURE__ */ import_react13.default.createElement("b", { style: { width: `${Math.max(2, Math.round(row.pLimitUp * 100))}%` } }))), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-body" }, /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-headline" }, onOpenStock ? /* @__PURE__ */ import_react13.default.createElement("button", { type: "button", className: "dxs-mkt-link", onClick: () => onOpenStock(row.symbol, row.name), title: t("market.drill.title", { name: row.name }) }, /* @__PURE__ */ import_react13.default.createElement("span", null, row.name), /* @__PURE__ */ import_react13.default.createElement("small", null, row.symbol)) : /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-predict-name" }, /* @__PURE__ */ import_react13.default.createElement("strong", null, row.name), /* @__PURE__ */ import_react13.default.createElement("small", null, row.symbol)), /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-predict-chip" }, row.streak > 0 ? t("predict.board", { count: format.count(row.streak) }) : t("predict.near-limit")), /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-predict-quote" }, /* @__PURE__ */ import_react13.default.createElement("strong", null, format.price(row.price)), /* @__PURE__ */ import_react13.default.createElement("em", { className: tone2(row.changePercent) }, format.change(row.changePercent)))), /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-predict-meta" }, /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.base", { value: format.percent(row.basePLimitUp) })), /* @__PURE__ */ import_react13.default.createElement("span", { className: row.edge >= 0 ? "dxs-up" : "dxs-down" }, t("predict.edge", { value: format.signed(row.edge) })), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.expect", {
-    value: format.change(row.baseTradeReturn),
-    win: format.percent(row.baseWinRate),
-    n: format.count(row.baseN)
-  }))), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-tags" }, reasons.map((id) => /* @__PURE__ */ import_react13.default.createElement("span", { key: id, className: "dxs-predict-tag" }, t(`predict.feature.${id}`))), risks.map((id) => /* @__PURE__ */ import_react13.default.createElement("span", { key: id, className: "dxs-predict-tag is-risk" }, t(`predict.risk.${id}`))))));
+  return /* @__PURE__ */ import_react13.default.createElement("li", { className: "dxs-predict-row" }, /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-predict-rank" }, format.count(rank)), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-prob", "data-band": band(row.pLimitUp) }, /* @__PURE__ */ import_react13.default.createElement("strong", null, format.percent(row.pLimitUp * 100)), /* @__PURE__ */ import_react13.default.createElement("i", { "aria-hidden": "true" }, /* @__PURE__ */ import_react13.default.createElement("b", { style: { width: `${Math.max(2, Math.round(row.pLimitUp * 100))}%` } })), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.promote"))), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-name" }, onOpenStock ? /* @__PURE__ */ import_react13.default.createElement("button", { type: "button", className: "dxs-mkt-link", onClick: () => onOpenStock(row.symbol, row.name), title: t("market.drill.title", { name: row.name }) }, /* @__PURE__ */ import_react13.default.createElement("span", null, row.name), /* @__PURE__ */ import_react13.default.createElement("small", null, row.symbol)) : /* @__PURE__ */ import_react13.default.createElement(import_react13.default.Fragment, null, /* @__PURE__ */ import_react13.default.createElement("strong", null, row.name), /* @__PURE__ */ import_react13.default.createElement("small", null, row.symbol))), /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-predict-chip" }, row.streak > 0 ? t("predict.board", { count: format.count(row.streak) }) : t("predict.near-limit")), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-quote" }, /* @__PURE__ */ import_react13.default.createElement("strong", null, format.price(row.price)), /* @__PURE__ */ import_react13.default.createElement("em", { className: tone2(row.changePercent) }, format.change(row.changePercent))), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-metrics" }, /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-cell dxs-predict-base" }, /* @__PURE__ */ import_react13.default.createElement("small", null, t("predict.col.base")), /* @__PURE__ */ import_react13.default.createElement("b", null, format.percent(row.basePLimitUp))), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-cell dxs-predict-edge" }, /* @__PURE__ */ import_react13.default.createElement("small", null, t("predict.col.edge")), /* @__PURE__ */ import_react13.default.createElement("b", { className: row.edge >= 0 ? "dxs-up" : "dxs-down" }, format.signed(row.edge), "pp")), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-cell dxs-predict-expect" }, /* @__PURE__ */ import_react13.default.createElement("small", null, t("predict.col.expect")), /* @__PURE__ */ import_react13.default.createElement("b", { className: tone2(row.baseTradeReturn) }, format.change(row.baseTradeReturn)), /* @__PURE__ */ import_react13.default.createElement("i", null, "n=", format.count(row.baseN))), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-cell dxs-predict-win" }, /* @__PURE__ */ import_react13.default.createElement("small", null, t("predict.col.win")), /* @__PURE__ */ import_react13.default.createElement("b", null, format.percent(row.baseWinRate)))), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-tags" }, reasons.map((id) => /* @__PURE__ */ import_react13.default.createElement("span", { key: id, className: "dxs-predict-tag" }, t(`predict.feature.${id}`))), risks.map((id) => /* @__PURE__ */ import_react13.default.createElement("span", { key: id, className: "dxs-predict-tag is-risk" }, t(`predict.risk.${id}`)))));
 }
+var COLUMNS = ["rank", "prob", "stock", "streak", "quote", "base", "edge", "expect", "win", "tags"];
 function PredictView({ rpc, t, format, onOpenStock }) {
   const scan = usePredictScan(rpc);
   const [query, setQuery] = (0, import_react13.useState)("");
@@ -11752,7 +11749,7 @@ function PredictView({ rpc, t, format, onOpenStock }) {
   })), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.coverage", {
     covered: format.count(result.universe.covered),
     expected: format.count(result.universe.expected)
-  })), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.duration", { ms: result.durationMs })), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.source", { source: result.source }))), result.universe.partial ? /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-note" }, t("predict.partial", { failed: format.count(result.universe.failed) })) : null, result.model.staleDays > 90 ? /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-note" }, t("predict.model.stale", { days: format.count(result.model.staleDays) })) : null, /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-hot-controls" }, /* @__PURE__ */ import_react13.default.createElement("label", { className: "dxs-hot-filter" }, /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-sr-only" }, t("predict.filter-aria")), /* @__PURE__ */ import_react13.default.createElement("input", { type: "search", value: query, placeholder: t("predict.filter-placeholder"), onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ import_react13.default.createElement("label", { className: "dxs-predict-toggle" }, /* @__PURE__ */ import_react13.default.createElement("input", { type: "checkbox", checked: buyableOnly, onChange: (event) => setBuyableOnly(event.target.checked) }), t("predict.filter.buyable")), /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-mkt-muted" }, t("predict.sort-hint"))), rows.length ? /* @__PURE__ */ import_react13.default.createElement("ol", { className: "dxs-predict-list" }, rows.map((row, index) => /* @__PURE__ */ import_react13.default.createElement(Row, { key: row.symbol, row, rank: index + 1, t, format, onOpenStock }))) : /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-muted" }, query ? t("predict.empty-filter") : t("predict.empty")), /* @__PURE__ */ import_react13.default.createElement("h3", { className: "dxs-predict-section" }, t("predict.patterns")), /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-muted" }, t("predict.patterns-hint")), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-tables" }, /* @__PURE__ */ import_react13.default.createElement(BucketTable, { title: t("predict.table.streak"), table: "streak", rows: result.baseRates.streak, t, format }), /* @__PURE__ */ import_react13.default.createElement(BucketTable, { title: t("predict.table.sentiment"), table: "sentiment", rows: result.baseRates.sentiment, t, format }), /* @__PURE__ */ import_react13.default.createElement(BucketTable, { title: t("predict.table.position"), table: "position", rows: result.baseRates.position, t, format })), /* @__PURE__ */ import_react13.default.createElement(ModelDetails, { result, t, format }), /* @__PURE__ */ import_react13.default.createElement("details", { className: "dxs-predict-method" }, /* @__PURE__ */ import_react13.default.createElement("summary", null, t("predict.limits.title")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.population")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.trade")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.sample")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.source")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.not-advice")))) : null);
+  })), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.duration", { ms: result.durationMs })), /* @__PURE__ */ import_react13.default.createElement("span", null, t("predict.source", { source: result.source }))), result.universe.partial ? /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-note" }, t("predict.partial", { failed: format.count(result.universe.failed) })) : null, result.model.staleDays > 90 ? /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-note" }, t("predict.model.stale", { days: format.count(result.model.staleDays) })) : null, /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-hot-controls" }, /* @__PURE__ */ import_react13.default.createElement("label", { className: "dxs-hot-filter" }, /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-sr-only" }, t("predict.filter-aria")), /* @__PURE__ */ import_react13.default.createElement("input", { type: "search", value: query, placeholder: t("predict.filter-placeholder"), onChange: (event) => setQuery(event.target.value) })), /* @__PURE__ */ import_react13.default.createElement("label", { className: "dxs-predict-toggle" }, /* @__PURE__ */ import_react13.default.createElement("input", { type: "checkbox", checked: buyableOnly, onChange: (event) => setBuyableOnly(event.target.checked) }), t("predict.filter.buyable")), /* @__PURE__ */ import_react13.default.createElement("span", { className: "dxs-mkt-muted" }, t("predict.sort-hint"))), rows.length ? /* @__PURE__ */ import_react13.default.createElement(import_react13.default.Fragment, null, /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-columns", "aria-hidden": "true" }, COLUMNS.map((column) => /* @__PURE__ */ import_react13.default.createElement("span", { key: column }, t(`predict.col.${column}`)))), /* @__PURE__ */ import_react13.default.createElement("ol", { className: "dxs-predict-list" }, rows.map((row, index) => /* @__PURE__ */ import_react13.default.createElement(Row, { key: row.symbol, row, rank: index + 1, t, format, onOpenStock })))) : /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-muted" }, query ? t("predict.empty-filter") : t("predict.empty")), /* @__PURE__ */ import_react13.default.createElement("h3", { className: "dxs-predict-section" }, t("predict.patterns")), /* @__PURE__ */ import_react13.default.createElement("p", { className: "dxs-mkt-muted" }, t("predict.patterns-hint")), /* @__PURE__ */ import_react13.default.createElement("div", { className: "dxs-predict-tables" }, /* @__PURE__ */ import_react13.default.createElement(BucketTable, { title: t("predict.table.streak"), table: "streak", rows: result.baseRates.streak, t, format }), /* @__PURE__ */ import_react13.default.createElement(BucketTable, { title: t("predict.table.sentiment"), table: "sentiment", rows: result.baseRates.sentiment, t, format }), /* @__PURE__ */ import_react13.default.createElement(BucketTable, { title: t("predict.table.position"), table: "position", rows: result.baseRates.position, t, format })), /* @__PURE__ */ import_react13.default.createElement(ModelDetails, { result, t, format }), /* @__PURE__ */ import_react13.default.createElement("details", { className: "dxs-predict-method" }, /* @__PURE__ */ import_react13.default.createElement("summary", null, t("predict.limits.title")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.population")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.trade")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.sample")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.limits.source")), /* @__PURE__ */ import_react13.default.createElement("p", null, t("predict.not-advice")))) : null);
 }
 
 // src/client/market/GlobalView.tsx
@@ -12591,6 +12588,16 @@ var marketZh = {
   "predict.source": "\u6765\u6E90 {source}",
   "predict.partial": "\u6709 {failed} \u53EA\u7F3A\u5C11\u53EF\u7528\u65E5 K\uFF0C\u672A\u53C2\u4E0E\u8BC4\u5206\u3002",
   "predict.model.stale": "\u6A21\u578B\u5DF2 {days} \u5929\u672A\u91CD\u62DF\u5408\uFF0C\u6982\u7387\u53EF\u80FD\u5931\u771F\uFF1B\u8FD0\u884C scripts/finance-research.mjs fit \u53EF\u66F4\u65B0\u3002",
+  "predict.col.rank": "\u6392\u540D",
+  "predict.col.prob": "\u664B\u7EA7\u6982\u7387",
+  "predict.col.stock": "\u80A1\u7968",
+  "predict.col.streak": "\u8FDE\u677F",
+  "predict.col.quote": "\u73B0\u4EF7 / \u6DA8\u5E45",
+  "predict.col.base": "\u540C\u7EC4",
+  "predict.col.edge": "\u504F\u5DEE",
+  "predict.col.expect": "\u540C\u7EC4\u63A5\u529B",
+  "predict.col.win": "\u80DC\u7387",
+  "predict.col.tags": "\u4F9D\u636E \xB7 \u98CE\u9669",
   "predict.filter-aria": "\u7B5B\u9009\u5019\u9009\u80A1\u7968",
   "predict.filter-placeholder": "\u7B5B\u9009\u540D\u79F0\u6216\u4EE3\u7801",
   "predict.sort-hint": "\u6309\u6B21\u65E5\u664B\u7EA7\u6982\u7387\u6392\u5E8F",
@@ -13051,6 +13058,16 @@ var marketEn = {
   "predict.source": "Source {source}",
   "predict.partial": "{failed} candidates had no usable daily bars and were not scored.",
   "predict.model.stale": "The model has not been refitted for {days} days, so the probabilities may drift; run scripts/finance-research.mjs fit to refresh.",
+  "predict.col.rank": "#",
+  "predict.col.prob": "Odds",
+  "predict.col.stock": "Stock",
+  "predict.col.streak": "Boards",
+  "predict.col.quote": "Price / chg",
+  "predict.col.base": "Bucket",
+  "predict.col.edge": "Edge",
+  "predict.col.expect": "Relay",
+  "predict.col.win": "Win",
+  "predict.col.tags": "Why \xB7 risk",
   "predict.filter-aria": "Filter candidates",
   "predict.filter-placeholder": "Filter by name or code",
   "predict.sort-hint": "Sorted by next-session promotion probability",
@@ -14953,6 +14970,7 @@ var MARKET_CSS = `
 @media(max-width:720px){
 .dxs-csi300-kpis dl{gap:12px}
 .dxs-csi300-ratio strong{font-size:26px}
+}
 .dxs-predict-regime{display:flex;align-items:stretch;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1,#eceef1);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#fff);flex-wrap:wrap}
 .dxs-predict-level{display:flex;flex-direction:column;justify-content:center;gap:1px;min-width:88px;padding:6px 10px;border:1px solid transparent;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f4f4f5)}
 .dxs-predict-level span{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-secondary,#666)}
@@ -14967,10 +14985,11 @@ var MARKET_CSS = `
 .dxs-predict-regime dd{margin:0;font-size:12px;font-variant-numeric:tabular-nums}
 .dxs-predict-verdict{margin:0;padding:8px 11px;border:1px solid var(--dsw-alias-border-l1,#eceef1);border-left-width:3px;border-radius:8px;font-size:11px;line-height:1.65;color:var(--dsw-alias-label-secondary,#555);background:var(--dsw-alias-bg-layer-2,#fafafa)}
 .dxs-predict-verdict[data-tone="warn"]{border-left-color:var(--dsw-alias-state-warn-primary,#a15c00);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#a15c00) 6%,var(--dsw-alias-bg-layer-1,#fff))}
+.dxs-predict-columns{display:none}
 .dxs-predict-list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
-.dxs-predict-row{display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;align-items:start;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2,#e2e2e2);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#fff)}
-.dxs-predict-prob{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:4px 8px;border:1px solid transparent;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);min-width:0}
-.dxs-predict-prob small{font-size:9px;color:var(--dsw-alias-label-secondary,#888);font-variant-numeric:tabular-nums}
+.dxs-predict-row{display:grid;grid-template-columns:74px minmax(0,1fr);gap:3px 10px;align-items:center;padding:8px 11px;border:1px solid var(--dsw-alias-border-l2,#e2e2e2);border-radius:10px;background:var(--dsw-alias-bg-layer-1,#fff);min-width:0}
+.dxs-predict-rank{display:none;font-size:10px;color:var(--dsw-alias-label-secondary,#888);font-variant-numeric:tabular-nums}
+.dxs-predict-prob{grid-row:1 / span 2;grid-column:1;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:4px 8px;border:1px solid transparent;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);min-width:0;align-self:stretch;justify-content:center}
 .dxs-predict-prob strong{font-size:16px;font-weight:700;line-height:1.15;font-variant-numeric:tabular-nums}
 .dxs-predict-prob span{font-size:9px;color:var(--dsw-alias-label-secondary,#666)}
 .dxs-predict-prob i{display:block;width:100%;height:3px;margin-top:3px;border-radius:2px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#202124) 10%,transparent);overflow:hidden}
@@ -14980,19 +14999,38 @@ var MARKET_CSS = `
 .dxs-predict-prob[data-band="high"] i b{background:var(--dsw-alias-state-error-primary,#bc2737)}
 .dxs-predict-prob[data-band="mid"] strong{color:var(--dsw-alias-state-warn-primary,#a15c00)}
 .dxs-predict-prob[data-band="mid"] i b{background:var(--dsw-alias-state-warn-primary,#a15c00)}
-.dxs-predict-body{display:flex;flex-direction:column;gap:4px;min-width:0}
-.dxs-predict-headline{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0}
-.dxs-predict-name{display:inline-flex;align-items:baseline;gap:6px;min-width:0}
-.dxs-predict-name strong{font-size:13px}
+.dxs-predict-name{grid-row:1;grid-column:2;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.dxs-predict-name strong{font-size:13px;line-height:1.3;overflow-wrap:anywhere}
 .dxs-predict-name small{font-size:10px;color:var(--dsw-alias-label-secondary,#888)}
-.dxs-predict-chip{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);font-size:10px;color:var(--dsw-alias-label-secondary,#666);white-space:nowrap}
-.dxs-predict-quote{display:inline-flex;align-items:baseline;gap:6px;margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dxs-predict-name .dxs-mkt-link{gap:0}
+.dxs-predict-chip{grid-row:2;grid-column:2;justify-self:start;display:inline-flex;align-items:center;padding:0 6px;border-radius:5px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);font-size:10px;line-height:1.6;color:var(--dsw-alias-label-secondary,#666);white-space:nowrap}
+.dxs-predict-quote{grid-row:3;grid-column:1 / span 2;display:inline-flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dxs-predict-quote strong{font-size:12px}
 .dxs-predict-quote em{font-style:normal;font-size:11px}
-.dxs-predict-meta{display:flex;flex-wrap:wrap;gap:2px 12px;margin:0;font-size:10px;color:var(--dsw-alias-label-secondary,#666);font-variant-numeric:tabular-nums}
-.dxs-predict-tags{display:flex;flex-wrap:wrap;gap:4px}
-.dxs-predict-tag{display:inline-flex;align-items:center;padding:1px 6px;border:1px solid var(--dsw-alias-border-l1,#eceef1);border-radius:5px;font-size:10px;color:var(--dsw-alias-label-secondary,#666);background:var(--dsw-alias-bg-layer-1,#fff)}
+.dxs-predict-cell{display:flex;flex-direction:column;gap:0;min-width:0;line-height:1.3}
+.dxs-predict-cell small{font-size:9px;color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}
+.dxs-predict-cell b{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dxs-predict-cell i{font-style:normal;font-size:9px;color:var(--dsw-alias-label-secondary,#888);font-variant-numeric:tabular-nums;margin-left:2px;opacity:.8}
+.dxs-predict-metrics{grid-row:4;grid-column:1 / span 2;display:flex;flex-wrap:wrap;gap:2px 16px;min-width:0}
+.dxs-predict-metrics .dxs-predict-cell{flex-direction:row;align-items:baseline;gap:4px}
+.dxs-predict-tags{grid-row:5;grid-column:1 / span 2;display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.dxs-predict-tag{display:inline-flex;align-items:center;padding:0 6px;border:1px solid var(--dsw-alias-border-l1,#eceef1);border-radius:5px;font-size:10px;line-height:1.7;color:var(--dsw-alias-label-secondary,#666);background:var(--dsw-alias-bg-layer-1,#fff);white-space:nowrap}
 .dxs-predict-tag.is-risk{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#a15c00) 30%,transparent);color:var(--dsw-alias-state-warn-primary,#a15c00);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#a15c00) 5%,var(--dsw-alias-bg-layer-1,#fff))}
+@media(min-width:1000px){
+.dxs-predict-columns{display:grid;grid-template-columns:34px 86px minmax(150px,1.2fr) 62px 104px 76px 84px 106px 66px minmax(150px,1.5fr);gap:10px;padding:0 12px 4px;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary,#888)}
+.dxs-predict-row{grid-template-columns:34px 86px minmax(150px,1.2fr) 62px 104px 76px 84px 106px 66px minmax(150px,1.5fr);gap:10px;padding:7px 12px}
+.dxs-predict-rank{display:block;grid-row:auto;grid-column:auto}
+.dxs-predict-prob{grid-row:auto;grid-column:auto;justify-content:center;padding:3px 8px}
+.dxs-predict-prob span,.dxs-predict-prob i{display:none}
+.dxs-predict-name{grid-row:auto;grid-column:auto;justify-content:center}
+.dxs-predict-chip{grid-row:auto;grid-column:auto;justify-self:start}
+.dxs-predict-quote{grid-row:auto;grid-column:auto}
+.dxs-predict-metrics{display:contents}
+.dxs-predict-tags{grid-row:auto;grid-column:auto}
+.dxs-predict-cell{flex-direction:row;align-items:baseline;gap:4px}
+.dxs-predict-cell small{display:none}
+.dxs-predict-tags{flex-wrap:nowrap;overflow:hidden}
+}
 .dxs-predict-toggle{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary,#666);white-space:nowrap}
 .dxs-predict-toggle input{width:13px;height:13px;margin:0}
 .dxs-predict-section{font-size:12px;font-weight:600;margin:8px 0 0}
@@ -15014,8 +15052,7 @@ var MARKET_CSS = `
 .dxs-predict-method .dxs-predict-table{margin-top:10px;border:0;padding:0}
 .dxs-predict-method .dxs-predict-table table{max-width:720px}
 @media(max-width:720px){
-.dxs-predict-row{grid-template-columns:64px minmax(0,1fr)}
-.dxs-predict-quote{margin-left:0}
+.dxs-predict-row{grid-template-columns:66px minmax(0,1fr)}
 .dxs-predict-tables{grid-template-columns:minmax(0,1fr)}
 }
 `;

@@ -8,6 +8,40 @@ import { zh, en } from '../src/client/locales.ts'
 import { createFormatters } from '../src/client/format.ts'
 import { MARKET_CSS } from '../src/client/market/styles.ts'
 
+
+/** Brace depth at `index`: 0 means the rule is a top-level rule, not nested. */
+function depthAt(text: string, index: number): number {
+  let depth = 0
+  for (let cursor = 0; cursor < index; cursor++) {
+    const char = text[cursor]
+    if (char === '{') depth += 1
+    else if (char === '}') depth -= 1
+  }
+  return depth
+}
+
+test('the injected stylesheet stays balanced and keeps each panel at top level', () => {
+  let depth = 0
+  let firstNegative = -1
+  for (let index = 0; index < MARKET_CSS.length; index++) {
+    if (MARKET_CSS[index] === '{') depth += 1
+    else if (MARKET_CSS[index] === '}') {
+      depth -= 1
+      if (depth < 0 && firstNegative < 0) firstNegative = index
+    }
+  }
+  assert.equal(depth, 0, 'MARKET_CSS has an unclosed block')
+  assert.equal(firstNegative, -1, 'MARKET_CSS closes more blocks than it opens')
+  // A rule that is nested by accident still parses, but it only applies inside
+  // the enclosing media query -- which is how a whole panel went unstyled on a
+  // wide window. Check the first rule of every panel explicitly.
+  for (const selector of ['.dxs-hot-row{', '.dxs-csi300{', '.dxs-predict-regime{', '.dxs-predict-row{', '.dxs-predict-toggle{']) {
+    const index = MARKET_CSS.indexOf(selector)
+    assert.ok(index >= 0, `${selector} is missing from the stylesheet`)
+    assert.equal(depthAt(MARKET_CSS, index), 0, `${selector} is nested inside another block`)
+  }
+})
+
 const NOW = new Date('2026-10-18T21:06:57+08:00')
 const QUOTED = '2026-10-16T15:00:00+08:00'
 const index = (code: string, name: string, price: number, percent: number, amount: number) => ({ code, name, price, changePercent: percent, change: percent * price / 100, open: price - 10, high: price + 20, low: price - 20, previousClose: price - 2, amount, quotedAt: QUOTED })

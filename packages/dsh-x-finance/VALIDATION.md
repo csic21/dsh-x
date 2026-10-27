@@ -227,3 +227,12 @@ No provider authentication, real model calls, Electron UI, or paid/network marke
 - 单日极端值处理：原始 hotShare 在 2024-09-30 达到 64.5%，会独占线性项；因此市场级特征改为训练期分位映射，标准化输入在 ±5σ 截断，样本外数据不参与 knot。
 - **未验证**：面板在正在运行的 Desktop 应用里的实际观感（需要重启宿主才能加载新插件版本）；CSS 只在 jsdom 与静态截图里检查过，未在真实窗口尺寸下逐档核对。
 - **已知边界**：样本为当前在市股票，存在生存者偏差；北交所、ST 与新股不在训练/服务范围内；盘中运行时最后一根日 K 未收盘，结果会随收盘变化；次日一字锁板无法在开盘买入，已从回测剔除但无法从实盘剔除。
+
+## 涨停接力面板的样式修复（2026-10-27，0.14.1）
+
+- **现象**：0.14.0 在宽窗口下整个「预测」面板没有样式——概率、卡片、表格全部退化成纯文本流，复选框还被 `.dxs input` 撑成整行蓝色方块。
+- **根因**：rebase 到远端 0.13.0 时解决 `market/styles.ts` 冲突，只保留了一个收尾花括号：CSI300 那段的 `@media(max-width:720px){` 一直没闭合，于是后面 79 行 `.dxs-predict-*` 规则全被套进这条媒体查询，只在窗口窄于 720px 时生效。`tsc`、esbuild 和原有的渲染测试都不会报错——CSS 字符串只是数据。
+- **修复**：补回缺失的 `}`（`MARKET_CSS` 现在 385 开 / 385 闭），并新增回归测试 `the injected stylesheet stays balanced and keeps each panel at top level`：断开花括号计数，且每个面板的首条规则（`.dxs-hot-row{`、`.dxs-csi300{`、`.dxs-predict-regime{`、`.dxs-predict-row{`、`.dxs-predict-toggle{`）在字符串里的嵌套深度必须是 0。这条测试在修复前会失败。
+- **同时改版**：宽屏（≥1000px）下榜单改成 10 列对比表（排名 / 晋级概率 / 股票 / 连板 / 现价·涨幅 / 同组 / 偏差 / 同组接力 / 胜率 / 依据·风险），行高由 118px 降到 51px；窄屏保持卡片式，四个指标压成一行。新增 `predict.col.*` 中英词条。
+- **验证**：`pnpm --filter dsh-x-finance test` 与根 `pnpm test` 全绿（**586 passed / 0 failed**，1 skipped）；用真实 provider 数据在 1646×830 与 760×830 两个宽度下静态渲染核对，无横向溢出（`scrollWidth === clientWidth`）。
+- **仍未验证**：真实 Electron 窗口里的字体渲染与滚动性能；只做了两点宽度的静态截图与 jsdom 断言。

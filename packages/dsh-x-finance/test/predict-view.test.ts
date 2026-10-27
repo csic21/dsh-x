@@ -146,6 +146,10 @@ test('running the panel renders probabilities, bucket context and the honest ver
     assert.match(text, /不是买入信号/)
     assert.match(text, /历史规律/)
     assert.match(text, /未封板|首板|2 板/)
+    // The wide layout is a comparison table: every column needs a header.
+    const columns = [...page.document.querySelectorAll('.dxs-predict-columns span')].map(node => node.textContent)
+    assert.equal(columns.length, 10)
+    assert.deepEqual(columns.slice(0, 3), ['排名', '晋级概率', '股票'])
     // Sorted by probability: the first row is the highest one.
     const probabilities = [...page.document.querySelectorAll('.dxs-predict-prob strong')].map(node => Number(String(node.textContent).replace(/[^\d.]/g, '')))
     assert.deepEqual(probabilities.slice().sort((left, right) => right - left), probabilities)

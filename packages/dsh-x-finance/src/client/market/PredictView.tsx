@@ -156,44 +156,54 @@ function ModelDetails({ result, t, format }: { result: PredictScanResult; t: Pre
 }
 
 function Row({ row, rank, t, format, onOpenStock }: { row: PredictRow; rank: number; t: PredictViewProps['t']; format: any; onOpenStock?: PredictViewProps['onOpenStock'] }) {
-  const reasons = row.reasons.slice(0, 3)
+  const reasons = row.reasons.slice(0, 2)
   const risks = row.risks.slice(0, 2)
   return <li className="dxs-predict-row">
+    <span className="dxs-predict-rank">{format.count(rank)}</span>
     <div className="dxs-predict-prob" data-band={band(row.pLimitUp)}>
-      <small>#{format.count(rank)}</small>
       <strong>{format.percent(row.pLimitUp * 100)}</strong>
-      <span>{t('predict.promote')}</span>
       <i aria-hidden="true"><b style={{ width: `${Math.max(2, Math.round(row.pLimitUp * 100))}%` }} /></i>
+      <span>{t('predict.promote')}</span>
     </div>
-    <div className="dxs-predict-body">
-      <div className="dxs-predict-headline">
-        {onOpenStock
-          ? <button type="button" className="dxs-mkt-link" onClick={() => onOpenStock(row.symbol, row.name)} title={t('market.drill.title', { name: row.name })}>
-            <span>{row.name}</span><small>{row.symbol}</small>
-          </button>
-          : <span className="dxs-predict-name"><strong>{row.name}</strong><small>{row.symbol}</small></span>}
-        <span className="dxs-predict-chip">{row.streak > 0 ? t('predict.board', { count: format.count(row.streak) }) : t('predict.near-limit')}</span>
-        <span className="dxs-predict-quote">
-          <strong>{format.price(row.price)}</strong>
-          <em className={tone(row.changePercent)}>{format.change(row.changePercent)}</em>
-        </span>
+    <div className="dxs-predict-name">
+      {onOpenStock
+        ? <button type="button" className="dxs-mkt-link" onClick={() => onOpenStock(row.symbol, row.name)} title={t('market.drill.title', { name: row.name })}>
+          <span>{row.name}</span><small>{row.symbol}</small>
+        </button>
+        : <><strong>{row.name}</strong><small>{row.symbol}</small></>}
+    </div>
+    <span className="dxs-predict-chip">{row.streak > 0 ? t('predict.board', { count: format.count(row.streak) }) : t('predict.near-limit')}</span>
+    <div className="dxs-predict-quote">
+      <strong>{format.price(row.price)}</strong>
+      <em className={tone(row.changePercent)}>{format.change(row.changePercent)}</em>
+    </div>
+    <div className="dxs-predict-metrics">
+      <div className="dxs-predict-cell dxs-predict-base">
+        <small>{t('predict.col.base')}</small>
+        <b>{format.percent(row.basePLimitUp)}</b>
       </div>
-      <p className="dxs-predict-meta">
-        <span>{t('predict.base', { value: format.percent(row.basePLimitUp) })}</span>
-        <span className={row.edge >= 0 ? 'dxs-up' : 'dxs-down'}>{t('predict.edge', { value: format.signed(row.edge) })}</span>
-        <span>{t('predict.expect', {
-          value: format.change(row.baseTradeReturn),
-          win: format.percent(row.baseWinRate),
-          n: format.count(row.baseN),
-        })}</span>
-      </p>
-      <div className="dxs-predict-tags">
-        {reasons.map(id => <span key={id} className="dxs-predict-tag">{t(`predict.feature.${id}`)}</span>)}
-        {risks.map(id => <span key={id} className="dxs-predict-tag is-risk">{t(`predict.risk.${id}`)}</span>)}
+      <div className="dxs-predict-cell dxs-predict-edge">
+        <small>{t('predict.col.edge')}</small>
+        <b className={row.edge >= 0 ? 'dxs-up' : 'dxs-down'}>{format.signed(row.edge)}pp</b>
       </div>
+      <div className="dxs-predict-cell dxs-predict-expect">
+        <small>{t('predict.col.expect')}</small>
+        <b className={tone(row.baseTradeReturn)}>{format.change(row.baseTradeReturn)}</b>
+        <i>n={format.count(row.baseN)}</i>
+      </div>
+      <div className="dxs-predict-cell dxs-predict-win">
+        <small>{t('predict.col.win')}</small>
+        <b>{format.percent(row.baseWinRate)}</b>
+      </div>
+    </div>
+    <div className="dxs-predict-tags">
+      {reasons.map(id => <span key={id} className="dxs-predict-tag">{t(`predict.feature.${id}`)}</span>)}
+      {risks.map(id => <span key={id} className="dxs-predict-tag is-risk">{t(`predict.risk.${id}`)}</span>)}
     </div>
   </li>
 }
+
+const COLUMNS = ['rank', 'prob', 'stock', 'streak', 'quote', 'base', 'edge', 'expect', 'win', 'tags'] as const
 
 /**
  * The relay screen. It reports a probability that the next session closes
@@ -304,9 +314,14 @@ export function PredictView({ rpc, t, format, onOpenStock }: PredictViewProps) {
         <span className="dxs-mkt-muted">{t('predict.sort-hint')}</span>
       </div>
 
-      {rows.length ? <ol className="dxs-predict-list">
-        {rows.map((row, index) => <Row key={row.symbol} row={row} rank={index + 1} t={t} format={format} onOpenStock={onOpenStock} />)}
-      </ol> : <p className="dxs-mkt-muted">{query ? t('predict.empty-filter') : t('predict.empty')}</p>}
+      {rows.length ? <>
+        <div className="dxs-predict-columns" aria-hidden="true">
+          {COLUMNS.map(column => <span key={column}>{t(`predict.col.${column}`)}</span>)}
+        </div>
+        <ol className="dxs-predict-list">
+          {rows.map((row, index) => <Row key={row.symbol} row={row} rank={index + 1} t={t} format={format} onOpenStock={onOpenStock} />)}
+        </ol>
+      </> : <p className="dxs-mkt-muted">{query ? t('predict.empty-filter') : t('predict.empty')}</p>}
 
       <h3 className="dxs-predict-section">{t('predict.patterns')}</h3>
       <p className="dxs-mkt-muted">{t('predict.patterns-hint')}</p>
