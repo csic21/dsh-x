@@ -116,7 +116,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.equal(JSON.parse(localStorage.getItem('dsh-x-finance:settings:v1')!).discreet,true)
     assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('main.dxs-page')!.classList.contains('dxs-discreet'),true)
     assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('h1')!.textContent,'工作台')
-    assert.deepEqual([...document.querySelectorAll('.dxs-titlebar nav.dxs-view-tabs button')].map(button=>button.textContent),['列表','概览','关注','指数','商品'])
+    assert.deepEqual([...document.querySelectorAll('.dxs-titlebar nav.dxs-view-tabs button')].map(button=>button.textContent),['列表','概览','关注','概率','指数','商品'])
     assert.equal((entries.get('shell.bottom')??[]).length,0)
     // The drawer stays open, so the boss key's effect can be undone at once.
     await click(document.querySelector<HTMLElement & HTMLInputElement>('input[aria-label="低调模式"]')!)

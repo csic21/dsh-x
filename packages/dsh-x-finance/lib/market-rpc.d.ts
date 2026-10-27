@@ -48,6 +48,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -64,6 +65,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -80,6 +82,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -96,6 +99,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -112,6 +116,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -128,6 +133,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -144,6 +150,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds: Csi300FundShare;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -160,6 +167,7 @@ export declare function createMarketHandler({ provider, now }?: {
         status: string;
         global: import("./global.ts").GlobalMarketOverview;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -176,6 +184,7 @@ export declare function createMarketHandler({ provider, now }?: {
         global?: undefined;
         status: string;
         hotScan: import("./hot.ts").HotScanResult;
+        predictScan?: undefined;
         tailScan?: undefined;
         board?: undefined;
     };
@@ -192,6 +201,24 @@ export declare function createMarketHandler({ provider, now }?: {
         global?: undefined;
         hotScan?: undefined;
         status: string;
+        predictScan: import("./predict.ts").PredictScanResult;
+        tailScan?: undefined;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
+        csi300Funds?: undefined;
+        global?: undefined;
+        hotScan?: undefined;
+        predictScan?: undefined;
+        status: string;
         tailScan: import("./tail-scan.ts").TailScanResult;
         board?: undefined;
     };
@@ -207,6 +234,7 @@ export declare function createMarketHandler({ provider, now }?: {
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
+        predictScan?: undefined;
         tailScan?: undefined;
         status: string;
         board: import("./market.ts").BoardDetail;

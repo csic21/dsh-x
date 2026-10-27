@@ -2,6 +2,7 @@ import { CSI300_FUND_TYPES, MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SC
 import { projectGlobalOverview } from './global.js';
 import { projectTailScan } from './tail-scan.js';
 import { projectHotScan } from './hot.js';
+import { projectPredictScan } from './predict.js';
 import { createRpcRoute, failure } from './rpc.js';
 /**
  * Re-validates every quote before it reaches the browser and reports a symbol
@@ -318,6 +319,23 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                     return failure('finance/hot-scan-unavailable', '当前行情源不提供热点扫描。');
                 return { ok: true, value: { status: 'ready', hotScan: projectHotScan(await resolved.hotScan({ board: request.board }), now()) } };
             }
+            if (request.kind === 'predict-scan') {
+                // Daily bars and a full-market snapshot are both optional capabilities;
+                // without them this panel is unavailable, not the whole board.
+                if (typeof resolved.predictScan !== 'function')
+                    return failure('finance/predict-scan-unavailable', '当前行情源不提供涨停接力预测。');
+                // Every failure inside this panel is attributed to the panel: a broken
+                // snapshot or a rejected projection must not read as a dead market board.
+                try {
+                    const scan = await resolved.predictScan({ board: request.board });
+                    return { ok: true, value: { status: 'ready', predictScan: projectPredictScan(scan, now()) } };
+                }
+                catch (error) {
+                    if (error?.code === 'finance/predict-scan-invalid')
+                        throw error;
+                    throw Object.assign(new Error('predict scan failed'), { code: 'finance/predict-scan-invalid' });
+                }
+            }
             if (request.kind === 'tail-scan') {
                 // Minute data and daily history are optional capabilities. A source
                 // that has neither leaves this panel unavailable without breaking the
@@ -344,6 +362,9 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                 return failure('finance/tail-scan-unavailable', '尾盘扫描结果无效，请稍后重试。');
             if (error?.code === 'finance/hot-scan-invalid' || (typeof error?.message === 'string' && error.message.startsWith('hot scan'))) {
                 return failure('finance/hot-scan-unavailable', '热点扫描暂不可用，请稍后重试。');
+            }
+            if (error?.code === 'finance/predict-scan-invalid' || (typeof error?.message === 'string' && error.message.startsWith('predict scan'))) {
+                return failure('finance/predict-scan-unavailable', '涨停接力预测暂不可用，请稍后重试。');
             }
             return failure('finance/market-unavailable', '市场数据暂不可用，请稍后重试。');
         }

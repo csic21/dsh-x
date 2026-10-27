@@ -1,6 +1,7 @@
 import type { GlobalMarketOverview } from './global.ts';
 import type { TailScanResult } from './tail-scan.ts';
 import type { HotScanResult } from './hot.ts';
+import type { PredictScanResult } from './predict.ts';
 export declare const MARKET_ENDPOINT = "dsh-x-finance.market";
 export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
 export declare const MARKET_SOURCE_NAME = "\u817E\u8BAF\u884C\u60C5 (unofficial)";
@@ -314,7 +315,11 @@ export type MarketCsi300FundsResult = MarketUnconfigured | {
     status: 'ready';
     csi300Funds: Csi300FundShare;
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult;
+export type MarketPredictScanResult = MarketUnconfigured | {
+    status: 'ready';
+    predictScan: PredictScanResult;
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -343,6 +348,9 @@ export type MarketRequest = {
     board?: string;
 } | {
     kind: 'csi300-funds';
+} | {
+    kind: 'predict-scan';
+    board?: string;
 };
 /**
  * Session tails the scan can describe: the last 30 minutes of the morning break
@@ -416,6 +424,14 @@ export interface MarketProvider {
      * adapter without it leaves only this special panel unavailable.
      */
     csi300Funds?(): Promise<Csi300FundShare>;
+    /**
+     * Limit-up relay probabilities. Optional and independent from the hot screen:
+     * a source that cannot serve daily bars leaves this panel unavailable without
+     * breaking the market board.
+     */
+    predictScan?(options: {
+        board?: string;
+    }): Promise<PredictScanResult>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {

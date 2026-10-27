@@ -20,6 +20,16 @@ import {
   HOT_SCAN_TTL_MS, HOT_STRATEGY_COUNT, hotHits, hotScores, hotWeight, sortHotHits,
 } from './hot.ts'
 import type { HotBar, HotHit, HotScanResult, HotSnapshot } from './hot.ts'
+import {
+  HOT_CHANGE, PREDICT_POPULATION_GAP, boardLimitRate, isPredictCandidate, isPredictUniverse,
+} from './predict-features.ts'
+import type { PredictCrossSection } from './predict-features.ts'
+import {
+  PREDICT_BARS, PREDICT_MAX_CANDIDATES, PREDICT_MAX_ROWS, PREDICT_TTL_MS,
+  baseBucketFor, readRegime, scoreCandidate, sortPredictRows,
+} from './predict.ts'
+import { PREDICT_MODEL } from './predict-model.ts'
+import type { PredictRow, PredictScanResult } from './predict.ts'
 import type {
   BoardDetail, Csi300Fund, Csi300FundShare, Csi300FundSharePoint, MarketAdjustment, MarketBreadth,
   MarketDailyBar, MarketHistory, MarketIndex, MarketOverview, MarketQuote, MarketSector, MarketStock,
@@ -1719,6 +1729,135 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     })
   }
 
+  // ---- Limit-up relay screen ----------------------------------------------
+  // The snapshot layer is the same paged ranking scan as the hot screen; daily
+  // bars are fetched only for candidates that are hot enough for the trained
+  // population. Every number the model consumes comes from those bars plus the
+  // cross-section, never from a field the source only has for today.
+
+  function crossSectionOf(rows: HotSnapshot[]): PredictCrossSection | null {
+    const changes: number[] = []
+    let up = 0
+    let hot = 0
+    for (const row of rows) {
+      if (row.suspended || !(row.price > 0) || !Number.isFinite(row.changePercent)) continue
+      changes.push(row.changePercent)
+      if (row.changePercent > 0) up += 1
+      if (row.changePercent >= HOT_CHANGE) hot += 1
+    }
+    if (changes.length < 600) return null
+    changes.sort((left, right) => left - right)
+    const middle = changes.length >> 1
+    const median = changes.length % 2 ? changes[middle]! : (changes[middle - 1]! + changes[middle]!) / 2
+    return {
+      upShare: up / changes.length * 100,
+      hotShare: hot / changes.length * 100,
+      medianChange: median,
+    }
+  }
+
+  async function loadPredictScan(input: { board?: string }): Promise<PredictScanResult> {
+    const started = now()
+    const boardCode = input.board ? `pt01${input.board}` : 'aStock'
+    const state = await getOrLoad(`hot-rows:${boardCode}`, HOT_ROWS_TTL_MS, () => loadHotRows(boardCode))
+    // Sentiment describes the whole market even when the ranking is limited to
+    // one industry board: a quiet board must not read as a quiet market.
+    const market = input.board
+      ? await getOrLoad('hot-rows:aStock', HOT_ROWS_TTL_MS, () => loadHotRows('aStock'))
+      : state
+    const snapshots = state.rows.filter(stock =>
+      !stock.suspended && stock.price > 0 && isPredictUniverse(stock.name))
+    const cross = crossSectionOf(market.rows.filter(stock =>
+      !stock.suspended && stock.price > 0 && isPredictUniverse(stock.name)))
+    if (!cross) throw new Error('predict scan cross-section too small')
+    const reading = readRegime(cross)
+
+    const hot = snapshots
+      .map(stock => ({ stock, rate: boardLimitRate(stock.symbol, stock.name) }))
+      .filter(entry => entry.rate !== null && isPredictCandidate(entry.stock.changePercent, entry.rate))
+      .sort((left, right) =>
+        (right.stock.changePercent - (right.rate! - PREDICT_POPULATION_GAP))
+        - (left.stock.changePercent - (left.rate! - PREDICT_POPULATION_GAP))
+        || right.stock.amount - left.stock.amount
+        || left.stock.symbol.localeCompare(right.stock.symbol))
+    const candidates = hot.slice(0, PREDICT_MAX_CANDIDATES)
+
+    const barsBySymbol = new Map<string, MarketDailyBar[]>()
+    const finals: boolean[] = []
+    let failed = 0
+    await mapLimit(candidates, Math.min(4, concurrency), async entry => {
+      try {
+        const history = await loadHistory(entry.stock.symbol, 'forward', PREDICT_BARS)
+        if (!history.bars.length) { failed += 1; return }
+        barsBySymbol.set(entry.stock.symbol, history.bars)
+        finals.push(history.bars.at(-1)!.isFinal)
+      } catch { failed += 1 }
+    })
+
+    const rows: PredictRow[] = []
+    for (const entry of candidates) {
+      const bars = barsBySymbol.get(entry.stock.symbol)
+      if (!bars) continue
+      const row = scoreCandidate({
+        symbol: entry.stock.symbol,
+        name: entry.stock.name,
+        price: entry.stock.price,
+        changePercent: entry.stock.changePercent,
+        bars,
+        final: bars.at(-1)!.isFinal,
+      }, cross)
+      if (!row) { failed += 1; continue }
+      rows.push(row)
+    }
+
+    const sessionDate = barsBySymbol.size
+      ? [...barsBySymbol.values()].map(bars => bars.at(-1)!.sessionDate).sort().at(-1)!
+      : shanghaiToday(now())
+    const barFinal = finals.length > 0 && finals.every(value => value === true)
+    const staleDays = Math.max(0, Math.round(
+      (Date.parse(`${sessionDate}T00:00:00Z`) - Date.parse(`${PREDICT_MODEL.trainedThrough}T00:00:00Z`)) / 86_400_000,
+    ))
+    let board: PredictScanResult['board'] = null
+    if (input.board) {
+      const rank = await fetchBoardRank().catch(() => null)
+      board = { code: input.board, name: rank?.get(input.board)?.name ?? input.board }
+    }
+    return {
+      source: `${MARKET_SOURCE_NAME} 排行/日K`,
+      fetchedAt: isoNow(now()),
+      sessionDate,
+      barFinal,
+      durationMs: now() - started,
+      board,
+      model: {
+        version: PREDICT_MODEL.version,
+        trainedThrough: PREDICT_MODEL.trainedThrough,
+        costPercent: PREDICT_MODEL.costPercent,
+        staleDays,
+        sample: PREDICT_MODEL.sample,
+        metrics: PREDICT_MODEL.metrics,
+      },
+      regime: {
+        upShare: cross.upShare,
+        hotShare: cross.hotShare,
+        medianChange: cross.medianChange,
+        rank: reading.rank,
+        level: reading.level,
+        base: baseBucketFor(PREDICT_MODEL.baseRates.sentiment, reading.rank),
+      },
+      universe: {
+        expected: state.expected,
+        covered: state.rows.length,
+        candidates: candidates.length,
+        scored: rows.length,
+        failed,
+        partial: state.partial || failed > 0,
+      },
+      baseRates: PREDICT_MODEL.baseRates,
+      rows: sortPredictRows(rows).slice(0, PREDICT_MAX_ROWS),
+    }
+  }
+
   function getOrLoad<T>(key: string, ttl: number | ((value: T) => number), loader: () => Promise<T>): Promise<T> {
     const cached = cache.get(key)
     if (cached && cached.expires > now()) return Promise.resolve(cached.value as T)
@@ -1798,6 +1937,11 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       const board = input && typeof input === 'object' && typeof input.board === 'string'
         ? validateBoardCode(input.board) : undefined
       return getOrLoad(`hot-scan:${board ?? 'all'}`, HOT_SCAN_TTL_MS, () => loadHotScan({ board }))
+    },
+    predictScan: (input: any) => {
+      const board = input && typeof input === 'object' && typeof input.board === 'string'
+        ? validateBoardCode(input.board) : undefined
+      return getOrLoad(`predict-scan:${board ?? 'all'}`, PREDICT_TTL_MS, () => loadPredictScan({ board }))
     },
   }
 }

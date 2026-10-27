@@ -11,6 +11,7 @@ import { validateSymbol } from './watchlist.ts'
 import type { GlobalMarketOverview } from './global.ts'
 import type { TailScanResult } from './tail-scan.ts'
 import type { HotScanResult } from './hot.ts'
+import type { PredictScanResult } from './predict.ts'
 export const MARKET_ENDPOINT = 'dsh-x-finance.market'
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference'
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)'
@@ -330,7 +331,8 @@ export type MarketHistoryResult = MarketUnconfigured | { status: 'ready'; histor
 export type MarketGlobalResult = MarketUnconfigured | { status: 'ready'; global: GlobalMarketOverview }
 export type MarketTailScanResult = MarketUnconfigured | { status: 'ready'; tailScan: TailScanResult }
 export type MarketCsi300FundsResult = MarketUnconfigured | { status: 'ready'; csi300Funds: Csi300FundShare }
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult
+export type MarketPredictScanResult = MarketUnconfigured | { status: 'ready'; predictScan: PredictScanResult }
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult
 
 export type MarketRequest =
   | { kind: 'overview' }
@@ -343,6 +345,7 @@ export type MarketRequest =
   | { kind: 'tail-scan'; window?: TailScanWindow }
   | { kind: 'hot-scan'; board?: string }
   | { kind: 'csi300-funds' }
+  | { kind: 'predict-scan'; board?: string }
 
 /**
  * Session tails the scan can describe: the last 30 minutes of the morning break
@@ -422,6 +425,12 @@ export interface MarketProvider {
    * adapter without it leaves only this special panel unavailable.
    */
   csi300Funds?(): Promise<Csi300FundShare>
+  /**
+   * Limit-up relay probabilities. Optional and independent from the hot screen:
+   * a source that cannot serve daily bars leaves this panel unavailable without
+   * breaking the market board.
+   */
+  predictScan?(options: { board?: string }): Promise<PredictScanResult>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -759,6 +768,11 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
     if (keys.join(',') === 'kind') return { kind: 'hot-scan' }
     if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')
     return { kind: 'hot-scan', board: validateBoardCode((payload as { board?: unknown }).board) }
+  }
+  if (kind === 'predict-scan') {
+    if (keys.join(',') === 'kind') return { kind: 'predict-scan' }
+    if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')
+    return { kind: 'predict-scan', board: validateBoardCode((payload as { board?: unknown }).board) }
   }
   if (kind === 'board') {
     if (keys.join(',') !== 'board,kind') throw stockMarketError('invalid-input')

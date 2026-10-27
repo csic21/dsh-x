@@ -13,3 +13,6 @@ docs/.vitepress/cache/
 
 # Generated market index (published by the docs workflow)
 docs/public/market-index.json
+
+# Local research cache (bars fetched by scripts/finance-research.mjs)
+packages/dsh-x-finance/.research/

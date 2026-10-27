@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { StockWorkbench } from './workbench.tsx'
 import { MarketView } from './market/MarketView.tsx'
 import { HotView } from './market/HotView.tsx'
+import { PredictView } from './market/PredictView.tsx'
 import { GlobalView } from './market/GlobalView.tsx'
 import { InstrumentSearch } from './SearchBox.tsx'
 import { normalizeAShare, MAX_FIXED, MAX_WATCHLIST, fixedItems, quoteStatus } from '../watchlist.ts'
@@ -155,7 +156,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const selected = previewItem ? undefined : state.items.find((entry: any) => entry.symbol === state.selectedSymbol)
   const item = previewItem ?? selected ?? state.items[0]
   const fixedCount = fixedItems(state.items).length
-  const [view, setView] = useState<'watchlist' | 'market' | 'hot' | 'global' | 'gold'>('watchlist')
+  const [view, setView] = useState<'watchlist' | 'market' | 'hot' | 'predict' | 'global' | 'gold'>('watchlist')
   const [fixError, setFixError] = useState('')
   const [drillNotice, setDrillNotice] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -219,11 +220,12 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
         region here; the shell's global rule keeps every button `no-drag`, so
         only the text and gaps move the window. */}
     <header className="dxs-titlebar" data-window-drag>
-      <div className="dxs-brand"><StockIcon size={16} /><h1>{discreet ? t('settings.discreet.title') : t('title')}</h1><span className="dxs-context">{discreet ? t('settings.discreet.subtitle') : view === 'market' ? t('market.subtitle') : view === 'hot' ? t('hot.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
+      <div className="dxs-brand"><StockIcon size={16} /><h1>{discreet ? t('settings.discreet.title') : t('title')}</h1><span className="dxs-context">{discreet ? t('settings.discreet.subtitle') : view === 'market' ? t('market.subtitle') : view === 'hot' ? t('hot.subtitle') : view === 'predict' ? t('predict.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
         <button type="button" aria-pressed={view === 'watchlist' && !previewOpen} onClick={() => { leavePreview(); setView('watchlist') }}>{tabLabel('page.view.watchlist', 'settings.tab.watchlist')}</button>
         <button type="button" aria-pressed={view === 'market' && !previewOpen} onClick={() => { leavePreview(); setView('market') }}>{tabLabel('page.view.market', 'settings.tab.market')}</button>
         <button type="button" aria-pressed={view === 'hot' && !previewOpen} onClick={() => { leavePreview(); setView('hot') }}>{tabLabel('page.view.hot', 'settings.tab.hot')}</button>
+        <button type="button" aria-pressed={view === 'predict' && !previewOpen} onClick={() => { leavePreview(); setView('predict') }}>{tabLabel('page.view.predict', 'settings.tab.predict')}</button>
         <button type="button" aria-pressed={view === 'global' && !previewOpen} onClick={() => { leavePreview(); setView('global') }}>{tabLabel('global.view.tab', 'settings.tab.global')}</button>
         <button type="button" aria-pressed={view === 'gold' && !previewOpen} onClick={() => { leavePreview(); setView('gold') }}>{tabLabel('gold.view.tab', 'settings.tab.gold')}</button>
       </nav>
@@ -240,7 +242,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
         <p className="dxs-muted">{t('preview.bar', { name: previewItem?.alias || previewItem?.symbol || '' })}</p>
       </div>
       <Detail key={`preview:${previewItem?.symbol}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
-    </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView key={`global:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} onChangeSource={changeSource} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView key={`market:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} discreet={discreet} preference={preference} onChangeSource={changeSource} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
+    </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView key={`global:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} onChangeSource={changeSource} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'predict' ? <div className="dxs-stage dxs-stage-market"><PredictView rpc={rpc} t={t} format={format} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('predict.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView key={`market:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} discreet={discreet} preference={preference} onChangeSource={changeSource} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
       {sourceOff ? <div className="dxs-banner is-warn dxs-source-card"><div><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p>{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</div><SourceButton preference={preference} t={t} large /></div> : preference.status === 'error' ? <p role="alert" className="dxs-banner dxs-error">{t('source.unavailable')}</p> : null}
       {state.placement === 'occupied' && <p role="status" className="dxs-banner">{t('page.occupied')}</p>}
       {state.barHidden && <p role="status" className="dxs-banner">{t('page.bar-hidden')} <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button></p>}

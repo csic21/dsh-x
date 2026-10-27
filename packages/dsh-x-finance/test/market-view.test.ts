@@ -435,14 +435,16 @@ const globalOverview = {
     { code: 'KS11', name: '韩国KOSPI', nameEn: 'KOSPI', region: 'asiaPacific', timeZone: 'Asia/Seoul', price: 5550.3, change: 16.53, changePercent: 0.3, open: 5403.17, high: 5547.13, low: 5305.98, previousClose: 5533.77, quotedAt: QUOTED },
   ],
 }
-test('finance page tabs switch between the watchlist, the market panorama, the hot screen, global markets and gold', async () => {
+test('finance page tabs switch between the watchlist, the market panorama, the hot screen, the relay forecast, global markets and gold', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
   const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
   ;(globalThis as any).window = dom.window
   globalThis.document = dom.window.document
   ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+  const calls: any[] = []
   const rpc = {
     call: async (_channel: string, _endpoint: string, payload: any) => {
+      calls.push(payload)
       if (payload?.action === 'get') return { ok: true, value: { enabled: true, forced: false } }
       if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
@@ -466,7 +468,7 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
     })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     const tabs = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-view-tabs button')]
-    assert.equal(tabs.length, 5)
+    assert.equal(tabs.length, 6)
     assert.equal(tabs[0]!.getAttribute('aria-pressed'), 'true')
     assert.match(dom.window.document.body.textContent ?? '', /我的自选/)
     await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
@@ -482,9 +484,20 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
     assert.match(hotText, /热点题材/)
     assert.match(hotText, /运行筛选|重新运行/)
     assert.doesNotMatch(hotText, /NaN|undefined/)
+    // The relay tab starts idle: mounting it must not fire a market request.
+    const before = calls.length
     await act(async () => tabs[3]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     assert.equal(tabs[3]!.getAttribute('aria-pressed'), 'true')
+    const predictText = dom.window.document.body.textContent ?? ''
+    assert.match(predictText, /涨停接力/)
+    assert.match(predictText, /运行预测/)
+    assert.match(predictText, /不是收益承诺/)
+    assert.doesNotMatch(predictText, /NaN|undefined/)
+    assert.equal(calls.length, before, 'an idle relay tab sends nothing')
+    await act(async () => tabs[4]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.equal(tabs[4]!.getAttribute('aria-pressed'), 'true')
     const globalText = dom.window.document.body.textContent ?? ''
     assert.match(globalText, /全球市场/)
     assert.match(globalText, /道琼斯工业指数/)
@@ -495,9 +508,9 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
     // never looks like the primary feed.
     assert.match(globalText, /当前来源：东方财富全球指数/)
     assert.doesNotMatch(globalText, /NaN|undefined/)
-    await act(async () => tabs[4]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => tabs[5]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-    assert.equal(tabs[4]!.getAttribute('aria-pressed'), 'true')
+    assert.equal(tabs[5]!.getAttribute('aria-pressed'), 'true')
     const goldText = dom.window.document.body.textContent ?? ''
     assert.match(goldText, /折算与价差/)
     assert.match(goldText, /4,035.01/)

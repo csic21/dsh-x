@@ -33,6 +33,7 @@ export const settingsZh = {
   'settings.tab.watchlist': '列表',
   'settings.tab.market': '概览',
   'settings.tab.hot': '关注',
+  'settings.tab.predict': '概率',
   'settings.tab.global': '指数',
   'settings.tab.gold': '商品',
 }
@@ -69,6 +70,7 @@ export const settingsEn = {
   'settings.tab.watchlist': 'List',
   'settings.tab.market': 'Overview',
   'settings.tab.hot': 'Watch',
+  'settings.tab.predict': 'Odds',
   'settings.tab.global': 'Indices',
   'settings.tab.gold': 'Commodities',
 }

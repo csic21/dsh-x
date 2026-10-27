@@ -3,6 +3,7 @@ import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW }
 import type { BoardDetail, Csi300FundShare, MarketBreadth, MarketOverview, TailScanWindow } from '../../market.ts'
 import type { TailScanResult } from '../../tail-scan.ts'
 import type { HotScanResult } from '../../hot.ts'
+import type { PredictScanResult } from '../../predict.ts'
 import type { GlobalMarketOverview } from '../../global.ts'
 
 export interface MarketDataState<T> {
@@ -300,6 +301,71 @@ export function useHotScan(rpc: any) {
         error: 'finance/hot-scan-unavailable',
         running: false,
         board: board ?? null,
+        elapsed: 0,
+      }))
+    }
+  }
+  return { ...state, run }
+}
+
+export interface PredictScanState {
+  status: 'idle' | 'loading' | 'ready' | 'error' | 'unconfigured'
+  value: PredictScanResult | null
+  error: string
+  running: boolean
+  /** Seconds this browser has been waiting, for the progress line. */
+  elapsed: number
+}
+
+/**
+ * The relay scan is explicit-run like the hot screen: mounting the page never
+ * fetches, and a finished result stays visible while a new run is in flight.
+ * The Host caches one run for two minutes, so re-running the same board is cheap.
+ */
+export function usePredictScan(rpc: any) {
+  const [state, setState] = useState<PredictScanState>({ status: 'idle', value: null, error: '', running: false, elapsed: 0 })
+  const controller = useRef<AbortController | null>(null)
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const stopTimer = () => { if (timer.current) { clearInterval(timer.current); timer.current = null } }
+  useEffect(() => () => { controller.current?.abort(); stopTimer() }, [])
+  const run = async () => {
+    controller.current?.abort()
+    stopTimer()
+    const local = new AbortController()
+    controller.current = local
+    const started = Date.now()
+    setState(previous => ({
+      status: previous.value ? previous.status : 'loading',
+      value: previous.value,
+      error: '',
+      running: true,
+      elapsed: 0,
+    }))
+    timer.current = setInterval(() => {
+      setState(previous => previous.running ? { ...previous, elapsed: Math.round((Date.now() - started) / 1000) } : previous)
+    }, 1000)
+    try {
+      if (!rpc?.call) throw new Error('finance/connection')
+      const result = await rpc.call('/api', MARKET_ENDPOINT, { kind: 'predict-scan' }, local.signal)
+      if (local.signal.aborted) return
+      if (!result?.ok) throw new Error(typeof result?.error?.code === 'string' ? result.error.code : 'finance/predict-scan-unavailable')
+      const payload = result.value
+      if (payload?.status === 'unconfigured') {
+        stopTimer()
+        setState({ status: 'unconfigured', value: null, error: '', running: false, elapsed: 0 })
+        return
+      }
+      if (!payload?.predictScan || typeof payload.predictScan !== 'object') throw new Error('finance/invalid')
+      stopTimer()
+      setState({ status: 'ready', value: payload.predictScan as PredictScanResult, error: '', running: false, elapsed: 0 })
+    } catch {
+      if (local.signal.aborted) return
+      stopTimer()
+      setState(previous => ({
+        status: previous.value ? 'ready' : 'error',
+        value: previous.value,
+        error: 'finance/predict-scan-unavailable',
+        running: false,
         elapsed: 0,
       }))
     }
