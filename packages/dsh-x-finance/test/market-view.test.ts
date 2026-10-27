@@ -7,6 +7,7 @@ import React, { act } from 'react'
 import { zh, en } from '../src/client/locales.ts'
 import { createFormatters } from '../src/client/format.ts'
 import { MARKET_CSS } from '../src/client/market/styles.ts'
+import { CSS } from '../src/client/styles.ts'
 
 
 /** Brace depth at `index`: 0 means the rule is a top-level rule, not nested. */
@@ -39,6 +40,19 @@ test('the injected stylesheet stays balanced and keeps each panel at top level',
     const index = MARKET_CSS.indexOf(selector)
     assert.ok(index >= 0, `${selector} is missing from the stylesheet`)
     assert.equal(depthAt(MARKET_CSS, index), 0, `${selector} is nested inside another block`)
+  }
+  // MARKET_CSS is interpolated in the middle of the page stylesheet, so an
+  // unclosed block here swallows the watchlist, gold and settings rules too.
+  let composed = 0
+  for (const char of CSS) {
+    if (char === '{') composed += 1
+    else if (char === '}') composed -= 1
+  }
+  assert.equal(composed, 0, 'the composed page stylesheet has an unclosed block')
+  for (const selector of ['.dxs-layout{', '.dxs-predict-row{', '.dxs-set-body{']) {
+    const index = CSS.indexOf(selector)
+    assert.ok(index >= 0, `${selector} is missing from the composed sheet`)
+    assert.equal(depthAt(CSS, index), 0, `${selector} is nested inside another block`)
   }
 })
 
