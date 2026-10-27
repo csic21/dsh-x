@@ -50,6 +50,19 @@ export function validateHistorySymbol(input) {
         return input;
     return validateSymbol(input);
 }
+/**
+ * The one index this special panel exists for. It is a fixed identity, not a
+ * user preference: the drill-down opens it, and the fund-share panel is shown
+ * only there.
+ */
+export const CSI300_FUND_SHARE_INDEX = 'SH.000300';
+/**
+ * Fund categories the CSI 300 fund-share ratio counts. Feeder funds (ETF
+ * 联接) are excluded because they hold the ETF and would be counted twice;
+ * enhanced index funds are excluded because their active positions are not
+ * passive CSI 300 exposure. Both exclusions are stated in the UI.
+ */
+export const CSI300_FUND_TYPES = ['ETF', 'LOF', '指数基金'];
 /** Auction through the morning close, then the afternoon session. Lunch is excluded. */
 export function isAshareMinute(time) {
     if (!/^\d{2}:\d{2}$/.test(time))
@@ -389,6 +402,11 @@ export function parseMarketRequest(payload) {
         if (keys.join(',') !== 'kind')
             throw stockMarketError('invalid-input');
         return { kind: 'global' };
+    }
+    if (kind === 'csi300-funds') {
+        if (keys.join(',') !== 'kind')
+            throw stockMarketError('invalid-input');
+        return { kind: 'csi300-funds' };
     }
     if (kind === 'tail-scan') {
         if (keys.join(',') === 'kind')

@@ -1,5 +1,5 @@
 import type { HotSnapshot } from './hot.ts';
-import type { MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider, MarketIntraday } from './market.ts';
+import type { Csi300Fund, Csi300FundShare, MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider, MarketIntraday } from './market.ts';
 import type { TailMinutePoint } from './tail-scan.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank";
@@ -13,6 +13,30 @@ export declare const MARKET_HISTORY_ENDPOINT = "https://proxy.finance.qq.com/ifz
  */
 export declare const MARKET_INTRADAY_ENDPOINT = "https://push2.eastmoney.com/api/qt/stock/trends2/get";
 export declare const MARKET_INTRADAY_SOURCE = "\u4E1C\u65B9\u8D22\u5BCC\u5206\u65F6 (unofficial)";
+/**
+ * CSI 300 fund-share panel. The index provider publishes the fund catalogue
+ * and the index level history; each fund page publishes its quarterly size.
+ * All three are public, unauthenticated, unofficial endpoints, so this panel
+ * is part of the same explicit opt-in as the rest of the local market source.
+ */
+export declare const CSI300_FUNDS_CATALOG_ENDPOINT = "https://www.csindex.com.cn/csindex-home/index-list/queryByIndexCode/000300";
+export declare const CSI300_INDEX_PERF_ENDPOINT = "https://www.csindex.com.cn/csindex-home/perf/index-perf";
+export declare const CSI300_FUND_SCALE_ENDPOINT = "https://fund.eastmoney.com/pingzhongdata/";
+export declare const CSI300_FUNDS_SOURCE = "\u4E2D\u8BC1\u6307\u6570 + \u5929\u5929\u57FA\u91D1 + \u817E\u8BAF\u884C\u60C5 (unofficial)";
+/** Fund sizes change only when a quarterly report is published. */
+export declare const CSI300_FUNDS_TTL_MS: number;
+/** One fund's `pingzhongdata` bundle carries all of its series, so it is larger than a quote. */
+export declare const CSI300_FUND_SCALE_MAX_BYTES: number;
+/** Quarters shown in the trend; older reports are not drawn. */
+export declare const CSI300_FUNDS_MAX_HISTORY = 12;
+/** A quarter is drawn only when funds covering at least this share of AUM reported it. */
+export declare const CSI300_FUNDS_MIN_COVERAGE = 0.8;
+/**
+ * The per-fund scripts are fetched in parallel, but a throttled upstream must
+ * not hold the whole panel open. After this budget the snapshot is returned
+ * with whatever quarterly series arrived; coverage says how much is missing.
+ */
+export declare const CSI300_FUNDS_BUDGET_MS = 15000;
 /** Tencent's own minute feed, used only by the opt-in tail scan. */
 export declare const MARKET_MINUTE_ENDPOINT = "https://web.ifzq.gtimg.cn/appstock/app/minute/query";
 export declare const MARKET_MINUTE_SOURCE = "\u817E\u8BAF\u5206\u65F6 (unofficial)";
@@ -98,6 +122,7 @@ export interface MarketProviderOptions {
     breadthTtlMs?: number;
     boardTtlMs?: number;
     globalTtlMs?: number;
+    csi300FundsTtlMs?: number;
     retryDelayMs?: number;
     concurrency?: number;
 }
@@ -239,6 +264,62 @@ export declare function projectHistory(options: {
     precision: number;
     now: number;
 }): MarketHistory;
+/**
+ * The index provider's fund catalogue for CSI 300. Only funds that actually
+ * track the index and report a positive size are kept; feeder funds (联接) and
+ * enhanced funds are filtered by `fundType`, because counting them would either
+ * double-count the ETF or mix active positions into a passive-share measure.
+ * Exported for tests.
+ */
+export declare function parseCsi300FundCatalog(payload: any): Csi300Fund[];
+/**
+ * One fund's quarterly size series from its public `pingzhongdata` bundle. The
+ * file contains many series, so only the size object is read; entries with a
+ * non-calendar date or a non-numeric size are dropped, never coerced to zero.
+ * Exported for tests.
+ */
+export declare function parseCsi300FundScale(text: string): {
+    date: string;
+    aum: number;
+}[];
+/** The index provider's daily level history, used only to scale the float cap. */
+export declare function parseCsi300IndexPerf(payload: any): {
+    date: string;
+    close: number;
+}[];
+/**
+ * CSI 300 free-float capitalisation from the same Tencent index quote the board
+ * already uses: field 44 is 流通市值 in 亿元 and field 3 is the index level.
+ * Exported for tests.
+ */
+export declare function parseCsi300IndexQuote(fields: string[] | undefined, now: number): {
+    floatCap: number;
+    close: number;
+    quotedAt: string | null;
+};
+/**
+ * Joins the reported sizes and the index levels into the snapshot and the
+ * quarterly trend. The trend's float capitalisation is the live figure scaled
+ * by the index level at each quarter end: constituents and free-float shares
+ * change over time, so the result is an estimate and is marked as such. A
+ * quarter is dropped when the funds that reported it cover too little of the
+ * catalogue, instead of drawing a misleading dip. Exported for tests.
+ */
+export declare function buildCsi300FundShare(input: {
+    funds: Csi300Fund[];
+    history: Map<string, {
+        date: string;
+        aum: number;
+    }[]>;
+    perf: {
+        date: string;
+        close: number;
+    }[];
+    indexClose: number;
+    indexFloatCap: number;
+    indexQuotedAt: string | null;
+    now: number;
+}): Csi300FundShare;
 export declare function createTencentMarketProvider(options?: MarketProviderOptions): MarketProvider;
 /** Shanghai / Shenzhen are market 1 / 0. Beijing shares the Shenzhen market id; the codes do not overlap. */
 export declare function eastmoneySecId(symbol: string): string;

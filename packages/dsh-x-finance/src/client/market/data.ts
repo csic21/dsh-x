@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW } from '../../market.ts'
-import type { BoardDetail, MarketBreadth, MarketOverview, TailScanWindow } from '../../market.ts'
+import type { BoardDetail, Csi300FundShare, MarketBreadth, MarketOverview, TailScanWindow } from '../../market.ts'
 import type { TailScanResult } from '../../tail-scan.ts'
 import type { HotScanResult } from '../../hot.ts'
 import type { GlobalMarketOverview } from '../../global.ts'
@@ -16,7 +16,7 @@ const INITIAL = { status: 'loading' as const, value: null, error: '', refreshing
 
 function useMarketResource<T>(
   rpc: any,
-  kind: 'overview' | 'breadth' | 'board' | 'global',
+  kind: 'overview' | 'breadth' | 'board' | 'global' | 'csi300-funds',
   board: string | undefined,
   options: { pollMs?: number; enabled?: boolean } = {},
 ): MarketDataState<T> & { refresh: () => void } {
@@ -72,7 +72,11 @@ function useMarketResource<T>(
           setState({ status: 'unconfigured', value: null, error: '', refreshing: false })
           return
         }
-        const value = kind === 'overview' ? payload?.overview : kind === 'breadth' ? payload?.breadth : kind === 'global' ? payload?.global : payload?.board
+        const value = kind === 'overview' ? payload?.overview
+          : kind === 'breadth' ? payload?.breadth
+            : kind === 'global' ? payload?.global
+              : kind === 'csi300-funds' ? payload?.csi300Funds
+                : payload?.board
         if (!value) throw new Error('finance/invalid')
         setState({ status: 'ready', value: value as T, error: '', refreshing: false })
       } catch {
@@ -125,6 +129,16 @@ export function useMarketBreadth(rpc: any, options: { pollMs?: number } = {}) {
 
 export function useBoardDetail(rpc: any, code: string, options: { pollMs?: number } = {}) {
   return useMarketResource<BoardDetail>(rpc, 'board', code, { pollMs: 120_000, ...options })
+}
+
+/**
+ * The special CSI 300 fund-share panel. Fund sizes only move when a quarterly
+ * report is published, so the client polls far less often than the board. The
+ * Host caches the joined answer for six hours, but retries an incomplete run
+ * after five minutes, which this half-hour poll picks up.
+ */
+export function useCsi300FundShare(rpc: any, options: { pollMs?: number } = {}) {
+  return useMarketResource<Csi300FundShare>(rpc, 'csi300-funds', undefined, { pollMs: 30 * 60_000, ...options })
 }
 
 

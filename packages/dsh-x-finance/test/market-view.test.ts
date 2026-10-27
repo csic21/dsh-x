@@ -764,3 +764,70 @@ test('the hot screen runs on demand and renders scores, tags and counts', async 
     for (const [key, value] of Object.entries(original)) { if (value === undefined) delete (globalThis as any)[key]; else (globalThis as any)[key] = value }
   }
 })
+
+test('the CSI 300 drill-down carries the fund-share snapshot and its quarterly trend', async () => {
+  const csi300Overview = {
+    ...overview,
+    indices: [
+      index('SH.000001', '上证指数', 3716.28, 0.24, 732_475_190_000),
+      index('SH.000300', '沪深300', 4105.33, 1.71, 456_246_629_218),
+    ],
+  }
+  const fund = (code: string, name: string, aum: number) => ({ code, name, type: 'ETF', aum })
+  const share = {
+    source: '中证指数 + 天天基金 + 腾讯行情 (unofficial)',
+    fetchedAt: '2026-10-18T21:06:57+08:00',
+    reportDate: '2026-09-30',
+    indexFloatCap: 488_918.40e8,
+    indexClose: 4103.54,
+    indexQuotedAt: QUOTED,
+    totalAum: 1614.04e8,
+    ratio: 1614.04e8 / (488_918.40e8),
+    fundCount: 4,
+    funds: [
+      fund('510300', '沪深300ETF华泰柏瑞', 1069.56e8),
+      fund('510310', '沪深300ETF易方达', 513.17e8),
+      fund('160706', '沪深300ETF嘉实', 20e8),
+      fund('519300', '大成沪深300指数', 11.31e8),
+    ],
+    history: [
+      { date: '2025-12-31', fundAum: 1508e8, floatCap: 5.51e13, ratio: 1508e8 / 5.51e13 },
+      { date: '2026-06-30', fundAum: 1630e8, floatCap: 5.93e13, ratio: 1630e8 / 5.93e13 },
+      { date: '2026-09-30', fundAum: 1614.04e8, floatCap: 5.19e13, ratio: 1614.04e8 / 5.19e13 },
+    ],
+    historyCoverage: 0.98,
+    estimatedFloatCap: true,
+  }
+  const rpc = {
+    call: async (_channel: string, endpoint: string, payload: any) => {
+      if (endpoint === 'dsh-x-finance.market-preference') return { ok: true, value: { enabled: true, forced: false } }
+      if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview: csi300Overview } }
+      if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      if (payload.kind === 'csi300-funds') return { ok: true, value: { status: 'ready', csi300Funds: share } }
+      if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
+      if (payload.kind === 'history') return { ok: false, error: { code: 'finance/history-unavailable' } }
+      return { ok: true, value: { status: 'ready', board } }
+    },
+  }
+  const h = await harness({ rpc })
+  try {
+    const sse = h.document.querySelector<HTMLElement>('[aria-label="查看 上证指数 的日 K"]')
+    await h.click(sse)
+    assert.equal(h.document.querySelector('.dxs-csi300'), null, 'the panel is CSI 300 only')
+
+    const csi = h.document.querySelector<HTMLElement>('[aria-label="查看 沪深300 的日 K"]')
+    await h.click(csi)
+    const text = h.document.body.textContent ?? ''
+    assert.match(text, /沪深300基金市值占流通市值比例/)
+    assert.match(text, /0\.33%/)
+    assert.match(text, /1614\.04亿/)
+    assert.match(text, /沪深300ETF华泰柏瑞/)
+    assert.match(text, /510300/)
+    assert.match(text, /季度趋势/)
+    assert.match(text, /查看季度数据表/)
+    assert.match(text, /0\.98|98\.00%/)
+    assert.ok(h.document.querySelector('.dxs-csi300 svg'), 'the trend is drawn')
+    assert.ok(h.document.querySelectorAll('.dxs-csi300-table tbody tr').length >= 4)
+    assert.doesNotMatch(text, /NaN|undefined/)
+  } finally { await h.close() }
+})

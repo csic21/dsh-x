@@ -128,6 +128,67 @@ export interface MarketUnconfigured {
     source: null;
 }
 /**
+ * The one index this special panel exists for. It is a fixed identity, not a
+ * user preference: the drill-down opens it, and the fund-share panel is shown
+ * only there.
+ */
+export declare const CSI300_FUND_SHARE_INDEX = "SH.000300";
+/**
+ * Fund categories the CSI 300 fund-share ratio counts. Feeder funds (ETF
+ * 联接) are excluded because they hold the ETF and would be counted twice;
+ * enhanced index funds are excluded because their active positions are not
+ * passive CSI 300 exposure. Both exclusions are stated in the UI.
+ */
+export declare const CSI300_FUND_TYPES: readonly ['ETF', 'LOF', '指数基金'];
+export type Csi300FundType = (typeof CSI300_FUND_TYPES)[number];
+/** One fund tracking CSI 300, with the size the index provider reports. */
+export interface Csi300Fund {
+    code: string;
+    name: string;
+    type: Csi300FundType;
+    /** Latest reported fund size in CNY. */
+    aum: number;
+}
+/**
+ * One quarter of the ratio. The fund total is the sum of the current fund
+ * catalogue's quarterly reports; the float capitalisation is scaled from the
+ * index level and is therefore an estimate, never a reported figure.
+ */
+export interface Csi300FundSharePoint {
+    date: string;
+    fundAum: number;
+    floatCap: number;
+    ratio: number;
+}
+/**
+ * The special CSI 300 fund-share snapshot plus its quarterly trend. Every
+ * number is either reported by the index provider / fund reports or explicitly
+ * labelled as estimated; nothing is filled in when a source is missing.
+ */
+export interface Csi300FundShare {
+    source: string;
+    fetchedAt: string;
+    /** Latest quarter present in the fund reports, null when no report parsed. */
+    reportDate: string | null;
+    /** CSI 300 free-float capitalisation in CNY from the live index quote. */
+    indexFloatCap: number;
+    /** The index level the live float capitalisation belongs to. */
+    indexClose: number;
+    /** Quote time of the live index snapshot, null when the source omitted it. */
+    indexQuotedAt: string | null;
+    totalAum: number;
+    /** totalAum / indexFloatCap, clamped to a usable 0..1. */
+    ratio: number;
+    fundCount: number;
+    /** Funds sorted by size, largest first. */
+    funds: Csi300Fund[];
+    history: Csi300FundSharePoint[];
+    /** Share of totalAum covered by funds that reported the latest quarter. */
+    historyCoverage: number;
+    /** True because history's float capitalisation is level-scaled, not reported. */
+    estimatedFloatCap: true;
+}
+/**
  * One watchlist/stock-page quote. `status` is part of the contract: a symbol
  * the source does not answer for is reported as `unavailable` with null
  * numbers, never as a zero or a previous close.
@@ -249,7 +310,11 @@ export type MarketTailScanResult = MarketUnconfigured | {
     status: 'ready';
     tailScan: TailScanResult;
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult;
+export type MarketCsi300FundsResult = MarketUnconfigured | {
+    status: 'ready';
+    csi300Funds: Csi300FundShare;
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -276,6 +341,8 @@ export type MarketRequest = {
 } | {
     kind: 'hot-scan';
     board?: string;
+} | {
+    kind: 'csi300-funds';
 };
 /**
  * Session tails the scan can describe: the last 30 minutes of the morning break
@@ -343,6 +410,12 @@ export interface MarketProvider {
     hotScan?(options: {
         board?: string;
     }): Promise<HotScanResult>;
+    /**
+     * The CSI 300 fund-share ratio (fund size over index free-float market cap)
+     * plus its quarterly trend. Optional and independent from the board: an
+     * adapter without it leaves only this special panel unavailable.
+     */
+    csi300Funds?(): Promise<Csi300FundShare>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {

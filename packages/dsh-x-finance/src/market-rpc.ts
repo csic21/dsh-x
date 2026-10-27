@@ -1,9 +1,9 @@
 import {
-  MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW, isAshareMinute,
+  CSI300_FUND_TYPES, MARKET_ENDPOINT, MARKET_PREFERENCE_ENDPOINT, TAIL_SCAN_DEFAULT_WINDOW, isAshareMinute,
   historyMarket, parseMarketPreferenceRequest, parseMarketRequest, shanghaiToday,
 } from './market.ts'
 import type { MarketIntraday } from './market.ts'
-import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts'
+import type { Csi300FundShare, MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts'
 import type { MarketController } from './market-preference.ts'
 import { projectGlobalOverview } from './global.ts'
 import { projectTailScan } from './tail-scan.ts'
@@ -52,6 +52,84 @@ export function projectQuotes(raw: unknown, symbols: string[], now: number): Mar
       marketStatus: quote.marketStatus === 'closed' ? 'closed' as const : 'unknown' as const,
     }
   })
+}
+
+const CSI300_FUND_TYPE_SET = new Set<string>(CSI300_FUND_TYPES)
+const CSI300_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Re-validates the CSI 300 fund-share payload at the same trust boundary as
+ * the other projectors. Totals and ratios are recomputed from the fund list
+ * and the float capitalisation, so a replacement adapter cannot ship an
+ * inconsistent headline. The trend's float capitalisation stays an estimate;
+ * the flag that says so is required rather than optional.
+ */
+export function projectCsi300FundShare(raw: unknown, now: number): Csi300FundShare {
+  const fail = () => Object.assign(new Error('csi300 fund share unavailable'), { code: 'finance/csi300-funds-unavailable' })
+  const value = raw as Record<string, any>
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail()
+  const source = typeof value.source === 'string' ? value.source.replace(/[\u0000-\u001f\u007f]/g, '').trim() : ''
+  if (!source || source.length > 64) throw fail()
+  const reportDate = value.reportDate === null ? null : value.reportDate
+  if (reportDate !== null && (typeof reportDate !== 'string' || !CSI300_DATE.test(reportDate))) throw fail()
+  const indexFloatCap = value.indexFloatCap
+  const indexClose = value.indexClose
+  if (typeof indexFloatCap !== 'number' || !Number.isFinite(indexFloatCap) || indexFloatCap <= 0 || indexFloatCap > 1e15) throw fail()
+  if (typeof indexClose !== 'number' || !Number.isFinite(indexClose) || indexClose <= 0 || indexClose > 1e9) throw fail()
+  const quotedAt = value.indexQuotedAt === null ? null
+    : typeof value.indexQuotedAt === 'string' && Number.isFinite(Date.parse(value.indexQuotedAt)) ? value.indexQuotedAt : undefined
+  if (quotedAt === undefined) throw fail()
+  const rows = Array.isArray(value.funds) ? value.funds.slice(0, 500) : null
+  if (!rows || !rows.length) throw fail()
+  const funds: Csi300FundShare['funds'] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) throw fail()
+    const code = typeof row.code === 'string' && /^\d{6}$/.test(row.code) ? row.code : null
+    const name = typeof row.name === 'string' ? row.name.replace(/[\u0000-\u001f\u007f]/g, '').trim() : ''
+    const type = row.type
+    const aum = row.aum
+    if (!code || seen.has(code) || !name || name.length > 120) throw fail()
+    if (!CSI300_FUND_TYPE_SET.has(type)) throw fail()
+    if (typeof aum !== 'number' || !Number.isFinite(aum) || aum <= 0 || aum > 1e13) throw fail()
+    seen.add(code)
+    funds.push({ code, name, type, aum })
+  }
+  funds.sort((left, right) => right.aum - left.aum)
+  const totalAum = funds.reduce((sum, fund) => sum + fund.aum, 0)
+  if (!(totalAum > 0)) throw fail()
+  const points = Array.isArray(value.history) ? value.history.slice(-12) : []
+  let previous = ''
+  const history: Csi300FundShare['history'] = []
+  for (const point of points) {
+    if (!point || typeof point !== 'object' || Array.isArray(point)) throw fail()
+    const date = point.date
+    const fundAum = point.fundAum
+    const floatCap = point.floatCap
+    if (typeof date !== 'string' || !CSI300_DATE.test(date) || date <= previous) throw fail()
+    if (typeof fundAum !== 'number' || !Number.isFinite(fundAum) || fundAum <= 0 || fundAum > 1e14) throw fail()
+    if (typeof floatCap !== 'number' || !Number.isFinite(floatCap) || floatCap <= 0 || floatCap > 1e15) throw fail()
+    previous = date
+    history.push({ date, fundAum, floatCap, ratio: Math.min(1, fundAum / floatCap) })
+  }
+  if (value.estimatedFloatCap !== true) throw fail()
+  const coverage = value.historyCoverage
+  if (typeof coverage !== 'number' || !Number.isFinite(coverage) || coverage < 0 || coverage > 1) throw fail()
+  return {
+    source,
+    fetchedAt: new Date(now).toISOString(),
+    reportDate,
+    indexFloatCap,
+    indexClose,
+    indexQuotedAt: quotedAt,
+    totalAum,
+    ratio: Math.min(1, totalAum / indexFloatCap),
+    fundCount: funds.length,
+    funds,
+    history,
+    historyCoverage: coverage,
+    estimatedFloatCap: true,
+  }
 }
 
 /**
@@ -185,6 +263,10 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
         const raw = await resolved.intraday(request.symbol)
         return { ok: true, value: { status: 'ready', intraday: projectIntradayResponse(raw, request.symbol, now()) } }
       }
+      if (request.kind === 'csi300-funds') {
+        if (typeof resolved.csi300Funds !== 'function') return failure('finance/csi300-funds-unavailable', '当前行情源不提供沪深300基金占比。')
+        return { ok: true, value: { status: 'ready', csi300Funds: projectCsi300FundShare(await resolved.csi300Funds(), now()) } }
+      }
       if (request.kind === 'global') {
         // A replacement adapter may cover A shares only. That is an honest
         // "unavailable" for this tab, not a failure of the shared source.
@@ -212,6 +294,7 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
       if (error?.code === 'finance/history-unavailable') return failure('finance/history-unavailable', '该股票暂无历史日 K 数据。')
       if (error?.code === 'finance/intraday-unavailable') return failure('finance/intraday-unavailable', '该股票暂无分时数据。')
       if (error?.code === 'finance/tail-scan-unavailable') return failure('finance/tail-scan-unavailable', '该行情源暂不提供尾盘扫描。')
+      if (error?.code === 'finance/csi300-funds-unavailable') return failure('finance/csi300-funds-unavailable', '沪深300基金占比暂不可用。')
       if (typeof error?.message === 'string' && error.message.startsWith('tail-scan ')) return failure('finance/tail-scan-unavailable', '尾盘扫描结果无效，请稍后重试。')
       if (error?.code === 'finance/hot-scan-invalid' || (typeof error?.message === 'string' && error.message.startsWith('hot scan'))) {
         return failure('finance/hot-scan-unavailable', '热点扫描暂不可用，请稍后重试。')

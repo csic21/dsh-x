@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { BoardDetail, MarketBreadth, MarketIndex, MarketOverview, MarketSector, MarketStock, TailScanWindow } from '../../market.ts'
 import type { TailScanCandidate, TailScanResult } from '../../tail-scan.ts'
-import { TAIL_SCAN_DEFAULT_WINDOW, TAIL_SCAN_WINDOWS, computeSentiment, marketClock } from '../../market.ts'
+import { CSI300_FUND_SHARE_INDEX, TAIL_SCAN_DEFAULT_WINDOW, TAIL_SCAN_WINDOWS, computeSentiment, marketClock } from '../../market.ts'
 import type { ChangeTone, NestedGroup, TreemapRect } from './treemap.ts'
 import { changeTone, layoutNested, squarify, tileSize } from './treemap.ts'
 import { useBoardDetail, useMarketBreadth, useMarketOverview, useMarketPreference, useTailScan } from './data.ts'
 import { MarketErrorCard, MarketUnconfigured, SourceSwitch } from './gate.tsx'
 import { StockWorkbench } from '../workbench.tsx'
+import { Csi300FundShare } from './Csi300FundShare.tsx'
 
 interface MarketViewProps {
   rpc: any
@@ -666,6 +667,9 @@ export function MarketView({ rpc, t, format, locale, now = () => new Date(), onO
           <button type="button" onClick={() => setIndexChart(null)}>{t('market.detail.close')}</button>
         </div>
       </header>
+      {indexChart.code === CSI300_FUND_SHARE_INDEX
+        ? <Csi300FundShare rpc={rpc} t={t} format={format} />
+        : null}
       <StockWorkbench key={`index:${indexChart.code}`} symbol={indexChart.code} scope={scope} rpc={rpc} t={t} format={format} locale={locale} />
     </section> : null}
     <TailScanPanel rpc={rpc} t={t} format={format} onOpenStock={onOpenStock} />

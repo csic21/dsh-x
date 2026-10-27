@@ -1,5 +1,5 @@
 import type { MarketIntraday } from './market.ts';
-import type { MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts';
+import type { Csi300FundShare, MarketHistory, MarketPreference, MarketProvider, MarketQuote } from './market.ts';
 import type { MarketController } from './market-preference.ts';
 export type MarketProviderSource = MarketProvider | (() => Promise<MarketProvider | undefined>);
 /**
@@ -8,6 +8,14 @@ export type MarketProviderSource = MarketProvider | (() => Promise<MarketProvide
  * and upstream errors never leave the Host.
  */
 export declare function projectQuotes(raw: unknown, symbols: string[], now: number): MarketQuote[];
+/**
+ * Re-validates the CSI 300 fund-share payload at the same trust boundary as
+ * the other projectors. Totals and ratios are recomputed from the fund list
+ * and the float capitalisation, so a replacement adapter cannot ship an
+ * inconsistent headline. The trend's float capitalisation stays an estimate;
+ * the flag that says so is required rather than optional.
+ */
+export declare function projectCsi300FundShare(raw: unknown, now: number): Csi300FundShare;
 /**
  * Re-validates a provider's daily history before it reaches the browser. This
  * is the same trust boundary as `projectQuotes`: a replacement adapter cannot
@@ -37,6 +45,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         tailScan?: undefined;
@@ -52,6 +61,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         tailScan?: undefined;
@@ -67,6 +77,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         tailScan?: undefined;
@@ -82,6 +93,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes: MarketQuote[];
         history?: undefined;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         tailScan?: undefined;
@@ -97,6 +109,7 @@ export declare function createMarketHandler({ provider, now }?: {
         status: string;
         history: MarketHistory;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         tailScan?: undefined;
@@ -112,6 +125,7 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         status: string;
         intraday: MarketIntraday;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         tailScan?: undefined;
@@ -126,6 +140,23 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        status: string;
+        csi300Funds: Csi300FundShare;
+        global?: undefined;
+        hotScan?: undefined;
+        tailScan?: undefined;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
+        csi300Funds?: undefined;
         status: string;
         global: import("./global.ts").GlobalMarketOverview;
         hotScan?: undefined;
@@ -141,6 +172,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         status: string;
         hotScan: import("./hot.ts").HotScanResult;
@@ -156,6 +188,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         status: string;
@@ -171,6 +204,7 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
         tailScan?: undefined;

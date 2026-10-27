@@ -6,7 +6,7 @@
 //
 // Only projected fields leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
-import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, TAIL_SCAN_DEFAULT_WINDOW, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, validateTailScanWindow, isAshareMinute, historyMarket, isHkIndexSymbol, validateHistorySymbol, zoneToday, } from './market.js';
+import { MARKET_BOARD_TTL_MS, MARKET_CACHE_TTL_MS, MARKET_HISTORY_MAX_LIMIT, MARKET_LEVEL1_CODES, MARKET_MAX_BOARD_STOCKS, MARKET_MAX_PAGES, MARKET_MAX_QUOTES, MARKET_MAX_QUOTE_BATCH, MARKET_MAX_SECTORS, MARKET_MAX_STOCKS, MARKET_OVERVIEW_TTL_MS, MARKET_PAGE_SIZE, MARKET_SOURCE_NAME, MARKET_DISTRIBUTION, distributionBucket, CSI300_FUND_TYPES, TAIL_SCAN_DEFAULT_WINDOW, level2Parent, level1Name, normalizeMarketCode, quotePrecision, shanghaiToday, validateBoardCode, validateHistoryLimit, validateAdjustment, validateTailScanWindow, isAshareMinute, historyMarket, isHkIndexSymbol, validateHistorySymbol, zoneToday, } from './market.js';
 import { HOT_HISTORY_BARS, hotQualifies, HOT_HISTORY_DEPTH, HOT_MAX_RESULTS, HOT_MAX_STOCKS, HOT_ROWS_TTL_MS, HOT_SCAN_TTL_MS, HOT_STRATEGY_COUNT, hotHits, hotScores, hotWeight, sortHotHits, } from './hot.js';
 import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_SINA_ENDPOINT, GLOBAL_SINA_REFERER, GLOBAL_SINA_SOURCE, GLOBAL_TENCENT_ENDPOINT, GLOBAL_TENCENT_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, mergeGlobalSnapshots, parseGlobalQuotes, parseSinaGlobalQuotes, parseTencentGlobalQuotes, } from './global.js';
 import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, tailWindowSpec, } from './tail-scan.js';
@@ -24,6 +24,30 @@ export const MARKET_HISTORY_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/a
  */
 export const MARKET_INTRADAY_ENDPOINT = 'https://push2.eastmoney.com/api/qt/stock/trends2/get';
 export const MARKET_INTRADAY_SOURCE = '东方财富分时 (unofficial)';
+/**
+ * CSI 300 fund-share panel. The index provider publishes the fund catalogue
+ * and the index level history; each fund page publishes its quarterly size.
+ * All three are public, unauthenticated, unofficial endpoints, so this panel
+ * is part of the same explicit opt-in as the rest of the local market source.
+ */
+export const CSI300_FUNDS_CATALOG_ENDPOINT = 'https://www.csindex.com.cn/csindex-home/index-list/queryByIndexCode/000300';
+export const CSI300_INDEX_PERF_ENDPOINT = 'https://www.csindex.com.cn/csindex-home/perf/index-perf';
+export const CSI300_FUND_SCALE_ENDPOINT = 'https://fund.eastmoney.com/pingzhongdata/';
+export const CSI300_FUNDS_SOURCE = '中证指数 + 天天基金 + 腾讯行情 (unofficial)';
+/** Fund sizes change only when a quarterly report is published. */
+export const CSI300_FUNDS_TTL_MS = 6 * 60 * 60_000;
+/** One fund's `pingzhongdata` bundle carries all of its series, so it is larger than a quote. */
+export const CSI300_FUND_SCALE_MAX_BYTES = 1024 * 1024;
+/** Quarters shown in the trend; older reports are not drawn. */
+export const CSI300_FUNDS_MAX_HISTORY = 12;
+/** A quarter is drawn only when funds covering at least this share of AUM reported it. */
+export const CSI300_FUNDS_MIN_COVERAGE = 0.8;
+/**
+ * The per-fund scripts are fetched in parallel, but a throttled upstream must
+ * not hold the whole panel open. After this budget the snapshot is returned
+ * with whatever quarterly series arrived; coverage says how much is missing.
+ */
+export const CSI300_FUNDS_BUDGET_MS = 15_000;
 /** Tencent's own minute feed, used only by the opt-in tail scan. */
 export const MARKET_MINUTE_ENDPOINT = 'https://web.ifzq.gtimg.cn/appstock/app/minute/query';
 export const MARKET_MINUTE_SOURCE = '腾讯分时 (unofficial)';
@@ -824,15 +848,200 @@ function buildBreadth(rows, expected, partial, now) {
         topAmount: sortTop(stocks, stock => stock.amount, 1),
     };
 }
+/**
+ * The index provider's fund catalogue for CSI 300. Only funds that actually
+ * track the index and report a positive size are kept; feeder funds (联接) and
+ * enhanced funds are filtered by `fundType`, because counting them would either
+ * double-count the ETF or mix active positions into a passive-share measure.
+ * Exported for tests.
+ */
+export function parseCsi300FundCatalog(payload) {
+    const rows = payload?.data;
+    if (!Array.isArray(rows))
+        throw new Error('csi300 catalog missing');
+    const byCode = new Map();
+    for (const row of rows) {
+        if (!row || typeof row !== 'object' || Array.isArray(row))
+            continue;
+        const code = cleanText(row.productCode, 6);
+        if (!code || !/^\d{6}$/.test(code))
+            continue;
+        const type = row.fundType;
+        if (!CSI300_FUND_TYPES.includes(type))
+            continue;
+        const name = cleanText(row.fundName, 120);
+        const aumYi = finiteNumber(row.aum, 0, 1e7);
+        if (!name || aumYi === null || aumYi <= 0 || byCode.has(code))
+            continue;
+        byCode.set(code, { code, name, type, aum: aumYi * 1e8 });
+    }
+    const funds = [...byCode.values()].sort((left, right) => right.aum - left.aum);
+    if (!funds.length)
+        throw new Error('csi300 catalog empty');
+    if (funds.length > 500)
+        throw new Error('csi300 catalog too large');
+    return funds;
+}
+/**
+ * One fund's quarterly size series from its public `pingzhongdata` bundle. The
+ * file contains many series, so only the size object is read; entries with a
+ * non-calendar date or a non-numeric size are dropped, never coerced to zero.
+ * Exported for tests.
+ */
+export function parseCsi300FundScale(text) {
+    const match = /Data_fluctuationScale\s*=\s*(\{[\s\S]*?\});/.exec(text);
+    if (!match)
+        throw new Error('csi300 fund scale missing');
+    let parsed;
+    try {
+        parsed = JSON.parse(match[1]);
+    }
+    catch {
+        throw new Error('csi300 fund scale invalid');
+    }
+    const categories = parsed?.categories;
+    const series = parsed?.series;
+    if (!Array.isArray(categories) || !Array.isArray(series))
+        throw new Error('csi300 fund scale invalid');
+    const points = [];
+    for (let index = 0; index < categories.length; index++) {
+        const date = categories[index];
+        if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+            continue;
+        const calendar = new Date(`${date}T00:00:00Z`);
+        if (!Number.isFinite(calendar.getTime()) || calendar.toISOString().slice(0, 10) !== date)
+            continue;
+        const value = series[index]?.y;
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1e7)
+            continue;
+        points.push({ date, aum: value * 1e8 });
+    }
+    return points;
+}
+/** The index provider's daily level history, used only to scale the float cap. */
+export function parseCsi300IndexPerf(payload) {
+    const rows = payload?.data;
+    if (!Array.isArray(rows))
+        throw new Error('csi300 perf missing');
+    const points = [];
+    let previous = '';
+    for (const row of rows) {
+        if (!row || typeof row !== 'object')
+            continue;
+        const stamp = row.tradeDate;
+        const close = row.close;
+        if (typeof stamp !== 'string' || !/^\d{8}$/.test(stamp))
+            continue;
+        if (typeof close !== 'number' || !Number.isFinite(close) || close <= 0 || close > 1e9)
+            continue;
+        const date = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}`;
+        if (date <= previous)
+            continue;
+        previous = date;
+        points.push({ date, close });
+    }
+    if (!points.length)
+        throw new Error('csi300 perf empty');
+    return points;
+}
+/**
+ * CSI 300 free-float capitalisation from the same Tencent index quote the board
+ * already uses: field 44 is 流通市值 in 亿元 and field 3 is the index level.
+ * Exported for tests.
+ */
+export function parseCsi300IndexQuote(fields, now) {
+    if (!fields || fields[2] !== '000300')
+        throw new Error('csi300 quote mismatch');
+    const close = finiteNumber(fields[3], 0.0001, 1e9);
+    const floatCapYi = finiteNumber(fields[44], 0, 1e9);
+    if (close === null || floatCapYi === null || floatCapYi <= 0)
+        throw new Error('csi300 quote invalid');
+    let quotedAt = null;
+    try {
+        quotedAt = parseTencentTimestamp(fields[30], now);
+    }
+    catch { /* the timestamp is optional here */ }
+    return { floatCap: floatCapYi * 1e8, close, quotedAt };
+}
+const clampRatio = (value) => Number.isFinite(value) && value > 0 ? Math.min(1, value) : 0;
+function lastCloseAtOrBefore(perf, date) {
+    for (let index = perf.length - 1; index >= 0; index--) {
+        const point = perf[index];
+        if (point.date <= date)
+            return point.close;
+    }
+    return null;
+}
+/**
+ * Joins the reported sizes and the index levels into the snapshot and the
+ * quarterly trend. The trend's float capitalisation is the live figure scaled
+ * by the index level at each quarter end: constituents and free-float shares
+ * change over time, so the result is an estimate and is marked as such. A
+ * quarter is dropped when the funds that reported it cover too little of the
+ * catalogue, instead of drawing a misleading dip. Exported for tests.
+ */
+export function buildCsi300FundShare(input) {
+    const totalAum = input.funds.reduce((sum, fund) => sum + fund.aum, 0);
+    if (!(totalAum > 0) || !(input.indexFloatCap > 0))
+        throw new Error('csi300 fund share empty');
+    const today = shanghaiToday(input.now);
+    const quarters = new Map();
+    let reportDate = null;
+    for (const fund of input.funds) {
+        const points = input.history.get(fund.code);
+        if (!points)
+            continue;
+        for (const point of points) {
+            if (point.date > today)
+                continue;
+            const entry = quarters.get(point.date) ?? { aum: 0, covered: 0 };
+            entry.aum += point.aum;
+            entry.covered += fund.aum;
+            quarters.set(point.date, entry);
+            if (!reportDate || point.date > reportDate)
+                reportDate = point.date;
+        }
+    }
+    const history = [];
+    if (input.indexClose > 0) {
+        for (const date of [...quarters.keys()].sort()) {
+            const entry = quarters.get(date);
+            if (entry.covered < totalAum * CSI300_FUNDS_MIN_COVERAGE)
+                continue;
+            const close = lastCloseAtOrBefore(input.perf, date);
+            if (close === null)
+                continue;
+            const floatCap = input.indexFloatCap * (close / input.indexClose);
+            if (!(floatCap > 0))
+                continue;
+            history.push({ date, fundAum: entry.aum, floatCap, ratio: clampRatio(entry.aum / floatCap) });
+        }
+    }
+    return {
+        source: CSI300_FUNDS_SOURCE,
+        fetchedAt: new Date(input.now).toISOString(),
+        reportDate,
+        indexFloatCap: input.indexFloatCap,
+        indexClose: input.indexClose,
+        indexQuotedAt: input.indexQuotedAt,
+        totalAum,
+        ratio: clampRatio(totalAum / input.indexFloatCap),
+        fundCount: input.funds.length,
+        funds: input.funds,
+        history: history.slice(-CSI300_FUNDS_MAX_HISTORY),
+        historyCoverage: reportDate ? Math.min(1, (quarters.get(reportDate)?.covered ?? 0) / totalAum) : 0,
+        estimatedFloatCap: true,
+    };
+}
 export function createTencentMarketProvider(options = {}) {
-    const { fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = MARKET_TIMEOUT_MS, overviewTtlMs = MARKET_OVERVIEW_TTL_MS, breadthTtlMs = MARKET_CACHE_TTL_MS, boardTtlMs = MARKET_BOARD_TTL_MS, globalTtlMs = GLOBAL_TTL_MS, retryDelayMs = 200, concurrency = 6, } = options;
+    const { fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = MARKET_TIMEOUT_MS, overviewTtlMs = MARKET_OVERVIEW_TTL_MS, breadthTtlMs = MARKET_CACHE_TTL_MS, boardTtlMs = MARKET_BOARD_TTL_MS, globalTtlMs = GLOBAL_TTL_MS, csi300FundsTtlMs = CSI300_FUNDS_TTL_MS, retryDelayMs = 200, concurrency = 6, } = options;
     if (typeof fetchImpl !== 'function')
         throw new Error('market fetch unavailable');
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000)
         throw new Error('invalid market timeout');
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 12)
         throw new Error('invalid market concurrency');
-    if (![overviewTtlMs, breadthTtlMs, boardTtlMs, globalTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0))
+    if (![overviewTtlMs, breadthTtlMs, boardTtlMs, globalTtlMs, csi300FundsTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0))
         throw new Error('invalid market cache');
     const cache = new Map();
     const inflight = new Map();
@@ -1519,6 +1728,56 @@ export function createTencentMarketProvider(options = {}) {
             hits: sortHotHits(hits).slice(0, HOT_MAX_RESULTS),
         };
     }
+    /**
+     * The CSI 300 fund-share panel: one catalogue request, one index quote and
+     * one public script per fund. The scripts are the expensive part, so the
+     * whole answer is cached for a reporting cycle. A fund whose script cannot be
+     * read is omitted from the trend but its reported size still counts in the
+     * snapshot; `historyCoverage` states how much of the catalogue the trend
+     * actually covers instead of hiding the gap.
+     */
+    async function loadCsi300FundShare() {
+        const stamp = now();
+        const catalog = parseCsi300FundCatalog(await requestJson(CSI300_FUNDS_CATALOG_ENDPOINT));
+        const quote = await quoteBatch(['sh000300'], { requireAny: true });
+        const index = parseCsi300IndexQuote(quote.get('sh000300'), stamp);
+        const history = new Map();
+        const scripts = mapLimit(catalog, concurrency, async (fund) => {
+            try {
+                const text = await request(`${CSI300_FUND_SCALE_ENDPOINT}${fund.code}.js`, 'utf-8', CSI300_FUND_SCALE_MAX_BYTES);
+                const points = parseCsi300FundScale(text);
+                if (points.length)
+                    history.set(fund.code, points);
+            }
+            catch { /* one unreadable report must not hide the other funds */ }
+        });
+        // A slow or throttled fund host must not keep the panel waiting forever.
+        // Late results are harmless: the build below reads only what arrived.
+        let budgetTimer;
+        const budget = new Promise(resolve => { budgetTimer = setTimeout(resolve, CSI300_FUNDS_BUDGET_MS); });
+        try {
+            await Promise.race([scripts, budget]);
+        }
+        finally {
+            clearTimeout(budgetTimer);
+        }
+        let perf = [];
+        try {
+            const end = shanghaiToday(stamp).replace(/-/g, '');
+            const start = shanghaiToday(stamp - 3 * 366 * 86_400_000).replace(/-/g, '');
+            perf = parseCsi300IndexPerf(await requestJson(`${CSI300_INDEX_PERF_ENDPOINT}?indexCode=000300&startDate=${start}&endDate=${end}`));
+        }
+        catch { /* the snapshot is still valid without a trend */ }
+        return buildCsi300FundShare({
+            funds: catalog,
+            history,
+            perf,
+            indexClose: index.close,
+            indexFloatCap: index.floatCap,
+            indexQuotedAt: index.quotedAt,
+            now: stamp,
+        });
+    }
     function getOrLoad(key, ttl, loader) {
         const cached = cache.get(key);
         if (cached && cached.expires > now())
@@ -1532,7 +1791,8 @@ export function createTencentMarketProvider(options = {}) {
                 if (oldest !== undefined)
                     cache.delete(oldest);
             }
-            cache.set(key, { expires: now() + ttl, value });
+            const lifetime = typeof ttl === 'function' ? ttl(value) : ttl;
+            cache.set(key, { expires: now() + lifetime, value });
             return value;
         }).finally(() => { inflight.delete(key); });
         inflight.set(key, promise);
@@ -1543,6 +1803,12 @@ export function createTencentMarketProvider(options = {}) {
         overview: () => getOrLoad('overview', overviewTtlMs, loadOverview),
         breadth: () => getOrLoad('breadth', breadthTtlMs, loadBreadth),
         globalOverview: () => getOrLoad('global', globalTtlMs, loadGlobalOverview),
+        // Fund reports change quarterly, but a run whose scripts timed out or
+        // whose trend is thin is retried in five minutes instead of being cached
+        // for a full reporting cycle.
+        csi300Funds: () => getOrLoad('csi300-funds', value => value.history.length && value.historyCoverage >= CSI300_FUNDS_MIN_COVERAGE
+            ? csi300FundsTtlMs
+            : Math.min(csi300FundsTtlMs, 5 * 60_000), loadCsi300FundShare),
         board: (input) => {
             const code = validateBoardCode(input);
             return getOrLoad(`board:${code}`, boardTtlMs, () => loadBoard(code));
