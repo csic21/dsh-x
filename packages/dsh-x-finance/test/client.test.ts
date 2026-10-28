@@ -135,7 +135,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.ok(document.querySelector('input[name="instrument-search"]'),'the add form keeps its own directory field')
     await input(lookup,'比亚')
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
-    await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup-bar [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
     assert.match(document.body.textContent!, /临时查看（未加入自选）/)
     assert.deepEqual(saved().items.map((item: any)=>item.symbol),['SZ.000001'],'looking a stock up must not write the watchlist')
     await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-back')!)

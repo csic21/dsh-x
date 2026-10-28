@@ -202,14 +202,14 @@ test('the page lookup picks a result for the caller instead of the add form', as
   } finally { await h.close() }
 })
 
-test('the lookup explains a disabled or unavailable directory next to the field', async () => {
+test('the lookup turns the source on in place and reports a directory that cannot answer', async () => {
   const disabled = await harness({ enabled: false, component: 'InstrumentLookup' })
   try {
-    assert.match(disabled.document.body.textContent!, /名称搜索未开启/)
-    await disabled.click(disabled.button('开启免费源'))
+    assert.match(disabled.document.body.textContent!, /开启免费源后搜索/)
+    assert.equal(disabled.document.querySelector('input[type="search"]'), null, 'a source that cannot answer is not a text field')
+    await disabled.click(disabled.button('开启免费源后搜索'))
     await disabled.flush()
-    assert.equal(disabled.document.body.textContent!.includes('名称搜索未开启'), false)
-    assert.equal(disabled.input().disabled, false)
+    assert.ok(disabled.input(), 'the field appears once the source answers')
     await disabled.type('比亚')
     await disabled.flush()
     assert.equal(disabled.options().length, 3)
@@ -217,7 +217,7 @@ test('the lookup explains a disabled or unavailable directory next to the field'
 
   const unavailable = await harness({ enabled: true, statusFails: true, component: 'InstrumentLookup' })
   try {
-    assert.match(unavailable.document.body.textContent!, /名称搜索暂不可用/)
-    assert.equal(unavailable.input().disabled, true)
+    assert.match(unavailable.document.body.textContent!, /名称搜索不可用/)
+    assert.equal(unavailable.document.querySelector('input[type="search"]'), null, 'no field is offered for a directory that is gone')
   } finally { await unavailable.close() }
 })

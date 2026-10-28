@@ -221,6 +221,9 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
         only the text and gaps move the window. */}
     <header className="dxs-titlebar" data-window-drag>
       <div className="dxs-brand"><StockIcon size={16} /><h1>{discreet ? t('settings.discreet.title') : t('title')}</h1><span className="dxs-context">{discreet ? t('settings.discreet.subtitle') : view === 'market' ? t('market.subtitle') : view === 'hot' ? t('hot.subtitle') : view === 'predict' ? t('predict.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
+      {/* Looking a stock up belongs to the page chrome, not to a tab: one
+          compact pill for every view, and a pick opens the preview page. */}
+      <InstrumentLookup rpc={rpc} t={t} refreshToken={sourceRevision} onPick={(match: any) => openStock(match.symbol, match.name)} />
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
         <button type="button" aria-pressed={view === 'watchlist' && !previewOpen} onClick={() => { leavePreview(); setView('watchlist') }}>{tabLabel('page.view.watchlist', 'settings.tab.watchlist')}</button>
         <button type="button" aria-pressed={view === 'market' && !previewOpen} onClick={() => { leavePreview(); setView('market') }}>{tabLabel('page.view.market', 'settings.tab.market')}</button>
@@ -235,11 +238,6 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
       </div>
     </header>
     <div className="dxs-body">
-    {/* Looking a stock up is a first-class action on every tab, not a step of
-        the add form: a pick opens the preview page and never writes the list. */}
-    <div className="dxs-lookup-bar" role="search" aria-label={t('lookup.label')}>
-      <InstrumentLookup rpc={rpc} t={t} refreshToken={sourceRevision} onPick={(match: any) => openStock(match.symbol, match.name)} />
-    </div>
     {drillNotice ? <p role="status" className="dxs-banner">{drillNotice}</p> : null}
     {previewOpen ? <div className="dxs-stage dxs-stage-detail dxs-preview-page">
       <div className="dxs-preview-bar">

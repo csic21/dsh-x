@@ -197,41 +197,66 @@ export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0
   </div>
 }
 
+/** The magnifier that makes the pill read as a search field, not a stray input. */
+function LookupIcon() {
+  return <svg className="dxs-lookup-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <circle cx="7" cy="7" r="4.2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="m10.3 10.3 2.7 2.7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+}
+
 /**
- * Page-level lookup: type a name or code and open that stock's detail and chart
- * without adding it to the watchlist. It reuses the same directory call as the
+ * Page-level lookup, sized as a title-bar control rather than a form row: one
+ * pill, and everything that needs words (results, the disabled source, an
+ * error) opens in a popover under it. It reuses the same directory call as the
  * add form, but a pick only ever opens a preview — saving stays an explicit
  * second click on that page — so looking a stock up never edits the list.
  */
 export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
   const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken })
   const { availability } = search
-  return <div className="dxs-lookup">
-    <label className="dxs-sr-only" htmlFor={search.inputId}>{t('lookup.label')}</label>
-    <input
-      id={search.inputId} className="dxs-lookup-input" type="search" name="instrument-lookup" autoComplete="off" spellCheck={false}
-      role="combobox" aria-expanded={search.open && search.results.length > 0} aria-controls={search.listId} aria-autocomplete="list"
-      aria-activedescendant={search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : undefined}
-      placeholder={t('lookup.placeholder')} maxLength={SEARCH_MAX_QUERY}
-      value={search.query} disabled={availability === 'unavailable'}
-      onChange={event => search.change(event.target.value)}
-      onKeyDown={search.keyDown}
-      // The bar sits above every tab, so the list closes when the field loses
-      // focus instead of hovering over the next tab's content. Options keep
-      // focus on mousedown, so a click still lands on the picked row.
-      onBlur={() => search.setOpen(false)}
-      onFocus={() => { if (search.results.length) search.setOpen(true) }}
-    />
-    {availability === 'checking' && <span className="dxs-muted" role="status">{t('lookup.checking')}</span>}
-    {availability === 'unavailable' && <span className="dxs-muted">{t('lookup.unavailable')}</span>}
-    {availability === 'disabled' && <span className="dxs-muted">
-      {t('add.search.disabled')}{' '}
-      <button type="button" disabled={search.enabling} onClick={search.enable}>{t(search.enabling ? 'add.search.enabling' : 'add.search.enable')}</button>
-    </span>}
-    {search.enableError && <span role="alert" className="dxs-error">{t(search.enableError)}</span>}
-    {search.state === 'loading' && <span className="dxs-muted" role="status">{t('add.search.loading')}</span>}
-    {search.state === 'error' && <span role="alert" className="dxs-error">{t(search.error)}</span>}
-    {search.state === 'ready' && search.results.length === 0 && <span className="dxs-muted" role="status">{t('add.search.empty')}</span>}
-    <MatchList search={search} t={t} />
+
+  // A directory that cannot answer is a state, not a text field: the pill says
+  // what is missing and, when the switch is simply off, turns it on in place.
+  if (availability === 'disabled') return <div className="dxs-lookup-bar" role="search" aria-label={t('lookup.label')}>
+    <button type="button" className="dxs-lookup-pill" onClick={search.enable} disabled={search.enabling} title={t('lookup.hint')}>
+      <LookupIcon />{t(search.enabling ? 'add.search.enabling' : 'lookup.disabled')}
+    </button>
+    {search.enableError ? <span role="alert" className="dxs-error dxs-lookup-error" title={t(search.enableError)}>{t('lookup.enable-error')}</span> : null}
+  </div>
+  if (availability === 'unavailable') return <div className="dxs-lookup-bar" role="search" aria-label={t('lookup.label')}>
+    <span className="dxs-lookup-pill is-idle" title={t('lookup.unavailable')}><LookupIcon />{t('lookup.unavailable-short')}</span>
+  </div>
+
+  // The popover only exists for an active query: an open, typed field is the one
+  // state that has something to say (results, "no match", loading or an error).
+  const popover = search.open && search.query.trim().length > 0
+    && (search.state === 'ready' || search.state === 'loading' || search.state === 'error')
+  return <div className="dxs-lookup-bar" role="search" aria-label={t('lookup.label')}>
+    <div className="dxs-lookup">
+      <LookupIcon />
+      <label className="dxs-sr-only" htmlFor={search.inputId}>{t('lookup.label')}</label>
+      <input
+        id={search.inputId} className="dxs-lookup-input" type="search" name="instrument-lookup" autoComplete="off" spellCheck={false}
+        role="combobox" aria-expanded={search.open && search.results.length > 0}
+        aria-controls={search.open && search.results.length > 0 ? search.listId : undefined} aria-autocomplete="list"
+        aria-activedescendant={search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : undefined}
+        placeholder={t('lookup.placeholder')} title={t('lookup.hint')} maxLength={SEARCH_MAX_QUERY}
+        value={search.query}
+        onChange={event => search.change(event.target.value)}
+        onKeyDown={search.keyDown}
+        // The field sits in the title bar, so the list closes on blur instead of
+        // hovering over the next tab. Options keep focus on mousedown, so a
+        // click still lands on the picked row.
+        onBlur={() => search.setOpen(false)}
+        onFocus={() => { if (search.results.length) search.setOpen(true) }}
+      />
+    </div>
+    {popover ? <div className="dxs-lookup-pop">
+      {search.state === 'loading' ? <p className="dxs-lookup-note" role="status">{t('add.search.loading')}</p>
+        : search.state === 'error' ? <p className="dxs-lookup-note dxs-error" role="alert">{t(search.error)}</p>
+          : search.results.length ? <MatchList search={search} t={t} />
+            : <p className="dxs-lookup-note" role="status">{t('add.search.empty')}</p>}
+    </div> : null}
   </div>
 }
