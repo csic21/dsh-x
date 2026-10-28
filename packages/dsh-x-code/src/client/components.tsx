@@ -27,7 +27,10 @@ interface BottomPanelProps extends ShellHooks { tab: PanelTab, setTab: (tab: Pan
 export interface WorkspaceProps extends ShellHooks { sessionId: string | null, useCode: <T>(selector: (state: CodeState) => T) => T, inputActions: Parameters<typeof insertRequest>[0], refresh: () => void, selectTarget: (mode: string, base?: string) => void, loadFile: (target: FileTarget) => void, clearFile: () => void, loadReview: (id: string | null) => void, renderFactorySlot: (name: string, props: Record<string, unknown>, options?: { slots?: Record<string, unknown>, fallback?: React.ReactNode }) => React.ReactNode, openSession?: (id: string) => void, startSession?: (workspaceId?: string) => void, cancel: () => Promise<{ ok: boolean }>, back: () => void, t: Translate, formatTime: (value: string) => string }
 export interface ToolRowProps extends EntryProps { phase: string, block?: { isError?: boolean, meta?: { kind?: string, version?: number, review?: CodeReview } } }
 
-export function CodeIcon() { return <CodeGlyph size={20} /> }
+// The sidebar hands every global panel glyph the row's own size (16 expanded,
+// 18 in the collapsed rail). Ignoring it drew this icon at 20px, which widened
+// the glyph box and pushed the Code label right of every neighbouring row.
+export function CodeIcon({ size = 20 }: { size?: number }) { return <CodeGlyph size={size} /> }
 export function CodeEntry({ open, t }: EntryProps) {
   return <div className="dxc-dock"><button type="button" className="dxc-entry" onClick={open} title={t('open')}>
     <span className="dxc-entry-icon" aria-hidden="true"><CodeIcon /></span>

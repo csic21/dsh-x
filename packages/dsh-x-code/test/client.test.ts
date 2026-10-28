@@ -51,6 +51,11 @@ test('compiled Code client browses, searches, switches locales and prepares exac
  try{
   await act(async()=>exported.apply(ctx));entry=entries.get('dsh-x-code.workspace')[0]
   assert.equal(entries.get('main')[0].options.children['dsh-x-code.workspace'].scope,'session-maybe')
+  const navIcon=entries.get('sidebar.panellist')[0].component
+  const glyph=navIcon({size:16})
+  assert.equal(glyph.type(glyph.props).props.width,16,'the panel row size reaches the SVG')
+  const defaultGlyph=navIcon({})
+  assert.equal(defaultGlyph.type(defaultGlyph.props).props.width,20,'the composer entry keeps its default size')
   await act(async()=>{root.render(React.createElement(Render));await wait()})
   assert.match(document.body.textContent,/example/);assert.match(document.body.textContent,/No review yet/)
   assert.equal(document.querySelector('.dxc-activity')!.getAttribute('aria-label'),'Explorer')

@@ -1640,8 +1640,8 @@ var messageKey = (code) => {
 };
 
 // src/client/components.tsx
-function CodeIcon() {
-  return /* @__PURE__ */ import_react7.default.createElement(CodeGlyph, { size: 20 });
+function CodeIcon({ size = 20 }) {
+  return /* @__PURE__ */ import_react7.default.createElement(CodeGlyph, { size });
 }
 function CodeEntry({ open, t }) {
   return /* @__PURE__ */ import_react7.default.createElement("div", { className: "dxc-dock" }, /* @__PURE__ */ import_react7.default.createElement("button", { type: "button", className: "dxc-entry", onClick: open, title: t("open") }, /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-entry-icon", "aria-hidden": "true" }, /* @__PURE__ */ import_react7.default.createElement(CodeIcon, null)), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-entry-label" }, t("title")), /* @__PURE__ */ import_react7.default.createElement("span", { className: "dxc-entry-go", "aria-hidden": "true" }, /* @__PURE__ */ import_react7.default.createElement(ChevronIcon, { size: 14 }))));
