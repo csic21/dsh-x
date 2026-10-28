@@ -87,10 +87,12 @@ export const CSI300_FUNDS_MIN_COVERAGE = 0.8
  * with whatever quarterly series arrived; coverage says how much is missing.
  */
 export const CSI300_FUNDS_BUDGET_MS = 15_000
-/** Tencent's own minute feed, used only by the opt-in tail scan. */
+/** Tencent's own minute feed: the tail scan and the 分时 fallback both read it. */
 export const MARKET_MINUTE_ENDPOINT = 'https://web.ifzq.gtimg.cn/appstock/app/minute/query'
 export const MARKET_MINUTE_SOURCE = '腾讯分时 (unofficial)'
 export const MARKET_MINUTE_MAX_BYTES = 128 * 1024
+/** Labelled as its own source so a chart drawn from the fallback never claims East Money. */
+export const MARKET_INTRADAY_TENCENT_SOURCE = MARKET_MINUTE_SOURCE
 /** Fallback minute feed: Sina's 1-minute K-line JSONP, already used by the gold panel. */
 export const MARKET_SINA_MINUTE_ENDPOINT = 'https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData'
 export const MARKET_SINA_MINUTE_MAX_BYTES = 256 * 1024
@@ -98,6 +100,24 @@ export const MARKET_SINA_MINUTE_SOURCE = '新浪分时 (unofficial)'
 export const MARKET_TAIL_SOURCE = `${MARKET_SOURCE_NAME} + 腾讯/新浪分时 (unofficial)`
 const EASTMONEY_UT = 'fa5fd1943c7b386f172d6893dbfba10b'
 export const MARKET_INTRADAY_TTL_MS = 15_000
+/**
+ * The 分时 host answers by dropping the connection when it is busy or throttling
+ * (`Empty reply from server`), which used to take the whole line down on the
+ * first attempt. A dropped connection costs nothing to retry, so each source
+ * gets a second try before the next one is used.
+ */
+export const MARKET_INTRADAY_ATTEMPTS = 2
+/**
+ * Shorter than the shared timeout on purpose: this panel polls, so a hung host
+ * must not hold the request for the full budget on every attempt.
+ */
+export const MARKET_INTRADAY_TIMEOUT_MS = 5_000
+/**
+ * A 分时 source that just failed is skipped for this long, so a throttled host
+ * costs one failure per minute instead of one per poll; the fallback keeps the
+ * chart live in the meantime.
+ */
+export const MARKET_INTRADAY_COOLDOWN_MS = 60_000
 /**
  * How long a global upstream that just failed is skipped. Long enough that a
  * blocked host costs one timeout per two minutes instead of one per refresh,
@@ -570,20 +590,38 @@ export interface TailMinuteSeries {
   points: TailMinutePoint[]
 }
 
+/** One A-share minute from the Tencent feed, already differenced to this minute. */
+interface TencentMinuteRow {
+  time: string
+  price: number
+  /** Lots traded inside this minute. */
+  volume: number
+  /** CNY traded inside this minute. */
+  amount: number
+  /** Session-to-date counters, kept because the running average is derived from them. */
+  cumulativeVolume: number
+  cumulativeAmount: number
+}
+
 /**
- * Tencent's minute rows are `HHmm price cumulativeVolume cumulativeAmount`, not
- * per-minute values, and the feed appends after-hours rows beyond 15:00. This
- * parser keeps only A-share minutes, differences the cumulative counters, and
- * drops non-monotonic rows instead of turning them into negative volume.
- * Exported for tests.
+ * The shared reader for Tencent's minute feed. Rows are `HHmm price
+ * cumulativeVolume cumulativeAmount`, not per-minute values, and the feed
+ * appends after-hours rows beyond 15:00: only A-share minutes are kept, the
+ * cumulative counters are differenced, and non-monotonic rows are dropped
+ * instead of becoming negative volume.
  */
-export function parseTencentMinutePayload(payload: any, symbol: string, now: number): TailMinuteSeries {
+function readTencentMinuteRows(payload: any, symbol: string, now: number): {
+  name: string | null
+  sessionDate: string
+  previousClose: number | null
+  rows: TencentMinuteRow[]
+} {
   const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`
   const entry = payload?.data?.[code]
   const block = entry?.data
-  const rows = block?.data
-  if (!block || !Array.isArray(rows)) throw new Error('minute missing')
-  if (rows.length > 400) throw new Error('minute response too large')
+  const lines = block?.data
+  if (!block || !Array.isArray(lines)) throw new Error('minute missing')
+  if (lines.length > 400) throw new Error('minute response too large')
   const stamp = /^(\d{4})(\d{2})(\d{2})$/.exec(String(block.date ?? ''))
   if (!stamp) throw new Error('minute session date')
   const sessionDate = `${stamp[1]}-${stamp[2]}-${stamp[3]}`
@@ -591,11 +629,11 @@ export function parseTencentMinutePayload(payload: any, symbol: string, now: num
   const quote = entry?.qt?.[code]
   const name = Array.isArray(quote) ? cleanText(quote[1], 64) : null
   const previousClose = Array.isArray(quote) ? finiteNumber(quote[4], 0.0001, 1e12) : null
-  const points: TailMinutePoint[] = []
+  const parsed: TencentMinuteRow[] = []
   let previousVolume = 0
   let previousAmount = 0
   let previousTime = ''
-  for (const raw of rows) {
+  for (const raw of lines) {
     if (typeof raw !== 'string') continue
     const fields = raw.trim().split(/\s+/)
     if (fields.length < 4) continue
@@ -618,8 +656,19 @@ export function parseTencentMinutePayload(payload: any, symbol: string, now: num
     previousVolume = cumulativeVolume
     previousAmount = cumulativeAmount
     previousTime = time
-    points.push({ time, price, volume, amount })
+    parsed.push({ time, price, volume, amount, cumulativeVolume, cumulativeAmount })
   }
+  return { name, sessionDate, previousClose, rows: parsed }
+}
+
+/**
+ * The tail scan wants per-minute deltas only. Kept as its own projection so the
+ * shared reader stays free to keep the cumulative counters the 分时 line needs.
+ * Exported for tests.
+ */
+export function parseTencentMinutePayload(payload: any, symbol: string, now: number): TailMinuteSeries {
+  const { name, sessionDate, previousClose, rows } = readTencentMinuteRows(payload, symbol, now)
+  const points: TailMinutePoint[] = rows.map(({ time, price, volume, amount }) => ({ time, price, volume, amount }))
   if (points.length < 2) throw new Error('minute empty')
   if (points.length > MARKET_INTRADAY_MAX_POINTS) throw new Error('minute too many points')
   return {
@@ -1076,10 +1125,15 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
   const inflight = new Map<string, Promise<any>>()
   /** Per-source back-off after a failure; see `GLOBAL_SOURCE_COOLDOWN_MS`. */
   const globalCooldown = new Map<string, number>()
+  /** Same idea for the 分时 sources: a throttled host is skipped, not retried every poll. */
+  const intradayCooldown = new Map<string, number>()
 
-  async function request(url: string, encoding: 'utf-8' | 'gbk', maxBytes: number, headers: Record<string, string> = {}): Promise<string> {
+  async function request(
+    url: string, encoding: 'utf-8' | 'gbk', maxBytes: number,
+    headers: Record<string, string> = {}, budgetMs = timeoutMs,
+  ): Promise<string> {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(budgetMs, timeoutMs)))
     try {
       const response = await fetchImpl(url, {
         method: 'GET',
@@ -1096,8 +1150,8 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     }
   }
 
-  async function requestJson(url: string, maxBytes = MARKET_MAX_BYTES): Promise<any> {
-    const text = await request(url, 'utf-8', maxBytes)
+  async function requestJson(url: string, maxBytes = MARKET_MAX_BYTES, budgetMs = timeoutMs): Promise<any> {
+    const text = await request(url, 'utf-8', maxBytes, {}, budgetMs)
     let value: any
     try { value = JSON.parse(text) } catch { throw new Error('market invalid json') }
     if (!value || typeof value !== 'object') throw new Error('market invalid json')
@@ -1387,12 +1441,65 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
    * prove the unit. Points outside the A-share session, duplicates and
    * malformed rows are dropped; nothing is interpolated.
    */
-  function loadIntraday(symbol: string): Promise<MarketIntraday> {
-    return requestJson(intradayUrl(symbol), MARKET_MAX_BYTES).then(payload => {
-      const unavailable = (message: string) => Object.assign(new Error(message), { code: 'finance/intraday-unavailable' })
-      try { return parseTrendsPayload(payload, symbol, now()) }
-      catch (error: any) { throw unavailable(error?.message || 'intraday empty') }
-    })
+  async function loadEastMoneyIntraday(symbol: string): Promise<MarketIntraday> {
+    const payload = await requestJson(intradayUrl(symbol), MARKET_MAX_BYTES, MARKET_INTRADAY_TIMEOUT_MS)
+    try { return parseTrendsPayload(payload, symbol, now()) }
+    catch (error: any) { throw intradayUnavailable(error?.message) }
+  }
+
+  /**
+   * The fallback line. Tencent's minute feed is the one the tail scan already
+   * reads, so the host and the parser are the same code path that is exercised
+   * elsewhere. It answers while East Money is dropping connections.
+   */
+  async function loadTencentIntraday(symbol: string): Promise<MarketIntraday> {
+    const payload = await requestJson(tencentMinuteUrl(symbol), MARKET_MINUTE_MAX_BYTES, MARKET_INTRADAY_TIMEOUT_MS)
+    try { return parseTencentIntradayPayload(payload, symbol, now()) }
+    catch (error: any) { throw intradayUnavailable(error?.message) }
+  }
+
+  const coolingDown = (map: Map<string, number>, key: string) => (map.get(key) ?? 0) > now()
+
+  /**
+   * East Money's trends feed is tried first because it carries per-minute
+   * volume and the running average directly. That host answers a busy or
+   * throttled client by dropping the connection (`Empty reply from server`),
+   * which used to surface as "分时获取失败" on the first attempt. A dropped
+   * connection costs nothing to retry, so each source gets a second try, and
+   * Tencent draws the same line from its cumulative counters when East Money
+   * keeps failing. A source that just failed is skipped for
+   * `MARKET_INTRADAY_COOLDOWN_MS`, so a throttled host does not cost two
+   * attempts on every poll; the other source keeps the chart live meanwhile.
+   */
+  async function loadIntraday(symbol: string): Promise<MarketIntraday> {
+    const failures: unknown[] = []
+    if (!coolingDown(intradayCooldown, 'intraday:eastmoney')) {
+      try {
+        const line = await retry(() => loadEastMoneyIntraday(symbol), MARKET_INTRADAY_ATTEMPTS)
+        intradayCooldown.delete('intraday:eastmoney')
+        return line
+      } catch (error) {
+        failures.push(error)
+        intradayCooldown.set('intraday:eastmoney', now() + MARKET_INTRADAY_COOLDOWN_MS)
+      }
+    }
+    try {
+      const line = await retry(() => loadTencentIntraday(symbol), MARKET_INTRADAY_ATTEMPTS)
+      intradayCooldown.delete('intraday:tencent')
+      return line
+    } catch (error) {
+      failures.push(error)
+      intradayCooldown.set('intraday:tencent', now() + MARKET_INTRADAY_COOLDOWN_MS)
+      // The cooldown only exists to spare a throttled host while the other
+      // source serves the chart. With both down, the next request starts over
+      // at the primary instead of waiting out a back-off that buys nothing.
+      intradayCooldown.delete('intraday:eastmoney')
+    }
+    // A source that answered with no usable points says "this symbol has no
+    // 分时"; a transport failure says the feed is unreachable. Only the first is
+    // an honest "unavailable", so it wins when any source actually answered.
+    const answered = failures.find(error => (error as any)?.code === 'finance/intraday-unavailable')
+    throw answered ?? failures.at(-1) ?? new Error('intraday unavailable')
   }
 
   /**
@@ -1955,6 +2062,11 @@ export function eastmoneySecId(symbol: string): string {
   throw new Error('intraday market')
 }
 
+/** A source answered, but with no usable 分时 points: this symbol has no line. */
+function intradayUnavailable(message: unknown): Error {
+  return Object.assign(new Error(typeof message === 'string' && message ? message : 'intraday empty'), { code: 'finance/intraday-unavailable' })
+}
+
 export function intradayUrl(symbol: string): string {
   const params = new URLSearchParams({
     secid: eastmoneySecId(symbol),
@@ -2013,12 +2125,6 @@ export function parseTrendsPayload(payload: any, symbol: string, now: number): M
   const quotedName = cleanText(data.name, 64)
   const previousClose = positiveOrNull(typeof data.preClose === 'number' ? data.preClose : finiteNumber(String(data.preClose ?? ''), 0, 1e12))
   const sample = previousClose ?? points.at(-1)!.price
-  const clock = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Shanghai', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(new Date(now))
-  const pick = (type: string) => clock.find(part => part.type === type)?.value ?? ''
-  const minutes = Number(pick('hour')) * 60 + Number(pick('minute'))
-  const weekend = pick('weekday') === 'Sat' || pick('weekday') === 'Sun'
   return {
     symbol,
     name: quotedName ?? symbol,
@@ -2030,7 +2136,58 @@ export function parseTrendsPayload(payload: any, symbol: string, now: number): M
     volumeBasis: 'lots',
     currency: 'CNY',
     exchangeTimezone: 'Asia/Shanghai',
-    closed: sessionDate < today || weekend || minutes >= 15 * 60,
+    closed: intradaySessionClosed(sessionDate, today, now),
+    points,
+  }
+}
+
+/**
+ * A session is over once its date is behind the Beijing calendar, or the clock
+ * passed 15:00, or it is a weekend. Both 分时 parsers must answer the same way.
+ */
+function intradaySessionClosed(sessionDate: string, today: string, now: number): boolean {
+  if (sessionDate < today) return true
+  const clock = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(now))
+  const pick = (type: string) => clock.find(part => part.type === type)?.value ?? ''
+  const weekend = pick('weekday') === 'Sat' || pick('weekday') === 'Sun'
+  return weekend || Number(pick('hour')) * 60 + Number(pick('minute')) >= 15 * 60
+}
+
+/**
+ * The 分时 fallback. Tencent's feed carries the same minute closes and lots as
+ * East Money but only cumulative counters, so the per-minute volume is the
+ * delta and the running average is the cumulative amount over the cumulative
+ * lots. Both are derived from the source's own numbers; nothing is filled in.
+ * Exported for tests.
+ */
+export function parseTencentIntradayPayload(payload: any, symbol: string, now: number): MarketIntraday {
+  const { name, sessionDate, previousClose, rows } = readTencentMinuteRows(payload, symbol, now)
+  if (!rows.length) throw new Error('intraday empty')
+  if (rows.length > MARKET_INTRADAY_MAX_POINTS) throw new Error('intraday too many points')
+  const points: MarketIntraday['points'] = rows.map(row => ({
+    time: row.time,
+    price: row.price,
+    volume: row.volume,
+    // `cumulativeVolume` is lots, so the share count is lots × 100.
+    average: row.cumulativeVolume > 0 && row.cumulativeAmount > 0
+      ? Math.round(row.cumulativeAmount / (row.cumulativeVolume * 100) * 10_000) / 10_000
+      : null,
+  }))
+  const sample = previousClose ?? points.at(-1)!.price
+  return {
+    symbol,
+    name: name ?? symbol,
+    source: MARKET_INTRADAY_TENCENT_SOURCE,
+    fetchedAt: isoNow(now),
+    sessionDate,
+    previousClose,
+    pricePrecision: sample < 10 ? 3 : 2,
+    volumeBasis: 'lots',
+    currency: 'CNY',
+    exchangeTimezone: 'Asia/Shanghai',
+    closed: intradaySessionClosed(sessionDate, shanghaiToday(now), now),
     points,
   }
 }

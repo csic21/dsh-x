@@ -57,7 +57,7 @@ async function harness(options: any = {}) {
   const { createRoot } = await import('react-dom/client')
   const root = createRoot(dom.window.document.getElementById('root')!)
   const t = (key: any) => zh[key as keyof typeof zh] ?? key
-  await act(async () => root.render(React.createElement(module.exports.InstrumentSearch, {
+  await act(async () => root.render(React.createElement(module.exports[options.component ?? 'InstrumentSearch'], {
     rpc, t, delay: options.delay ?? 0, onPick: (match: any) => picked.push(JSON.parse(JSON.stringify(match))),
   })))
   const flush = async (ms = 6) => { await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) }) }
@@ -184,4 +184,40 @@ test('a stale response never replaces the newest query', async () => {
     assert.deepEqual(h.options(), ['沪深300ETF华泰柏瑞SH.510300ETF'])
     assert.equal(h.calls.at(-1).payload.query, 'ab')
   } finally { await h.close() }
+})
+
+test('the page lookup picks a result for the caller instead of the add form', async () => {
+  const h = await harness({ enabled: true, component: 'InstrumentLookup', delay: 20 })
+  try {
+    await h.type('比亚')
+    await h.flush(40)
+    assert.deepEqual(h.options(), ['比亚迪SZ.002594股票', '沪深300ETF华泰柏瑞SH.510300ETF', '嘉实沪深300ETF联接(LOF)ASZ.160706LOF'])
+    await h.click(h.document.querySelector('[role="option"]'))
+    assert.deepEqual(h.picked, [BYD])
+    assert.equal(h.input().value, '')
+    assert.equal(h.document.querySelector('[role="listbox"]'), null)
+    // The lookup only reads the directory: a pick is handed to the page, which
+    // decides between a preview and an existing watchlist row.
+    assert.deepEqual(h.calls.map((call: any) => call.payload.action), ['status', 'search'])
+  } finally { await h.close() }
+})
+
+test('the lookup explains a disabled or unavailable directory next to the field', async () => {
+  const disabled = await harness({ enabled: false, component: 'InstrumentLookup' })
+  try {
+    assert.match(disabled.document.body.textContent!, /名称搜索未开启/)
+    await disabled.click(disabled.button('开启免费源'))
+    await disabled.flush()
+    assert.equal(disabled.document.body.textContent!.includes('名称搜索未开启'), false)
+    assert.equal(disabled.input().disabled, false)
+    await disabled.type('比亚')
+    await disabled.flush()
+    assert.equal(disabled.options().length, 3)
+  } finally { await disabled.close() }
+
+  const unavailable = await harness({ enabled: true, statusFails: true, component: 'InstrumentLookup' })
+  try {
+    assert.match(unavailable.document.body.textContent!, /名称搜索暂不可用/)
+    assert.equal(unavailable.input().disabled, true)
+  } finally { await unavailable.close() }
 })

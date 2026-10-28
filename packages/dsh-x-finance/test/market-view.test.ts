@@ -8,6 +8,7 @@ import { zh, en } from '../src/client/locales.ts'
 import { createFormatters } from '../src/client/format.ts'
 import { MARKET_CSS } from '../src/client/market/styles.ts'
 import { CSS } from '../src/client/styles.ts'
+import { SEARCH_RPC_ENDPOINT } from '../src/instrument-search.ts'
 
 
 /** Brace depth at `index`: 0 means the rule is a top-level rule, not nested. */
@@ -891,4 +892,73 @@ test('the CSI 300 drill-down carries the fund-share snapshot and its quarterly t
     assert.ok(h.document.querySelectorAll('.dxs-csi300-table tbody tr').length >= 4)
     assert.doesNotMatch(text, /NaN|undefined/)
   } finally { await h.close() }
+})
+
+test('searching from the page opens a preview and leaves the watchlist untouched', async () => {
+  ;(globalThis as any).__workbenchStub = Object.assign((props: any) => { (globalThis as any).__workbenchStub.calls.push(props); return null }, { calls: [] as any[] })
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true })
+  const original: any = { window: (globalThis as any).window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT }
+  ;(globalThis as any).window = dom.window
+  globalThis.document = dom.window.document
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+  const rpc = {
+    call: async (_channel: string, endpoint: string, payload: any) => {
+      if (endpoint === SEARCH_RPC_ENDPOINT) {
+        if (payload?.action === 'status') return { ok: true, value: { enabled: true, available: true, source: 'test', results: [] } }
+        return { ok: true, value: { enabled: true, available: true, source: 'test', results: [{ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock' }] } }
+      }
+      if (payload?.action === 'get') return { ok: true, value: { enabled: true, forced: false } }
+      if (payload.kind === 'quotes') return { ok: true, value: { status: 'unconfigured', source: null } }
+      if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
+      if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
+      if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
+      if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan } }
+      return { ok: true, value: { status: 'ready', board } }
+    },
+  }
+  const { createRoot } = await import('react-dom/client')
+  const root = createRoot(dom.window.document.getElementById('root')!)
+  const added: any[] = [], previews: any[] = []
+  const state: any = { items: [], collapsed: false, barHidden: false, storageError: '', scopeStatus: 'ready', scopeId: '11111111-1111-4111-8111-111111111111', placement: 'mounted', selectedSymbol: null, preview: null }
+  const useWatchlist = (selector: any) => selector(state)
+  const useResource = () => ({ status: 'live', value: null })
+  const noop = () => {}
+  const flush = async (ms = 20) => { await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) }) }
+  try {
+    await act(async () => root.render(React.createElement(pageModule.exports.StockPage, {
+      useWatchlist, useResource, add: (item: any) => { added.push(item) },
+      remove: noop, move: noop, select: (symbol: any) => { state.selectedSymbol = symbol; state.preview = null },
+      preview: (symbol: any, name: any) => { previews.push({ symbol, name }); state.preview = { symbol, name } },
+      closePreview: () => { state.preview = null },
+      setFixed: noop, toggleBar: noop, back: noop, retryScope: noop,
+      t: translation(zh), format: createFormatters(() => 'zh'), getLocale: () => 'zh', rpc,
+    })))
+    await flush()
+    const input = dom.window.document.querySelector<HTMLInputElement>('.dxs-lookup input[type="search"]')
+    assert.ok(input, 'the page offers a lookup field')
+    assert.equal(input!.closest('.dxs-form'), null, 'looking a stock up is not a step of the add form')
+    assert.ok(dom.window.document.querySelector('.dxs-form input[type="search"]'), 'the add form keeps its own search')
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '比亚')
+    await act(async () => input!.dispatchEvent(new dom.window.Event('input', { bubbles: true })))
+    // The directory call is debounced, exactly like the add form.
+    await flush(320)
+    const option = dom.window.document.querySelector<HTMLElement>('.dxs-lookup [role="option"]')
+    assert.ok(option, 'the lookup lists matches')
+    assert.match(option!.textContent ?? '', /比亚迪/)
+    await act(async () => option!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await flush()
+    assert.deepEqual(previews, [{ symbol: 'SZ.002594', name: '比亚迪' }])
+    assert.deepEqual(added, [], 'looking a stock up must not add it to the watchlist')
+    assert.equal(input!.value, '')
+    const text = dom.window.document.body.textContent ?? ''
+    assert.match(text, /正在临时查看 比亚迪/)
+    assert.match(text, /临时查看（未加入自选）/)
+    assert.ok(dom.window.document.querySelector('.dxs-preview-add'), 'saving stays an explicit second step')
+    assert.ok(dom.window.document.querySelector('.dxs-rail') === null, 'a preview keeps its own full-width page')
+    assert.ok(dom.window.document.querySelector('.dxs-lookup input'), 'the lookup stays usable while previewing')
+  } finally {
+    await act(async () => root.unmount())
+    dom.window.close()
+    for (const [key, value] of Object.entries(original)) { if (value === undefined) delete (globalThis as any)[key]; else (globalThis as any)[key] = value }
+  }
 })

@@ -11,7 +11,11 @@ import { workbenchZh, workbenchEn } from '../src/client/workbench-locales.ts'
 const SCOPE_A = '11111111-1111-4111-8111-111111111111'
 const SCOPE_B = '22222222-2222-4222-8222-222222222222'
 const scopeKey = (scope: any) => `dsh-x-finance:chart:v1:${scope}`
-const t = (dictionary: any) => (key: any) => dictionary[key] ?? key
+const chartSettingsKey = (scope: any) => `dsh-x-finance:history:v1:${scope}`
+const t = (dictionary: any) => (key: any, params?: any) => {
+  const text = dictionary[key] ?? key
+  return params ? text.replace(/\{(\w+)\}/g, (_: any, name: string) => String(params[name] ?? '')) : text
+}
 const source = (name: any, symbol = 'SH.600519') => {
   const data = JSON.parse(createImportExample())
   data.name = name
@@ -25,10 +29,14 @@ const bundle = await build({
   entryPoints: [new URL('../src/client/workbench.tsx', import.meta.url).pathname],
   bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react'],
   plugins: [{
-    name: 'stub-stock-chart',
+    name: 'stub-charts',
     setup(builder) {
       builder.onResolve({ filter: /\/chart\/StockChart\.tsx$/ }, () => ({ path: 'stock-chart-test-stub', namespace: 'test' }))
-      builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: 'export function StockChart(props) { return globalThis.chartStub(props) }', loader: 'js' }))
+      // The intraday line is drawn on a canvas, which jsdom does not implement;
+      // the hook and the panel around it are what these tests exercise.
+      builder.onResolve({ filter: /\/chart\/IntradayChart\.tsx$/ }, () => ({ path: 'intraday-chart-test-stub', namespace: 'test' }))
+      builder.onLoad({ filter: /^stock-chart-test-stub$/, namespace: 'test' }, () => ({ contents: 'export function StockChart(props) { return globalThis.chartStub(props) }', loader: 'js' }))
+      builder.onLoad({ filter: /^intraday-chart-test-stub$/, namespace: 'test' }, () => ({ contents: 'export function IntradayChart(props) { return globalThis.intradayStub(props) }', loader: 'js' }))
     },
   }],
 })
@@ -55,6 +63,9 @@ async function harness(initial: any = {}) {
       return React.createElement('div', { 'data-chart-stub': props.dataset.kind, 'data-symbol': props.dataset.symbol, 'data-locale': props.locale },
         React.createElement('span', { 'data-chart-name': true }, props.dataset.name),
         React.createElement('button', { type: 'button', 'data-change-config': true, onClick: () => props.onConfigChange({ ...props.config, difVisible: !props.config.difVisible, bars: props.dataset.bars, dataset: props.dataset }) }, 'Change test preference'))
+    },
+    intradayStub(props: any) {
+      return React.createElement('div', { 'data-intraday-stub': props.session.symbol }, props.session.points.at(-1).price)
     },
   })
   const { createRoot } = await import('react-dom/client')
@@ -299,5 +310,67 @@ test('finite but arithmetically unsupported prices are rejected before rendering
     assert.match(h.document.querySelector<HTMLElement & HTMLInputElement>('[role="alert"]')?.textContent ?? '', /Invalid file or data/)
     assert.equal(h.charts.at(-1).dataset.id, id)
     assert.doesNotMatch(h.document.body.textContent, /Unsupported extreme/)
+  } finally { await h.close() }
+})
+
+const INTRADAY_SESSION = {
+  symbol: 'SH.600519', name: '贵州茅台', source: '东方财富分时 (unofficial)',
+  fetchedAt: '2026-10-19T03:00:00.000Z', sessionDate: '2026-10-19', previousClose: 1390,
+  pricePrecision: 2, volumeBasis: 'lots', currency: 'CNY', exchangeTimezone: 'Asia/Shanghai',
+  closed: false,
+  points: [{ time: '09:30', price: 1400, volume: 10, average: 1400 }, { time: '09:31', price: 1401, volume: 20, average: 1400.5 }],
+}
+const settle = async (ms: number) => { await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) }) }
+
+test('a dropped 分时 request is retried before the error card, and a failed refresh keeps the line', async () => {
+  let calls = 0
+  let failing = true
+  const rpc = {
+    call: async (_channel: string, _endpoint: string, payload: any) => {
+      if (payload?.kind !== 'intraday') return { ok: false, error: { code: 'finance/unexpected' } }
+      calls++
+      if (failing) throw Object.assign(new Error('fetch failed'), { code: 'finance/market-unavailable' })
+      return { ok: true, value: { status: 'ready', intraday: INTRADAY_SESSION } }
+    },
+  }
+  const h = await harness({ rpc, props: { locale: 'zh' }, saved: { [chartSettingsKey(SCOPE_A)]: JSON.stringify({ interval: 'intraday' }) } })
+  try {
+    // The first request fails; the hook retries instead of painting the error card.
+    assert.equal(calls, 1)
+    failing = false
+    await settle(900)
+    assert.equal(calls, 2)
+    assert.equal(h.document.querySelector<HTMLElement & HTMLInputElement>('[data-intraday-stub]')?.dataset.intradayStub, 'SH.600519')
+    assert.match(h.document.body.textContent ?? '', /贵州茅台/)
+    assert.doesNotMatch(h.document.body.textContent ?? '', /分时获取失败/)
+
+    // A refresh that fails for good keeps the fetched line and says how old it is.
+    failing = true
+    const before = calls
+    await h.click(h.button('刷新日K'))
+    await settle(2600)
+    assert.equal(calls - before, 3, 'the refresh is retried before it gives up')
+    assert.equal(h.document.querySelector<HTMLElement & HTMLInputElement>('[data-intraday-stub]')?.dataset.intradayStub, 'SH.600519')
+    assert.match(h.document.body.textContent ?? '', /刷新失败，仍在显示/)
+    assert.match(h.document.body.textContent ?? '', /2026-10-19T03:00:00\.000Z/, 'the note says when that line was fetched')
+    assert.doesNotMatch(h.document.body.textContent ?? '', /分时获取失败/)
+  } finally { await h.close() }
+})
+
+test('an intraday line the Host reports as absent stays a hard "unavailable" and is not retried', async () => {
+  let calls = 0
+  const rpc = {
+    call: async (_channel: string, _endpoint: string, payload: any) => {
+      if (payload?.kind !== 'intraday') return { ok: false, error: { code: 'finance/unexpected' } }
+      calls++
+      return { ok: false, error: { code: 'finance/intraday-unavailable' } }
+    },
+  }
+  const h = await harness({ rpc, props: { locale: 'zh' }, saved: { [chartSettingsKey(SCOPE_A)]: JSON.stringify({ interval: 'intraday' }) } })
+  try {
+    await settle(900)
+    assert.equal(calls, 1, 'a symbol with no line will not change on a retry')
+    assert.match(h.document.body.textContent ?? '', /暂无分时/)
+    assert.doesNotMatch(h.document.body.textContent ?? '', /分时获取失败/)
   } finally { await h.close() }
 })

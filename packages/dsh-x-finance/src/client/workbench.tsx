@@ -192,6 +192,10 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
     {showIntraday && !intraday.value && intraday.status === 'unavailable' ? <div className="dxs-chart-empty"><h3>{t('intraday.unavailable-title')}</h3><p>{t('intraday.unavailable')}</p></div> : null}
     {showIntraday && !intraday.value && intraday.status === 'error' ? <div className="dxs-chart-empty" role="alert"><h3>{t('intraday.error-title')}</h3><p>{t('intraday.error')}</p><button type="button" onClick={intraday.refresh}>{t('workbench.retry')}</button></div> : null}
     {showIntraday && intraday.value ? <IntradayPanel session={intraday.value} t={t} locale={locale} /> : null}
+    {showIntraday && intraday.value && intraday.status === 'error'
+      ? <p className="dxs-muted" role="status">{t('intraday.stale', { time: format?.time ? format.time(intraday.value.fetchedAt, t) : intraday.value.fetchedAt })}
+        {' '}<button type="button" onClick={intraday.refresh} disabled={intraday.refreshing}>{t('workbench.retry')}</button></p>
+      : null}
     {mode === 'market' && view !== 'intraday' && (history.status === 'loading' || (history.status === 'ready' && history.refreshing)) && !dataset ? <p role="status" className="dxs-muted">{t('workbench.market-loading')}</p> : null}
     {mode === 'market' && view !== 'intraday' && !dataset && history.status === 'unconfigured' ? <div className="dxs-chart-empty"><h3>{t('workbench.market-off-title')}</h3><p>{t('workbench.market-off')}</p></div> : null}
     {mode === 'market' && view !== 'intraday' && !dataset && history.status === 'unavailable' ? <div className="dxs-chart-empty"><h3>{t('workbench.market-unavailable-title')}</h3><p>{t('workbench.market-unavailable')}</p></div> : null}

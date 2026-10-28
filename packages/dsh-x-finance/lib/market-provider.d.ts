@@ -37,16 +37,36 @@ export declare const CSI300_FUNDS_MIN_COVERAGE = 0.8;
  * with whatever quarterly series arrived; coverage says how much is missing.
  */
 export declare const CSI300_FUNDS_BUDGET_MS = 15000;
-/** Tencent's own minute feed, used only by the opt-in tail scan. */
+/** Tencent's own minute feed: the tail scan and the 分时 fallback both read it. */
 export declare const MARKET_MINUTE_ENDPOINT = "https://web.ifzq.gtimg.cn/appstock/app/minute/query";
 export declare const MARKET_MINUTE_SOURCE = "\u817E\u8BAF\u5206\u65F6 (unofficial)";
 export declare const MARKET_MINUTE_MAX_BYTES: number;
+/** Labelled as its own source so a chart drawn from the fallback never claims East Money. */
+export declare const MARKET_INTRADAY_TENCENT_SOURCE = "\u817E\u8BAF\u5206\u65F6 (unofficial)";
 /** Fallback minute feed: Sina's 1-minute K-line JSONP, already used by the gold panel. */
 export declare const MARKET_SINA_MINUTE_ENDPOINT = "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_data=/CN_MarketDataService.getKLineData";
 export declare const MARKET_SINA_MINUTE_MAX_BYTES: number;
 export declare const MARKET_SINA_MINUTE_SOURCE = "\u65B0\u6D6A\u5206\u65F6 (unofficial)";
 export declare const MARKET_TAIL_SOURCE = "\u817E\u8BAF\u884C\u60C5 (unofficial) + \u817E\u8BAF/\u65B0\u6D6A\u5206\u65F6 (unofficial)";
 export declare const MARKET_INTRADAY_TTL_MS = 15000;
+/**
+ * The 分时 host answers by dropping the connection when it is busy or throttling
+ * (`Empty reply from server`), which used to take the whole line down on the
+ * first attempt. A dropped connection costs nothing to retry, so each source
+ * gets a second try before the next one is used.
+ */
+export declare const MARKET_INTRADAY_ATTEMPTS = 2;
+/**
+ * Shorter than the shared timeout on purpose: this panel polls, so a hung host
+ * must not hold the request for the full budget on every attempt.
+ */
+export declare const MARKET_INTRADAY_TIMEOUT_MS = 5000;
+/**
+ * A 分时 source that just failed is skipped for this long, so a throttled host
+ * costs one failure per minute instead of one per poll; the fallback keeps the
+ * chart live in the meantime.
+ */
+export declare const MARKET_INTRADAY_COOLDOWN_MS = 60000;
 /**
  * How long a global upstream that just failed is skipped. Long enough that a
  * blocked host costs one timeout per two minutes instead of one per refresh,
@@ -200,10 +220,8 @@ export interface TailMinuteSeries {
     points: TailMinutePoint[];
 }
 /**
- * Tencent's minute rows are `HHmm price cumulativeVolume cumulativeAmount`, not
- * per-minute values, and the feed appends after-hours rows beyond 15:00. This
- * parser keeps only A-share minutes, differences the cumulative counters, and
- * drops non-monotonic rows instead of turning them into negative volume.
+ * The tail scan wants per-minute deltas only. Kept as its own projection so the
+ * shared reader stays free to keep the cumulative counters the 分时 line needs.
  * Exported for tests.
  */
 export declare function parseTencentMinutePayload(payload: any, symbol: string, now: number): TailMinuteSeries;
@@ -329,4 +347,12 @@ export declare function intradayUrl(symbol: string): string;
  * The 分时 price is the minute close. Volume stays in lots. Exported for tests.
  */
 export declare function parseTrendsPayload(payload: any, symbol: string, now: number): MarketIntraday;
+/**
+ * The 分时 fallback. Tencent's feed carries the same minute closes and lots as
+ * East Money but only cumulative counters, so the per-minute volume is the
+ * delta and the running average is the cumulative amount over the cumulative
+ * lots. Both are derived from the source's own numbers; nothing is filled in.
+ * Exported for tests.
+ */
+export declare function parseTencentIntradayPayload(payload: any, symbol: string, now: number): MarketIntraday;
 export { INDEXES as MARKET_INDEXES };

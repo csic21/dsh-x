@@ -4,7 +4,7 @@ import { MarketView } from './market/MarketView.tsx'
 import { HotView } from './market/HotView.tsx'
 import { PredictView } from './market/PredictView.tsx'
 import { GlobalView } from './market/GlobalView.tsx'
-import { InstrumentSearch } from './SearchBox.tsx'
+import { InstrumentLookup, InstrumentSearch } from './SearchBox.tsx'
 import { normalizeAShare, MAX_FIXED, MAX_WATCHLIST, fixedItems, quoteStatus } from '../watchlist.ts'
 import { fixedBarShortcutKeys, fixedBarShortcutLabel } from './shortcut.ts'
 import { addressFor, fixedAddressFor } from './resource.ts'
@@ -235,6 +235,11 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
       </div>
     </header>
     <div className="dxs-body">
+    {/* Looking a stock up is a first-class action on every tab, not a step of
+        the add form: a pick opens the preview page and never writes the list. */}
+    <div className="dxs-lookup-bar" role="search" aria-label={t('lookup.label')}>
+      <InstrumentLookup rpc={rpc} t={t} refreshToken={sourceRevision} onPick={(match: any) => openStock(match.symbol, match.name)} />
+    </div>
     {drillNotice ? <p role="status" className="dxs-banner">{drillNotice}</p> : null}
     {previewOpen ? <div className="dxs-stage dxs-stage-detail dxs-preview-page">
       <div className="dxs-preview-bar">
@@ -256,7 +261,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
             <p className="dxs-counts">{t('page.counts', { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) })}</p>
           </header>
           <div className="dxs-rail-list">
-            {!state.items.length && <div className="dxs-empty"><p className="dxs-muted">{t('page.empty')}</p><button type="button" onClick={() => setView('market')}>{t('page.view.market-hint')}</button></div>}
+            {!state.items.length && <div className="dxs-empty"><p className="dxs-muted">{t('page.empty')}</p><p className="dxs-muted">{t('page.empty.lookup')}</p><button type="button" onClick={() => setView('market')}>{t('page.view.market-hint')}</button></div>}
             <ol className="dxs-list">{state.items.map((entry: any, index: any) => <li key={entry.symbol} className={item?.symbol === entry.symbol ? 'is-selected' : undefined}>
               <button type="button" className="dxs-select" aria-pressed={item?.symbol === entry.symbol} onClick={() => select(entry.symbol)}>
                 <span className="dxs-row-name"><strong>{entry.alias || entry.symbol}</strong>{entry.fixed ? <span className="dxs-fixed-mark">{t('page.fixed')}</span> : null}</span>

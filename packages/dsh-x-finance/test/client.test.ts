@@ -128,14 +128,29 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.equal(selectedPanel,null);assert.deepEqual(calls,['dsh-x-finance',null])
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 SH.600519"]'))
     assert.equal(saved().items.length,1)
-    // Name search: an explicit query, a debounce, then a pick that fills the manual fields.
-    assert.match(document.body.textContent!, /搜索使用本机免费源/)
-    assert.deepEqual(rpcCalls.filter((call: any)=>call.endpoint==='dsh-x-finance.search')[0],{endpoint:'dsh-x-finance.search',payload:{action:'status'}})
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[type="search"]'),'比亚')
+    // The page-level lookup is not a step of the add form: a pick opens a
+    // preview page and writes nothing to the saved list.
+    const lookup=document.querySelector<HTMLElement & HTMLInputElement>('.dxs-lookup input[name="instrument-lookup"]')!
+    assert.ok(lookup,'the page offers a directory field of its own')
+    assert.ok(document.querySelector('input[name="instrument-search"]'),'the add form keeps its own directory field')
+    await input(lookup,'比亚')
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
-    assert.deepEqual(rpcCalls.filter((call: any)=>call.payload?.action==='search'),[{endpoint:'dsh-x-finance.search',payload:{action:'search',query:'比亚'}}])
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
+    assert.match(document.body.textContent!, /临时查看（未加入自选）/)
+    assert.deepEqual(saved().items.map((item: any)=>item.symbol),['SZ.000001'],'looking a stock up must not write the watchlist')
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-back')!)
+    // Name search in the add form: an explicit query, a debounce, then a pick
+    // that fills the manual fields. The preview above unmounted the rail, so the
+    // field is re-read instead of reusing a detached node.
+    assert.match(document.body.textContent!, /搜索使用本机免费源/)
+    const beforeAddSearch=rpcCalls.length
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="instrument-search"]'),'比亚')
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
+    // Only the add form asks for a directory query here: the lookup above was
+    // already debounced and settled before this point.
+    assert.deepEqual(rpcCalls.slice(beforeAddSearch).filter((call: any)=>call.payload?.action==='search'),[{endpoint:'dsh-x-finance.search',payload:{action:'search',query:'比亚'}}])
     assert.match(document.body.textContent!, /比亚迪/)
-    await click([...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-form [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
     assert.equal(document.querySelector<HTMLInputElement>('input[name="code"]')!.value,'002594')
     assert.equal(document.querySelector<HTMLSelectElement>('select[name="exchange"]')!.value,'SZ')
     assert.equal(document.querySelector<HTMLInputElement>('input[name="alias"]')!.value,'比亚迪')

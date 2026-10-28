@@ -11,11 +11,11 @@ const valid = (match: any): match is InstrumentMatch => match && typeof match.sy
 type Availability = 'checking' | 'enabled' | 'disabled' | 'unavailable'
 
 /**
- * Name/code lookup for the watchlist form. It is an enhancement, never a
- * requirement: the manual exchange + code fields below stay available, and a
- * disabled directory explains how to turn the local free source on.
+ * One directory lookup shared by both entry points: the add form (which only
+ * fills the form) and the page lookup (which opens a preview). The list is the
+ * same; what happens on a pick is the caller's business.
  */
-export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
+function useInstrumentSearch({ rpc, onPick, delay = 250, refreshToken = 0 }: any) {
   const [query, setQuery] = useState('')
   const [availability, setAvailability] = useState<Availability>('checking')
   const [checkTick, setCheckTick] = useState(0)
@@ -28,6 +28,7 @@ export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0
   const [enableError, setEnableError] = useState('')
   const request = useRef(0)
   const listId = useId()
+  const inputId = useId()
   const optionId = (index: number) => `${listId}-option-${index}`
 
   useEffect(() => {
@@ -92,13 +93,17 @@ export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0
     return () => { clearTimeout(timer); local.abort() }
   }, [query, availability, delay, rpc])
 
-  const choose = (match: InstrumentMatch) => {
-    onPick?.(match)
+  const reset = () => {
     setQuery('')
     setResults([])
     setOpen(false)
     setActive(-1)
     setState('idle')
+  }
+
+  const choose = (match: InstrumentMatch) => {
+    onPick?.(match)
+    reset()
   }
 
   const keyDown = (event: any) => {
@@ -136,37 +141,97 @@ export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0
     finally { setEnabling(false) }
   }
 
+  const change = (value: string) => { setQuery(value); setEnableError('') }
+
+  return {
+    query, change, availability, state, error, results, open, setOpen, active, setActive,
+    keyDown, choose, enable, enabling, enableError, listId, inputId, optionId,
+  }
+}
+
+function MatchList({ search, t }: any) {
+  if (!search.open || !search.results.length) return null
+  return <ul id={search.listId} className="dxs-search-results" role="listbox" aria-label={t('add.search.results')}>
+    {search.results.map((match: InstrumentMatch, index: number) => <li
+      key={match.symbol} id={search.optionId(index)} role="option" aria-selected={index === search.active}
+      onMouseDown={(event: any) => event.preventDefault()} onClick={() => search.choose(match)} onMouseEnter={() => search.setActive(index)}
+    >
+      <strong>{match.name}</strong>
+      <span className="dxs-search-symbol">{match.symbol}</span>
+      <span className="dxs-search-kind">{t(`add.kind.${match.kind}`)}</span>
+    </li>)}
+  </ul>
+}
+
+/**
+ * Name/code lookup for the watchlist form. It is an enhancement, never a
+ * requirement: the manual exchange + code fields below stay available, and a
+ * disabled directory explains how to turn the local free source on.
+ */
+export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
+  const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken })
+  const { availability } = search
   return <div className="dxs-search">
-    <label htmlFor={`${listId}-input`}>{t('add.search')}</label>
+    <label htmlFor={search.inputId}>{t('add.search')}</label>
     <input
-      id={`${listId}-input`} type="search" name="instrument-search" autoComplete="off" spellCheck={false}
-      role="combobox" aria-expanded={open && results.length > 0} aria-controls={listId} aria-autocomplete="list"
-      aria-activedescendant={open && active >= 0 && results[active] ? optionId(active) : undefined}
+      id={search.inputId} type="search" name="instrument-search" autoComplete="off" spellCheck={false}
+      role="combobox" aria-expanded={search.open && search.results.length > 0} aria-controls={search.listId} aria-autocomplete="list"
+      aria-activedescendant={search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : undefined}
       placeholder={t('add.search.placeholder')} maxLength={SEARCH_MAX_QUERY}
-      value={query} disabled={availability === 'unavailable'}
-      onChange={event => { setQuery(event.target.value); setEnableError('') }}
-      onKeyDown={keyDown}
+      value={search.query} disabled={availability === 'unavailable'}
+      onChange={event => search.change(event.target.value)}
+      onKeyDown={search.keyDown}
     />
     {availability === 'checking' && <p className="dxs-muted" role="status">{t('add.search.checking')}</p>}
     {availability === 'enabled' && <p className="dxs-muted dxs-search-note">{t('add.search.notice')}</p>}
     {availability === 'unavailable' && <p className="dxs-muted">{t('add.search.unavailable')}</p>}
     {availability === 'disabled' && <p className="dxs-muted">
       {t('add.search.disabled')}{' '}
-      <button type="button" disabled={enabling} onClick={enable}>{t(enabling ? 'add.search.enabling' : 'add.search.enable')}</button>
+      <button type="button" disabled={search.enabling} onClick={search.enable}>{t(search.enabling ? 'add.search.enabling' : 'add.search.enable')}</button>
     </p>}
-    {enableError && <p role="alert" className="dxs-error">{t(enableError)}</p>}
-    {state === 'loading' && <p className="dxs-muted" role="status">{t('add.search.loading')}</p>}
-    {state === 'error' && <p role="alert" className="dxs-error">{t(error)}</p>}
-    {open && results.length > 0 && <ul id={listId} className="dxs-search-results" role="listbox" aria-label={t('add.search.results')}>
-      {results.map((match, index) => <li
-        key={match.symbol} id={optionId(index)} role="option" aria-selected={index === active}
-        onMouseDown={event => event.preventDefault()} onClick={() => choose(match)} onMouseEnter={() => setActive(index)}
-      >
-        <strong>{match.name}</strong>
-        <span className="dxs-search-symbol">{match.symbol}</span>
-        <span className="dxs-search-kind">{t(`add.kind.${match.kind}`)}</span>
-      </li>)}
-    </ul>}
-    {state === 'ready' && results.length === 0 && <p className="dxs-muted" role="status">{t('add.search.empty')}</p>}
+    {search.enableError && <p role="alert" className="dxs-error">{t(search.enableError)}</p>}
+    {search.state === 'loading' && <p className="dxs-muted" role="status">{t('add.search.loading')}</p>}
+    {search.state === 'error' && <p role="alert" className="dxs-error">{t(search.error)}</p>}
+    <MatchList search={search} t={t} />
+    {search.state === 'ready' && search.results.length === 0 && <p className="dxs-muted" role="status">{t('add.search.empty')}</p>}
+  </div>
+}
+
+/**
+ * Page-level lookup: type a name or code and open that stock's detail and chart
+ * without adding it to the watchlist. It reuses the same directory call as the
+ * add form, but a pick only ever opens a preview — saving stays an explicit
+ * second click on that page — so looking a stock up never edits the list.
+ */
+export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
+  const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken })
+  const { availability } = search
+  return <div className="dxs-lookup">
+    <label className="dxs-sr-only" htmlFor={search.inputId}>{t('lookup.label')}</label>
+    <input
+      id={search.inputId} className="dxs-lookup-input" type="search" name="instrument-lookup" autoComplete="off" spellCheck={false}
+      role="combobox" aria-expanded={search.open && search.results.length > 0} aria-controls={search.listId} aria-autocomplete="list"
+      aria-activedescendant={search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : undefined}
+      placeholder={t('lookup.placeholder')} maxLength={SEARCH_MAX_QUERY}
+      value={search.query} disabled={availability === 'unavailable'}
+      onChange={event => search.change(event.target.value)}
+      onKeyDown={search.keyDown}
+      // The bar sits above every tab, so the list closes when the field loses
+      // focus instead of hovering over the next tab's content. Options keep
+      // focus on mousedown, so a click still lands on the picked row.
+      onBlur={() => search.setOpen(false)}
+      onFocus={() => { if (search.results.length) search.setOpen(true) }}
+    />
+    {availability === 'checking' && <span className="dxs-muted" role="status">{t('lookup.checking')}</span>}
+    {availability === 'unavailable' && <span className="dxs-muted">{t('lookup.unavailable')}</span>}
+    {availability === 'disabled' && <span className="dxs-muted">
+      {t('add.search.disabled')}{' '}
+      <button type="button" disabled={search.enabling} onClick={search.enable}>{t(search.enabling ? 'add.search.enabling' : 'add.search.enable')}</button>
+    </span>}
+    {search.enableError && <span role="alert" className="dxs-error">{t(search.enableError)}</span>}
+    {search.state === 'loading' && <span className="dxs-muted" role="status">{t('add.search.loading')}</span>}
+    {search.state === 'error' && <span role="alert" className="dxs-error">{t(search.error)}</span>}
+    {search.state === 'ready' && search.results.length === 0 && <span className="dxs-muted" role="status">{t('add.search.empty')}</span>}
+    <MatchList search={search} t={t} />
   </div>
 }
