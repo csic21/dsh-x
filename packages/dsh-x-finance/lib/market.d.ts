@@ -2,6 +2,8 @@ import type { GlobalMarketOverview } from './global.ts';
 import type { TailScanResult } from './tail-scan.ts';
 import type { HotScanResult } from './hot.ts';
 import type { PredictScanResult } from './predict.ts';
+import type { QuantScanRequest, QuantScanResult } from './quant-scan.ts';
+export type { QuantScanRequest, QuantScanResult, QuantCounts, QuantRow, QuantFactors } from './quant-scan.ts';
 export declare const MARKET_ENDPOINT = "dsh-x-finance.market";
 export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
 export declare const MARKET_SOURCE_NAME = "\u817E\u8BAF\u884C\u60C5 (unofficial)";
@@ -319,7 +321,11 @@ export type MarketPredictScanResult = MarketUnconfigured | {
     status: 'ready';
     predictScan: PredictScanResult;
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult;
+export type MarketQuantScanResult = MarketUnconfigured | {
+    status: 'ready';
+    quantScan: QuantScanResult | null;
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult | MarketQuantScanResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -351,7 +357,9 @@ export type MarketRequest = {
 } | {
     kind: 'predict-scan';
     board?: string;
-};
+} | ({
+    kind: 'quant-scan';
+} & QuantScanRequest);
 /**
  * Session tails the scan can describe: the last 30 minutes of the morning break
  * and of the close. One result describes exactly one of them, and `afternoon` is
@@ -432,6 +440,8 @@ export interface MarketProvider {
     predictScan?(options: {
         board?: string;
     }): Promise<PredictScanResult>;
+    /** Manual, bounded daily scan; status never starts work. No watchlist access. */
+    quantScan?(request: QuantScanRequest, signal?: AbortSignal): Promise<QuantScanResult | null>;
 }
 export declare function validateBoardCode(value: unknown): string;
 export declare function stockMarketError(code: string): Error & {

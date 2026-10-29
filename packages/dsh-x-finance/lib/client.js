@@ -251,6 +251,25 @@ function mountWhenVacant(slots, options, Component, hooks) {
   });
 }
 
+// src/quant-scan.ts
+var QUANT_SCAN_LIMITS = Object.freeze({
+  stocks: 12e3,
+  pages: 60,
+  pageSize: 200,
+  historyBars: 250,
+  minBars: 120,
+  minAmountSamples: 16,
+  batchStocks: 150,
+  concurrency: 2,
+  requestGapMs: 500,
+  batchMs: 9e4,
+  cooldownMs: 6e4,
+  sessionMs: 2 * 60 * 6e4,
+  resultTtlMs: 15 * 6e4,
+  rows: 30,
+  consecutiveFailures: 5
+});
+
 // src/market.ts
 var MARKET_ENDPOINT = "dsh-x-finance.market";
 var MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
@@ -344,6 +363,19 @@ function shanghaiParts(at2) {
     weekday: pick("weekday")
   };
 }
+function zoneToday(now, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(now));
+  const pick = (type) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("year")}-${pick("month")}-${pick("day")}`;
+}
+function shanghaiToday(now) {
+  return zoneToday(now, "Asia/Shanghai");
+}
 function marketClock(now, quotedAt) {
   const current = shanghaiParts(now);
   const weekend = current.weekday === "Sat" || current.weekday === "Sun";
@@ -429,7 +461,7 @@ function pollDelay(result, realtime, now = Date.now()) {
 }
 
 // src/client/components.tsx
-var import_react21 = __toESM(require("react"), 1);
+var import_react23 = __toESM(require("react"), 1);
 
 // src/client/workbench.tsx
 var import_react7 = __toESM(require("react"), 1);
@@ -9973,7 +10005,7 @@ function monthlyReturns(bars) {
 }
 function computeQuantStats(input) {
   const bars = normalizeQuantBars(input);
-  const empty = {
+  const empty2 = {
     samples: 0,
     from: null,
     to: null,
@@ -10004,7 +10036,7 @@ function computeQuantStats(input) {
     drawdownFromHigh: null,
     monthly: []
   };
-  if (!bars.length) return empty;
+  if (!bars.length) return empty2;
   const closes = bars.map((bar) => bar.close);
   const last = bars.at(-1);
   const returns = simpleReturns(closes);
@@ -13616,6 +13648,330 @@ var settingsEn = {
   "settings.tab.gold": "Commodities"
 };
 
+// src/client/watch-signals-locales.ts
+var watchSignalsZh = {
+  "signal.title": "\u81EA\u9009\u91CF\u5316\u4FE1\u53F7",
+  "signal.subtitle": "\u9010\u53EA\u5206\u6790\u81EA\u9009\u7684\u65E5\u7EBF\u8D8B\u52BF\uFF0C\u663E\u793A\u89C4\u5219\u89E6\u53D1\u7684\u539F\u56E0\uFF1B\u81EA\u9009\u4E0D\u4EE3\u8868\u6301\u4ED3\u3002",
+  "signal.run": "\u5206\u6790\u6211\u7684\u81EA\u9009",
+  "signal.rerun": "\u91CD\u65B0\u5206\u6790",
+  "signal.running": "\u5206\u6790\u4E2D\u2026",
+  "signal.cancel": "\u505C\u6B62\u5206\u6790",
+  "signal.idle": "\u70B9\u51FB\u5206\u6790\u540E\u624D\u4F1A\u9010\u53EA\u8BF7\u6C42\u514D\u8D39\u8BC1\u5238\u76EE\u5F55\u4E0E\u65E5 K\uFF1B\u80A1\u7968\u4EE3\u7801\u4F1A\u53D1\u9001\u7ED9\u6570\u636E\u6E90\uFF0C\u4E0D\u4F1A\u53D1\u9001\u7ED9\u6A21\u578B\u3002",
+  "signal.disabled": "\u5148\u5F00\u542F\u672C\u673A\u514D\u8D39\u6E90\uFF0C\u624D\u80FD\u5206\u6790\u81EA\u9009\u3002",
+  "signal.empty": "\u5148\u6DFB\u52A0\u81EA\u9009\u80A1\u7968\u3002",
+  "signal.progress": "\u5DF2\u5904\u7406 {completed} / {total} \u53EA",
+  "signal.cancelled": "\u5206\u6790\u5DF2\u505C\u6B62\uFF1B\u5C1A\u672A\u5904\u7406\u7684\u80A1\u7968\u4E0D\u8BA1\u5165\u6709\u6548\u7ED3\u679C\u3002",
+  "signal.error": "\u81EA\u9009\u5206\u6790\u6682\u4E0D\u53EF\u7528\uFF1B\u8BF7\u68C0\u67E5\u8FDE\u63A5\u540E\u91CD\u8BD5\u3002",
+  "signal.pending": "\u7B49\u5F85\u5206\u6790",
+  "signal.skipped": "\u514D\u8D39\u6E90\u8FDE\u7EED\u5931\u8D25\uFF0C\u672C\u6B21\u672A\u7EE7\u7EED\u5206\u6790",
+  "signal.unknown-kind": "\u65E0\u6CD5\u786E\u8BA4\u8BC1\u5238\u7C7B\u578B\uFF0C\u6682\u4E0D\u5206\u6790",
+  "signal.unsupported": "\u975E\u666E\u901A\u80A1\u7968\uFF0C\u6682\u4E0D\u5957\u7528 A \u80A1\u80A1\u7968\u89C4\u5219",
+  "signal.unavailable": "\u65E5\u7EBF\u6216\u76EE\u5F55\u6682\u4E0D\u53EF\u7528",
+  "signal.unadjusted": "\u6765\u6E90\u672A\u63D0\u4F9B\u524D\u590D\u6743\u65E5\u7EBF\uFF0C\u6682\u505C\u65B9\u5411\u4FE1\u53F7",
+  "signal.stale": "\u65E5\u7EBF\u8DDD\u4ECA\u8D85\u8FC7 7 \u4E2A\u81EA\u7136\u65E5\u6216\u65E5\u671F\u5F02\u5E38\uFF0C\u6682\u505C\u65B9\u5411\u4FE1\u53F7\uFF08\u53EF\u80FD\u662F\u4F11\u5E02\u6216\u505C\u724C\uFF09",
+  "signal.insufficient": "\u5386\u53F2\u6570\u636E\u4E0D\u8DB3\u6216\u65E0\u6548\uFF0C\u4E0D\u751F\u6210\u65B9\u5411\u4FE1\u53F7",
+  "signal.buy": "\u4E70\u5165\u89C2\u5BDF\u4FE1\u53F7",
+  "signal.sell": "\u82E5\u6301\u6709\uFF1A\u9000\u51FA\uFF0F\u98CE\u63A7\u4FE1\u53F7",
+  "signal.watch": "\u7EE7\u7EED\u89C2\u5BDF",
+  "signal.st-blocked": "\u98CE\u9669\u6807\u8BB0\uFF1A\u6682\u505C\u4E70\u5165\u4FE1\u53F7",
+  "signal.provisional": "\u672A\u786E\u8BA4\uFF1A\u5F53\u65E5 K \u7EBF\u53EF\u80FD\u53D8\u52A8",
+  "signal.historical": "\u5386\u53F2\u65E5\u7EBF\uFF0C\u662F\u5426\u4E3A\u6700\u8FD1\u4EA4\u6613\u65E5\u672A\u6838\u9A8C",
+  "signal.sample": "\u65E5\u7EBF\u622A\u81F3 {date} \xB7 \u6837\u672C {count} \u6839 \xB7 {adjustment}",
+  "signal.source": "\u6765\u6E90\uFF1A{source} \xB7 \u83B7\u53D6\u65F6\u95F4\uFF1A{time}",
+  "signal.buy-reason": "\u6536\u76D8\u4EF7 {close} \u9AD8\u4E8E\u6B64\u524D 20 \u6839\u6700\u9AD8\u6536\u76D8\u4EF7 {high}\uFF1BMA20 {ma20} \u9AD8\u4E8E MA60 {ma60}\u3002",
+  "signal.sell-reason": "\u6700\u8FD1\u4E24\u6839\u6536\u76D8\u4EF7 {previous} / {close} \u5206\u522B\u4F4E\u4E8E\u5F53\u65E5 MA20 {previousMa20} / {ma20}\u3002",
+  "signal.watch-reason": "\u6536\u76D8\u4EF7 {close}\uFF0C\u6B64\u524D 20 \u6839\u6700\u9AD8\u6536\u76D8\u4EF7 {high}\uFF1BMA20 {ma20}\uFF0CMA60 {ma60}\u3002\u4E70\u5165\u548C\u9000\u51FA\u6761\u4EF6\u5747\u672A\u540C\u65F6\u6EE1\u8DB3\u3002",
+  "signal.st-note": "\u516C\u5F00\u76EE\u5F55\u540D\u79F0\u542B ST \u98CE\u9669\u6807\u8BB0\uFF0C\u72B6\u6001\u672A\u4E0E\u4EA4\u6613\u6240\u6838\u5BF9\uFF1B\u6682\u505C\u4E70\u5165\u65B9\u5411\u4FE1\u53F7\u3002",
+  "signal.replay": "\u6837\u672C\u5185\u7C97\u7565\u56DE\u653E {from} \u81F3 {to}\uFF1A\u7B56\u7565 {strategy}\uFF0C\u4E70\u5165\u6301\u6709\u5BF9\u7167 {benchmark}\uFF0C\u6700\u5927\u56DE\u64A4 {drawdown}\uFF0C\u5DF2\u5E73\u4ED3 {trades} \u7B14{open}\u3002",
+  "signal.replay-open": "\uFF0C\u53E6\u6709\u672A\u5E73\u4ED3",
+  "signal.replay-warning": "\u56DE\u653E\u548C\u4E70\u5165\u6301\u6709\u5BF9\u7167\u4F7F\u7528\u4E0B\u4E00\u6839\u524D\u590D\u6743\u65E5\u7EBF\u5F00\u76D8\u4EF7\uFF08\u4E0D\u4E00\u5B9A\u662F\u4E0B\u4E00\u4EA4\u6613\u65E5\uFF09\uFF0C\u5047\u8BBE\u53EF\u6210\u4EA4\uFF1B\u6BCF\u8FB9\u4F63\u91D1 5bp\u3001\u6ED1\u70B9 5bp\uFF0C\u5356\u51FA\u7A0E\u8D39 5bp\u3002\u672A\u8BA1\u6700\u4F4E\u4F63\u91D1\u3001\u505C\u724C\u3001\u6DA8\u8DCC\u505C\u3001\u590D\u6743\u6570\u636E\u7684\u5386\u53F2\u65F6\u70B9\u504F\u5DEE\u548C\u5386\u53F2 ST \u72B6\u6001\uFF1B\u4E0D\u4EE3\u8868\u5B9E\u76D8\u6216\u672A\u6765\u6536\u76CA\u3002",
+  "signal.method": "\u89C4\u5219\u4E0E\u9650\u5236",
+  "signal.method-body": "\u81F3\u5C11 120 \u6839\u6709\u6548\u65E5\u7EBF\uFF1B\u4E70\u5165\u89C2\u5BDF\u8981\u6C42\u6536\u76D8\u4EF7\u4E25\u683C\u9AD8\u4E8E\u6B64\u524D 20 \u6839\u6700\u9AD8\u6536\u76D8\u4EF7\uFF0C\u4E14 MA20 \u9AD8\u4E8E MA60\u3002\u9000\u51FA\u89C2\u5BDF\u8981\u6C42\u8FDE\u7EED\u4E24\u6839\u6536\u76D8\u4EF7\u4F4E\u4E8E\u5404\u81EA MA20\u3002\u4EC5\u7528\u5DF2\u63D0\u4F9B\u7684\u524D\u590D\u6743\u65E5 K\uFF0C\u76EE\u5F55\u7C7B\u578B\u672A\u7ECF\u4EA4\u6613\u6240\u6838\u5BF9\u3002",
+  "signal.notice": "\u4EC5\u4E3A\u5F85\u56DE\u6D4B\u7684\u4EF7\u683C\u89C4\u5219\uFF0C\u4E0D\u662F\u4E0A\u6DA8\u6982\u7387\u3001\u6295\u8D44\u5EFA\u8BAE\u6216\u4EA4\u6613\u6307\u4EE4\uFF1B\u4E0D\u8BFB\u53D6\u6301\u4ED3\uFF0C\u4E5F\u4E0D\u4E0B\u5355\u3002\u672A\u5305\u542B\u8D22\u62A5\u3001\u516C\u544A\u3001\u505C\u724C\u3001\u6DA8\u8DCC\u505C\u6216\u6210\u4EA4\u53EF\u884C\u6027\u3002",
+  "signal.time-note": "\u4FE1\u53F7\u6240\u7528\u65E5\u671F\u4E0D\u4E00\u5B9A\u662F\u6700\u8FD1\u4EA4\u6613\u65E5\u3002\u514D\u8D39\u6E90\u975E\u5B98\u65B9\u3001\u53EF\u80FD\u5EF6\u8FDF\u6216\u7F3A\u5931\uFF0C\u4E0D\u80FD\u4FDD\u8BC1\u5B9E\u65F6\uFF1B\u5F53\u65E5 K \u7EBF\u672A\u7531\u6765\u6E90\u786E\u8BA4\u65F6\u59CB\u7EC8\u6807\u8BB0\u672A\u786E\u8BA4\u3002",
+  "signal.storage-note": "\u624B\u52A8\u5206\u6790\u7ED3\u679C\u4EC5\u4FDD\u5B58\u5728\u5F53\u524D\u9875\u9762\u5185\u5B58\uFF1B\u6BCF\u65E5\u540E\u53F0\u5206\u6790\u9700\u8981\u5355\u72EC\u540C\u610F\u542F\u7528\u3002"
+};
+var watchSignalsEn = {
+  "signal.title": "Watchlist research signals",
+  "signal.subtitle": "Review each watchlist instrument using daily trend rules; a watchlist is not a position.",
+  "signal.run": "Analyze watchlist",
+  "signal.rerun": "Analyze again",
+  "signal.running": "Analyzing\u2026",
+  "signal.cancel": "Stop analysis",
+  "signal.idle": "Analysis sends each symbol to the optional free instrument directory and daily feed, not to the model.",
+  "signal.disabled": "Enable the local free source to analyze the watchlist.",
+  "signal.empty": "Add a stock to your watchlist first.",
+  "signal.progress": "Processed {completed} / {total}",
+  "signal.cancelled": "Analysis stopped; unprocessed items are not counted as results.",
+  "signal.error": "Watchlist analysis is unavailable. Check the connection and retry.",
+  "signal.pending": "Waiting",
+  "signal.skipped": "Skipped after repeated upstream failures",
+  "signal.unknown-kind": "Security type could not be identified",
+  "signal.unsupported": "Not a common stock; the A-share stock rules are not applied",
+  "signal.unavailable": "Daily history or directory unavailable",
+  "signal.unadjusted": "Forward-adjusted daily history unavailable; directional signals paused",
+  "signal.stale": "History is more than 7 calendar days old or its date is invalid; directional signals paused (possibly a closure or halt)",
+  "signal.insufficient": "Insufficient or invalid history; no directional signal",
+  "signal.buy": "Buy observation signal",
+  "signal.sell": "If held: exit / risk signal",
+  "signal.watch": "Continue watching",
+  "signal.st-blocked": "Risk label: buy signal paused",
+  "signal.provisional": "Unconfirmed: the current daily bar may change",
+  "signal.historical": "Historical daily bar; latest trading session not verified",
+  "signal.sample": "Daily data through {date} \xB7 {count} bars \xB7 {adjustment}",
+  "signal.source": "Source: {source} \xB7 fetched: {time}",
+  "signal.buy-reason": "Close {close} exceeds the previous 20-bar high close {high}; MA20 {ma20} exceeds MA60 {ma60}.",
+  "signal.sell-reason": "The last two closes {previous} / {close} are below their respective MA20 values {previousMa20} / {ma20}.",
+  "signal.watch-reason": "Close {close}; previous 20-bar high close {high}; MA20 {ma20}; MA60 {ma60}. Neither complete entry nor exit rule matched.",
+  "signal.st-note": "The public directory name has an ST risk label, not verified with the exchange; buy observations are paused.",
+  "signal.replay": "Approximate in-sample replay {from} to {to}: strategy {strategy}, buy-and-hold comparison {benchmark}, max drawdown {drawdown}, {trades} closed trades{open}.",
+  "signal.replay-open": ", plus an open position",
+  "signal.replay-warning": "The replay and buy-and-hold comparison use the next available forward-adjusted open (not necessarily the next session), assuming a fill; 5bp commission and 5bp slippage per side, 5bp sell tax. Minimum commissions, halts, price limits, adjustment look-ahead and historical ST status are omitted. Results are not live or future returns.",
+  "signal.method": "Rules and limitations",
+  "signal.method-body": "At least 120 valid daily bars are required. Entry observation: close strictly exceeds the preceding 20-bar high close and MA20 exceeds MA60. Exit observation: two consecutive closes below their respective MA20. Only supplied forward-adjusted daily bars are used; directory identities are not exchange-verified.",
+  "signal.notice": "An unvalidated price rule, not a return probability, investment advice or order. No positions are read and no trades are placed. Financials, announcements, halts, price limits and execution feasibility are not included.",
+  "signal.time-note": "The as-of date may not be the latest trading session. The unofficial free feed may be delayed or incomplete and is not guaranteed real-time; current-session bars are marked unconfirmed when the feed does not confirm them.",
+  "signal.storage-note": "Manual results remain in this page\u2019s memory; daily background analysis requires separate consent."
+};
+
+// src/client/quant-scan-locales.ts
+var quantScanZh = {
+  "quantScan.tab": "\u5168\u5E02\u573A\u91CF\u5316",
+  "quantScan.tab.quiet": "\u5206\u6790",
+  "quantScan.title": "\u5168\u5E02\u573A\u65E5\u7EBF\u7814\u7A76",
+  "quantScan.subtitle": "\u4ECE\u514D\u8D39\u6E90\u7684 A \u80A1\u6E05\u5355\u9010\u80A1\u8BFB\u53D6\u65E5\u7EBF\uFF0C\u6309\u53EF\u89E3\u91CA\u56E0\u5B50\u6392\u5E8F\uFF1B\u7ED3\u679C\u4E0D\u662F\u6536\u76CA\u9884\u6D4B\u3002",
+  "quantScan.run": "\u5F00\u59CB\u5206\u6279\u626B\u63CF",
+  "quantScan.continue": "\u7EE7\u7EED\u626B\u63CF",
+  "quantScan.stop": "\u505C\u6B62\u626B\u63CF",
+  "quantScan.check": "\u68C0\u67E5\u8FDB\u5EA6",
+  "quantScan.running": "\u6B63\u5728\u5904\u7406\u4E00\u6279\u65E5\u7EBF\uFF0C\u8BF7\u4FDD\u6301\u9875\u9762\u6253\u5F00\u3002",
+  "quantScan.waiting": "\u672C\u6279\u5B8C\u6210\uFF0C\u7B49\u5F85\u514D\u8D39\u6E90\u51B7\u5374\uFF0C\u9884\u8BA1\u4E0D\u65E9\u4E8E {time} \u7EE7\u7EED\u3002",
+  "quantScan.stopped": "\u5DF2\u505C\u6B62\u81EA\u52A8\u7EE7\u7EED\uFF1B\u5982\u679C\u6B63\u5728\u8BF7\u6C42\uFF0C\u672C\u8F6E\u53EF\u80FD\u65E0\u6CD5\u7EE7\u7EED\u3002\u53EF\u68C0\u67E5\u8FDB\u5EA6\u3002",
+  "quantScan.idle": "\u70B9\u51FB\u5F00\u59CB\u540E\uFF0C\u5148\u8BFB\u53D6\u80A1\u7968\u76EE\u5F55\uFF0C\u518D\u6309\u4EE3\u7801\u987A\u5E8F\u5206\u6279\u8BFB\u53D6\u65E5\u7EBF\u3002\u4E0D\u4F1A\u5728\u9875\u9762\u6253\u5F00\u65F6\u81EA\u52A8\u5168\u5E02\u573A\u626B\u63CF\u3002",
+  "quantScan.disabled": "\u8BF7\u5148\u6253\u5F00\u672C\u673A\u514D\u8D39\u6E90\u3002",
+  "quantScan.error": "\u626B\u63CF\u6682\u4E0D\u53EF\u7528\uFF1B\u514D\u8D39\u6E90\u53EF\u80FD\u9650\u6D41\u3001\u4E2D\u65AD\u6216\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u68C0\u67E5\u8FDB\u5EA6\u3002",
+  "quantScan.partial": "\u90E8\u5206\u7ED3\u679C\uFF1A\u6392\u5E8F\u53EA\u9488\u5BF9\u5DF2\u8986\u76D6\u7684\u6709\u6548\u6837\u672C\uFF0C\u4E0D\u80FD\u5F53\u4F5C\u5B8C\u6574\u5168\u5E02\u573A\u6392\u540D\u3002",
+  "quantScan.complete": "\u672C\u6B21\u6765\u6E90\u6E05\u5355\u5DF2\u5904\u7406\uFF1B\u8BE5\u6E05\u5355\u672A\u4E0E\u4EA4\u6613\u6240\u9010\u4E00\u6838\u5BF9\uFF0C\u4E0D\u4FDD\u8BC1\u5305\u542B\u5168\u90E8\u80A1\u7968\u3002",
+  "quantScan.provisional": "\u6837\u672C\u542B\u672A\u786E\u8BA4\u6536\u76D8\u7684\u65E5 K\uFF0C\u5206\u6570\u4E0E\u6392\u540D\u53EF\u80FD\u53D8\u5316\u3002",
+  "quantScan.coverage": "\u6765\u6E90\u6E05\u5355 {expected} \xB7 \u5DF2\u8BC6\u522B {discovered} \xB7 \u5DF2\u8BF7\u6C42 {attempted} \xB7 \u65E5\u7EBF\u6210\u529F {succeeded} \xB7 \u6837\u672C\u4E0D\u8DB3\u6216\u5F02\u5E38 {insufficient} \xB7 \u5931\u8D25 {failed} \xB7 \u5C1A\u672A\u8BF7\u6C42 {remaining}",
+  "quantScan.filtered": "\u6837\u672C\u5185\u53EF\u6392\u5E8F {ranked} \xB7 \u505C\u724C\u6392\u9664 {suspended} \xB7 ST \u6392\u9664 {st} \xB7 \u72B6\u6001\u4E0D\u660E {unknown} \xB7 \u56E0\u5B50\u7F3A\u5931 {missing} \xB7 \u65E5\u671F\u4E0D\u4E00\u81F4 {dateMismatch}",
+  "quantScan.source": "\u6765\u6E90 {source} \xB7 \u6837\u672C\u65E5\u671F {date} \xB7 \u66F4\u65B0 {time}",
+  "quantScan.state.batch-limit": "\u672C\u6279\u5DF2\u8FBE\u5230\u5904\u7406\u4E0A\u9650",
+  "quantScan.state.deadline": "\u672C\u6279\u5DF2\u8FBE\u5230\u65F6\u95F4\u4E0A\u9650",
+  "quantScan.state.finished": "\u672C\u8F6E\u5DF2\u5B8C\u6210",
+  "quantScan.state.upstream-failures": "\u4E0A\u6E38\u8FDE\u7EED\u5931\u8D25\uFF0C\u672C\u8F6E\u5DF2\u505C\u6B62",
+  "quantScan.state.cancelled": "\u672C\u8F6E\u5DF2\u53D6\u6D88",
+  "quantScan.state.expired": "\u8FDB\u5EA6\u5DF2\u8FC7\u671F",
+  "quantScan.rank": "\u6837\u672C\u5185\u6392\u5E8F",
+  "quantScan.empty": "\u5F53\u524D\u6CA1\u6709\u53EF\u6392\u5E8F\u7684\u5B8C\u6574\u56E0\u5B50\u6837\u672C\u3002",
+  "quantScan.score": "\u89C4\u5219\u5206",
+  "quantScan.factors": "\u8D8B\u52BF {trend}/30 \xB7 \u52A8\u91CF {momentum}/30 \xB7 \u6210\u4EA4\u989D {liquidity}/20 \xB7 \u4F4E\u6CE2\u52A8 {risk}/20",
+  "quantScan.trendDetail": "\u6536\u76D8\u4EF7 {close} \xB7 MA20 {ma20} \xB7 MA60 {ma60}",
+  "quantScan.returns": "20 / 60 \u65E5\u6DA8\u5E45 {r20} / {r60} \xB7 20 \u65E5\u6536\u76CA\u6CE2\u52A8 {volatility}",
+  "quantScan.amount": "\u8FD1 20 \u6839\u65E5\u7EBF\u6210\u4EA4\u989D\u4E2D\u4F4D\u6570 {amount}\uFF08{samples}/20 \u6839\u6709\u91D1\u989D\uFF09",
+  "quantScan.bar": "\u65E5\u7EBF\u622A\u81F3 {date} \xB7 {adjustment} \xB7 {count} \u6839",
+  "quantScan.provisional-row": "\u672A\u786E\u8BA4\u6536\u76D8",
+  "quantScan.method": "\u53E3\u5F84\u4E0E\u9650\u5236",
+  "quantScan.method-body": "\u8D8B\u52BF 30 \u5206\u300120/60 \u65E5\u52A8\u91CF 30 \u5206\u3001\u6210\u4EA4\u989D 20 \u5206\u3001\u4F4E\u6CE2\u52A8 20 \u5206\uFF1B\u8FD120\u6839\u65E5\u7EBF\u81F3\u5C1116\u6839\u6709\u6210\u4EA4\u989D\u624D\u53C2\u4E0E\u6392\u540D\u3002\u5206\u4F4D\u53EA\u5728\u672C\u8F6E\u5DF2\u626B\u63CF\u3001\u76F8\u540C\u65E5\u671F\u4E14\u6709\u6548\u56E0\u5B50\u9F50\u5168\u7684\u80A1\u7968\u4E2D\u8BA1\u7B97\uFF0C\u4E0D\u4EE3\u8868\u5386\u53F2\u6982\u7387\u3002",
+  "quantScan.limits": "\u514D\u8D39\u6E90\u975E\u5B98\u65B9\u3001\u53EF\u80FD\u5EF6\u8FDF\u6216\u9650\u6D41\uFF1B\u505C\u724C\u4E0E ST \u72B6\u6001\u4EC5\u6765\u81EA\u6765\u6E90\u5FEB\u7167\u3002\u590D\u6743\u3001\u7F3A\u5931\u65E5\u7EBF\u548C\u672A\u786E\u8BA4\u6536\u76D8\u53EF\u80FD\u5F71\u54CD\u6BD4\u8F83\u3002\u624B\u52A8\u626B\u63CF\u7ED3\u679C\u4EC5\u4FDD\u5B58\u5728\u5BBF\u4E3B\u5185\u5B58\uFF1B\u5355\u72EC\u542F\u7528\u6BCF\u65E5\u4EFB\u52A1\u540E\u624D\u4FDD\u5B58\u62A5\u544A\uFF0C\u4E0D\u542B\u957F\u671F\u539F\u59CB\u65E5\u7EBF\u5E93\u6216\u7EC4\u5408\u56DE\u6D4B\u3002",
+  "quantScan.no-advice": "\u7814\u7A76\u7528\u9014\uFF0C\u4E0D\u63D0\u4F9B\u6295\u8D44\u5EFA\u8BAE\u6216\u4EA4\u6613\u6307\u4EE4\uFF0C\u4E0D\u8FDE\u63A5\u8D26\u6237\u3001\u4E0D\u81EA\u52A8\u4E0B\u5355\u3002",
+  "quantAuto.title": "\u6BCF\u65E5\u5168\u5E02\u573A\u5206\u6790",
+  "quantAuto.disclosure": "\u5355\u72EC\u542F\u7528\u540E\uFF0C\u5BBF\u4E3B\u5728\u4E0A\u6D77\u65F6\u95F4\u5DE5\u4F5C\u65E5 16:45 \u540E\u5206\u6279\u626B\u63CF\uFF0C\u53EF\u80FD\u6301\u7EED\u53D1\u9001\u6570\u5343\u6B21\u514D\u8D39\u884C\u60C5\u8BF7\u6C42\uFF0C\u5E76\u5728\u5F53\u524D profile \u4FDD\u5B58\u6700\u8FD1 20 \u4E2A\u62A5\u544A\uFF08\u4EC5\u5019\u9009\u548C\u8986\u76D6\u7EDF\u8BA1\uFF0C\u4E0D\u5B58\u539F\u59CB\u65E5 K\uFF09\u3002\u4E0D\u8BC6\u522B\u6CD5\u5B9A\u8282\u5047\u65E5\uFF1B\u5BBF\u4E3B\u9700\u4FDD\u6301\u8FD0\u884C\uFF0C\u4E2D\u65AD\u540E\u5F53\u5929\u4E0D\u81EA\u52A8\u91CD\u590D\u3002\u542F\u52A8\u65F6\u82E5\u81EA\u9009\u540E\u53F0\u5206\u6790\u6B63\u5728\u8FD0\u884C\u4F1A\u5148\u7B49\u5F85\uFF1B\u542F\u52A8\u540E\u7684\u81EA\u9009\u4EFB\u52A1\u4E0D\u62A2\u5360\u5F53\u524D\u6279\u6B21\u3002\u505C\u7528\u540E\u4FDD\u7559\u5DF2\u751F\u6210\u62A5\u544A\u3002",
+  "quantAuto.enable": "\u540C\u610F\u6BCF\u65E5\u5206\u6279\u8BF7\u6C42\u5E76\u542F\u7528",
+  "quantAuto.disable": "\u505C\u7528\u6BCF\u65E5\u5168\u5E02\u573A\u5206\u6790",
+  "quantAuto.loading": "\u8BFB\u53D6\u6BCF\u65E5\u5168\u5E02\u573A\u4EFB\u52A1\u2026",
+  "quantAuto.disabled": "\u6BCF\u65E5\u5168\u5E02\u573A\u5206\u6790\u672A\u542F\u7528\u3002",
+  "quantAuto.enabled": "\u6BCF\u65E5\u5168\u5E02\u573A\u5206\u6790\u5DF2\u542F\u7528\u3002",
+  "quantAuto.running": "\u540E\u53F0\u6B63\u5728\u5206\u6279\u626B\u63CF\uFF1B\u514D\u8D39\u6E90\u9650\u6D41\u53EF\u80FD\u4F7F\u7ED3\u679C\u4E0D\u5B8C\u6574\u3002",
+  "quantAuto.last": "\u6700\u8FD1\u5C1D\u8BD5\uFF1A{date} \xB7 \u66F4\u65B0\uFF1A{time}",
+  "quantAuto.error": "\u65E0\u6CD5\u8BFB\u53D6\u6216\u4FDD\u5B58\u6BCF\u65E5\u5168\u5E02\u573A\u4EFB\u52A1\uFF0C\u8BF7\u68C0\u67E5 profile \u5B58\u50A8\u548C\u5BBF\u4E3B\u8FDE\u63A5\u3002",
+  "quantAuto.disable-error": "\u505C\u7528\u672A\u80FD\u4FDD\u5B58\uFF1B\u5F53\u524D\u8FDB\u7A0B\u5DF2\u8BF7\u6C42\u505C\u6B62\uFF0C\u4F46\u65E7\u6388\u6743\u53EF\u80FD\u5728\u91CD\u542F\u540E\u6062\u590D\u3002\u8BF7\u68C0\u67E5\u5B58\u50A8\u6743\u9650\u5E76\u91CD\u8BD5\u505C\u7528\u3002",
+  "quantAuto.retry-disable": "\u91CD\u8BD5\u4FDD\u5B58\u505C\u7528",
+  "quantAuto.issue": "\u4EFB\u52A1\u72B6\u6001\uFF1A{reason}",
+  "quantAuto.issue.interrupted": "\u4EFB\u52A1\u4E2D\u65AD",
+  "quantAuto.issue.source-disabled": "\u514D\u8D39\u6E90\u5173\u95ED",
+  "quantAuto.issue.scope-mismatch": "profile \u6807\u8BC6\u4E0D\u5339\u914D",
+  "quantAuto.issue.storage-unavailable": "\u5B58\u50A8\u4E0D\u53EF\u7528",
+  "quantAuto.issue.scan-failed": "\u626B\u63CF\u5931\u8D25",
+  "quantAuto.issue.upstream-failures": "\u4E0A\u6E38\u8FDE\u7EED\u5931\u8D25",
+  "quantAuto.issue.expired": "\u626B\u63CF\u8FC7\u671F",
+  "quantAuto.block.disabled": "\u672A\u542F\u7528",
+  "quantAuto.block.disposed": "\u4EFB\u52A1\u5DF2\u505C\u6B62",
+  "quantAuto.block.running": "\u6B63\u5728\u626B\u63CF",
+  "quantAuto.block.source-disabled": "\u514D\u8D39\u6E90\u672A\u5F00\u542F",
+  "quantAuto.block.before-window": "\u5C1A\u672A\u5230\u4E0A\u6D77\u65F6\u95F4 16:45",
+  "quantAuto.block.weekend": "\u5468\u672B\u4E0D\u81EA\u52A8\u5C1D\u8BD5",
+  "quantAuto.block.already-attempted": "\u4ECA\u5929\u5DF2\u7ECF\u81EA\u52A8\u5C1D\u8BD5\u8FC7",
+  "quantAuto.block.watch-running": "\u6B63\u5728\u7B49\u5F85\u81EA\u9009\u5206\u6790\u5B8C\u6210",
+  "quantAuto.block.watch-unavailable": "\u65E0\u6CD5\u786E\u8BA4\u81EA\u9009\u4EFB\u52A1\u72B6\u6001\uFF0C\u6682\u4E0D\u542F\u52A8",
+  "quantAuto.block.storage-unavailable": "\u5B58\u50A8\u4E0D\u53EF\u7528",
+  "quantAuto.block.scope-mismatch": "profile \u6807\u8BC6\u4E0D\u5339\u914D",
+  "quantAuto.reports": "\u5386\u53F2\u626B\u63CF\u62A5\u544A",
+  "quantAuto.no-reports": "\u5C1A\u65E0\u5386\u53F2\u62A5\u544A\u3002",
+  "quantAuto.report.complete": "\u6765\u6E90\u6E05\u5355\u5DF2\u5904\u7406",
+  "quantAuto.report.partial": "\u90E8\u5206\u7ED3\u679C",
+  "quantAuto.report.interrupted": "\u4E2D\u65AD",
+  "quantAuto.show": "\u67E5\u770B {date} \u7684\u62A5\u544A",
+  "quantAuto.selected": "\u6B63\u5728\u67E5\u770B {date} \u7684\u5386\u53F2\u62A5\u544A\uFF1B\u6765\u6E90\u65E5\u671F\u548C\u8986\u76D6\u7387\u89C1\u4E0B\u65B9\u3002"
+};
+var quantScanEn = {
+  "quantScan.tab": "Market research",
+  "quantScan.tab.quiet": "Analysis",
+  "quantScan.title": "Market-wide daily research",
+  "quantScan.subtitle": "Read daily histories for A shares in the free source directory and rank explainable factors; this is not a return forecast.",
+  "quantScan.run": "Start batched scan",
+  "quantScan.continue": "Continue scan",
+  "quantScan.stop": "Stop scan",
+  "quantScan.check": "Check progress",
+  "quantScan.running": "Processing one daily-history batch. Keep this page open.",
+  "quantScan.waiting": "Batch complete. Free-source cooldown ends no earlier than {time}.",
+  "quantScan.stopped": "Automatic continuation stopped. An in-flight batch may not be resumable; check progress.",
+  "quantScan.idle": "Start explicitly to read the stock directory and then fetch histories in symbol order. Opening the page does not start a market-wide scan.",
+  "quantScan.disabled": "Turn on the local free source first.",
+  "quantScan.error": "Scan unavailable. The free source may be rate-limited, disconnected or unreachable; check progress later.",
+  "quantScan.partial": "Partial result: rankings cover only valid processed samples, not the entire market.",
+  "quantScan.complete": "This source directory was processed; it was not verified against the exchanges and may omit stocks.",
+  "quantScan.provisional": "Some daily bars are not confirmed closed; scores and rankings may change.",
+  "quantScan.coverage": "Source total {expected} \xB7 identified {discovered} \xB7 requested {attempted} \xB7 daily histories {succeeded} \xB7 insufficient or invalid {insufficient} \xB7 failed {failed} \xB7 not requested {remaining}",
+  "quantScan.filtered": "Rankable samples {ranked} \xB7 suspended excluded {suspended} \xB7 ST excluded {st} \xB7 status unknown {unknown} \xB7 missing factors {missing} \xB7 mismatched dates {dateMismatch}",
+  "quantScan.source": "Source {source} \xB7 sample date {date} \xB7 updated {time}",
+  "quantScan.state.batch-limit": "Batch size limit reached",
+  "quantScan.state.deadline": "Batch time limit reached",
+  "quantScan.state.finished": "Scan complete",
+  "quantScan.state.upstream-failures": "Stopped after repeated upstream failures",
+  "quantScan.state.cancelled": "Scan cancelled",
+  "quantScan.state.expired": "Scan expired",
+  "quantScan.rank": "Within-sample ranking",
+  "quantScan.empty": "No rankable sample with complete factors yet.",
+  "quantScan.score": "Rule score",
+  "quantScan.factors": "Trend {trend}/30 \xB7 Momentum {momentum}/30 \xB7 Turnover {liquidity}/20 \xB7 Low volatility {risk}/20",
+  "quantScan.trendDetail": "Close {close} \xB7 MA20 {ma20} \xB7 MA60 {ma60}",
+  "quantScan.returns": "20 / 60-day returns {r20} / {r60} \xB7 20-day return volatility {volatility}",
+  "quantScan.amount": "Median turnover for the last 20 daily bars {amount} ({samples}/20 bars have turnover)",
+  "quantScan.bar": "Daily data through {date} \xB7 {adjustment} \xB7 {count} bars",
+  "quantScan.provisional-row": "Close not confirmed",
+  "quantScan.method": "Method and limitations",
+  "quantScan.method-body": "Trend 30 points, 20/60-day momentum 30, turnover 20 and low volatility 20; at least 16 of the last 20 bars must include turnover. Percentiles use only processed stocks with aligned dates and complete factors, not historical probabilities.",
+  "quantScan.limits": "The unofficial free feed may be delayed or rate-limited; suspension and ST status come only from its snapshot. Adjustments, missing bars and unconfirmed closes affect comparisons. Manual scans stay in host memory; daily reports are stored only after separate consent. No long-term raw daily database or portfolio backtest is provided.",
+  "quantScan.no-advice": "For research only; not investment advice or a trade instruction. No account connection or order execution.",
+  "quantAuto.title": "Daily market-wide analysis",
+  "quantAuto.disclosure": "After separate consent, the running host scans in batches after 16:45 Shanghai time on weekdays. It may send thousands of free-feed requests and stores the latest 20 reports in this profile (candidates and coverage, not raw daily bars). Public holidays are not identified; interrupted runs are not automatically repeated that day. A watchlist analysis already running at admission gets priority; later watchlist work does not interrupt a batch. Disabling retains existing reports.",
+  "quantAuto.enable": "Agree to daily batched requests and enable",
+  "quantAuto.disable": "Disable daily market analysis",
+  "quantAuto.loading": "Reading daily market task\u2026",
+  "quantAuto.disabled": "Daily market analysis is not enabled.",
+  "quantAuto.enabled": "Daily market analysis is enabled.",
+  "quantAuto.running": "Background batches are running; free-feed limits may leave partial results.",
+  "quantAuto.last": "Last attempt: {date} \xB7 updated: {time}",
+  "quantAuto.error": "Could not read or save the daily market task. Check profile storage and the host connection.",
+  "quantAuto.disable-error": "Disabling could not be saved. This process requested a stop, but prior consent may return on restart. Check storage and retry disabling.",
+  "quantAuto.retry-disable": "Retry saving disable",
+  "quantAuto.issue": "Task status: {reason}",
+  "quantAuto.issue.interrupted": "Interrupted",
+  "quantAuto.issue.source-disabled": "Free source disabled",
+  "quantAuto.issue.scope-mismatch": "Profile identity mismatch",
+  "quantAuto.issue.storage-unavailable": "Storage unavailable",
+  "quantAuto.issue.scan-failed": "Scan failed",
+  "quantAuto.issue.upstream-failures": "Repeated upstream failures",
+  "quantAuto.issue.expired": "Scan expired",
+  "quantAuto.block.disabled": "Disabled",
+  "quantAuto.block.disposed": "Task stopped",
+  "quantAuto.block.running": "Scanning",
+  "quantAuto.block.source-disabled": "Free source disabled",
+  "quantAuto.block.before-window": "Before 16:45 Shanghai time",
+  "quantAuto.block.weekend": "No automatic weekend attempts",
+  "quantAuto.block.already-attempted": "Already attempted automatically today",
+  "quantAuto.block.watch-running": "Waiting for watchlist analysis",
+  "quantAuto.block.watch-unavailable": "Watchlist task status unavailable; not starting",
+  "quantAuto.block.storage-unavailable": "Storage unavailable",
+  "quantAuto.block.scope-mismatch": "Profile identity mismatch",
+  "quantAuto.reports": "Historical scan reports",
+  "quantAuto.no-reports": "No historical reports yet.",
+  "quantAuto.report.complete": "Source directory processed",
+  "quantAuto.report.partial": "Partial result",
+  "quantAuto.report.interrupted": "Interrupted",
+  "quantAuto.show": "View report for {date}",
+  "quantAuto.selected": "Viewing the historical report for {date}; source date and coverage appear below."
+};
+
+// src/client/watch-schedule-locales.ts
+var watchScheduleZh = {
+  "schedule.title": "\u6BCF\u65E5\u81EA\u9009\u5206\u6790",
+  "schedule.disclosure": "\u542F\u7528\u4F1A\u628A\u5F53\u524D\u81EA\u9009\u8BC1\u5238\u4EE3\u7801\u53CA\u540E\u53F0\u5206\u6790\u7ED3\u679C\uFF08\u542B\u6765\u6E90\u540D\u79F0\u548C\u6307\u6807\uFF09\u4FDD\u5B58\u5230\u6B64 profile\uFF0C\u5E76\u5728\u5BBF\u4E3B\u8FD0\u884C\u65F6\u6309\u4E0A\u6D77\u65F6\u95F4\u5DE5\u4F5C\u65E5 16:30 \u540E\u5C1D\u8BD5\u5206\u6790\uFF1B\u4EE3\u7801\u4F1A\u53D1\u5F80\u5DF2\u5F00\u542F\u7684\u514D\u8D39\u6570\u636E\u6E90\u3002\u65E0\u6CD5\u8BC6\u522B\u6CD5\u5B9A\u8282\u5047\u65E5\uFF0C\u4E5F\u4E0D\u4F1A\u8865\u9020\u79BB\u7EBF\u671F\u95F4\u7684\u5386\u53F2\u62A5\u544A\u3002\u505C\u7528\u4F1A\u6E05\u9664\u540E\u53F0\u955C\u50CF\u53CA\u540E\u53F0\u7ED3\u679C\uFF0C\u4E0D\u5F71\u54CD\u6D4F\u89C8\u5668\u81EA\u9009\u3002",
+  "schedule.enable": "\u540C\u610F\u540C\u6B65\u5E76\u542F\u7528\u6BCF\u65E5\u5206\u6790",
+  "schedule.sync": "\u540C\u6B65\u5F53\u524D\u81EA\u9009",
+  "schedule.disable": "\u505C\u7528\u6BCF\u65E5\u5206\u6790",
+  "schedule.confirm": "\u786E\u8BA4\u505C\u7528\u5E76\u6E05\u9664\u540E\u53F0\u955C\u50CF\u4E0E\u7ED3\u679C",
+  "schedule.retry-disable": "\u91CD\u8BD5\u4FDD\u5B58\u505C\u7528",
+  "schedule.cancel": "\u53D6\u6D88",
+  "schedule.check": "\u68C0\u67E5\u5E76\u8FD0\u884C\u4ECA\u65E5\u4EFB\u52A1",
+  "schedule.disabled": "\u5C1A\u672A\u542F\u7528\u540E\u53F0\u6BCF\u65E5\u5206\u6790\u3002",
+  "schedule.loading": "\u8BFB\u53D6\u540E\u53F0\u5206\u6790\u72B6\u6001\u2026",
+  "schedule.error": "\u540E\u53F0\u5206\u6790\u72B6\u6001\u6216\u4FDD\u5B58\u5931\u8D25\uFF1B\u8BF7\u68C0\u67E5\u5BBF\u4E3B\u8FDE\u63A5\u548C profile \u5B58\u50A8\u6743\u9650\u3002",
+  "schedule.disable-error": "\u505C\u7528\u672A\u80FD\u4FDD\u5B58\uFF1A\u5F53\u524D\u8FDB\u7A0B\u5DF2\u505C\u6B62\u4EFB\u52A1\uFF0C\u4F46\u65E7\u6388\u6743\u53EF\u80FD\u5728\u91CD\u542F\u540E\u6062\u590D\u3002\u8BF7\u68C0\u67E5\u5B58\u50A8\u6743\u9650\u5E76\u518D\u6B21\u505C\u7528\u3002",
+  "schedule.enabled": "\u6BCF\u65E5\u5206\u6790\u5DF2\u542F\u7528 \xB7 \u540E\u53F0\u955C\u50CF {count} \u53EA",
+  "schedule.sync-note": "\u6DFB\u52A0\u3001\u5220\u9664\u6216\u8C03\u6574\u81EA\u9009\u540E\uFF0C\u8BF7\u70B9\u51FB\u300C\u540C\u6B65\u5F53\u524D\u81EA\u9009\u300D\uFF1B\u540E\u53F0\u4F7F\u7528\u6700\u540E\u4E00\u6B21\u540C\u6B65\u7684\u6E05\u5355\u3002",
+  "schedule.running": "\u540E\u53F0\u6B63\u5728\u5206\u6790\u5F53\u524D\u6E05\u5355\u3002",
+  "schedule.last": "\u6700\u8FD1\u5C1D\u8BD5\u65E5\u671F\uFF1A{date} \xB7 \u7ED3\u679C\u66F4\u65B0\uFF1A{time}",
+  "schedule.partial": "\u672C\u6B21\u7ED3\u679C\u53EF\u80FD\u4E0D\u5B8C\u6574\u3001\u975E\u5F53\u65E5\u6216\u672A\u786E\u8BA4\u6536\u76D8\uFF1B\u8BF7\u9010\u6761\u6838\u5BF9\u65E5\u671F\u548C\u72B6\u6001\u3002",
+  "schedule.results": "\u6700\u8FD1\u4E00\u6B21\u540E\u53F0\u7ED3\u679C",
+  "schedule.none": "\u8FD8\u6CA1\u6709\u540E\u53F0\u5206\u6790\u7ED3\u679C\u3002",
+  "schedule.source-off": "\u514D\u8D39\u6E90\u672A\u5F00\u542F\uFF0C\u6682\u4E0D\u5C55\u793A\u540E\u53F0\u4FE1\u53F7\u3002",
+  "schedule.issue": "\u540E\u53F0\u4EFB\u52A1\u72B6\u6001\uFF1A{reason}",
+  "schedule.issue.storage-unavailable": "\u65E0\u6CD5\u4FDD\u5B58",
+  "schedule.issue.scope-mismatch": "profile \u6807\u8BC6\u4E0D\u5339\u914D",
+  "schedule.issue.scan-failed": "\u626B\u63CF\u5931\u8D25",
+  "schedule.issue.interrupted": "\u4EFB\u52A1\u4E2D\u65AD",
+  "schedule.issue.source-disabled": "\u514D\u8D39\u6E90\u5DF2\u5173\u95ED",
+  "schedule.block.disabled": "\u672A\u542F\u7528",
+  "schedule.block.running": "\u6B63\u5728\u8FD0\u884C",
+  "schedule.block.source-disabled": "\u514D\u8D39\u6E90\u672A\u5F00\u542F",
+  "schedule.block.empty": "\u6CA1\u6709\u540C\u6B65\u80A1\u7968",
+  "schedule.block.weekend": "\u5468\u672B\u4E0D\u81EA\u52A8\u5C1D\u8BD5",
+  "schedule.block.before-window": "\u5C1A\u672A\u5230\u4E0A\u6D77\u65F6\u95F4 16:30",
+  "schedule.block.already-attempted": "\u4ECA\u5929\u5DF2\u7ECF\u5C1D\u8BD5\u8FC7\uFF1B\u624B\u52A8\u5206\u6790\u53EF\u53E6\u884C\u8FD0\u884C",
+  "schedule.block.storage-unavailable": "\u5B58\u50A8\u4E0D\u53EF\u7528",
+  "schedule.block.disposed": "\u540E\u53F0\u4EFB\u52A1\u5DF2\u505C\u6B62"
+};
+var watchScheduleEn = {
+  "schedule.title": "Daily watchlist analysis",
+  "schedule.disclosure": "Enabling stores current watchlist symbols and background results (including source names and indicators) in this profile and attempts analysis on weekdays after 16:30 Shanghai time while the host runs; symbols are sent to the enabled free feed. Public holidays are not identified and missed offline reports are not invented. Disabling clears the background copy and results, not the browser watchlist.",
+  "schedule.enable": "Agree, sync and enable daily analysis",
+  "schedule.sync": "Sync current watchlist",
+  "schedule.disable": "Disable daily analysis",
+  "schedule.confirm": "Confirm disable and clear background copy and results",
+  "schedule.retry-disable": "Retry saving disable",
+  "schedule.cancel": "Cancel",
+  "schedule.check": "Check and run today\u2019s task",
+  "schedule.disabled": "Background daily analysis is not enabled.",
+  "schedule.loading": "Reading background analysis status\u2026",
+  "schedule.error": "Could not read or save background analysis. Check the host connection and profile storage permissions.",
+  "schedule.disable-error": "Disabling could not be saved: this process stopped the task, but prior consent may return on restart. Check storage permissions and disable again.",
+  "schedule.enabled": "Daily analysis enabled \xB7 {count} mirrored symbols",
+  "schedule.sync-note": "After adding, removing or changing watchlist entries, select \u201CSync current watchlist\u201D. The host uses the last synchronized list.",
+  "schedule.running": "Background analysis is processing the current list.",
+  "schedule.last": "Last attempted date: {date} \xB7 updated: {time}",
+  "schedule.partial": "Results may be incomplete, from an earlier session or unconfirmed. Check each date and status.",
+  "schedule.results": "Latest background results",
+  "schedule.none": "No background analysis results yet.",
+  "schedule.source-off": "The free source is disabled; background signals are hidden.",
+  "schedule.issue": "Background task status: {reason}",
+  "schedule.issue.storage-unavailable": "Cannot save",
+  "schedule.issue.scope-mismatch": "Profile identity mismatch",
+  "schedule.issue.scan-failed": "Scan failed",
+  "schedule.issue.interrupted": "Task interrupted",
+  "schedule.issue.source-disabled": "Free source disabled",
+  "schedule.block.disabled": "Disabled",
+  "schedule.block.running": "Running",
+  "schedule.block.source-disabled": "Free source disabled",
+  "schedule.block.empty": "No synchronized symbols",
+  "schedule.block.weekend": "No automatic weekend attempts",
+  "schedule.block.before-window": "Before 16:30 Shanghai time",
+  "schedule.block.already-attempted": "Already attempted today; manual analysis remains available",
+  "schedule.block.storage-unavailable": "Storage unavailable",
+  "schedule.block.disposed": "Background task stopped"
+};
+
 // src/quote-messages.ts
 var quoteZh = {
   "quote.title": "\u67E5\u8BE2\u80A1\u7968\u62A5\u4EF7",
@@ -13710,6 +14066,9 @@ var zh = {
   ...globalZh,
   ...quantZh,
   ...settingsZh,
+  ...watchSignalsZh,
+  ...quantScanZh,
+  ...watchScheduleZh,
   "title": "\u91D1\u878D",
   // The watchlist is the long list on this page; only explicitly fixed stocks
   // reach the bottom bar, so the two never share a label.
@@ -13864,6 +14223,9 @@ var en2 = {
   ...globalEn,
   ...quantEn,
   ...settingsEn,
+  ...watchSignalsEn,
+  ...quantScanEn,
+  ...watchScheduleEn,
   "title": "Finance",
   "bar.title": "Fixed {count}",
   "bar.aria": "Fixed stocks bar",
@@ -14565,27 +14927,739 @@ function SettingsPanel({ settings, t, preference, onSourceChange, barHidden, onS
   } }, /* @__PURE__ */ import_react20.default.createElement("section", { className: "dxs-set-panel", role: "dialog", "aria-modal": "true", "aria-labelledby": "dxs-set-title" }, /* @__PURE__ */ import_react20.default.createElement("header", { className: "dxs-set-head" }, /* @__PURE__ */ import_react20.default.createElement("div", null, /* @__PURE__ */ import_react20.default.createElement("h2", { id: "dxs-set-title" }, t(appearance.discreet ? "settings.title.quiet" : "settings.title")), /* @__PURE__ */ import_react20.default.createElement("p", null, t("settings.local-only"))), /* @__PURE__ */ import_react20.default.createElement("button", { ref: closeRef, type: "button", className: "dxs-set-close", "aria-label": t("settings.close"), title: t("settings.close"), onClick: onClose }, "\u2715")), /* @__PURE__ */ import_react20.default.createElement("div", { className: "dxs-set-body" }, appearance.storageError ? /* @__PURE__ */ import_react20.default.createElement("p", { role: "alert", className: "dxs-set-error" }, t("settings.storage-error")) : null, /* @__PURE__ */ import_react20.default.createElement("section", { className: "dxs-set-section", "aria-labelledby": "dxs-set-appearance-title" }, /* @__PURE__ */ import_react20.default.createElement("h3", { id: "dxs-set-appearance-title" }, t("settings.section.appearance")), /* @__PURE__ */ import_react20.default.createElement(Row2, { id: "dxs-set-discreet", label: t("settings.discreet.label"), hint: t("settings.discreet.hint") }, /* @__PURE__ */ import_react20.default.createElement(Switch, { id: "dxs-set-discreet", label: t("settings.discreet.label"), checked: appearance.discreet, onChange: (value) => settings?.setDiscreet?.(value) })), /* @__PURE__ */ import_react20.default.createElement("div", { className: "dxs-set-meta" }, /* @__PURE__ */ import_react20.default.createElement("span", { className: "dxs-set-badge" }, t("settings.discreet.badge", { shortcut: bossLabel })), /* @__PURE__ */ import_react20.default.createElement(Keys, { keys: bossKeyShortcutKeys(), label: bossLabel })), appearance.discreet ? /* @__PURE__ */ import_react20.default.createElement("p", { role: "status", className: "dxs-set-status" }, t("settings.discreet.on", { shortcut: bossLabel })) : null), /* @__PURE__ */ import_react20.default.createElement("section", { className: "dxs-set-section", "aria-labelledby": "dxs-set-bar-title" }, /* @__PURE__ */ import_react20.default.createElement("h3", { id: "dxs-set-bar-title" }, t("settings.section.bar")), /* @__PURE__ */ import_react20.default.createElement(Row2, { id: "dxs-set-bar-toggle", label: t("settings.bar.label"), hint: scopeReady ? t("settings.bar.hint") : t("settings.bar.unavailable") }, /* @__PURE__ */ import_react20.default.createElement(Switch, { id: "dxs-set-bar-toggle", label: t("settings.bar.label"), checked: !barHidden, disabled: !scopeReady, onChange: (visible) => onSetBarVisible?.(visible) })), /* @__PURE__ */ import_react20.default.createElement(Row2, { id: "dxs-set-bar-keep", label: t("settings.bar.keep.label"), hint: t("settings.bar.keep.hint") }, /* @__PURE__ */ import_react20.default.createElement(Switch, { id: "dxs-set-bar-keep", label: t("settings.bar.keep.label"), checked: appearance.barInDiscreet, onChange: (keep) => settings?.setBarInDiscreet?.(keep) })), appearance.discreet && !appearance.barInDiscreet ? /* @__PURE__ */ import_react20.default.createElement("p", { role: "status", className: "dxs-set-status" }, t("settings.bar.keep.status")) : null, /* @__PURE__ */ import_react20.default.createElement("p", { className: "dxs-set-meta" }, /* @__PURE__ */ import_react20.default.createElement(Keys, { keys: fixedBarShortcutKeys(), label: fixedBarShortcutLabel() }), /* @__PURE__ */ import_react20.default.createElement("span", null, t("settings.shortcut.bar")))), /* @__PURE__ */ import_react20.default.createElement("section", { className: "dxs-set-section", "aria-labelledby": "dxs-set-source" }, /* @__PURE__ */ import_react20.default.createElement("h3", { id: "dxs-set-source" }, t("settings.section.source")), /* @__PURE__ */ import_react20.default.createElement("div", { className: "dxs-set-source" }, /* @__PURE__ */ import_react20.default.createElement("span", { className: "dxs-set-name" }, t("settings.source.label")), /* @__PURE__ */ import_react20.default.createElement("p", null, t("settings.source.hint")), /* @__PURE__ */ import_react20.default.createElement("div", { className: "dxs-set-source-control" }, /* @__PURE__ */ import_react20.default.createElement(SourceSwitch, { preference, onChange: onSourceChange, t, large: true }), /* @__PURE__ */ import_react20.default.createElement("span", { className: "dxs-set-state" }, sourceReady ? t(preference.enabled ? "market.source.enabled" : "market.source.disabled") : preference.status === "error" ? t("market.source.unavailable") : t("settings.source.loading"))), preference.forced ? /* @__PURE__ */ import_react20.default.createElement("p", { className: "dxs-set-note" }, t("settings.source.forced")) : null, preference.status === "error" || preference.error && sourceReady ? /* @__PURE__ */ import_react20.default.createElement("p", { role: "alert", className: "dxs-set-error" }, t("settings.source.error")) : null)), /* @__PURE__ */ import_react20.default.createElement("section", { className: "dxs-set-section", "aria-labelledby": "dxs-set-shortcuts" }, /* @__PURE__ */ import_react20.default.createElement("h3", { id: "dxs-set-shortcuts" }, t("settings.section.shortcuts")), /* @__PURE__ */ import_react20.default.createElement("div", { className: "dxs-set-shortcuts" }, /* @__PURE__ */ import_react20.default.createElement("div", { className: "dxs-set-shortcut" }, /* @__PURE__ */ import_react20.default.createElement("span", null, t("settings.shortcut.bar")), /* @__PURE__ */ import_react20.default.createElement(Keys, { keys: fixedBarShortcutKeys(), label: fixedBarShortcutLabel() })), /* @__PURE__ */ import_react20.default.createElement("div", { className: "dxs-set-shortcut" }, /* @__PURE__ */ import_react20.default.createElement("span", null, t("settings.shortcut.discreet")), /* @__PURE__ */ import_react20.default.createElement(Keys, { keys: bossKeyShortcutKeys(), label: bossLabel }))), /* @__PURE__ */ import_react20.default.createElement("p", { className: "dxs-set-note" }, t("settings.shortcut.typing")))), /* @__PURE__ */ import_react20.default.createElement("footer", { className: "dxs-set-foot" }, /* @__PURE__ */ import_react20.default.createElement("button", { type: "button", className: "dxs-primary", onClick: onClose }, t("settings.done")))));
 }
 
+// src/client/watch-signals-view.tsx
+var import_react21 = __toESM(require("react"), 1);
+
+// src/watch-signals.ts
+var WATCH_SIGNAL_MIN_SAMPLES = 120;
+var WATCH_SIGNAL_MA20_PERIOD = 20;
+var WATCH_SIGNAL_MA60_PERIOD = 60;
+var WATCH_SIGNAL_BREAKOUT_PERIOD = 20;
+function emptySignal(reason) {
+  return {
+    status: "insufficient",
+    reason,
+    sessionDate: null,
+    samples: 0,
+    isFinal: false,
+    close: null,
+    ma20: null,
+    ma60: null,
+    previousClose: null,
+    previousMa20: null,
+    prior20High: null
+  };
+}
+function isSessionDate2(value) {
+  if (typeof value !== "string" || value.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4)), month = Number(value.slice(5, 7)), day = Number(value.slice(8, 10));
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
+}
+function mean3(bars, end, period2) {
+  if (end < period2) return null;
+  const start = end - period2;
+  const anchor = bars[start].close;
+  let offsets = 0;
+  for (let index = start; index < end; index++) offsets += bars[index].close - anchor;
+  if (Number.isFinite(offsets)) return anchor + offsets / period2;
+  let average2 = anchor;
+  for (let index = start + 1; index < end; index++) {
+    average2 += (bars[index].close - average2) / (index - start + 1);
+  }
+  return average2;
+}
+function evaluateWatchSignal(input) {
+  if (!Array.isArray(input)) return emptySignal("invalid");
+  const bars = [];
+  const dates = /* @__PURE__ */ new Set();
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return emptySignal("invalid");
+    const { sessionDate, close, isFinal } = raw;
+    if (!isSessionDate2(sessionDate) || dates.has(sessionDate) || typeof close !== "number" || !Number.isFinite(close) || close <= 0 || typeof isFinal !== "boolean") return emptySignal("invalid");
+    dates.add(sessionDate);
+    bars.push({ sessionDate, close, isFinal });
+  }
+  bars.sort((left, right) => left.sessionDate < right.sessionDate ? -1 : left.sessionDate > right.sessionDate ? 1 : 0);
+  for (let index = 0; index < bars.length - 1; index++) {
+    if (!bars[index].isFinal) return emptySignal("invalid");
+  }
+  const today = bars.at(-1);
+  if (!today) return emptySignal("insufficient");
+  const samples = bars.length;
+  const previous = bars.at(-2);
+  const ma20 = mean3(bars, samples, WATCH_SIGNAL_MA20_PERIOD);
+  const ma60 = mean3(bars, samples, WATCH_SIGNAL_MA60_PERIOD);
+  const previousMa20 = mean3(bars, samples - 1, WATCH_SIGNAL_MA20_PERIOD);
+  const prior20High = samples > WATCH_SIGNAL_BREAKOUT_PERIOD ? Math.max(...bars.slice(samples - 1 - WATCH_SIGNAL_BREAKOUT_PERIOD, samples - 1).map((bar) => bar.close)) : null;
+  const result = {
+    status: "insufficient",
+    reason: "insufficient",
+    sessionDate: today.sessionDate,
+    samples,
+    isFinal: today.isFinal,
+    close: today.close,
+    ma20,
+    ma60,
+    previousClose: previous?.close ?? null,
+    previousMa20,
+    prior20High
+  };
+  if (samples < WATCH_SIGNAL_MIN_SAMPLES) return result;
+  result.reason = "ok";
+  if (today.close < ma20 && previous.close < previousMa20) result.status = "sell";
+  else if (today.close > prior20High && ma20 > ma60) result.status = "buy";
+  else result.status = "watch";
+  return result;
+}
+
+// src/watch-signal-backtest.ts
+var WATCH_REPLAY_COMMISSION_BPS = 5;
+var WATCH_REPLAY_SLIPPAGE_BPS = 5;
+var WATCH_REPLAY_SELL_TAX_BPS = 5;
+var WATCH_REPLAY_MIN_BARS = 121;
+var MAX_BARS2 = 5e3;
+var empty = (status, bars) => ({
+  status,
+  from: null,
+  to: null,
+  bars,
+  tradeCount: 0,
+  trades: [],
+  open: false,
+  totalReturn: null,
+  buyHoldReturn: null,
+  maxDrawdown: null
+});
+function replayWatchSignals(input) {
+  if (!Array.isArray(input) || input.length > MAX_BARS2) return empty("invalid", 0);
+  const bars = input.slice();
+  if (bars.length && bars.at(-1)?.isFinal === false) bars.pop();
+  if (bars.length < WATCH_REPLAY_MIN_BARS) return empty("insufficient", bars.length);
+  let previousDate = "";
+  for (const bar of bars) {
+    if (!bar || typeof bar !== "object" || typeof bar.sessionDate !== "string" || bar.sessionDate <= previousDate || bar.isFinal !== true || typeof bar.open !== "number" || !Number.isFinite(bar.open) || bar.open <= 0 || typeof bar.close !== "number" || !Number.isFinite(bar.close) || bar.close <= 0) return empty("invalid", bars.length);
+    previousDate = bar.sessionDate;
+  }
+  if (evaluateWatchSignal(bars).reason !== "ok") return empty("invalid", bars.length);
+  const commission = WATCH_REPLAY_COMMISSION_BPS / 1e4;
+  const slippage = WATCH_REPLAY_SLIPPAGE_BPS / 1e4;
+  const sellTax = WATCH_REPLAY_SELL_TAX_BPS / 1e4;
+  const start = 119;
+  let cash = 1, shares = 0, peak = 1, maxDrawdown = 0;
+  let open = null;
+  const trades = [];
+  for (let i = start; i < bars.length - 1; i++) {
+    const current = bars[i], next = bars[i + 1];
+    const signal = evaluateWatchSignal(bars.slice(0, i + 1));
+    if (signal.reason !== "ok") return empty("invalid", bars.length);
+    if (signal.status === "buy" && !open) {
+      const entryPrice = next.open * (1 + slippage);
+      open = { date: next.sessionDate, price: next.open, cashBefore: cash };
+      shares = cash / (entryPrice * (1 + commission));
+      if (!Number.isFinite(shares) || shares <= 0) return empty("invalid", bars.length);
+      cash = 0;
+    } else if (signal.status === "sell" && open) {
+      cash = shares * next.open * (1 - slippage) * (1 - commission - sellTax);
+      if (!Number.isFinite(cash) || cash <= 0) return empty("invalid", bars.length);
+      trades.push({
+        entryDate: open.date,
+        exitDate: next.sessionDate,
+        entryOpen: open.price,
+        exitOpen: next.open,
+        netReturn: cash / open.cashBefore - 1
+      });
+      open = null;
+      shares = 0;
+    }
+    const equity = open ? shares * next.close : cash;
+    if (!Number.isFinite(equity) || equity <= 0) return empty("invalid", bars.length);
+    peak = Math.max(peak, equity);
+    maxDrawdown = Math.min(maxDrawdown, equity / peak - 1);
+  }
+  const last = bars.at(-1);
+  const endingEquity = open ? shares * last.close : cash;
+  const buyHoldReturn = last.close / (bars[start + 1].open * (1 + slippage) * (1 + commission)) - 1;
+  if (!Number.isFinite(endingEquity) || !Number.isFinite(buyHoldReturn)) return empty("invalid", bars.length);
+  return {
+    status: "ready",
+    from: bars[start].sessionDate,
+    to: last.sessionDate,
+    bars: bars.length,
+    tradeCount: trades.length,
+    trades,
+    open: open !== null,
+    totalReturn: endingEquity - 1,
+    buyHoldReturn,
+    maxDrawdown
+  };
+}
+
+// src/client/watch-signals-data.ts
+var WATCH_SIGNAL_CONCURRENCY = 2;
+var WATCH_SIGNAL_PAUSE_MS = 1e3;
+var WATCH_SIGNAL_FAILURE_LIMIT = 6;
+var WATCH_SIGNAL_HISTORY_BARS = 250;
+var WATCH_SIGNAL_MAX_AGE_DAYS = 7;
+var initial = (item) => ({
+  symbol: item.symbol,
+  alias: item.alias,
+  name: "",
+  status: "pending",
+  signal: null,
+  replay: null,
+  source: null,
+  fetchedAt: null,
+  adjustment: null,
+  pricePrecision: null,
+  stWarning: false
+});
+function checkedItems(input) {
+  if (!Array.isArray(input) || input.length > MAX_WATCHLIST) throw new TypeError("invalid watchlist");
+  const seen = /* @__PURE__ */ new Set();
+  return input.map((item) => {
+    const symbol = validateSymbol(item?.symbol);
+    if (seen.has(symbol)) throw new TypeError("duplicate symbol");
+    seen.add(symbol);
+    return { symbol, alias: typeof item.alias === "string" ? item.alias.slice(0, 24) : "" };
+  });
+}
+function ageDays(date, now) {
+  const value = Date.parse(`${date}T00:00:00+08:00`);
+  if (!Number.isFinite(value) || !Number.isFinite(now) || value > now) return null;
+  return Math.floor((now - value) / 864e5);
+}
+function pause(signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timer = setTimeout(done, WATCH_SIGNAL_PAUSE_MS);
+    const abort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", abort);
+      reject(signal.reason);
+    };
+    function done() {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }
+    signal.addEventListener("abort", abort, { once: true });
+  });
+}
+async function scanWatchSignals(rpc, input, options) {
+  const items = checkedItems(input);
+  const rows = items.map(initial);
+  const { signal, onProgress, now = Date.now, wait: wait2 = pause } = options;
+  const publish = () => {
+    if (!signal.aborted) onProgress?.(rows.map((row) => ({ ...row })));
+  };
+  if (!rpc?.call) throw new TypeError("connection unavailable");
+  signal.throwIfAborted();
+  publish();
+  let next = 0, consecutiveFailures = 0, stopped = false;
+  async function check(index) {
+    const item = items[index];
+    const row = rows[index];
+    try {
+      const directory = await rpc.call("/api", SEARCH_RPC_ENDPOINT, { action: "search", query: item.symbol.slice(3) }, signal);
+      signal.throwIfAborted();
+      if (!directory?.ok || directory.value?.status !== "ready" || !Array.isArray(directory.value?.results)) {
+        row.status = "unavailable";
+        return;
+      }
+      const matches2 = directory.value.results.filter((entry) => entry?.symbol === item.symbol);
+      if (matches2.length !== 1) {
+        row.status = "unknown-kind";
+        return;
+      }
+      const match = matches2[0];
+      if (typeof match.name !== "string" || !match.name.trim()) {
+        row.status = "unknown-kind";
+        return;
+      }
+      row.name = match.name.slice(0, 64);
+      row.stWarning = /^(?:\*?ST|S\*ST)/i.test(row.name.trim());
+      if (!["stock", "etf", "fund", "reit"].includes(match.kind)) {
+        row.status = "unknown-kind";
+        return;
+      }
+      if (match.kind !== "stock") {
+        row.status = "unsupported";
+        return;
+      }
+      const result = await rpc.call("/api", MARKET_ENDPOINT, {
+        kind: "history",
+        symbol: item.symbol,
+        adjustment: "forward",
+        limit: WATCH_SIGNAL_HISTORY_BARS
+      }, signal);
+      signal.throwIfAborted();
+      const history = result?.ok && result.value?.status === "ready" ? result.value.history : null;
+      if (!history || history.symbol !== item.symbol || !Array.isArray(history.bars) || !history.bars.length) {
+        row.status = "unavailable";
+        return;
+      }
+      row.source = typeof history.source === "string" ? history.source.slice(0, 64) : null;
+      row.fetchedAt = typeof history.fetchedAt === "string" && Number.isFinite(Date.parse(history.fetchedAt)) ? history.fetchedAt : null;
+      row.adjustment = history.adjustment;
+      row.pricePrecision = Number.isInteger(history.pricePrecision) && history.pricePrecision >= 0 && history.pricePrecision <= 8 ? history.pricePrecision : null;
+      if (history.adjustment !== "forward") {
+        row.status = "unadjusted";
+        return;
+      }
+      const evaluation = evaluateWatchSignal(history.bars);
+      row.signal = evaluation;
+      if (evaluation.status === "insufficient") {
+        row.status = "ready";
+        return;
+      }
+      const age = evaluation.sessionDate ? ageDays(evaluation.sessionDate, now()) : null;
+      if (age === null || age > WATCH_SIGNAL_MAX_AGE_DAYS) {
+        row.status = "stale";
+        return;
+      }
+      row.replay = replayWatchSignals(history.bars);
+      row.status = "ready";
+    } catch {
+      if (signal.aborted) return;
+      row.status = "unavailable";
+    } finally {
+      if (!signal.aborted) {
+        if (row.status === "unavailable") {
+          consecutiveFailures++;
+          if (consecutiveFailures >= WATCH_SIGNAL_FAILURE_LIMIT) stopped = true;
+        } else consecutiveFailures = 0;
+      }
+      publish();
+    }
+  }
+  async function worker() {
+    while (!signal.aborted && !stopped && next < items.length) {
+      const index = next++;
+      await check(index);
+      if (!signal.aborted && !stopped && next < items.length) await wait2(signal);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(WATCH_SIGNAL_CONCURRENCY, items.length) }, worker));
+  signal.throwIfAborted();
+  if (stopped) {
+    for (const row of rows) if (row.status === "pending") row.status = "skipped";
+    publish();
+  }
+  return rows.map((row) => ({ ...row }));
+}
+
+// src/client/watch-signals-view.tsx
+var WATCH_SCHEDULE_ENDPOINT = "dsh-x-finance.watch-schedule";
+function SignalRow({ row, t, format, onOpen }) {
+  const signal = row.signal;
+  const good = row.status === "ready" && signal && signal.status !== "insufficient";
+  const blockedBuy = Boolean(good && row.stWarning && signal.status === "buy");
+  const statusKey2 = row.status !== "ready" ? `signal.${row.status}` : !signal || signal.status === "insufficient" ? "signal.insufficient" : blockedBuy ? "signal.st-blocked" : `signal.${signal.status}`;
+  const price2 = (value, extra = 0) => {
+    if (value === null || !Number.isFinite(value)) return "\u2014";
+    const precision = Math.min(6, (row.pricePrecision ?? 2) + extra);
+    return typeof format?.priceAt === "function" ? format.priceAt(value, precision) : String(value);
+  };
+  const facts = good ? {
+    close: price2(signal.close),
+    high: price2(signal.prior20High),
+    ma20: price2(signal.ma20, 2),
+    ma60: price2(signal.ma60, 2),
+    previous: price2(signal.previousClose),
+    previousMa20: price2(signal.previousMa20, 2)
+  } : null;
+  const reason = good && facts ? t(`signal.${signal.status}-reason`, facts) : null;
+  const historical = Boolean(signal?.sessionDate && signal.sessionDate !== shanghaiToday(Date.now()));
+  const replay = row.replay?.status === "ready" ? row.replay : null;
+  const percent = (value) => value === null || !Number.isFinite(value) ? "\u2014" : typeof format?.change === "function" ? format.change(value * 100) : `${(value * 100).toFixed(2)}%`;
+  return /* @__PURE__ */ import_react21.default.createElement("li", { className: "dxs-signal-row" }, /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-signal-row-head" }, onOpen ? /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-signal-name", onClick: () => onOpen(row.symbol) }, /* @__PURE__ */ import_react21.default.createElement("strong", null, row.alias || row.name || row.symbol), /* @__PURE__ */ import_react21.default.createElement("small", null, row.symbol)) : /* @__PURE__ */ import_react21.default.createElement("span", null, /* @__PURE__ */ import_react21.default.createElement("strong", null, row.alias || row.name || row.symbol), " ", /* @__PURE__ */ import_react21.default.createElement("small", null, row.symbol)), /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-signal-status", "data-status": good && !blockedBuy ? signal.status : "unknown" }, t(statusKey2))), good && !signal.isFinal ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning" }, t("signal.provisional")) : null, good && historical ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning" }, t("signal.historical")) : null, reason ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-reason" }, reason) : null, replay ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-meta" }, t("signal.replay", {
+    from: replay.from,
+    to: replay.to,
+    strategy: percent(replay.totalReturn),
+    benchmark: percent(replay.buyHoldReturn),
+    drawdown: percent(replay.maxDrawdown),
+    trades: replay.tradeCount,
+    open: replay.open ? t("signal.replay-open") : ""
+  })) : null, row.stWarning ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning" }, t("signal.st-note")) : null, signal?.sessionDate ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-meta" }, t("signal.sample", {
+    date: signal.sessionDate,
+    count: typeof format?.count === "function" ? format.count(signal.samples) : signal.samples,
+    adjustment: row.adjustment ? t(`workbench.adjustment.${row.adjustment}`) : "\u2014"
+  })) : null, row.source ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-meta" }, t("signal.source", {
+    source: row.source,
+    time: row.fetchedAt && typeof format?.time === "function" ? format.time(row.fetchedAt, t) : row.fetchedAt ?? "\u2014"
+  })) : null);
+}
+function WatchSchedulePanel({ rpc, scope, items, sourceEnabled, t, format, onOpen }) {
+  const [state, setState] = (0, import_react21.useState)(null);
+  const [busy, setBusy] = (0, import_react21.useState)(false), [error, setError] = (0, import_react21.useState)(""), [confirm, setConfirm] = (0, import_react21.useState)(false);
+  const actionRequest = (0, import_react21.useRef)(null), busyRef = (0, import_react21.useRef)(false), revision = (0, import_react21.useRef)(0);
+  (0, import_react21.useEffect)(() => {
+    if (!scope) return;
+    setState(null);
+    setBusy(false);
+    setError("");
+    setConfirm(false);
+    busyRef.current = false;
+    let disposed = false, timer, poll;
+    const read = async () => {
+      if (disposed) return;
+      if (busyRef.current || typeof document !== "undefined" && document.hidden) {
+        timer = setTimeout(read, 3e4);
+        return;
+      }
+      const local = new AbortController(), token = ++revision.current;
+      poll = local;
+      try {
+        const result = await rpc?.call?.("/api", WATCH_SCHEDULE_ENDPOINT, { action: "get", scope }, local.signal);
+        if (!disposed && !local.signal.aborted && token === revision.current) {
+          if (!result?.ok || !result.value || typeof result.value.enabled !== "boolean") throw new Error("invalid schedule");
+          setState(result.value);
+          setError((previous) => previous === "disable" ? previous : "");
+        }
+      } catch {
+        if (!disposed && !local.signal.aborted && token === revision.current) setError("general");
+      } finally {
+        if (!disposed) timer = setTimeout(read, 3e4);
+      }
+    };
+    void read();
+    return () => {
+      disposed = true;
+      revision.current++;
+      clearTimeout(timer);
+      poll?.abort();
+      actionRequest.current?.abort();
+      actionRequest.current = null;
+      busyRef.current = false;
+    };
+  }, [rpc, scope]);
+  const change = async (action) => {
+    if (!scope || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    const local = new AbortController(), token = ++revision.current;
+    actionRequest.current = local;
+    const symbols = items.map((item) => item.symbol);
+    const payload = action === "enable" ? { action, scope, symbols, consent: true } : action === "sync" ? { action, scope, symbols } : { action, scope };
+    try {
+      const result = await rpc?.call?.("/api", WATCH_SCHEDULE_ENDPOINT, payload, local.signal);
+      if (local.signal.aborted || token !== revision.current) return;
+      if (!result?.ok || !result.value || typeof result.value.enabled !== "boolean") throw new Error("invalid schedule");
+      setState(result.value);
+      setConfirm(false);
+    } catch {
+      if (!local.signal.aborted && token === revision.current) setError(action === "disable" ? "disable" : "general");
+    } finally {
+      if (actionRequest.current === local) {
+        actionRequest.current = null;
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }
+  };
+  const scheduleSourceEnabled = sourceEnabled && state?.sourceEnabled === true;
+  const shown = state?.enabled && scheduleSourceEnabled ? state.rows : [];
+  return /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-schedule", "aria-label": t("schedule.title") }, /* @__PURE__ */ import_react21.default.createElement("h3", null, t("schedule.title")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("schedule.disclosure")), !state && !error ? /* @__PURE__ */ import_react21.default.createElement("p", { role: "status" }, t("schedule.loading")) : null, error ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning", role: "alert" }, t(error === "disable" ? "schedule.disable-error" : "schedule.error")) : null, state && !state.enabled ? /* @__PURE__ */ import_react21.default.createElement("p", null, t("schedule.disabled")) : null, state?.enabled ? /* @__PURE__ */ import_react21.default.createElement(import_react21.default.Fragment, null, /* @__PURE__ */ import_react21.default.createElement("p", null, t("schedule.enabled", { count: state.syncedCount })), /* @__PURE__ */ import_react21.default.createElement("p", null, t("schedule.sync-note")), state.running ? /* @__PURE__ */ import_react21.default.createElement("p", { role: "status" }, t("schedule.running")) : null, /* @__PURE__ */ import_react21.default.createElement("p", null, t("schedule.last", { date: state.lastAttemptDate ?? "\u2014", time: state.updatedAt && typeof format?.time === "function" ? format.time(state.updatedAt, t) : state.updatedAt ?? "\u2014" })), state.error ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning" }, t("schedule.issue", { reason: t(`schedule.issue.${state.error}`) })) : null, state.blockedReason && !["disabled", "running"].includes(state.blockedReason) ? /* @__PURE__ */ import_react21.default.createElement("p", null, t(`schedule.block.${state.blockedReason}`)) : null, state.partial ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning" }, t("schedule.partial")) : null) : null, /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-schedule-actions" }, error === "disable" ? /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => {
+    void change("disable");
+  }, disabled: busy }, t("schedule.retry-disable")) : null, state && !state.enabled && error !== "disable" ? /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => {
+    void change("enable");
+  }, disabled: busy || !scope || !sourceEnabled || !items.length }, t("schedule.enable")) : null, state?.enabled && !confirm && error !== "disable" ? /* @__PURE__ */ import_react21.default.createElement(import_react21.default.Fragment, null, /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => {
+    void change("sync");
+  }, disabled: busy }, t("schedule.sync")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => {
+    void change("run");
+  }, disabled: busy || !!state.blockedReason }, t("schedule.check")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => setConfirm(true), disabled: busy }, t("schedule.disable"))) : null, state?.enabled && confirm && error !== "disable" ? /* @__PURE__ */ import_react21.default.createElement(import_react21.default.Fragment, null, /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => {
+    void change("disable");
+  }, disabled: busy }, t("schedule.confirm")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => setConfirm(false), disabled: busy }, t("schedule.cancel"))) : null), state?.enabled ? shown.length ? /* @__PURE__ */ import_react21.default.createElement("details", { className: "dxs-schedule-results" }, /* @__PURE__ */ import_react21.default.createElement("summary", null, t("schedule.results")), /* @__PURE__ */ import_react21.default.createElement("ol", { className: "dxs-signal-list" }, shown.map((row) => {
+    const item = items.find((entry) => entry.symbol === row.symbol);
+    const status = row.status === "ready" && (row.freshness === "stale" || row.freshness === "unavailable") ? "stale" : row.status;
+    return /* @__PURE__ */ import_react21.default.createElement(SignalRow, { key: row.symbol, row: { ...row, status, alias: item?.alias ?? "", replay: null }, t, format, onOpen });
+  }))) : /* @__PURE__ */ import_react21.default.createElement("p", null, t(scheduleSourceEnabled ? "schedule.none" : "schedule.source-off")) : null);
+}
+function WatchSignals({ rpc, scope, items, sourceEnabled, t, format, onOpen }) {
+  const [rows, setRows] = (0, import_react21.useState)([]);
+  const [running, setRunning] = (0, import_react21.useState)(false);
+  const [error, setError] = (0, import_react21.useState)("");
+  const controller = (0, import_react21.useRef)(null);
+  const itemsKey = JSON.stringify(items.map((item) => [item.symbol, item.alias]));
+  (0, import_react21.useEffect)(() => {
+    controller.current?.abort();
+    controller.current = null;
+    setRows([]);
+    setRunning(false);
+    setError("");
+    return () => {
+      controller.current?.abort();
+      controller.current = null;
+    };
+  }, [itemsKey, sourceEnabled]);
+  const run = async () => {
+    if (!sourceEnabled || !items.length || running) return;
+    controller.current?.abort();
+    const local = new AbortController();
+    controller.current = local;
+    setRunning(true);
+    setError("");
+    setRows([]);
+    try {
+      const result = await scanWatchSignals(rpc, items, { signal: local.signal, onProgress: setRows });
+      if (!local.signal.aborted) setRows(result);
+    } catch {
+      if (!local.signal.aborted) setError("signal.error");
+    } finally {
+      if (controller.current === local) {
+        controller.current = null;
+        setRunning(false);
+      }
+    }
+  };
+  const stop = () => {
+    controller.current?.abort();
+    controller.current = null;
+    setRunning(false);
+    setError("signal.cancelled");
+  };
+  const completed = rows.filter((row) => row.status !== "pending" && row.status !== "skipped").length;
+  return /* @__PURE__ */ import_react21.default.createElement("section", { className: "dxs-signal", "aria-labelledby": "dxs-signal-title" }, /* @__PURE__ */ import_react21.default.createElement("header", { className: "dxs-signal-head" }, /* @__PURE__ */ import_react21.default.createElement("div", null, /* @__PURE__ */ import_react21.default.createElement("h2", { id: "dxs-signal-title" }, t("signal.title")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("signal.subtitle"))), running ? /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: stop }, t("signal.cancel")) : /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-primary", onClick: () => {
+    void run();
+  }, disabled: !sourceEnabled || !items.length }, t(rows.length ? "signal.rerun" : "signal.run"))), !items.length ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("signal.empty")) : !sourceEnabled ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("signal.disabled")) : !rows.length ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("signal.idle")) : null, rows.length ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-progress", role: "status" }, running ? `${t("signal.running")} \xB7 ` : "", t("signal.progress", { completed, total: rows.length })) : null, error ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning", role: "status" }, t(error)) : null, rows.some((row) => row.replay?.status === "ready") ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-signal-warning" }, t("signal.replay-warning")) : null, rows.length ? /* @__PURE__ */ import_react21.default.createElement("ol", { className: "dxs-signal-list" }, rows.map((row) => /* @__PURE__ */ import_react21.default.createElement(SignalRow, { key: row.symbol, row, t, format, onOpen }))) : null, scope ? /* @__PURE__ */ import_react21.default.createElement(WatchSchedulePanel, { rpc, scope, items, sourceEnabled, t, format, onOpen }) : null, /* @__PURE__ */ import_react21.default.createElement("details", { className: "dxs-signal-method" }, /* @__PURE__ */ import_react21.default.createElement("summary", null, t("signal.method")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("signal.method-body")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("signal.notice")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("signal.time-note")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("signal.storage-note"))));
+}
+
+// src/client/quant-scan-view.tsx
+var import_react22 = __toESM(require("react"), 1);
+var QUANT_SCHEDULE_ENDPOINT = "dsh-x-finance.quant-schedule";
+function QuantSchedulePanel({ rpc, scope, sourceEnabled, t, format, manualBusy, onShow }) {
+  const [state, setState] = (0, import_react22.useState)(null);
+  const [busy, setBusy] = (0, import_react22.useState)(false), [error, setError] = (0, import_react22.useState)("");
+  const actionRequest = (0, import_react22.useRef)(null), busyRef = (0, import_react22.useRef)(false), revision = (0, import_react22.useRef)(0);
+  (0, import_react22.useEffect)(() => {
+    if (!scope) return;
+    setState(null);
+    setBusy(false);
+    setError("");
+    busyRef.current = false;
+    let disposed = false, timer, poll;
+    const read = async () => {
+      if (disposed) return;
+      if (busyRef.current || typeof document !== "undefined" && document.hidden) {
+        timer = setTimeout(read, 3e4);
+        return;
+      }
+      const local = new AbortController(), token = ++revision.current;
+      poll = local;
+      try {
+        const result = await rpc?.call?.("/api", QUANT_SCHEDULE_ENDPOINT, { action: "get", scope }, local.signal);
+        if (!disposed && !local.signal.aborted && token === revision.current) {
+          if (!result?.ok || !result.value || typeof result.value.enabled !== "boolean" || !Array.isArray(result.value.reports)) throw new Error("invalid schedule");
+          setState(result.value);
+          setError((previous) => previous === "disable" ? previous : "");
+        }
+      } catch {
+        if (!disposed && !local.signal.aborted && token === revision.current) setError("general");
+      } finally {
+        if (!disposed) timer = setTimeout(read, 3e4);
+      }
+    };
+    void read();
+    return () => {
+      disposed = true;
+      revision.current++;
+      clearTimeout(timer);
+      poll?.abort();
+      actionRequest.current?.abort();
+      actionRequest.current = null;
+      busyRef.current = false;
+    };
+  }, [rpc, scope]);
+  const change = async (action) => {
+    if (!scope || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    const local = new AbortController(), token = ++revision.current;
+    actionRequest.current = local;
+    const payload = action === "enable" ? { action, scope, consent: true } : { action, scope };
+    try {
+      const result = await rpc?.call?.("/api", QUANT_SCHEDULE_ENDPOINT, payload, local.signal);
+      if (local.signal.aborted || token !== revision.current) return;
+      if (!result?.ok || !result.value || typeof result.value.enabled !== "boolean" || !Array.isArray(result.value.reports)) throw new Error("invalid schedule");
+      setState(result.value);
+    } catch {
+      if (!local.signal.aborted && token === revision.current) setError(action === "disable" ? "disable" : "general");
+    } finally {
+      if (actionRequest.current === local) {
+        actionRequest.current = null;
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }
+  };
+  const time = (stamp) => stamp && typeof format?.time === "function" ? format.time(stamp, t) : stamp ?? "\u2014";
+  return /* @__PURE__ */ import_react22.default.createElement("section", { className: "dxs-quant-auto", "aria-label": t("quantAuto.title") }, /* @__PURE__ */ import_react22.default.createElement("h3", null, t("quantAuto.title")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantAuto.disclosure")), !state && !error ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status" }, t("quantAuto.loading")) : null, error ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note", role: "alert" }, t(error === "disable" ? "quantAuto.disable-error" : "quantAuto.error")) : null, state ? /* @__PURE__ */ import_react22.default.createElement(import_react22.default.Fragment, null, /* @__PURE__ */ import_react22.default.createElement("p", null, t(state.enabled ? "quantAuto.enabled" : "quantAuto.disabled")), state.running ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status" }, t("quantAuto.running")) : null, state.lastAttemptDate ? /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantAuto.last", { date: state.lastAttemptDate, time: time(state.updatedAt) })) : null, state.error ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note" }, t("quantAuto.issue", { reason: t(`quantAuto.issue.${state.error}`) })) : null, state.blockedReason && !["disabled", "running"].includes(state.blockedReason) ? /* @__PURE__ */ import_react22.default.createElement("p", null, t(`quantAuto.block.${state.blockedReason}`)) : null, /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-quant-auto-actions" }, error === "disable" ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", disabled: busy, onClick: () => {
+    void change("disable");
+  } }, t("quantAuto.retry-disable")) : state.enabled ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", disabled: busy, onClick: () => {
+    void change("disable");
+  } }, t("quantAuto.disable")) : /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", disabled: busy || !scope || !sourceEnabled, onClick: () => {
+    void change("enable");
+  } }, t("quantAuto.enable"))), state.reports.length ? /* @__PURE__ */ import_react22.default.createElement("details", { className: "dxs-quant-auto-reports" }, /* @__PURE__ */ import_react22.default.createElement("summary", null, t("quantAuto.reports")), /* @__PURE__ */ import_react22.default.createElement("ol", null, state.reports.map((report) => /* @__PURE__ */ import_react22.default.createElement("li", { key: report.date }, /* @__PURE__ */ import_react22.default.createElement("span", null, report.date, " \xB7 ", t(`quantAuto.report.${report.status}`)), report.result ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", disabled: manualBusy, onClick: () => onShow(report) }, t("quantAuto.show", { date: report.date })) : null, report.error ? /* @__PURE__ */ import_react22.default.createElement("small", null, t("quantAuto.issue", { reason: t(`quantAuto.issue.${report.error}`) })) : null)))) : /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantAuto.no-reports"))) : null);
+}
+function QuantScanView({ rpc, scope, sourceEnabled, t, format, onOpenStock }) {
+  const [value, setValue] = (0, import_react22.useState)(null);
+  const [reportDate, setReportDate] = (0, import_react22.useState)(null);
+  const [running, setRunning] = (0, import_react22.useState)(false);
+  const [checking, setChecking] = (0, import_react22.useState)(false);
+  const [auto, setAuto] = (0, import_react22.useState)(false);
+  const [notice, setNotice] = (0, import_react22.useState)("");
+  const active = (0, import_react22.useRef)(false), alive = (0, import_react22.useRef)(false), busy = (0, import_react22.useRef)(false);
+  const request = (0, import_react22.useRef)(null);
+  const timer = (0, import_react22.useRef)(null);
+  const performRef = (0, import_react22.useRef)(async () => {
+  });
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const perform = async (action, scanId) => {
+    if (!sourceEnabled || busy.current) return;
+    busy.current = true;
+    setReportDate(null);
+    const local = new AbortController();
+    request.current = local;
+    if (action !== "status") setRunning(true);
+    else setChecking(true);
+    setNotice("");
+    try {
+      if (!rpc?.call) throw new Error("connection unavailable");
+      const payload = action === "continue" ? { kind: "quant-scan", action, scanId } : { kind: "quant-scan", action };
+      const response = await rpc.call("/api", MARKET_ENDPOINT, payload, local.signal);
+      if (!alive.current || local.signal.aborted) return;
+      if (!response?.ok) throw new Error("scan unavailable");
+      if (response.value?.status === "unconfigured") {
+        setValue(null);
+        active.current = false;
+        setAuto(false);
+        return;
+      }
+      if (response.value?.status !== "ready") throw new Error("invalid scan status");
+      const result = response.value.quantScan;
+      if (result !== null && (!result || typeof result !== "object" || !result.counts || !Array.isArray(result.rows))) throw new Error("invalid scan result");
+      setValue(result);
+      if (active.current && action !== "status" && result?.canContinue) {
+        const next = Date.parse(result.nextAllowedAt);
+        const delay = Number.isFinite(next) ? Math.max(250, next - Date.now()) : 6e4;
+        clear();
+        timer.current = setTimeout(() => {
+          timer.current = null;
+          if (!alive.current || !active.current) return;
+          if (typeof document !== "undefined" && document.hidden) {
+            active.current = false;
+            setAuto(false);
+            setNotice("quantScan.stopped");
+            return;
+          }
+          void performRef.current("continue", result.scanId);
+        }, Math.min(delay, 2147e6));
+      } else if (action !== "status") {
+        active.current = false;
+        setAuto(false);
+      }
+    } catch {
+      if (alive.current && !local.signal.aborted) {
+        active.current = false;
+        setAuto(false);
+        setNotice("quantScan.error");
+      }
+    } finally {
+      if (request.current === local) {
+        request.current = null;
+        busy.current = false;
+        if (alive.current) {
+          setRunning(false);
+          setChecking(false);
+        }
+      }
+    }
+  };
+  performRef.current = perform;
+  (0, import_react22.useEffect)(() => {
+    alive.current = true;
+    if (sourceEnabled) void performRef.current("status");
+    else {
+      setValue(null);
+      setAuto(false);
+      setRunning(false);
+      setChecking(false);
+      setNotice("");
+    }
+    return () => {
+      alive.current = false;
+      active.current = false;
+      clear();
+      request.current?.abort();
+      request.current = null;
+      busy.current = false;
+    };
+  }, [rpc, sourceEnabled]);
+  const start = () => {
+    if (!sourceEnabled || running || busy.current) return;
+    active.current = true;
+    setAuto(true);
+    void perform(value?.canContinue ? "continue" : "start", value?.scanId);
+  };
+  const stop = () => {
+    active.current = false;
+    setAuto(false);
+    clear();
+    request.current?.abort();
+    request.current = null;
+    busy.current = false;
+    setRunning(false);
+    setNotice("quantScan.stopped");
+  };
+  const count2 = (number2) => number2 == null ? "\u2014" : typeof format?.count === "function" ? format.count(number2) : String(number2);
+  const ratio = (number2) => typeof format?.ratio === "function" ? format.ratio(number2) : number2.toFixed(2);
+  const pct2 = (number2) => typeof format?.change === "function" ? format.change(number2 * 100) : `${(number2 * 100).toFixed(2)}%`;
+  const plainPct2 = (number2) => typeof format?.percent === "function" ? format.percent(number2 * 100) : `${(number2 * 100).toFixed(2)}%`;
+  const price2 = (number2) => typeof format?.priceAt === "function" ? format.priceAt(number2, 4) : String(number2);
+  const time = (stamp) => typeof format?.time === "function" ? format.time(stamp, t) : stamp;
+  const c2 = value?.counts;
+  return /* @__PURE__ */ import_react22.default.createElement("section", { className: "dxs-mkt dxs-quant-scan", "aria-labelledby": "dxs-quant-scan-title" }, /* @__PURE__ */ import_react22.default.createElement("header", { className: "dxs-mkt-head" }, /* @__PURE__ */ import_react22.default.createElement("div", null, /* @__PURE__ */ import_react22.default.createElement("h2", { id: "dxs-quant-scan-title" }, t("quantScan.title")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.subtitle"))), /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-mkt-head-actions" }, auto || running ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", onClick: stop }, t("quantScan.stop")) : /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", className: "dxs-primary", disabled: !sourceEnabled || checking, onClick: start }, t(value?.canContinue ? "quantScan.continue" : "quantScan.run")), /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", disabled: !sourceEnabled || running || checking, onClick: () => {
+    void perform("status");
+  } }, t("quantScan.check")))), scope ? /* @__PURE__ */ import_react22.default.createElement(QuantSchedulePanel, { rpc, scope, sourceEnabled, t, format, manualBusy: running || auto, onShow: (report) => {
+    if (report.result) {
+      setValue(report.result);
+      setReportDate(report.date);
+      setNotice("");
+    }
+  } }) : null, reportDate ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note" }, t("quantAuto.selected", { date: reportDate })) : null, !sourceEnabled ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-muted" }, t("quantScan.disabled")) : !value && !running ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-muted" }, t("quantScan.idle")) : null, running ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status", className: "dxs-mkt-muted" }, t("quantScan.running")) : null, auto && !running && value?.canContinue ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status", className: "dxs-mkt-muted" }, t("quantScan.waiting", { time: time(value.nextAllowedAt) })) : null, notice ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t(notice)) : null, value && c2 ? /* @__PURE__ */ import_react22.default.createElement(import_react22.default.Fragment, null, /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note" }, t(value.partial ? "quantScan.partial" : "quantScan.complete")), value.provisional ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note" }, t("quantScan.provisional")) : null, /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-quant-scan-summary" }, /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.coverage", { expected: count2(c2.expected), discovered: count2(c2.discovered), attempted: count2(c2.attempted), succeeded: count2(c2.dailySucceeded), insufficient: count2(c2.dailyInsufficient), failed: count2(c2.dailyFailed), remaining: count2(c2.notAttempted) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.filtered", { ranked: count2(c2.ranked), suspended: count2(c2.excludedSuspended), st: count2(c2.excludedST), unknown: count2(c2.excludedStatusUnknown), missing: count2(c2.missingFactors), dateMismatch: count2(c2.excludedDateMismatch) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.source", { source: value.source, date: value.sessionDate ?? "\u2014", time: time(value.updatedAt) }), " \xB7 ", t(`quantScan.state.${value.stopReason}`))), /* @__PURE__ */ import_react22.default.createElement("h3", null, t("quantScan.rank")), value.rows.length ? /* @__PURE__ */ import_react22.default.createElement("ol", { className: "dxs-quant-scan-list" }, value.rows.map((row) => /* @__PURE__ */ import_react22.default.createElement("li", { key: row.symbol, className: "dxs-quant-scan-row" }, /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-quant-scan-row-head" }, onOpenStock ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", className: "dxs-mkt-link", onClick: () => onOpenStock(row.symbol, row.name) }, /* @__PURE__ */ import_react22.default.createElement("span", null, row.name), /* @__PURE__ */ import_react22.default.createElement("small", null, row.symbol)) : /* @__PURE__ */ import_react22.default.createElement("span", null, /* @__PURE__ */ import_react22.default.createElement("strong", null, row.name), " ", row.symbol), /* @__PURE__ */ import_react22.default.createElement("strong", null, t("quantScan.score"), " ", ratio(row.score))), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.factors", { trend: ratio(row.scores.trend), momentum: ratio(row.scores.momentum), liquidity: ratio(row.scores.liquidity), risk: ratio(row.scores.risk) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.trendDetail", { close: price2(row.factors.close), ma20: price2(row.factors.ma20), ma60: price2(row.factors.ma60) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.returns", { r20: pct2(row.factors.return20), r60: pct2(row.factors.return60), volatility: plainPct2(row.factors.volatility20) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.amount", { amount: row.factors.amountMedian20 === null ? "\u2014" : typeof format?.compact === "function" ? format.compact(row.factors.amountMedian20) : String(row.factors.amountMedian20), samples: count2(row.factors.amountSamples20) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.bar", { date: row.sessionDate, adjustment: t(`workbench.adjustment.${row.adjustment}`), count: count2(row.validBars) }), row.provisional ? ` \xB7 ${t("quantScan.provisional-row")}` : "")))) : /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-muted" }, t("quantScan.empty"))) : null, /* @__PURE__ */ import_react22.default.createElement("details", { className: "dxs-quant-scan-method" }, /* @__PURE__ */ import_react22.default.createElement("summary", null, t("quantScan.method")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.method-body")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.limits")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.no-advice"))));
+}
+
 // src/client/components.tsx
 var tone4 = (value) => value > 0 ? "dxs-up" : value < 0 ? "dxs-down" : "";
 function ShortcutHint({ t }) {
   const keys = fixedBarShortcutKeys();
   const label = fixedBarShortcutLabel();
-  return /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-shortcut" }, /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-sr-only" }, t("page.bar-shortcut", { shortcut: label })), /* @__PURE__ */ import_react21.default.createElement("span", { "aria-hidden": "true" }, keys.map((key) => /* @__PURE__ */ import_react21.default.createElement("kbd", { key }, key))));
+  return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-shortcut" }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-sr-only" }, t("page.bar-shortcut", { shortcut: label })), /* @__PURE__ */ import_react23.default.createElement("span", { "aria-hidden": "true" }, keys.map((key) => /* @__PURE__ */ import_react23.default.createElement("kbd", { key }, key))));
 }
 var quoteFor = (snapshot, symbol) => snapshot?.value?.quotes?.find((quote) => quote?.symbol === symbol);
 var sourceOf = (snapshot) => snapshot?.value?.source ?? null;
 function Status({ snapshot, quote, t, format }) {
-  if (snapshot.status === "loading") return /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
-  if (snapshot.status === "failed") return /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_WATCHLIST) }) : t("status.failed"));
-  return /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(quote)}`));
+  if (snapshot.status === "loading") return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
+  if (snapshot.status === "failed") return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_WATCHLIST) }) : t("status.failed"));
+  return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(quote)}`));
 }
 function StockChip({ item, quote, snapshot, open, t, format }) {
   const status = quoteStatus(quote);
-  return /* @__PURE__ */ import_react21.default.createElement("button", { className: "dxs-chip", onClick: () => open(item.symbol), title: t("chip.title", { symbol: item.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react21.default.createElement("strong", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react21.default.createElement("span", null, format.priceAt(quote?.price, quote?.pricePrecision)), quote?.price != null ? /* @__PURE__ */ import_react21.default.createElement("span", { className: tone4(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react21.default.createElement(Status, { snapshot, quote, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
+  return /* @__PURE__ */ import_react23.default.createElement("button", { className: "dxs-chip", onClick: () => open(item.symbol), title: t("chip.title", { symbol: item.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react23.default.createElement("strong", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react23.default.createElement("span", null, format.priceAt(quote?.price, quote?.pricePrecision)), quote?.price != null ? /* @__PURE__ */ import_react23.default.createElement("span", { className: tone4(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react23.default.createElement(Status, { snapshot, quote, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
 }
 function FixedStrip({ items, symbols, useResource, open, t, format }) {
   const snapshot = useResource(fixedAddressFor(symbols));
-  return /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-strip", "aria-label": t("bar.order") }, items.map((item) => /* @__PURE__ */ import_react21.default.createElement(StockChip, { key: item.symbol, item, quote: quoteFor(snapshot, item.symbol), snapshot, open, t, format })));
+  return /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-strip", "aria-label": t("bar.order") }, items.map((item) => /* @__PURE__ */ import_react23.default.createElement(StockChip, { key: item.symbol, item, quote: quoteFor(snapshot, item.symbol), snapshot, open, t, format })));
 }
 function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideBar, settings, t, format }) {
   const state = useWatchlist((value) => value);
@@ -14595,17 +15669,17 @@ function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideBar, set
   const discreet = appearance.discreet;
   if (!fixed.length || discreet && !appearance.barInDiscreet) return null;
   const sourceOff = preference.status === "ready" && !preference.enabled;
-  return /* @__PURE__ */ import_react21.default.createElement("section", { className: `dxs dxs-bar${discreet ? " dxs-discreet" : ""}`, "aria-label": t(discreet ? "bar.aria.quiet" : "bar.aria") }, /* @__PURE__ */ import_react21.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "bar.expand" : "bar.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("bar.title", { count: format.count(fixed.length) })), !state.collapsed && (sourceOff ? /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-strip dxs-bar-hint" }, /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-muted" }, t("bar.source-off")), /* @__PURE__ */ import_react21.default.createElement(SourceButton, { preference, t })) : /* @__PURE__ */ import_react21.default.createElement(FixedStrip, { key: `${preference.enabled ? "on" : "off"}:${fixed.map((item) => item.symbol).join(",")}`, items: fixed, symbols: fixed.map((item) => item.symbol), useResource, open, t, format })), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-bar-actions" }, sourceOff ? null : /* @__PURE__ */ import_react21.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-icon-button", onClick: () => hideBar(), title: t("bar.hide-hint", { shortcut: fixedBarShortcutLabel() }), "aria-label": t("bar.hide") }, "\u2715"), /* @__PURE__ */ import_react21.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t(discreet ? "settings.discreet.title" : "title"))));
+  return /* @__PURE__ */ import_react23.default.createElement("section", { className: `dxs dxs-bar${discreet ? " dxs-discreet" : ""}`, "aria-label": t(discreet ? "bar.aria.quiet" : "bar.aria") }, /* @__PURE__ */ import_react23.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "bar.expand" : "bar.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("bar.title", { count: format.count(fixed.length) })), !state.collapsed && (sourceOff ? /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-strip dxs-bar-hint" }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t("bar.source-off")), /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t })) : /* @__PURE__ */ import_react23.default.createElement(FixedStrip, { key: `${preference.enabled ? "on" : "off"}:${fixed.map((item) => item.symbol).join(",")}`, items: fixed, symbols: fixed.map((item) => item.symbol), useResource, open, t, format })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-bar-actions" }, sourceOff ? null : /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", onClick: () => hideBar(), title: t("bar.hide-hint", { shortcut: fixedBarShortcutLabel() }), "aria-label": t("bar.hide") }, "\u2715"), /* @__PURE__ */ import_react23.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t(discreet ? "settings.discreet.title" : "title"))));
 }
 function StockIcon({ size: size2 = 20 }) {
-  return /* @__PURE__ */ import_react21.default.createElement("svg", { width: size2, height: size2, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react21.default.createElement("path", { d: "M4 4v16h16M7 15l4-5 4 3 5-7", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }));
+  return /* @__PURE__ */ import_react23.default.createElement("svg", { width: size2, height: size2, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react23.default.createElement("path", { d: "M4 4v16h16M7 15l4-5 4 3 5-7", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
 function SettingsIcon() {
-  return /* @__PURE__ */ import_react21.default.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react21.default.createElement("circle", { cx: "12", cy: "12", r: "3.2", stroke: "currentColor", strokeWidth: "1.7" }), /* @__PURE__ */ import_react21.default.createElement("path", { d: "M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round" }));
+  return /* @__PURE__ */ import_react23.default.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react23.default.createElement("circle", { cx: "12", cy: "12", r: "3.2", stroke: "currentColor", strokeWidth: "1.7" }), /* @__PURE__ */ import_react23.default.createElement("path", { d: "M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round" }));
 }
 function AddStock({ add, count: count2, fixedCount, ready, rpc, t, format, sourceRevision }) {
-  const [exchange, setExchange] = (0, import_react21.useState)("SH"), [code, setCode] = (0, import_react21.useState)(""), [alias, setAlias] = (0, import_react21.useState)(""), [fix, setFix] = (0, import_react21.useState)(false), [error, setError] = (0, import_react21.useState)("");
-  const [picked, setPicked] = (0, import_react21.useState)(null);
+  const [exchange, setExchange] = (0, import_react23.useState)("SH"), [code, setCode] = (0, import_react23.useState)(""), [alias, setAlias] = (0, import_react23.useState)(""), [fix, setFix] = (0, import_react23.useState)(false), [error, setError] = (0, import_react23.useState)("");
+  const [picked, setPicked] = (0, import_react23.useState)(null);
   const submit = (event) => {
     event.preventDefault();
     try {
@@ -14627,18 +15701,18 @@ function AddStock({ add, count: count2, fixedCount, ready, rpc, t, format, sourc
     setPicked(match);
     setError("");
   };
-  return /* @__PURE__ */ import_react21.default.createElement("form", { className: "dxs-form", onSubmit: submit, noValidate: true }, /* @__PURE__ */ import_react21.default.createElement("h2", null, t("add.title")), /* @__PURE__ */ import_react21.default.createElement(InstrumentSearch, { rpc, onPick: pick, t, refreshToken: sourceRevision }), picked && /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-picked", role: "status" }, t("add.selected", { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-form-grid" }, /* @__PURE__ */ import_react21.default.createElement("label", { className: "dxs-field" }, t("add.exchange"), /* @__PURE__ */ import_react21.default.createElement("select", { name: "exchange", value: exchange, onChange: (event) => {
+  return /* @__PURE__ */ import_react23.default.createElement("form", { className: "dxs-form", onSubmit: submit, noValidate: true }, /* @__PURE__ */ import_react23.default.createElement("h2", null, t("add.title")), /* @__PURE__ */ import_react23.default.createElement(InstrumentSearch, { rpc, onPick: pick, t, refreshToken: sourceRevision }), picked && /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-picked", role: "status" }, t("add.selected", { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-form-grid" }, /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-field" }, t("add.exchange"), /* @__PURE__ */ import_react23.default.createElement("select", { name: "exchange", value: exchange, onChange: (event) => {
     setExchange(event.target.value);
     setPicked(null);
-  } }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react21.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react21.default.createElement("label", { className: "dxs-field" }, t("add.code"), /* @__PURE__ */ import_react21.default.createElement("input", { name: "code", value: code, onChange: (event) => {
+  } }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react23.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-field" }, t("add.code"), /* @__PURE__ */ import_react23.default.createElement("input", { name: "code", value: code, onChange: (event) => {
     setCode(event.target.value);
     setPicked(null);
-  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" }))), /* @__PURE__ */ import_react21.default.createElement("label", { className: "dxs-field" }, t("add.alias"), /* @__PURE__ */ import_react21.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-form-submit" }, /* @__PURE__ */ import_react21.default.createElement("label", { className: "dxs-check" }, /* @__PURE__ */ import_react21.default.createElement("input", { type: "checkbox", name: "fixed", checked: fix, disabled: fixedCount >= MAX_FIXED, onChange: (event) => setFix(event.target.checked) }), " ", t("add.fix", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react21.default.createElement("button", { type: "submit", className: "dxs-primary", disabled: !ready || count2 >= MAX_WATCHLIST }, t("add.submit", { count: format.count(count2) }))), error && /* @__PURE__ */ import_react21.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(error === "error.fixed-limit" ? MAX_FIXED : MAX_WATCHLIST) })));
+  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" }))), /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-field" }, t("add.alias"), /* @__PURE__ */ import_react23.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-form-submit" }, /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-check" }, /* @__PURE__ */ import_react23.default.createElement("input", { type: "checkbox", name: "fixed", checked: fix, disabled: fixedCount >= MAX_FIXED, onChange: (event) => setFix(event.target.checked) }), " ", t("add.fix", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react23.default.createElement("button", { type: "submit", className: "dxs-primary", disabled: !ready || count2 >= MAX_WATCHLIST }, t("add.submit", { count: format.count(count2) }))), error && /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(error === "error.fixed-limit" ? MAX_FIXED : MAX_WATCHLIST) })));
 }
 function Detail({ item, previewing, onAdd, useResource, t, format, scope, locale, rpc }) {
   const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol);
   const changeTone2 = tone4(quote?.changePercent);
-  return /* @__PURE__ */ import_react21.default.createElement("article", { "aria-label": t("detail.aria", { symbol: item.symbol }) }, /* @__PURE__ */ import_react21.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-quote-identity" }, /* @__PURE__ */ import_react21.default.createElement("h2", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-symbol-line" }, /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-symbol" }, item.symbol), item.alias ? t("detail.alias") : "", item.fixed ? t("detail.fixed") : "", previewing ? t("detail.preview") : "", previewing && onAdd ? /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-preview-add", onClick: onAdd, title: t("detail.preview.add-hint") }, t("detail.preview.add-short")) : null)), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-quote-figures" }, /* @__PURE__ */ import_react21.default.createElement("div", { className: `dxs-price ${changeTone2}` }, format.priceAt(quote?.price, quote?.pricePrecision)), /* @__PURE__ */ import_react21.default.createElement("div", { className: `dxs-change ${changeTone2}` }, format.change(quote?.changePercent)), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-status-line" }, /* @__PURE__ */ import_react21.default.createElement(Status, { snapshot, quote, t, format }))), /* @__PURE__ */ import_react21.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react21.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react21.default.createElement("dl", null, /* @__PURE__ */ import_react21.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react21.default.createElement("dd", null, sourceOf(snapshot) || t("detail.no-source")), /* @__PURE__ */ import_react21.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react21.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react21.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react21.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react21.default.createElement(StockWorkbench, { key: `${scope}:${item.symbol}`, symbol: item.symbol, scope, t, format, locale, rpc }), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-secondary" }, /* @__PURE__ */ import_react21.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react21.default.createElement("summary", null, t("detail.fundamentals")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("detail.no-fundamentals")), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("detail.fundamentals-notice"))), /* @__PURE__ */ import_react21.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react21.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react21.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice")))));
+  return /* @__PURE__ */ import_react23.default.createElement("article", { "aria-label": t("detail.aria", { symbol: item.symbol }) }, /* @__PURE__ */ import_react23.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-quote-identity" }, /* @__PURE__ */ import_react23.default.createElement("h2", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-symbol-line" }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-symbol" }, item.symbol), item.alias ? t("detail.alias") : "", item.fixed ? t("detail.fixed") : "", previewing ? t("detail.preview") : "", previewing && onAdd ? /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-preview-add", onClick: onAdd, title: t("detail.preview.add-hint") }, t("detail.preview.add-short")) : null)), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-quote-figures" }, /* @__PURE__ */ import_react23.default.createElement("div", { className: `dxs-price ${changeTone2}` }, format.priceAt(quote?.price, quote?.pricePrecision)), /* @__PURE__ */ import_react23.default.createElement("div", { className: `dxs-change ${changeTone2}` }, format.change(quote?.changePercent)), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-status-line" }, /* @__PURE__ */ import_react23.default.createElement(Status, { snapshot, quote, t, format }))), /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react23.default.createElement("dl", null, /* @__PURE__ */ import_react23.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react23.default.createElement("dd", null, sourceOf(snapshot) || t("detail.no-source")), /* @__PURE__ */ import_react23.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react23.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react23.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react23.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react23.default.createElement(StockWorkbench, { key: `${scope}:${item.symbol}`, symbol: item.symbol, scope, t, format, locale, rpc }), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-secondary" }, /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("detail.fundamentals")), /* @__PURE__ */ import_react23.default.createElement("p", null, t("detail.no-fundamentals")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.fundamentals-notice"))), /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react23.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice")))));
 }
 function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move, select, preview, closePreview, setFixed, toggleBar, back, retryScope, settings, t, format, getLocale = () => "en" }) {
   const state = useWatchlist((value) => value);
@@ -14654,13 +15728,13 @@ function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move,
   const selected = previewItem ? void 0 : state.items.find((entry) => entry.symbol === state.selectedSymbol);
   const item = previewItem ?? selected ?? state.items[0];
   const fixedCount = fixedItems(state.items).length;
-  const [view, setView] = (0, import_react21.useState)("watchlist");
-  const [fixError, setFixError] = (0, import_react21.useState)("");
-  const [drillNotice, setDrillNotice] = (0, import_react21.useState)("");
-  const [settingsOpen, setSettingsOpen] = (0, import_react21.useState)(false);
-  const [sourceRevision, setSourceRevision] = (0, import_react21.useState)(0);
-  const previousSelection = (0, import_react21.useRef)(state.selectedSymbol);
-  (0, import_react21.useEffect)(() => {
+  const [view, setView] = (0, import_react23.useState)("watchlist");
+  const [fixError, setFixError] = (0, import_react23.useState)("");
+  const [drillNotice, setDrillNotice] = (0, import_react23.useState)("");
+  const [settingsOpen, setSettingsOpen] = (0, import_react23.useState)(false);
+  const [sourceRevision, setSourceRevision] = (0, import_react23.useState)(0);
+  const previousSelection = (0, import_react23.useRef)(state.selectedSymbol);
+  (0, import_react23.useEffect)(() => {
     if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView("watchlist");
     previousSelection.current = state.selectedSymbol;
   }, [state.selectedSymbol]);
@@ -14716,25 +15790,28 @@ function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move,
     if (state.barHidden) toggleBar();
   };
   const tabLabel = (normal, neutral) => t(discreet ? neutral : normal);
-  return /* @__PURE__ */ import_react21.default.createElement("main", { className: `dxs dxs-page${discreet ? " dxs-discreet" : ""}` }, /* @__PURE__ */ import_react21.default.createElement("header", { className: "dxs-titlebar", "data-window-drag": true }, /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-brand" }, /* @__PURE__ */ import_react21.default.createElement(StockIcon, { size: 16 }), /* @__PURE__ */ import_react21.default.createElement("h1", null, discreet ? t("settings.discreet.title") : t("title")), /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-context" }, discreet ? t("settings.discreet.subtitle") : view === "market" ? t("market.subtitle") : view === "hot" ? t("hot.subtitle") : view === "predict" ? t("predict.subtitle") : view === "global" ? t("global.subtitle") : view === "gold" ? t("gold.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react21.default.createElement(InstrumentLookup, { rpc, t, refreshToken: sourceRevision, onPick: (match) => openStock(match.symbol, match.name) }), /* @__PURE__ */ import_react21.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist" && !previewOpen, onClick: () => {
+  return /* @__PURE__ */ import_react23.default.createElement("main", { className: `dxs dxs-page${discreet ? " dxs-discreet" : ""}` }, /* @__PURE__ */ import_react23.default.createElement("header", { className: "dxs-titlebar", "data-window-drag": true }, /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-brand" }, /* @__PURE__ */ import_react23.default.createElement(StockIcon, { size: 16 }), /* @__PURE__ */ import_react23.default.createElement("h1", null, discreet ? t("settings.discreet.title") : t("title")), /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-context" }, discreet ? t("settings.discreet.subtitle") : view === "market" ? t("market.subtitle") : view === "quant-scan" ? t("quantScan.subtitle") : view === "hot" ? t("hot.subtitle") : view === "predict" ? t("predict.subtitle") : view === "global" ? t("global.subtitle") : view === "gold" ? t("gold.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react23.default.createElement(InstrumentLookup, { rpc, t, refreshToken: sourceRevision, onPick: (match) => openStock(match.symbol, match.name) }), /* @__PURE__ */ import_react23.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist" && !previewOpen, onClick: () => {
     leavePreview();
     setView("watchlist");
-  } }, tabLabel("page.view.watchlist", "settings.tab.watchlist")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", "aria-pressed": view === "market" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.watchlist", "settings.tab.watchlist")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "market" && !previewOpen, onClick: () => {
     leavePreview();
     setView("market");
-  } }, tabLabel("page.view.market", "settings.tab.market")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", "aria-pressed": view === "hot" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.market", "settings.tab.market")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "hot" && !previewOpen, onClick: () => {
     leavePreview();
     setView("hot");
-  } }, tabLabel("page.view.hot", "settings.tab.hot")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", "aria-pressed": view === "predict" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.hot", "settings.tab.hot")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "predict" && !previewOpen, onClick: () => {
     leavePreview();
     setView("predict");
-  } }, tabLabel("page.view.predict", "settings.tab.predict")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", "aria-pressed": view === "global" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.predict", "settings.tab.predict")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "global" && !previewOpen, onClick: () => {
     leavePreview();
     setView("global");
-  } }, tabLabel("global.view.tab", "settings.tab.global")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", "aria-pressed": view === "gold" && !previewOpen, onClick: () => {
+  } }, tabLabel("global.view.tab", "settings.tab.global")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "gold" && !previewOpen, onClick: () => {
     leavePreview();
     setView("gold");
-  } }, tabLabel("gold.view.tab", "settings.tab.gold"))), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-header-actions" }, /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-settings-button", "aria-label": t("settings.open"), title: t("settings.open"), "aria-haspopup": "dialog", "aria-expanded": settingsOpen, onClick: () => setSettingsOpen(true) }, /* @__PURE__ */ import_react21.default.createElement(SettingsIcon, null), /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-settings-button-label" }, t("settings.open"))), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: back }, t("page.back")))), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-body" }, drillNotice ? /* @__PURE__ */ import_react21.default.createElement("p", { role: "status", className: "dxs-banner" }, drillNotice) : null, previewOpen ? /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-stage dxs-stage-detail dxs-preview-page" }, /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-preview-bar" }, /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-preview-back", onClick: leavePreview }, "\u2190 ", t("preview.back")), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("preview.bar", { name: previewItem?.alias || previewItem?.symbol || "" }))), /* @__PURE__ */ import_react21.default.createElement(Detail, { key: `preview:${previewItem?.symbol}`, item: previewItem, previewing: true, onAdd: state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : void 0, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc })) : view === "gold" ? /* @__PURE__ */ import_react21.default.createElement(GoldView, { rpc, t, format, locale: getLocale(), preference }) : view === "global" ? /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react21.default.createElement(GlobalView, { key: `global:${sourceRevision}`, rpc, t, format, locale: getLocale(), preference, onChangeSource: changeSource })) : view === "hot" ? /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react21.default.createElement(HotView, { rpc, t, format, onOpenStock: openStock, onAddMany: addMany }), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("hot.drill.hint"))) : view === "predict" ? /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react21.default.createElement(PredictView, { rpc, t, format, onOpenStock: openStock }), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("predict.drill.hint"))) : view === "market" ? /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react21.default.createElement(MarketView, { key: `market:${sourceRevision}`, rpc, t, format, locale: getLocale(), scope: state.scopeId, discreet, preference, onChangeSource: changeSource, onOpenStock: openStock }), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("market.drill.hint"))) : /* @__PURE__ */ import_react21.default.createElement(import_react21.default.Fragment, null, sourceOff ? /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-banner is-warn dxs-source-card" }, /* @__PURE__ */ import_react21.default.createElement("div", null, /* @__PURE__ */ import_react21.default.createElement("strong", null, t("source.off-title", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("source.off-notice")), preference.status === "error" ? /* @__PURE__ */ import_react21.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null), /* @__PURE__ */ import_react21.default.createElement(SourceButton, { preference, t, large: true })) : preference.status === "error" ? /* @__PURE__ */ import_react21.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t("source.unavailable")) : null, state.placement === "occupied" && /* @__PURE__ */ import_react21.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.occupied")), state.barHidden && /* @__PURE__ */ import_react21.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))), state.scopeStatus === "loading" && /* @__PURE__ */ import_react21.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-banner" }, /* @__PURE__ */ import_react21.default.createElement("button", { onClick: retryScope }, t("page.scope-retry"))), state.storageError && /* @__PURE__ */ import_react21.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react21.default.createElement("aside", { className: "dxs-rail", "aria-label": t("page.manage") }, /* @__PURE__ */ import_react21.default.createElement("header", { className: "dxs-rail-head" }, /* @__PURE__ */ import_react21.default.createElement("h2", null, t("page.my-watchlist")), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-counts" }, t("page.counts", { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-rail-list" }, !state.items.length && /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-empty" }, /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("page.empty.lookup")), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint"))), /* @__PURE__ */ import_react21.default.createElement("ol", { className: "dxs-list" }, state.items.map((entry, index) => /* @__PURE__ */ import_react21.default.createElement("li", { key: entry.symbol, className: item?.symbol === entry.symbol ? "is-selected" : void 0 }, /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-select", "aria-pressed": item?.symbol === entry.symbol, onClick: () => select(entry.symbol) }, /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-row-name" }, /* @__PURE__ */ import_react21.default.createElement("strong", null, entry.alias || entry.symbol), entry.fixed ? /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-fixed-mark" }, t("page.fixed")) : null), /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-row-meta" }, entry.alias ? /* @__PURE__ */ import_react21.default.createElement("span", { className: "dxs-muted" }, entry.symbol) : null)), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === 0, "aria-label": t("page.move-up", { symbol: entry.symbol }), onClick: () => move(entry.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === state.items.length - 1, "aria-label": t("page.move-down", { symbol: entry.symbol }), onClick: () => move(entry.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-icon-button", "aria-pressed": entry.fixed, "aria-label": t(entry.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: entry.symbol }), title: entry.fixed ? t("page.unfix") : t("page.fix"), onClick: () => toggleFix(entry) }, entry.fixed ? "\u2605" : "\u2606"), /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", className: "dxs-icon-button dxs-remove", "aria-label": t("page.remove-aria", { symbol: entry.symbol }), title: t("page.remove"), onClick: () => remove(entry.symbol) }, "\u2715"))))), fixError && /* @__PURE__ */ import_react21.default.createElement("p", { role: "alert", className: "dxs-error" }, t(fixError, { max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-rail-foot" }, /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-bar-toggle" }, discreet && !appearance.barInDiscreet ? /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: showBarInDiscreet, title: t("page.bar-quiet-hint") }, t("page.bar-quiet-show")) : state.barHidden ? /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show")) : /* @__PURE__ */ import_react21.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-hide")), /* @__PURE__ */ import_react21.default.createElement(ShortcutHint, { t })), /* @__PURE__ */ import_react21.default.createElement(AddStock, { add, count: state.items.length, fixedCount, ready: state.scopeStatus === "ready", rpc, t, format, sourceRevision }), /* @__PURE__ */ import_react21.default.createElement("details", { className: "dxs-fineprint" }, /* @__PURE__ */ import_react21.default.createElement("summary", null, t("page.notes")), !sourceOff ? /* @__PURE__ */ import_react21.default.createElement("p", null, t("page.notice")) : null, /* @__PURE__ */ import_react21.default.createElement("p", null, t("page.fixed-hint", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react21.default.createElement("p", null, t("add.notice"))))), /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-stage" }, state.scopeStatus === "ready" && (item ? /* @__PURE__ */ import_react21.default.createElement(Detail, { key: `${state.scopeId}:${preference.enabled}:${item.symbol}`, item, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc }) : /* @__PURE__ */ import_react21.default.createElement("div", { className: "dxs-stage-empty" }, /* @__PURE__ */ import_react21.default.createElement("h2", null, t("page.select")), /* @__PURE__ */ import_react21.default.createElement("p", { className: "dxs-muted" }, t("page.select-hint")), /* @__PURE__ */ import_react21.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale(), rpc }))))))), settingsOpen ? /* @__PURE__ */ import_react21.default.createElement(
+  } }, tabLabel("gold.view.tab", "settings.tab.gold")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "quant-scan" && !previewOpen, onClick: () => {
+    leavePreview();
+    setView("quant-scan");
+  } }, tabLabel("quantScan.tab", "quantScan.tab.quiet"))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-header-actions" }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-settings-button", "aria-label": t("settings.open"), title: t("settings.open"), "aria-haspopup": "dialog", "aria-expanded": settingsOpen, onClick: () => setSettingsOpen(true) }, /* @__PURE__ */ import_react23.default.createElement(SettingsIcon, null), /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-settings-button-label" }, t("settings.open"))), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: back }, t("page.back")))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-body" }, drillNotice ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, drillNotice) : null, previewOpen ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-detail dxs-preview-page" }, /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-preview-bar" }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-preview-back", onClick: leavePreview }, "\u2190 ", t("preview.back")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("preview.bar", { name: previewItem?.alias || previewItem?.symbol || "" }))), /* @__PURE__ */ import_react23.default.createElement(Detail, { key: `preview:${previewItem?.symbol}`, item: previewItem, previewing: true, onAdd: state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : void 0, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc })) : view === "gold" ? /* @__PURE__ */ import_react23.default.createElement(GoldView, { rpc, t, format, locale: getLocale(), preference }) : view === "global" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(GlobalView, { key: `global:${sourceRevision}`, rpc, t, format, locale: getLocale(), preference, onChangeSource: changeSource })) : view === "quant-scan" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react23.default.createElement(QuantScanView, { rpc, scope: state.scopeStatus === "ready" ? state.scopeId : null, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpenStock: openStock })) : view === "hot" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(HotView, { rpc, t, format, onOpenStock: openStock, onAddMany: addMany }), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("hot.drill.hint"))) : view === "predict" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(PredictView, { rpc, t, format, onOpenStock: openStock }), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("predict.drill.hint"))) : view === "market" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(MarketView, { key: `market:${sourceRevision}`, rpc, t, format, locale: getLocale(), scope: state.scopeId, discreet, preference, onChangeSource: changeSource, onOpenStock: openStock }), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("market.drill.hint"))) : /* @__PURE__ */ import_react23.default.createElement(import_react23.default.Fragment, null, sourceOff ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-banner is-warn dxs-source-card" }, /* @__PURE__ */ import_react23.default.createElement("div", null, /* @__PURE__ */ import_react23.default.createElement("strong", null, t("source.off-title", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("source.off-notice")), preference.status === "error" ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null), /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t, large: true })) : preference.status === "error" ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t("source.unavailable")) : null, state.placement === "occupied" && /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.occupied")), state.barHidden && /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))), state.scopeStatus === "loading" && /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-banner" }, /* @__PURE__ */ import_react23.default.createElement("button", { onClick: retryScope }, t("page.scope-retry"))), state.storageError && /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react23.default.createElement("aside", { className: "dxs-rail", "aria-label": t("page.manage") }, /* @__PURE__ */ import_react23.default.createElement("header", { className: "dxs-rail-head" }, /* @__PURE__ */ import_react23.default.createElement("h2", null, t("page.my-watchlist")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-counts" }, t("page.counts", { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-rail-list" }, !state.items.length && /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-empty" }, /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("page.empty.lookup")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint"))), /* @__PURE__ */ import_react23.default.createElement("ol", { className: "dxs-list" }, state.items.map((entry, index) => /* @__PURE__ */ import_react23.default.createElement("li", { key: entry.symbol, className: item?.symbol === entry.symbol ? "is-selected" : void 0 }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-select", "aria-pressed": item?.symbol === entry.symbol, onClick: () => select(entry.symbol) }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-row-name" }, /* @__PURE__ */ import_react23.default.createElement("strong", null, entry.alias || entry.symbol), entry.fixed ? /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-fixed-mark" }, t("page.fixed")) : null), /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-row-meta" }, entry.alias ? /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, entry.symbol) : null)), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === 0, "aria-label": t("page.move-up", { symbol: entry.symbol }), onClick: () => move(entry.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === state.items.length - 1, "aria-label": t("page.move-down", { symbol: entry.symbol }), onClick: () => move(entry.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", "aria-pressed": entry.fixed, "aria-label": t(entry.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: entry.symbol }), title: entry.fixed ? t("page.unfix") : t("page.fix"), onClick: () => toggleFix(entry) }, entry.fixed ? "\u2605" : "\u2606"), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button dxs-remove", "aria-label": t("page.remove-aria", { symbol: entry.symbol }), title: t("page.remove"), onClick: () => remove(entry.symbol) }, "\u2715"))))), fixError && /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-error" }, t(fixError, { max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-rail-foot" }, /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-bar-toggle" }, discreet && !appearance.barInDiscreet ? /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: showBarInDiscreet, title: t("page.bar-quiet-hint") }, t("page.bar-quiet-show")) : state.barHidden ? /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show")) : /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-hide")), /* @__PURE__ */ import_react23.default.createElement(ShortcutHint, { t })), /* @__PURE__ */ import_react23.default.createElement(AddStock, { add, count: state.items.length, fixedCount, ready: state.scopeStatus === "ready", rpc, t, format, sourceRevision }), /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-fineprint" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("page.notes")), !sourceOff ? /* @__PURE__ */ import_react23.default.createElement("p", null, t("page.notice")) : null, /* @__PURE__ */ import_react23.default.createElement("p", null, t("page.fixed-hint", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react23.default.createElement("p", null, t("add.notice"))))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage" }, state.scopeStatus === "ready" ? /* @__PURE__ */ import_react23.default.createElement(WatchSignals, { key: state.scopeId, rpc, scope: state.scopeId, items: state.items, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpen: select }) : null, state.scopeStatus === "ready" && (item ? /* @__PURE__ */ import_react23.default.createElement(Detail, { key: `${state.scopeId}:${preference.enabled}:${item.symbol}`, item, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc }) : /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage-empty" }, /* @__PURE__ */ import_react23.default.createElement("h2", null, t("page.select")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("page.select-hint")), /* @__PURE__ */ import_react23.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale(), rpc }))))))), settingsOpen ? /* @__PURE__ */ import_react23.default.createElement(
     SettingsPanel,
     {
       settings,
@@ -15488,6 +16565,43 @@ var SETTINGS_CSS = `
 }
 `;
 
+// src/client/watch-signals-styles.ts
+var WATCH_SIGNALS_CSS = `
+.dxs-signal{margin:0 0 16px;padding:16px;border:1px solid var(--dxs-line);border-radius:10px;background:var(--dxs-bg)}
+.dxs-signal-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.dxs-signal-head h2{margin:0;font-size:16px}.dxs-signal-head p{margin:3px 0 0;color:var(--dxs-muted)}
+.dxs-signal-progress,.dxs-signal-meta{font-size:12px;color:var(--dxs-muted)}
+.dxs-signal-list{list-style:none;margin:10px 0;padding:0;display:grid;gap:8px}
+.dxs-signal-row{padding:10px 12px;border:1px solid var(--dxs-line-soft);border-radius:8px;background:var(--dxs-soft)}
+.dxs-signal-row-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dxs .dxs-signal-name{height:auto;padding:0;border:0;background:transparent;text-align:left;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;white-space:normal}
+.dxs-signal-name small{color:var(--dxs-muted)}
+.dxs-signal-status{font-size:12px;font-weight:650;text-align:right;color:var(--dxs-muted)}
+.dxs-signal-status[data-status=buy]{color:var(--dsw-alias-state-error-primary,var(--dxs-fg))}
+.dxs-signal-status[data-status=sell]{color:var(--dsw-alias-state-warn-primary,var(--dxs-fg))}
+.dxs-signal-row p{margin:4px 0 0}.dxs-signal-warning{color:var(--dsw-alias-state-warn-primary,var(--dxs-fg))}
+.dxs-signal-reason{line-height:1.6}.dxs-signal-method{margin-top:10px;color:var(--dxs-muted);font-size:12px}
+.dxs-signal-method p{line-height:1.6}
+.dxs-schedule{margin-top:14px;padding-top:12px;border-top:1px solid var(--dxs-line-soft);font-size:12px}
+.dxs-schedule h3{margin:0;font-size:14px}.dxs-schedule p{line-height:1.6;color:var(--dxs-muted)}
+.dxs-schedule-actions{display:flex;gap:8px;flex-wrap:wrap}.dxs-schedule-results{margin-top:10px}
+`;
+
+// src/client/quant-scan-styles.ts
+var QUANT_SCAN_CSS = `
+.dxs-quant-scan{max-width:1200px}.dxs-quant-scan-summary{padding:10px 12px;background:var(--dxs-soft);border:1px solid var(--dxs-line-soft);border-radius:8px;color:var(--dxs-muted)}
+.dxs-quant-scan-summary p{margin:3px 0}.dxs-quant-scan h3{font-size:14px;margin:16px 0 8px}
+.dxs-quant-scan-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.dxs-quant-scan-row{padding:10px 12px;border:1px solid var(--dxs-line-soft);border-radius:8px;background:var(--dxs-bg)}
+.dxs-quant-scan-row-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.dxs-quant-scan-row p{margin:4px 0;color:var(--dxs-muted);font-size:12px;line-height:1.6}
+.dxs-quant-scan-method{margin-top:14px;color:var(--dxs-muted);font-size:12px}.dxs-quant-scan-method p{line-height:1.6}
+.dxs-quant-auto{margin:12px 0;padding:12px;border:1px solid var(--dxs-line-soft);border-radius:8px;background:var(--dxs-bg);font-size:12px}
+.dxs-quant-auto h3{margin:0;font-size:14px}.dxs-quant-auto p{color:var(--dxs-muted);line-height:1.6}
+.dxs-quant-auto-actions{display:flex;gap:8px;flex-wrap:wrap}.dxs-quant-auto-reports{margin-top:10px;color:var(--dxs-muted)}
+.dxs-quant-auto-reports ol{padding-left:20px}.dxs-quant-auto-reports li{margin:8px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+`;
+
 // src/client/styles.ts
 var CSS = `
 .dxs{--dxs-bg:var(--dsw-alias-bg-layer-1,#fff);--dxs-soft:var(--dsw-alias-bg-layer-2,#f5f6f8);--dxs-title:var(--dsw-specific-sidebar-fill,var(--dxs-soft));--dxs-line:var(--dsw-alias-border-l2,#e2e5e9);--dxs-line-soft:var(--dsw-alias-border-l1,#eceef1);--dxs-fg:var(--dsw-alias-label-primary,#20252e);--dxs-muted:var(--dsw-alias-label-secondary,#717885);--dxs-accent:var(--dsw-alias-brand-primary,#4666d5);--dxs-up:var(--dsw-alias-state-error-primary,#bb5863);--dxs-down:var(--dsw-alias-state-success-primary,#2b865c);color:var(--dxs-fg);font:13px/1.5 var(--dsw-font-family,system-ui,sans-serif);box-sizing:border-box}.dxs *{box-sizing:border-box}.dxs button,.dxs input,.dxs select{font:inherit;color:inherit}.dxs button{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 10px;font-size:12px;line-height:1;cursor:pointer;border:1px solid var(--dxs-line);border-radius:6px;background:var(--dxs-bg);white-space:nowrap}.dxs button:hover:not(:disabled){background:var(--dxs-soft)}.dxs button:focus-visible,.dxs input:focus-visible,.dxs select:focus-visible{outline:2px solid var(--dxs-accent);outline-offset:2px}.dxs button:disabled{opacity:.45;cursor:not-allowed}.dxs .dxs-primary{background:var(--dxs-accent);border-color:transparent;color:var(--dsw-alias-label-primary-foreground,#fff);font-weight:550}.dxs .dxs-primary:hover:not(:disabled){background:color-mix(in srgb,var(--dxs-accent) 88%,#000)}.dxs .dxs-icon-button{width:28px;padding:0}.dxs :is(.dxs-select,.dxs-mkt-link,.dxs-mkt-tile,.dxs-mkt-group-label){height:auto;min-height:0}.dxs-bar{display:flex;align-items:center;gap:8px;width:100%;max-width:100vw;padding:5px 12px;border-top:1px solid var(--dsw-alias-border-l2,#ddd);background:var(--dsw-alias-bg-layer-1,#fff);min-height:40px}.dxs-strip{display:flex;align-items:center;gap:8px;min-width:0;flex:1;overflow-x:auto;padding:2px}.dxs-chip{display:flex;align-items:center;gap:8px;flex:none}.dxs-muted{color:var(--dsw-alias-label-secondary,#666);font-size:12px}.dxs-up{color:var(--dxs-up)}.dxs-down{color:var(--dxs-down)}.dxs-page{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:var(--dxs-bg)}.dxs-titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:50px;flex:none;padding:0 12px;padding-inline-start:max(12px,var(--dsh-frame-leading-clearance,0px));border-bottom:.5px solid var(--dsw-alias-border-l3,var(--dxs-line-soft));background:var(--dxs-title)}.dxs-brand{display:flex;align-items:center;gap:8px;min-width:0;flex:1}.dxs-brand svg{color:var(--dxs-accent);flex:none}.dxs-brand h1,.dxs h1{font-size:13px;font-weight:600;line-height:1.3;margin:0;letter-spacing:0}.dxs-context{color:var(--dxs-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-left:1px solid var(--dxs-line-soft);padding-left:8px}.dxs-header-actions{display:flex;align-items:center;gap:6px;flex:none}.dxs-body{flex:1;min-height:0;overflow:auto;padding:16px 20px 28px}.dxs h2{font-size:13px;font-weight:600;margin:0 0 8px}.dxs p{margin:8px 0}.dxs-notice{padding:10px 12px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);border-radius:8px;margin:12px 0}.dxs-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px;margin-top:4px}.dxs-list{padding:0;list-style:none}.dxs-list li{margin:8px 0}.dxs-list .dxs-select{width:100%;height:auto;min-height:32px;padding:6px 10px;text-align:left;white-space:normal;justify-content:flex-start}.dxs-controls{display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap}.dxs-form{display:grid;gap:8px;margin-top:16px}.dxs input,.dxs select{min-width:0;width:100%;height:28px;padding:0 10px;font-size:12px;background:var(--dxs-bg);border:1px solid var(--dxs-line);border-radius:6px}.dxs-section{padding:18px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:10px;margin-bottom:16px}.dxs-price{font-size:30px;font-variant-numeric:tabular-nums}.dxs dl{display:grid;grid-template-columns:auto 1fr;gap:5px 16px}.dxs dd{margin:0;overflow-wrap:anywhere}.dxs-error{color:var(--dsw-alias-state-error-primary,#bc2737)}@media(max-width:650px){.dxs-body{padding:12px 12px 20px}.dxs-layout{grid-template-columns:1fr}.dxs-bar{padding:4px 8px;gap:6px}.dxs-context{display:none}.dxs-titlebar{gap:8px;padding-inline:8px}}` + CHART_CSS + `
@@ -15500,6 +16614,8 @@ ${GOLD_CSS}
 ${GLOBAL_CSS}
 ${QUANT_CSS}
 ${SETTINGS_CSS}
+${WATCH_SIGNALS_CSS}
+${QUANT_SCAN_CSS}
 
 /* \u2500\u2500 Glass material \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
    The Harness glass theme (dsh-x-ui) makes the shared surface tokens
@@ -15520,7 +16636,7 @@ ${SETTINGS_CSS}
 `;
 
 // src/client/tool-view.tsx
-var import_react22 = __toESM(require("react"), 1);
+var import_react24 = __toESM(require("react"), 1);
 
 // src/client/quote-presentation.ts
 function readQuotePresentation(meta) {
@@ -15536,7 +16652,7 @@ function StockToolView({ phase, block, t, format, inspect }) {
   const quote = settled ? readQuotePresentation(block.meta) : null;
   const state = !settled ? phase === "preparing" ? "preparing" : "running" : block.isError ? "failed" : "done";
   const symbol = quote?.symbol ?? block.args?.text("symbol");
-  return /* @__PURE__ */ import_react22.default.createElement("section", { className: "dxs dxs-section", "aria-label": t("quote.title") }, /* @__PURE__ */ import_react22.default.createElement("strong", null, t("quote.title"), symbol ? ` \xB7 ${symbol}` : ""), /* @__PURE__ */ import_react22.default.createElement("p", { role: "status" }, t(`quote.${state}`)), settled && block.isError && /* @__PURE__ */ import_react22.default.createElement("p", { role: "alert" }, t(quoteErrorKey(block.error))), quote && !block.isError && /* @__PURE__ */ import_react22.default.createElement(import_react22.default.Fragment, null, /* @__PURE__ */ import_react22.default.createElement("dl", null, ["price", "open", "high", "low", "previousClose", "change", "changePercent"].map((key) => /* @__PURE__ */ import_react22.default.createElement(import_react22.default.Fragment, { key }, /* @__PURE__ */ import_react22.default.createElement("dt", null, t(`quote.${key}`)), /* @__PURE__ */ import_react22.default.createElement("dd", null, key === "changePercent" ? format.change(quote[key]) : format.price(quote[key])))), /* @__PURE__ */ import_react22.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react22.default.createElement("dd", null, quote.provider), /* @__PURE__ */ import_react22.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react22.default.createElement("dd", null, format.time(quote.quotedAt, t)), /* @__PURE__ */ import_react22.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react22.default.createElement("dd", null, format.time(quote.fetchedAt, t))), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quote.notice"))), settled && !block.isError && !quote && /* @__PURE__ */ import_react22.default.createElement(import_react22.default.Fragment, null, /* @__PURE__ */ import_react22.default.createElement("p", null, t("quote.legacy")), /* @__PURE__ */ import_react22.default.createElement("pre", { style: { whiteSpace: "pre-wrap" } }, (block.content ?? []).filter((item) => item.type === "text").map((item) => item.text).join("\n"))), inspect && /* @__PURE__ */ import_react22.default.createElement("button", { onClick: inspect }, t("quote.inspect")));
+  return /* @__PURE__ */ import_react24.default.createElement("section", { className: "dxs dxs-section", "aria-label": t("quote.title") }, /* @__PURE__ */ import_react24.default.createElement("strong", null, t("quote.title"), symbol ? ` \xB7 ${symbol}` : ""), /* @__PURE__ */ import_react24.default.createElement("p", { role: "status" }, t(`quote.${state}`)), settled && block.isError && /* @__PURE__ */ import_react24.default.createElement("p", { role: "alert" }, t(quoteErrorKey(block.error))), quote && !block.isError && /* @__PURE__ */ import_react24.default.createElement(import_react24.default.Fragment, null, /* @__PURE__ */ import_react24.default.createElement("dl", null, ["price", "open", "high", "low", "previousClose", "change", "changePercent"].map((key) => /* @__PURE__ */ import_react24.default.createElement(import_react24.default.Fragment, { key }, /* @__PURE__ */ import_react24.default.createElement("dt", null, t(`quote.${key}`)), /* @__PURE__ */ import_react24.default.createElement("dd", null, key === "changePercent" ? format.change(quote[key]) : format.price(quote[key])))), /* @__PURE__ */ import_react24.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react24.default.createElement("dd", null, quote.provider), /* @__PURE__ */ import_react24.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react24.default.createElement("dd", null, format.time(quote.quotedAt, t)), /* @__PURE__ */ import_react24.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react24.default.createElement("dd", null, format.time(quote.fetchedAt, t))), /* @__PURE__ */ import_react24.default.createElement("p", null, t("quote.notice"))), settled && !block.isError && !quote && /* @__PURE__ */ import_react24.default.createElement(import_react24.default.Fragment, null, /* @__PURE__ */ import_react24.default.createElement("p", null, t("quote.legacy")), /* @__PURE__ */ import_react24.default.createElement("pre", { style: { whiteSpace: "pre-wrap" } }, (block.content ?? []).filter((item) => item.type === "text").map((item) => item.text).join("\n"))), inspect && /* @__PURE__ */ import_react24.default.createElement("button", { onClick: inspect }, t("quote.inspect")));
 }
 
 // src/client/index.ts

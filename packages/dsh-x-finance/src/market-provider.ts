@@ -50,6 +50,9 @@ import type { TailMetrics, TailMinutePoint, TailScanCandidate, TailScanResult } 
 import type { GlobalMarketOverview, GlobalQuote } from './global.ts'
 import { validateSymbol } from './watchlist.ts'
 import { MAX_ABSOLUTE_PRICE } from './chart-data.ts'
+import { randomUUID } from 'node:crypto'
+import { createQuantScanner, isQuantSymbol, parseQuantScanRequest, QUANT_SCAN_LIMITS } from './quant-scan.ts'
+import type { QuantPage } from './quant-scan.ts'
 
 export const MARKET_QUOTE_ENDPOINT = 'https://qt.gtimg.cn/q='
 export const MARKET_BOARD_RANK_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank'
@@ -349,6 +352,25 @@ export function parseBoardRank(payload: any): Map<string, RankBoard> {
 interface StockRankPage {
   total: number
   rows: MarketStock[]
+}
+
+/** Preserve stock identities even when quotes/turnover/name/status are missing.
+ * Reusing parseStockRankPage would silently prefilter the daily universe.
+ */
+export function parseQuantRankPage(payload: any): QuantPage {
+  const data = payload?.data
+  const total = finiteNumber(data?.total, 0, 1_000_000)
+  if (payload?.code !== 0 || total === null || !Number.isInteger(total) || !Array.isArray(data?.rank_list)
+    || data.rank_list.length > QUANT_SCAN_LIMITS.pageSize) throw new Error('quant rank invalid')
+  const stocks: QuantPage['stocks'] = []
+  let invalid = 0
+  for (const row of data.rank_list) {
+    const symbol = row && typeof row.code === 'string' ? normalizeMarketCode(row.code) : null
+    if (!isQuantSymbol(symbol)) { invalid++; continue }
+    stocks.push({ symbol, name: cleanText(row.name, 64),
+      suspended: row.state === 'S' ? true : row.state === '' ? false : null })
+  }
+  return { expected: total, stocks, invalid, rawCount: data.rank_list.length }
 }
 
 /** Parses one `getBoardRankList` page. Exported for tests. */
@@ -1130,9 +1152,12 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
 
   async function request(
     url: string, encoding: 'utf-8' | 'gbk', maxBytes: number,
-    headers: Record<string, string> = {}, budgetMs = timeoutMs,
+    headers: Record<string, string> = {}, budgetMs = timeoutMs, signal?: AbortSignal,
   ): Promise<string> {
     const controller = new AbortController()
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
     const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(budgetMs, timeoutMs)))
     try {
       const response = await fetchImpl(url, {
@@ -1146,12 +1171,13 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
       return new TextDecoder(encoding).decode(bytes)
     } finally {
       clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
       controller.abort()
     }
   }
 
-  async function requestJson(url: string, maxBytes = MARKET_MAX_BYTES, budgetMs = timeoutMs): Promise<any> {
-    const text = await request(url, 'utf-8', maxBytes, {}, budgetMs)
+  async function requestJson(url: string, maxBytes = MARKET_MAX_BYTES, budgetMs = timeoutMs, signal?: AbortSignal): Promise<any> {
+    const text = await request(url, 'utf-8', maxBytes, {}, budgetMs, signal)
     let value: any
     try { value = JSON.parse(text) } catch { throw new Error('market invalid json') }
     if (!value || typeof value !== 'object') throw new Error('market invalid json')
@@ -1507,10 +1533,10 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
    * depending on adjustment, and silently falls back to `day` for symbols it
    * cannot adjust (STAR, some ETFs); the key is therefore read, not assumed.
    */
-  async function loadHistory(symbol: string, adjustment: MarketAdjustment, limit: number): Promise<MarketHistory> {
+  async function loadHistory(symbol: string, adjustment: MarketAdjustment, limit: number, signal?: AbortSignal): Promise<MarketHistory> {
     const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`
     const parameter = `${code},day,,,${limit},${adjustment === 'none' ? '' : adjustment === 'forward' ? 'qfq' : 'hfq'}`
-    const payload = await requestJson(`${MARKET_HISTORY_ENDPOINT}?param=${parameter}`, MARKET_MAX_BYTES)
+    const payload = await requestJson(`${MARKET_HISTORY_ENDPOINT}?param=${parameter}`, MARKET_MAX_BYTES, timeoutMs, signal)
     if (payload.code !== 0) throw new Error('history request failed')
     const entry = payload.data?.[code]
     if (!entry || typeof entry !== 'object') throw new Error('history missing')
@@ -1983,8 +2009,21 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     return promise
   }
 
+  // This scanner shares the opt-in provider, but deliberately avoids the
+  // breadth parser's quote filters, retries and low-coverage exception. Every
+  // discovered identity gets a daily request, including ST/suspended stocks;
+  // exclusions happen after retrieval and are reported separately.
+  const quantScan = createQuantScanner({
+    source: MARKET_SOURCE_NAME, now, id: randomUUID,
+    page: async (offset, signal) => parseQuantRankPage(await requestJson(
+      `${MARKET_STOCK_RANK_ENDPOINT}?_appver=11.17.0&board_code=aStock&sort_type=turnover&direct=down&offset=${offset}&count=${QUANT_SCAN_LIMITS.pageSize}`,
+      MARKET_MAX_BYTES, timeoutMs, signal)),
+    history: (symbol, signal) => loadHistory(symbol, 'forward', QUANT_SCAN_LIMITS.historyBars, signal),
+  })
+
   return {
     name: MARKET_SOURCE_NAME,
+    quantScan: (input, signal) => quantScan(parseQuantScanRequest(input), signal),
     overview: () => getOrLoad('overview', overviewTtlMs, loadOverview),
     breadth: () => getOrLoad('breadth', breadthTtlMs, loadBreadth),
     globalOverview: () => getOrLoad('global', globalTtlMs, loadGlobalOverview),

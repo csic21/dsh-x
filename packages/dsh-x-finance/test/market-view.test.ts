@@ -499,6 +499,7 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
       if (payload.kind === 'overview') return { ok: true, value: { status: 'ready', overview } }
       if (payload.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth } }
       if (payload.kind === 'global') return { ok: true, value: { status: 'ready', global: globalOverview } }
+      if (payload.kind === 'quant-scan' && payload.action === 'status') return { ok: true, value: { status: 'ready', quantScan: null } }
       if (payload.kind === 'tail-scan') return { ok: true, value: { status: 'ready', tailScan: payload.window === 'morning' ? morningTailScan : tailScan } }
       if (payload && typeof payload === 'object' && !Object.keys(payload).length) return { ok: true, value: { status: 'ready', snapshot: goldSnapshot } }
       return { ok: true, value: { status: 'ready', board } }
@@ -517,7 +518,7 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
     })))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
     const tabs = [...dom.window.document.querySelectorAll<HTMLElement>('.dxs-view-tabs button')]
-    assert.equal(tabs.length, 6)
+    assert.equal(tabs.length, 7)
     assert.equal(tabs[0]!.getAttribute('aria-pressed'), 'true')
     assert.match(dom.window.document.body.textContent ?? '', /我的自选/)
     await act(async () => tabs[1]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
@@ -568,6 +569,12 @@ test('finance page tabs switch between the watchlist, the market panorama, the h
     assert.match(goldText, /离岸人民币/)
     assert.match(goldText, /52周高/)
     assert.doesNotMatch(goldText, /NaN|undefined/)
+    const beforeQuant = calls.length
+    await act(async () => tabs[6]!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    assert.equal(tabs[6]!.getAttribute('aria-pressed'), 'true')
+    assert.match(dom.window.document.body.textContent ?? '', /全市场日线研究/)
+    assert.equal(calls.slice(beforeQuant).some((call: any) => call.kind === 'quant-scan' && call.action === 'start'), false)
   } finally {
     await act(async () => root.unmount())
     dom.window.close()

@@ -9,6 +9,7 @@ import { projectGlobalOverview } from './global.ts'
 import { projectTailScan } from './tail-scan.ts'
 import { projectHotScan } from './hot.ts'
 import { projectPredictScan } from './predict.ts'
+import { projectQuantScan } from './quant-scan.ts'
 import { createRpcRoute, failure } from './rpc.ts'
 
 // A provider can be replaced or switched at runtime; a function is resolved on
@@ -246,6 +247,15 @@ export function createMarketHandler({ provider, now = Date.now }: { provider?: M
     try {
       const resolved = typeof provider === 'function' ? await provider() : provider
       if (!resolved) return { ok: true, value: { status: 'unconfigured', source: null } }
+      if (request.kind === 'quant-scan') {
+        if (typeof resolved.quantScan !== 'function') return failure('finance/quant-scan-unavailable', '当前行情源不提供日线定量扫描。')
+        try {
+          const { kind: _kind, ...input } = request
+          return { ok: true, value: { status: 'ready', quantScan: projectQuantScan(await resolved.quantScan(input, signal), now()) } }
+        } catch {
+          return failure('finance/quant-scan-unavailable', '日线定量扫描暂不可用或进度已失效。')
+        }
+      }
       if (request.kind === 'overview') return { ok: true, value: { status: 'ready', overview: await resolved.overview() } }
       if (request.kind === 'breadth') return { ok: true, value: { status: 'ready', breadth: await resolved.breadth() } }
       if (request.kind === 'quotes') {

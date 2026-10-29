@@ -8,6 +8,10 @@ import { createGoldRoute } from './gold-rpc.js';
 import { createSearchRoute } from './search-rpc.js';
 import { createScopeRoute, loadProfileScope } from './scope.js';
 import { financeQuoteTool } from './tool.js';
+import { createWatchSignalScheduler, installWatchScheduleTimer } from './watch-signal-scheduler.js';
+import { createWatchScheduleRoute } from './watch-signal-scheduler-rpc.js';
+import { createQuantScanScheduler } from './quant-scan-scheduler.js';
+import { createQuantScheduleRoute } from './quant-scan-scheduler-rpc.js';
 export const name = 'dsh-x-finance';
 export const inject = ['tools'];
 export function apply(ctx, config = {}) {
@@ -27,6 +31,9 @@ export function apply(ctx, config = {}) {
     ctx.tools.register(defineTool(financeQuoteTool()));
     ctx.inject(['connection', 'profileContext'], (host) => {
         let marketController;
+        let watchScheduler;
+        let quantScheduler;
+        let sourceChanges = 0;
         try {
             const store = createProfileMarketPreference(host.profileContext.dir);
             marketController = createMarketController({
@@ -34,6 +41,24 @@ export function apply(ctx, config = {}) {
                 store,
                 createProvider: () => createTencentMarketProvider(),
             });
+            const controller = marketController;
+            marketController = {
+                state: () => controller.state(),
+                getProvider: () => controller.getProvider(),
+                async setEnabled(enabled) {
+                    sourceChanges++;
+                    quantScheduler?.sourceChanged();
+                    if (!enabled)
+                        watchScheduler?.sourceChanged();
+                    try {
+                        return await controller.setEnabled(enabled);
+                    }
+                    finally {
+                        sourceChanges--;
+                        quantScheduler?.sourceChanged();
+                    }
+                },
+            };
         }
         catch { /* No profile directory: keep the data route in its unconfigured state. */ }
         const sourceEnabled = async () => {
@@ -63,5 +88,45 @@ export function apply(ctx, config = {}) {
         let scopePromise;
         const readScope = () => scopePromise ??= loadProfileScope(host.profileContext.dir).catch(error => { scopePromise = undefined; throw error; });
         host.connection.fetch.register(createScopeRoute(readScope));
+        // Timer is an official optional Host service. Its loss disposes this task
+        // and its exact Connection route without affecting the other finance APIs.
+        host.inject?.(['timer'], (scheduledHost) => {
+            const scheduler = createWatchSignalScheduler({
+                profileDirectory: scheduledHost.profileContext.dir,
+                market: () => marketController?.getProvider() ?? Promise.resolve(undefined),
+                search: { enabled: sourceEnabled, provider: searchProvider },
+                sourceEnabled,
+            });
+            watchScheduler = scheduler;
+            const quant = createQuantScanScheduler({
+                profileDirectory: scheduledHost.profileContext.dir,
+                provider: () => sourceChanges ? Promise.resolve(undefined) : marketController?.getProvider() ?? Promise.resolve(undefined),
+                sourceEnabled: async () => !sourceChanges && await sourceEnabled(),
+                watchRunning: async (scope) => (await scheduler.request({ action: 'get', scope })).running,
+            });
+            quantScheduler = quant;
+            scheduledHost.connection.fetch.register(createWatchScheduleRoute(scheduler));
+            scheduledHost.connection.fetch.register(createQuantScheduleRoute(quant));
+            // One official ctx-owned timer: admit the watch task first, then let the
+            // market task inspect its running state. Disposal aborts both generations.
+            installWatchScheduleTimer(scheduledHost, {
+                ...scheduler,
+                async tick() {
+                    try {
+                        return await scheduler.tick();
+                    }
+                    finally {
+                        await quant.tick();
+                    }
+                },
+                dispose() { quant.dispose(); scheduler.dispose(); },
+            });
+            scheduledHost.effect(() => () => {
+                if (watchScheduler === scheduler)
+                    watchScheduler = undefined;
+                if (quantScheduler === quant)
+                    quantScheduler = undefined;
+            });
+        });
     });
 }

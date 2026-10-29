@@ -1,6 +1,7 @@
 import type { HotSnapshot } from './hot.ts';
 import type { Csi300Fund, Csi300FundShare, MarketAdjustment, MarketHistory, MarketQuote, MarketStock, MarketTopStock, MarketProvider, MarketIntraday } from './market.ts';
 import type { TailMinutePoint } from './tail-scan.ts';
+import type { QuantPage } from './quant-scan.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
 export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank";
 export declare const MARKET_STOCK_RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList";
@@ -171,6 +172,10 @@ interface StockRankPage {
     total: number;
     rows: MarketStock[];
 }
+/** Preserve stock identities even when quotes/turnover/name/status are missing.
+ * Reusing parseStockRankPage would silently prefilter the daily universe.
+ */
+export declare function parseQuantRankPage(payload: any): QuantPage;
 /** Parses one `getBoardRankList` page. Exported for tests. */
 export declare function parseStockRankPage(payload: any): StockRankPage;
 /**

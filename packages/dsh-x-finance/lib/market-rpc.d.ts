@@ -40,6 +40,7 @@ export declare function createMarketHandler({ provider, now }?: {
     value: {
         status: string;
         source: null;
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         quotes?: undefined;
@@ -55,6 +56,25 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        status: string;
+        quantScan: import("./quant-scan.ts").QuantScanResult | null;
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
+        csi300Funds?: undefined;
+        global?: undefined;
+        hotScan?: undefined;
+        predictScan?: undefined;
+        tailScan?: undefined;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        quantScan?: undefined;
         status: string;
         overview: import("./market.ts").MarketOverview;
         breadth?: undefined;
@@ -72,6 +92,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         status: string;
         breadth: import("./market.ts").MarketBreadth;
@@ -89,6 +110,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         status: string;
@@ -106,6 +128,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
@@ -123,6 +146,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
@@ -140,6 +164,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
@@ -157,6 +182,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
@@ -174,6 +200,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
@@ -191,6 +218,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
@@ -208,6 +236,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
@@ -225,6 +254,7 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;

@@ -29,6 +29,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     // Offline fixtures only: the directory never receives a live security here.
     if(endpoint==='dsh-x-finance.search')return {ok:true,value:payload?.action==='status'?{status:'ready',enabled:true,source:'test-directory',results:[]}:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'SZ.002594',name:'比亚迪',kind:'stock'},{symbol:'SH.510300',name:'沪深300ETF华泰柏瑞',kind:'etf'}]}}
     if(endpoint==='dsh-x-finance.market-preference')return {ok:true,value:{enabled:true,forced:false}}
+    if(endpoint==='dsh-x-finance.watch-schedule')return {ok:true,value:{enabled:false,running:false,syncedCount:0,lastAttemptDate:null,updatedAt:null,resultDate:null,rows:[],error:null,sourceEnabled:true,partial:false,freshness:'empty',blockedReason:'disabled'}}
     // The daily chart is part of the same page; this fixture has no bars, so it
     // must render the explicit "no daily data" state instead of a fake candle.
     if(endpoint==='dsh-x-finance.market'&&payload?.kind==='history')return {ok:true,value:{status:'unconfigured',source:null}}
@@ -116,7 +117,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.equal(JSON.parse(localStorage.getItem('dsh-x-finance:settings:v1')!).discreet,true)
     assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('main.dxs-page')!.classList.contains('dxs-discreet'),true)
     assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('h1')!.textContent,'工作台')
-    assert.deepEqual([...document.querySelectorAll('.dxs-titlebar nav.dxs-view-tabs button')].map(button=>button.textContent),['列表','概览','关注','概率','指数','商品'])
+    assert.deepEqual([...document.querySelectorAll('.dxs-titlebar nav.dxs-view-tabs button')].map(button=>button.textContent),['列表','概览','关注','概率','指数','商品','分析'])
     assert.equal((entries.get('shell.bottom')??[]).length,0)
     // The drawer stays open, so the boss key's effect can be undone at once.
     await click(document.querySelector<HTMLElement & HTMLInputElement>('input[aria-label="低调模式"]')!)

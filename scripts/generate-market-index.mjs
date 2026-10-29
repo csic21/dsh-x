@@ -31,7 +31,7 @@ const packages = {
   },
   'dsh-x-finance': {
     title: { en: 'Finance', zh: '金融' },
-    description: { en: 'A-share watchlist and market board plus a gold panel with cross-market spreads and range moves.', zh: 'A 股自选与市场全景，外加黄金面板：跨市场报价、沪伦价差与区间变化。' },
+    description: { en: 'A-share watchlist research signals, daily analysis, market-wide screening, global indices and gold; read-only.', zh: 'A 股自选研究信号、每日分析、全市场筛选、全球指数与黄金面板；只读。' },
     category: 'data',
     icon: 'icons/dsh-x-finance.svg',
   },

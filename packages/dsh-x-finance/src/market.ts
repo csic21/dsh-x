@@ -12,6 +12,9 @@ import type { GlobalMarketOverview } from './global.ts'
 import type { TailScanResult } from './tail-scan.ts'
 import type { HotScanResult } from './hot.ts'
 import type { PredictScanResult } from './predict.ts'
+import { parseQuantScanRequest } from './quant-scan.ts'
+import type { QuantScanRequest, QuantScanResult } from './quant-scan.ts'
+export type { QuantScanRequest, QuantScanResult, QuantCounts, QuantRow, QuantFactors } from './quant-scan.ts'
 export const MARKET_ENDPOINT = 'dsh-x-finance.market'
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference'
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)'
@@ -332,7 +335,8 @@ export type MarketGlobalResult = MarketUnconfigured | { status: 'ready'; global:
 export type MarketTailScanResult = MarketUnconfigured | { status: 'ready'; tailScan: TailScanResult }
 export type MarketCsi300FundsResult = MarketUnconfigured | { status: 'ready'; csi300Funds: Csi300FundShare }
 export type MarketPredictScanResult = MarketUnconfigured | { status: 'ready'; predictScan: PredictScanResult }
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult
+export type MarketQuantScanResult = MarketUnconfigured | { status: 'ready'; quantScan: QuantScanResult | null }
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult | MarketQuantScanResult
 
 export type MarketRequest =
   | { kind: 'overview' }
@@ -346,6 +350,7 @@ export type MarketRequest =
   | { kind: 'hot-scan'; board?: string }
   | { kind: 'csi300-funds' }
   | { kind: 'predict-scan'; board?: string }
+  | ({ kind: 'quant-scan' } & QuantScanRequest)
 
 /**
  * Session tails the scan can describe: the last 30 minutes of the morning break
@@ -431,6 +436,8 @@ export interface MarketProvider {
    * breaking the market board.
    */
   predictScan?(options: { board?: string }): Promise<PredictScanResult>
+  /** Manual, bounded daily scan; status never starts work. No watchlist access. */
+  quantScan?(request: QuantScanRequest, signal?: AbortSignal): Promise<QuantScanResult | null>
 }
 
 export function validateBoardCode(value: unknown): string {
@@ -743,6 +750,10 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.getPrototypeOf(payload) !== Object.prototype) throw stockMarketError('invalid-input')
   const keys = Object.keys(payload).sort()
   const kind = (payload as { kind?: unknown }).kind
+  if (kind === 'quant-scan') {
+    const { kind: _kind, ...input } = payload as Record<string, unknown>
+    return { kind: 'quant-scan', ...parseQuantScanRequest(input) }
+  }
   if (kind === 'overview') {
     if (keys.join(',') !== 'kind') throw stockMarketError('invalid-input')
     return { kind: 'overview' }

@@ -15,6 +15,8 @@ import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBA
 import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, tailWindowSpec, } from './tail-scan.js';
 import { validateSymbol } from './watchlist.js';
 import { MAX_ABSOLUTE_PRICE } from './chart-data.js';
+import { randomUUID } from 'node:crypto';
+import { createQuantScanner, isQuantSymbol, parseQuantScanRequest, QUANT_SCAN_LIMITS } from './quant-scan.js';
 export const MARKET_QUOTE_ENDPOINT = 'https://qt.gtimg.cn/q=';
 export const MARKET_BOARD_RANK_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank';
 export const MARKET_STOCK_RANK_ENDPOINT = 'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList';
@@ -303,6 +305,28 @@ export function parseBoardRank(payload) {
         });
     }
     return result;
+}
+/** Preserve stock identities even when quotes/turnover/name/status are missing.
+ * Reusing parseStockRankPage would silently prefilter the daily universe.
+ */
+export function parseQuantRankPage(payload) {
+    const data = payload?.data;
+    const total = finiteNumber(data?.total, 0, 1_000_000);
+    if (payload?.code !== 0 || total === null || !Number.isInteger(total) || !Array.isArray(data?.rank_list)
+        || data.rank_list.length > QUANT_SCAN_LIMITS.pageSize)
+        throw new Error('quant rank invalid');
+    const stocks = [];
+    let invalid = 0;
+    for (const row of data.rank_list) {
+        const symbol = row && typeof row.code === 'string' ? normalizeMarketCode(row.code) : null;
+        if (!isQuantSymbol(symbol)) {
+            invalid++;
+            continue;
+        }
+        stocks.push({ symbol, name: cleanText(row.name, 64),
+            suspended: row.state === 'S' ? true : row.state === '' ? false : null });
+    }
+    return { expected: total, stocks, invalid, rawCount: data.rank_list.length };
 }
 /** Parses one `getBoardRankList` page. Exported for tests. */
 export function parseStockRankPage(payload) {
@@ -1082,8 +1106,12 @@ export function createTencentMarketProvider(options = {}) {
     const globalCooldown = new Map();
     /** Same idea for the 分时 sources: a throttled host is skipped, not retried every poll. */
     const intradayCooldown = new Map();
-    async function request(url, encoding, maxBytes, headers = {}, budgetMs = timeoutMs) {
+    async function request(url, encoding, maxBytes, headers = {}, budgetMs = timeoutMs, signal) {
         const controller = new AbortController();
+        const abort = () => controller.abort();
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted)
+            abort();
         const timer = setTimeout(() => controller.abort(), Math.max(1, Math.min(budgetMs, timeoutMs)));
         try {
             const response = await fetchImpl(url, {
@@ -1098,11 +1126,12 @@ export function createTencentMarketProvider(options = {}) {
         }
         finally {
             clearTimeout(timer);
+            signal?.removeEventListener('abort', abort);
             controller.abort();
         }
     }
-    async function requestJson(url, maxBytes = MARKET_MAX_BYTES, budgetMs = timeoutMs) {
-        const text = await request(url, 'utf-8', maxBytes, {}, budgetMs);
+    async function requestJson(url, maxBytes = MARKET_MAX_BYTES, budgetMs = timeoutMs, signal) {
+        const text = await request(url, 'utf-8', maxBytes, {}, budgetMs, signal);
         let value;
         try {
             value = JSON.parse(text);
@@ -1512,10 +1541,10 @@ export function createTencentMarketProvider(options = {}) {
      * depending on adjustment, and silently falls back to `day` for symbols it
      * cannot adjust (STAR, some ETFs); the key is therefore read, not assumed.
      */
-    async function loadHistory(symbol, adjustment, limit) {
+    async function loadHistory(symbol, adjustment, limit, signal) {
         const code = `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`;
         const parameter = `${code},day,,,${limit},${adjustment === 'none' ? '' : adjustment === 'forward' ? 'qfq' : 'hfq'}`;
-        const payload = await requestJson(`${MARKET_HISTORY_ENDPOINT}?param=${parameter}`, MARKET_MAX_BYTES);
+        const payload = await requestJson(`${MARKET_HISTORY_ENDPOINT}?param=${parameter}`, MARKET_MAX_BYTES, timeoutMs, signal);
         if (payload.code !== 0)
             throw new Error('history request failed');
         const entry = payload.data?.[code];
@@ -2021,8 +2050,18 @@ export function createTencentMarketProvider(options = {}) {
         inflight.set(key, promise);
         return promise;
     }
+    // This scanner shares the opt-in provider, but deliberately avoids the
+    // breadth parser's quote filters, retries and low-coverage exception. Every
+    // discovered identity gets a daily request, including ST/suspended stocks;
+    // exclusions happen after retrieval and are reported separately.
+    const quantScan = createQuantScanner({
+        source: MARKET_SOURCE_NAME, now, id: randomUUID,
+        page: async (offset, signal) => parseQuantRankPage(await requestJson(`${MARKET_STOCK_RANK_ENDPOINT}?_appver=11.17.0&board_code=aStock&sort_type=turnover&direct=down&offset=${offset}&count=${QUANT_SCAN_LIMITS.pageSize}`, MARKET_MAX_BYTES, timeoutMs, signal)),
+        history: (symbol, signal) => loadHistory(symbol, 'forward', QUANT_SCAN_LIMITS.historyBars, signal),
+    });
     return {
         name: MARKET_SOURCE_NAME,
+        quantScan: (input, signal) => quantScan(parseQuantScanRequest(input), signal),
         overview: () => getOrLoad('overview', overviewTtlMs, loadOverview),
         breadth: () => getOrLoad('breadth', breadthTtlMs, loadBreadth),
         globalOverview: () => getOrLoad('global', globalTtlMs, loadGlobalOverview),

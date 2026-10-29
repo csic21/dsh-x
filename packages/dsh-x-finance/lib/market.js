@@ -8,6 +8,7 @@
 // global.ts because it is a different upstream (East Money) from the A-share
 // Tencent feed, but it is enabled and disabled by the same preference.
 import { validateSymbol } from './watchlist.js';
+import { parseQuantScanRequest } from './quant-scan.js';
 export const MARKET_ENDPOINT = 'dsh-x-finance.market';
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference';
 export const MARKET_SOURCE_NAME = '腾讯行情 (unofficial)';
@@ -388,6 +389,10 @@ export function parseMarketRequest(payload) {
         throw stockMarketError('invalid-input');
     const keys = Object.keys(payload).sort();
     const kind = payload.kind;
+    if (kind === 'quant-scan') {
+        const { kind: _kind, ...input } = payload;
+        return { kind: 'quant-scan', ...parseQuantScanRequest(input) };
+    }
     if (kind === 'overview') {
         if (keys.join(',') !== 'kind')
             throw stockMarketError('invalid-input');

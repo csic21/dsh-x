@@ -3,6 +3,7 @@ import { projectGlobalOverview } from './global.js';
 import { projectTailScan } from './tail-scan.js';
 import { projectHotScan } from './hot.js';
 import { projectPredictScan } from './predict.js';
+import { projectQuantScan } from './quant-scan.js';
 import { createRpcRoute, failure } from './rpc.js';
 /**
  * Re-validates every quote before it reaches the browser and reports a symbol
@@ -278,6 +279,17 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
             const resolved = typeof provider === 'function' ? await provider() : provider;
             if (!resolved)
                 return { ok: true, value: { status: 'unconfigured', source: null } };
+            if (request.kind === 'quant-scan') {
+                if (typeof resolved.quantScan !== 'function')
+                    return failure('finance/quant-scan-unavailable', '当前行情源不提供日线定量扫描。');
+                try {
+                    const { kind: _kind, ...input } = request;
+                    return { ok: true, value: { status: 'ready', quantScan: projectQuantScan(await resolved.quantScan(input, signal), now()) } };
+                }
+                catch {
+                    return failure('finance/quant-scan-unavailable', '日线定量扫描暂不可用或进度已失效。');
+                }
+            }
             if (request.kind === 'overview')
                 return { ok: true, value: { status: 'ready', overview: await resolved.overview() } };
             if (request.kind === 'breadth')

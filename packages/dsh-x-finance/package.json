@@ -1,6 +1,6 @@
 {
   "name": "dsh-x-finance",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "type": "module",
   "main": "./lib/index.js",
   "engines": {
@@ -12,6 +12,7 @@
     "cordis.patch.yml",
     "README.md",
     "locale/*.json",
+    "icon.svg",
     "licenses",
     "VALIDATION.md"
   ],
@@ -46,6 +47,7 @@
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
     "./package.json": "./package.json",
+    "./icon": "./icon.svg",
     "./locale/*.json": "./locale/*.json"
   }
 }
