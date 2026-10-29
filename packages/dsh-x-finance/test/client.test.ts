@@ -182,6 +182,19 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.match(document.body.textContent,/日 K 数据未开启/)
     assert.match(document.body.textContent,/数据不足/)
     assert.equal(document.querySelectorAll('canvas').length,0)
+    // Discreet mode hides the bar by default, but the page offers a one-click
+    // keep action; the bar then renders with the same neutral palette.
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-haspopup="dialog"]')!)
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('input[aria-label="低调模式"]')!)
+    assert.equal((entries.get('shell.bottom')??[]).length,0)
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="关闭设置"]')!)
+    assert.match(document.body.textContent!,/低调模式下显示固定栏/)
+    await click([...document.querySelectorAll('button')].find(button=>button.textContent==='低调模式下显示固定栏')!)
+    assert.equal((entries.get('shell.bottom')??[]).length,1)
+    assert.equal(JSON.parse(localStorage.getItem('dsh-x-finance:settings:v1')!).barInDiscreet,true)
+    await render(entries.get('shell.bottom')[0])
+    assert.equal(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-bar')!.classList.contains('dxs-discreet'),true)
+    assert.match(barText(),/工作台/)
     const tool=entries.get('tool.call.toolview')[0]
     let toolBlock: any={kind:'tool-result',isError:false,meta:{kind:'dsh-x-finance.quote',version:1,quote:{symbol:'BRK.B',provider:'Finnhub',price:1234.5,open:null,high:1300,low:1200,previousClose:1230,change:4.5,changePercent:0.37,quotedAt:'2026-10-16T07:00:00Z',fetchedAt:'2026-10-16T07:00:02Z'}},content:[]}
     function RenderTool() {

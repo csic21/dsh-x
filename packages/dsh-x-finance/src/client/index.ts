@@ -52,7 +52,17 @@ export function apply(ctx: any) {
   const shortcut = (event: any) => {
     if (!isFixedBarShortcut(event)) return
     event.preventDefault()
-    try { controller.toggleBar() } catch { /* Storage state is reported by the page. */ }
+    try {
+      const appearance = settings.getSnapshot()
+      // Discreet mode hides the bar by policy, so the first press is an
+      // explicit "keep it" request; later presses toggle it like always.
+      if (appearance.discreet && !appearance.barInDiscreet) {
+        settings.setBarInDiscreet(true)
+        if (controller.source.getSnapshot().barHidden) controller.toggleBar()
+        return
+      }
+      controller.toggleBar()
+    } catch { /* Storage state is reported by the page. */ }
   }
   globalThis.addEventListener?.('keydown', shortcut, true)
   ctx.effect(() => () => globalThis.removeEventListener?.('keydown', shortcut, true), 'stock: fixed bar shortcut')
@@ -89,12 +99,15 @@ export function apply(ctx: any) {
     back: () => ctx.layout.selectPanel(null),
   })
   // The bottom slot is single and contested: occupy it only while at least one
-  // stock is fixed and the user has not hidden the bar.
+  // stock is fixed and the user has not hidden the bar. Discreet mode releases
+  // the slot by default, but the reader can keep the bar with the settings
+  // switch (or the one-click action on the page) when they want it visible.
   mountWhenVacant(ctx.slots, { inject: face, locale: NS }, StockBar, {
     onPlacement: controller.setPlacement,
     visible: () => {
       const state = controller.source.getSnapshot()
-      return !settings.getSnapshot().discreet && !state.barHidden && fixedItems(state.items).length > 0
+      const appearance = settings.getSnapshot()
+      return (!appearance.discreet || appearance.barInDiscreet) && !state.barHidden && fixedItems(state.items).length > 0
     },
     subscribe: (listener: any) => {
       const unsubscribeWatchlist = controller.source.subscribe(listener)

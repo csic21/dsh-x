@@ -80,6 +80,10 @@ export function SettingsPanel({ settings, t, preference, onSourceChange, barHidd
           <Row id="dxs-set-bar-toggle" label={t('settings.bar.label')} hint={scopeReady ? t('settings.bar.hint') : t('settings.bar.unavailable')}>
             <Switch id="dxs-set-bar-toggle" label={t('settings.bar.label')} checked={!barHidden} disabled={!scopeReady} onChange={(visible: boolean) => onSetBarVisible?.(visible)} />
           </Row>
+          <Row id="dxs-set-bar-keep" label={t('settings.bar.keep.label')} hint={t('settings.bar.keep.hint')}>
+            <Switch id="dxs-set-bar-keep" label={t('settings.bar.keep.label')} checked={appearance.barInDiscreet} onChange={(keep: boolean) => settings?.setBarInDiscreet?.(keep)} />
+          </Row>
+          {appearance.discreet && !appearance.barInDiscreet ? <p role="status" className="dxs-set-status">{t('settings.bar.keep.status')}</p> : null}
           <p className="dxs-set-meta"><Keys keys={fixedBarShortcutKeys()} label={fixedBarShortcutLabel()} /><span>{t('settings.shortcut.bar')}</span></p>
         </section>
 

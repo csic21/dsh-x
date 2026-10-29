@@ -60,12 +60,13 @@ export function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideB
   const appearance = useFinanceSettings(settings)
   const preference = useMarketPreference(rpc)
   const fixed = fixedItems(state.items)
+  const discreet = appearance.discreet
   // Nothing is fixed: the bar is not the watchlist, so it is not shown at all.
-  // Discreet mode releases the slot too: the bar is the most visible quote
-  // surface in the app, so the boss key must take it away immediately.
-  if (!fixed.length || appearance.discreet) return null
+  // Discreet mode releases the slot too unless the reader asked to keep it; in
+  // that case the bar stays and takes the same neutral palette as the page.
+  if (!fixed.length || (discreet && !appearance.barInDiscreet)) return null
   const sourceOff = preference.status === 'ready' && !preference.enabled
-  return <section className="dxs dxs-bar" aria-label={t('bar.aria')}>
+  return <section className={`dxs dxs-bar${discreet ? ' dxs-discreet' : ''}`} aria-label={t(discreet ? 'bar.aria.quiet' : 'bar.aria')}>
     <button onClick={() => collapse(!state.collapsed)} aria-expanded={!state.collapsed} aria-label={t(state.collapsed ? 'bar.expand' : 'bar.collapse')}>{state.collapsed ? '▸' : '▾'} {t('bar.title', { count: format.count(fixed.length) })}</button>
     {!state.collapsed && (sourceOff
       ? <p className="dxs-strip dxs-bar-hint"><span className="dxs-muted">{t('bar.source-off')}</span><SourceButton preference={preference} t={t} /></p>
@@ -73,7 +74,7 @@ export function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideB
     <div className="dxs-bar-actions">
       {sourceOff ? null : <SourceButton preference={preference} t={t} />}
       <button type="button" className="dxs-icon-button" onClick={() => hideBar()} title={t('bar.hide-hint', { shortcut: fixedBarShortcutLabel() })} aria-label={t('bar.hide')}>✕</button>
-      <button onClick={() => open(state.selectedSymbol)}>{t('title')}</button>
+      <button onClick={() => open(state.selectedSymbol)}>{t(discreet ? 'settings.discreet.title' : 'title')}</button>
     </div>
   </section>
 }
@@ -213,6 +214,12 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const setBarVisible = (visible: boolean) => {
     if (Boolean(state.barHidden) === visible) toggleBar()
   }
+  // In discreet mode the bar is hidden by policy, not by the bar switch, so
+  // this one action clears both: keep the bar in this mode and unhide it.
+  const showBarInDiscreet = () => {
+    settings?.setBarInDiscreet?.(true)
+    if (state.barHidden) toggleBar()
+  }
   const tabLabel = (normal: string, neutral: string) => t(discreet ? neutral : normal)
   return <main className={`dxs dxs-page${discreet ? ' dxs-discreet' : ''}`}>
     {/* This page owns the keyed `main` slot, so the Conversation header that
@@ -275,7 +282,12 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
             {fixError && <p role="alert" className="dxs-error">{t(fixError, { max: format.count(MAX_FIXED) })}</p>}
           </div>
           <div className="dxs-rail-foot">
-            <p className="dxs-bar-toggle">{state.barHidden ? <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button> : <button type="button" onClick={() => toggleBar()}>{t('page.bar-hide')}</button>}<ShortcutHint t={t} /></p>
+            <p className="dxs-bar-toggle">
+              {discreet && !appearance.barInDiscreet
+                ? <button type="button" onClick={showBarInDiscreet} title={t('page.bar-quiet-hint')}>{t('page.bar-quiet-show')}</button>
+                : state.barHidden ? <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button> : <button type="button" onClick={() => toggleBar()}>{t('page.bar-hide')}</button>}
+              <ShortcutHint t={t} />
+            </p>
             <AddStock add={add} count={state.items.length} fixedCount={fixedCount} ready={state.scopeStatus === 'ready'} rpc={rpc} t={t} format={format} sourceRevision={sourceRevision} />
             <details className="dxs-fineprint">
               <summary>{t('page.notes')}</summary>

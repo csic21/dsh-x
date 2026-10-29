@@ -72,7 +72,7 @@ export const SETTINGS_CSS = `
 .dxs.dxs-discreet .dxs-chart-canvas,.dxs.dxs-discreet .dxs-intraday-canvas{filter:saturate(.32) contrast(.97)}
 .dxs.dxs-discreet .dxs-chart-swatch,.dxs.dxs-discreet .dxs-intraday-legend i{filter:saturate(.32)}
 .dxs.dxs-discreet .dxs-chart-watermark{opacity:.18}
-.dxs.dxs-discreet .dxs-bar{backdrop-filter:none;-webkit-backdrop-filter:none}
+.dxs.dxs-discreet .dxs-bar,.dxs-bar.dxs-discreet{backdrop-filter:none;-webkit-backdrop-filter:none}
 
 @media(max-width:820px){
 .dxs .dxs-settings-button{width:28px;padding:0}
