@@ -46,6 +46,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -64,6 +66,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -82,6 +86,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -100,6 +106,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -118,6 +126,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes: MarketQuote[];
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -136,6 +146,8 @@ export declare function createMarketHandler({ provider, now }?: {
         status: string;
         history: MarketHistory;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -154,6 +166,8 @@ export declare function createMarketHandler({ provider, now }?: {
         history?: undefined;
         status: string;
         intraday: MarketIntraday;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -171,6 +185,48 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        status: string;
+        holdings: import("./holdings.ts").EtfHoldings;
+        fundamentals?: undefined;
+        csi300Funds?: undefined;
+        global?: undefined;
+        hotScan?: undefined;
+        predictScan?: undefined;
+        tailScan?: undefined;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        quantScan?: undefined;
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
+        holdings?: undefined;
+        status: string;
+        fundamentals: import("./fundamentals.ts").Fundamentals;
+        csi300Funds?: undefined;
+        global?: undefined;
+        hotScan?: undefined;
+        predictScan?: undefined;
+        tailScan?: undefined;
+        board?: undefined;
+    };
+} | {
+    ok: boolean;
+    value: {
+        quantScan?: undefined;
+        overview?: undefined;
+        breadth?: undefined;
+        source?: undefined;
+        quotes?: undefined;
+        history?: undefined;
+        intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         status: string;
         csi300Funds: Csi300FundShare;
         global?: undefined;
@@ -189,6 +245,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         status: string;
         global: import("./global.ts").GlobalMarketOverview;
@@ -207,6 +265,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         status: string;
@@ -225,6 +285,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -243,6 +305,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;
@@ -261,6 +325,8 @@ export declare function createMarketHandler({ provider, now }?: {
         quotes?: undefined;
         history?: undefined;
         intraday?: undefined;
+        holdings?: undefined;
+        fundamentals?: undefined;
         csi300Funds?: undefined;
         global?: undefined;
         hotScan?: undefined;

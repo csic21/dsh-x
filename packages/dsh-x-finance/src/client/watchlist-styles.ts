@@ -109,4 +109,19 @@ export const WATCHLIST_CSS = `
 .dxs-secondary{grid-template-columns:1fr}
 .dxs-instrument-summary .dxs-price{font-size:28px}
 }
+.dxs-holdings{margin:8px 0 0;padding:12px;border:1px solid var(--dxs-line-soft);border-radius:12px;background:var(--dxs-bg)}
+.dxs-holdings header{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.dxs-holdings h3,.dxs-holdings h4{margin:0;font-size:13px}
+.dxs-holdings h4{margin:0 0 6px}
+.dxs-holdings p{margin:4px 0}
+.dxs-holdings-block+.dxs-holdings-block{margin-top:14px}
+.dxs-holdings-filter{display:block;width:min(240px,100%);height:28px;margin:0 0 8px;padding:0 8px;border:1px solid var(--dxs-line);border-radius:6px;background:var(--dxs-bg)}
+.dxs-holdings-scroll{max-height:360px;overflow:auto;border:1px solid var(--dxs-line-soft);border-radius:8px}
+.dxs-holdings table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.dxs-holdings th,.dxs-holdings td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--dxs-line-soft);white-space:nowrap}
+.dxs-holdings th:first-child,.dxs-holdings td:first-child{text-align:left;white-space:normal}
+.dxs-holdings td small{display:block;color:var(--dxs-muted);font-size:11px}
+.dxs-holdings-weight{display:inline-flex;align-items:center;justify-content:flex-end;gap:8px}
+.dxs-holdings-bar{display:inline-block;width:72px;height:6px;border-radius:99px;background:var(--dxs-soft);overflow:hidden;flex:none}
+.dxs-holdings-bar>span{display:block;height:100%;background:var(--dxs-accent)}
 `

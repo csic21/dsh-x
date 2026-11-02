@@ -4,6 +4,8 @@ import { projectTailScan } from './tail-scan.js';
 import { projectHotScan } from './hot.js';
 import { projectPredictScan } from './predict.js';
 import { projectQuantScan } from './quant-scan.js';
+import { projectEtfHoldings } from './holdings.js';
+import { projectFundamentals } from './fundamentals.js';
 import { createRpcRoute, failure } from './rpc.js';
 /**
  * Re-validates every quote before it reaches the browser and reports a symbol
@@ -312,6 +314,25 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                 const raw = await resolved.intraday(request.symbol);
                 return { ok: true, value: { status: 'ready', intraday: projectIntradayResponse(raw, request.symbol, now()) } };
             }
+            if (request.kind === 'holdings') {
+                if (typeof resolved.holdings !== 'function')
+                    return failure('finance/holdings-unavailable', '当前行情源不提供基金持仓。');
+                return { ok: true, value: { status: 'ready', holdings: projectEtfHoldings(await resolved.holdings(request.symbol), request.symbol, now()) } };
+            }
+            if (request.kind === 'fundamentals') {
+                // Both upstream hosts are optional capabilities: a throttled report
+                // host or an unconfigured adapter disables this panel, not the quote.
+                if (typeof resolved.fundamentals !== 'function')
+                    return failure('finance/fundamentals-unavailable', '当前行情源不提供公司基本面。');
+                try {
+                    return { ok: true, value: { status: 'ready', fundamentals: projectFundamentals(await resolved.fundamentals(request.symbol), request.symbol, now()) } };
+                }
+                catch (error) {
+                    if (error?.code === 'finance/fundamentals-unavailable')
+                        throw error;
+                    throw Object.assign(new Error('fundamentals failed'), { code: 'finance/fundamentals-unavailable' });
+                }
+            }
             if (request.kind === 'csi300-funds') {
                 if (typeof resolved.csi300Funds !== 'function')
                     return failure('finance/csi300-funds-unavailable', '当前行情源不提供沪深300基金占比。');
@@ -366,6 +387,10 @@ export function createMarketHandler({ provider, now = Date.now } = {}) {
                 return failure('finance/history-unavailable', '该股票暂无历史日 K 数据。');
             if (error?.code === 'finance/intraday-unavailable')
                 return failure('finance/intraday-unavailable', '该股票暂无分时数据。');
+            if (error?.code === 'finance/holdings-unavailable')
+                return failure('finance/holdings-unavailable', '持仓成分暂不可用，请稍后重试。');
+            if (error?.code === 'finance/fundamentals-unavailable')
+                return failure('finance/fundamentals-unavailable', '公司基本面暂不可用，请稍后重试。');
             if (error?.code === 'finance/tail-scan-unavailable')
                 return failure('finance/tail-scan-unavailable', '该行情源暂不提供尾盘扫描。');
             if (error?.code === 'finance/csi300-funds-unavailable')

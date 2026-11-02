@@ -65,6 +65,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -83,6 +85,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -101,6 +105,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -119,6 +125,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -137,6 +145,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes: import("./market.ts").MarketQuote[];
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -155,6 +165,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             status: string;
             history: MarketHistory;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -173,6 +185,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             history?: undefined;
             status: string;
             intraday: import("./market.ts").MarketIntraday;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -190,6 +204,48 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            status: string;
+            holdings: import("./holdings.ts").EtfHoldings;
+            fundamentals?: undefined;
+            csi300Funds?: undefined;
+            global?: undefined;
+            hotScan?: undefined;
+            predictScan?: undefined;
+            tailScan?: undefined;
+            board?: undefined;
+        };
+    } | {
+        ok: boolean;
+        value: {
+            quantScan?: undefined;
+            overview?: undefined;
+            breadth?: undefined;
+            source?: undefined;
+            quotes?: undefined;
+            history?: undefined;
+            intraday?: undefined;
+            holdings?: undefined;
+            status: string;
+            fundamentals: import("./fundamentals.ts").Fundamentals;
+            csi300Funds?: undefined;
+            global?: undefined;
+            hotScan?: undefined;
+            predictScan?: undefined;
+            tailScan?: undefined;
+            board?: undefined;
+        };
+    } | {
+        ok: boolean;
+        value: {
+            quantScan?: undefined;
+            overview?: undefined;
+            breadth?: undefined;
+            source?: undefined;
+            quotes?: undefined;
+            history?: undefined;
+            intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             status: string;
             csi300Funds: import("./market.ts").Csi300FundShare;
             global?: undefined;
@@ -208,6 +264,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             status: string;
             global: import("./global.ts").GlobalMarketOverview;
@@ -226,6 +284,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             status: string;
@@ -244,6 +304,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -262,6 +324,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;
@@ -280,6 +344,8 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             quotes?: undefined;
             history?: undefined;
             intraday?: undefined;
+            holdings?: undefined;
+            fundamentals?: undefined;
             csi300Funds?: undefined;
             global?: undefined;
             hotScan?: undefined;

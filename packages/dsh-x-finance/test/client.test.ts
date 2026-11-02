@@ -33,6 +33,9 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     // The daily chart is part of the same page; this fixture has no bars, so it
     // must render the explicit "no daily data" state instead of a fake candle.
     if(endpoint==='dsh-x-finance.market'&&payload?.kind==='history')return {ok:true,value:{status:'unconfigured',source:null}}
+    // A detail page asks for fundamentals once; this fixture keeps the panel
+    // readable without pretending to be a live filing.
+    if(endpoint==='dsh-x-finance.market'&&payload?.kind==='fundamentals')return {ok:true,value:{status:'ready',fundamentals:{symbol:payload.symbol,name:'测试公司',applicable:true,source:'test-source',fetchedAt:'2026-10-16T07:00:00Z',currency:'CNY',valuation:{totalMarketCap:1e12,floatMarketCap:8e11,peStatic:10,peTtm:11,peDynamic:12,pb:1.5},periods:[{reportDate:'2026-09-30',reportName:'2026三季报',noticeDate:'2026-10-31',revenue:1e9,revenueYoY:1,netProfit:1e8,netProfitYoY:1,eps:1,bps:1,roe:10,grossMargin:20,netMargin:10,debtRatio:30}],latest:{reportDate:'2026-09-30',reportName:'2026三季报',noticeDate:'2026-10-31',revenue:1e9,revenueYoY:1,netProfit:1e8,netProfitYoY:1,eps:1,bps:1,roe:10,grossMargin:20,netMargin:10,debtRatio:30},partial:false}}}
     throw new Error(`unexpected endpoint ${endpoint}`)
   }}},layout:{selectPanel(value: any){selectedPanel=value;calls.push(value)}}}
   vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value: any){assert.equal(value.id,'dsh-x-finance');exported=value.factory((name: any)=>{assert.equal(name,'react');return React})}}},globalThis,navigator:dom.window.navigator,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})

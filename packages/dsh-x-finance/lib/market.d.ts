@@ -3,6 +3,8 @@ import type { TailScanResult } from './tail-scan.ts';
 import type { HotScanResult } from './hot.ts';
 import type { PredictScanResult } from './predict.ts';
 import type { QuantScanRequest, QuantScanResult } from './quant-scan.ts';
+import type { EtfHoldings } from './holdings.ts';
+import type { Fundamentals } from './fundamentals.ts';
 export type { QuantScanRequest, QuantScanResult, QuantCounts, QuantRow, QuantFactors } from './quant-scan.ts';
 export declare const MARKET_ENDPOINT = "dsh-x-finance.market";
 export declare const MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
@@ -325,7 +327,15 @@ export type MarketQuantScanResult = MarketUnconfigured | {
     status: 'ready';
     quantScan: QuantScanResult | null;
 };
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult | MarketQuantScanResult;
+export type MarketHoldingsResult = MarketUnconfigured | {
+    status: 'ready';
+    holdings: EtfHoldings;
+};
+export type MarketFundamentalsResult = MarketUnconfigured | {
+    status: 'ready';
+    fundamentals: Fundamentals;
+};
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult | MarketQuantScanResult | MarketHoldingsResult | MarketFundamentalsResult;
 export type MarketRequest = {
     kind: 'overview';
 } | {
@@ -357,6 +367,12 @@ export type MarketRequest = {
 } | {
     kind: 'predict-scan';
     board?: string;
+} | {
+    kind: 'holdings';
+    symbol: string;
+} | {
+    kind: 'fundamentals';
+    symbol: string;
 } | ({
     kind: 'quant-scan';
 } & QuantScanRequest);
@@ -432,6 +448,17 @@ export interface MarketProvider {
      * adapter without it leaves only this special panel unavailable.
      */
     csi300Funds?(): Promise<Csi300FundShare>;
+    /**
+     * Reported stock holdings for one ETF or LOF. Optional: an adapter without it
+     * leaves only the holdings section of that detail page unavailable.
+     */
+    holdings?(symbol: string): Promise<EtfHoldings>;
+    /**
+     * Reported financials plus the current valuation multiples for one A-share.
+     * Optional: an adapter without it leaves only the fundamentals section
+     * unavailable, not the quote, the chart or the market board.
+     */
+    fundamentals?(symbol: string): Promise<Fundamentals>;
     /**
      * Limit-up relay probabilities. Optional and independent from the hot screen:
      * a source that cannot serve daily bars leaves this panel unavailable without

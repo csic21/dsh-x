@@ -144,6 +144,7 @@ export interface MarketProviderOptions {
     boardTtlMs?: number;
     globalTtlMs?: number;
     csi300FundsTtlMs?: number;
+    fundamentalsTtlMs?: number;
     retryDelayMs?: number;
     concurrency?: number;
 }

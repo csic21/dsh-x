@@ -489,5 +489,19 @@ export function parseMarketRequest(payload) {
         }
         return { kind: 'intraday', symbol };
     }
+    if (kind === 'holdings' || kind === 'fundamentals') {
+        if (keys.join(',') !== 'kind,symbol')
+            throw stockMarketError('invalid-input');
+        const symbol = payload.symbol;
+        if (typeof symbol !== 'string')
+            throw stockMarketError('invalid-input');
+        try {
+            validateSymbol(symbol);
+        }
+        catch {
+            throw stockMarketError('invalid-input');
+        }
+        return { kind, symbol };
+    }
     throw stockMarketError('invalid-input');
 }

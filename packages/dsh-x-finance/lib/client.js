@@ -461,7 +461,7 @@ function pollDelay(result, realtime, now = Date.now()) {
 }
 
 // src/client/components.tsx
-var import_react23 = __toESM(require("react"), 1);
+var import_react25 = __toESM(require("react"), 1);
 
 // src/client/workbench.tsx
 var import_react7 = __toESM(require("react"), 1);
@@ -14055,6 +14055,70 @@ function quoteErrorKey(error) {
   return Object.hasOwn(quoteEn, key) ? key : "quote.error.UNKNOWN";
 }
 
+// src/client/fundamentals-locales.ts
+var fundamentalsZh = {
+  "fundamentals.loading": "\u6B63\u5728\u8BFB\u53D6\u8D22\u62A5\u4E0E\u4F30\u503C\u2026",
+  "fundamentals.unconfigured": "\u57FA\u672C\u9762\u4E0E\u884C\u60C5\u5171\u7528\u540C\u4E00\u4E2A\u672C\u673A\u514D\u8D39\u6E90\u5F00\u5173\uFF1B\u5F00\u542F\u540E\u624D\u4F1A\u8BF7\u6C42\u6570\u636E\u3002",
+  "fundamentals.error": "\u516C\u53F8\u57FA\u672C\u9762\u6682\u4E0D\u53EF\u7528\u3002",
+  "fundamentals.retry": "\u91CD\u8BD5",
+  "fundamentals.empty": "\u8BE5\u6807\u7684\u6682\u65E0\u53EF\u7528\u8D22\u62A5\u6570\u636E\u3002",
+  "fundamentals.reports-unavailable": "\u62A5\u544A\u671F\u6570\u636E\u6682\u4E0D\u53EF\u7528\u3002",
+  "fundamentals.valuation": "\u4F30\u503C",
+  "fundamentals.cap": "\u603B\u5E02\u503C",
+  "fundamentals.float-cap": "\u6D41\u901A\u5E02\u503C",
+  "fundamentals.pe-static": "PE\uFF08\u9759\uFF09",
+  "fundamentals.pe-ttm": "PE\uFF08TTM\uFF09",
+  "fundamentals.pe-dynamic": "PE\uFF08\u52A8\uFF09",
+  "fundamentals.pb": "PB",
+  "fundamentals.loss": "\u4E8F\u635F",
+  "fundamentals.reports": "\u62A5\u544A\u671F\u8D22\u52A1",
+  "fundamentals.report": "\u62A5\u544A\u671F",
+  "fundamentals.notice": "\u62AB\u9732\u65E5",
+  "fundamentals.revenue": "\u8425\u4E1A\u6536\u5165",
+  "fundamentals.revenue-yoy": "\u8425\u6536\u540C\u6BD4",
+  "fundamentals.net-profit": "\u5F52\u6BCD\u51C0\u5229\u6DA6",
+  "fundamentals.net-profit-yoy": "\u51C0\u5229\u540C\u6BD4",
+  "fundamentals.eps": "\u6BCF\u80A1\u6536\u76CA",
+  "fundamentals.roe": "ROE",
+  "fundamentals.gross-margin": "\u6BDB\u5229\u7387",
+  "fundamentals.cumulative": "\u5E74\u521D\u81F3\u62A5\u544A\u671F\u672B\u7D2F\u8BA1",
+  "fundamentals.valuation-note": "PE \u4E3A\u8D1F\u8868\u793A\u6700\u8FD1\u62A5\u544A\u671F\u4E8F\u635F\uFF1B\u52A8\u6001 PE \u6309\u6E90\u53E3\u5F84\u4EE5\u6700\u65B0\u62A5\u544A\u671F\u5E74\u5316\u3002",
+  "fundamentals.reports-note": "\u91D1\u989D\u5355\u4F4D\u4E3A\u4EBA\u6C11\u5E01\uFF0C\u540C\u6BD4\u4E3A\u6E90\u62A5\u544A\u53E3\u5F84\u3002",
+  "fundamentals.partial": "\u90E8\u5206\u6570\u636E\u6682\u4E0D\u53EF\u7528\uFF0C\u5DF2\u663E\u793A\u5176\u4F59\u5B57\u6BB5\u3002",
+  "fundamentals.disclaimer": "\u6570\u636E\u6765\u81EA\u4E1C\u65B9\u8D22\u5BCC\u516C\u5F00\u63A5\u53E3\uFF08\u975E\u5B98\u65B9\uFF0C\u65E0 SLA\uFF09\uFF0C\u53EF\u80FD\u5EF6\u8FDF\u6216\u7F3A\u5931\uFF1B\u4E0D\u6784\u6210\u6295\u8D44\u5EFA\u8BAE\u3002"
+};
+var fundamentalsEn = {
+  "fundamentals.loading": "Loading financials and valuation\u2026",
+  "fundamentals.unconfigured": "Fundamentals share the local free-source switch with quotes. Turn it on to request data.",
+  "fundamentals.error": "Company fundamentals are temporarily unavailable.",
+  "fundamentals.retry": "Retry",
+  "fundamentals.empty": "No financial reports are available for this symbol.",
+  "fundamentals.reports-unavailable": "Reported periods are temporarily unavailable.",
+  "fundamentals.valuation": "Valuation",
+  "fundamentals.cap": "Market cap",
+  "fundamentals.float-cap": "Float cap",
+  "fundamentals.pe-static": "P/E (static)",
+  "fundamentals.pe-ttm": "P/E (TTM)",
+  "fundamentals.pe-dynamic": "P/E (dynamic)",
+  "fundamentals.pb": "P/B",
+  "fundamentals.loss": "Loss",
+  "fundamentals.reports": "Reported financials",
+  "fundamentals.report": "Period",
+  "fundamentals.notice": "Disclosed",
+  "fundamentals.revenue": "Revenue",
+  "fundamentals.revenue-yoy": "Revenue YoY",
+  "fundamentals.net-profit": "Net profit",
+  "fundamentals.net-profit-yoy": "Profit YoY",
+  "fundamentals.eps": "EPS",
+  "fundamentals.roe": "ROE",
+  "fundamentals.gross-margin": "Gross margin",
+  "fundamentals.cumulative": "Year-to-date cumulative",
+  "fundamentals.valuation-note": "A negative P/E means the latest period was a loss; the dynamic P/E annualises the latest period on the source\u2019s own basis.",
+  "fundamentals.reports-note": "Amounts are in CNY; growth rates follow the source report.",
+  "fundamentals.partial": "Some fields are unavailable; the rest are shown.",
+  "fundamentals.disclaimer": "Data comes from East Money\u2019s public, unofficial endpoints (no SLA) and may be delayed or missing. Not investment advice."
+};
+
 // src/client/locales.ts
 var NS = "dsh-x-finance";
 var zh = {
@@ -14069,6 +14133,7 @@ var zh = {
   ...watchSignalsZh,
   ...quantScanZh,
   ...watchScheduleZh,
+  ...fundamentalsZh,
   "title": "\u91D1\u878D",
   // The watchlist is the long list on this page; only explicitly fixed stocks
   // reach the bottom bar, so the two never share a label.
@@ -14150,11 +14215,29 @@ var zh = {
   "detail.no-history": "\u6682\u65E0\u5386\u53F2\u884C\u60C5",
   "detail.chart-notice": "\u63A5\u5165\u652F\u6301\u5206\u65F6\u3001K \u7EBF\u4E0E\u6210\u4EA4\u91CF\u7684\u6570\u636E\u6E90\u540E\u5C55\u793A\u3002\u5F53\u524D\u6CA1\u6709\u53EF\u9A8C\u8BC1\u7684\u6570\u636E\uFF0C\u4E0D\u7ED8\u5236\u793A\u610F\u8D70\u52BF\u3002",
   "detail.fundamentals": "\u57FA\u672C\u9762",
-  "detail.no-fundamentals": "\u6682\u65E0\u5DF2\u9A8C\u8BC1\u7684\u8D22\u62A5\u4E0E\u4F30\u503C\u6570\u636E",
-  "detail.fundamentals-notice": "\u63A5\u5165\u540E\u5C06\u6807\u660E\u62A5\u544A\u671F\u3001\u62AB\u9732\u65E5\u671F\u53CA\u6765\u6E90\u3002",
   "detail.analysis": "\u5206\u6790",
   "detail.no-analysis": "\u6570\u636E\u4E0D\u8DB3\uFF0C\u6682\u4E0D\u751F\u6210\u5206\u6790\u7ED3\u8BBA",
   "detail.analysis-notice": "\u9700\u8981\u53EF\u9760\u7684\u884C\u60C5\u3001\u8D22\u52A1\u4E0E\u516C\u544A\u4F9D\u636E\uFF1B\u5206\u6790\u5E94\u533A\u5206\u4E8B\u5B9E\u3001\u63A8\u65AD\u548C\u98CE\u9669\u3002\u4E0D\u63D0\u4F9B\u4EA4\u6613\u6267\u884C\u3002",
+  "detail.holdings": "\u6301\u4ED3\u6210\u5206",
+  "detail.holdings.loading": "\u6B63\u5728\u8BFB\u53D6\u6301\u4ED3\u6210\u5206\u2026",
+  "detail.holdings.error": "\u6301\u4ED3\u6210\u5206\u6682\u4E0D\u53EF\u7528",
+  "detail.holdings.retry": "\u91CD\u8BD5",
+  "detail.holdings.empty": "\u672C\u671F\u6CA1\u6709\u62AB\u9732\u80A1\u7968\u6301\u4ED3\u3002\u8D27\u5E01\u3001\u5546\u54C1\u6216\u503A\u5238 ETF \u53EF\u80FD\u6CA1\u6709\u80A1\u7968\u660E\u7EC6\u3002",
+  "detail.holdings.unconfigured": "\u5F00\u542F\u514D\u8D39\u6E90\u540E\u53EF\u67E5\u770B\u6301\u4ED3\u6210\u5206\u3002",
+  "detail.holdings.notice": "\u6743\u91CD\u3001\u6301\u80A1\u548C\u5E02\u503C\u90FD\u662F\u62A5\u544A\u671F\u53E3\u5F84\uFF0C\u4E0D\u662F\u5B9E\u65F6\u6301\u4ED3\u3002\u5B63\u62A5\u901A\u5E38\u53EA\u62AB\u9732\u524D\u5341\u5927\uFF1B\u5B8C\u6574\u6210\u5206\u6765\u81EA\u6700\u8FD1\u7684\u534A\u5E74\u62A5\u6216\u5E74\u62A5\u3002\u6301\u80A1\u5355\u4F4D\u4E3A\u4E07\u80A1\uFF0C\u5E02\u503C\u4E3A\u4E07\u5143\u6298\u6210\u7684\u91D1\u989D\u3002\u6570\u636E\u6765\u81EA\u516C\u5F00\u975E\u5B98\u65B9\u63A5\u53E3\uFF0C\u4E0D\u6784\u6210\u6295\u8D44\u5EFA\u8BAE\u3002",
+  "detail.holdings.latest": "\u6700\u65B0\u62AB\u9732 {date} \xB7 {count} \u53EA \xB7 {coverage}",
+  "detail.holdings.full": "\u6700\u8FD1\u5B8C\u6574\u6301\u4ED3 {date} \xB7 {count} \u53EA",
+  "detail.holdings.coverage.top": "\u524D\u5341\u5927",
+  "detail.holdings.coverage.partial": "\u90E8\u5206\u62AB\u9732",
+  "detail.holdings.coverage.all": "\u5168\u90E8\u62AB\u9732",
+  "detail.holdings.truncated": "\u53EA\u5C55\u793A\u524D {count} \u53EA",
+  "detail.holdings.name": "\u80A1\u7968",
+  "detail.holdings.weight": "\u5360\u51C0\u503C",
+  "detail.holdings.shares": "\u6301\u80A1\uFF08\u4E07\u80A1\uFF09",
+  "detail.holdings.value": "\u6301\u4ED3\u5E02\u503C",
+  "detail.holdings.filter": "\u7B5B\u9009\u6210\u5206",
+  "detail.holdings.filter-placeholder": "\u540D\u79F0\u6216\u4EE3\u7801",
+  "detail.holdings.empty-filter": "\u6CA1\u6709\u5339\u914D\u7684\u6210\u5206",
   "page.subtitle": "\u624B\u52A8\u81EA\u9009 \xB7 A \u80A1\u8BE6\u60C5\u4E0E\u5206\u6790",
   "page.back": "\u8FD4\u56DE\u5BF9\u8BDD",
   "page.notice": "\u884C\u60C5\u6765\u81EA\u300C\u5E02\u573A\u300D\u9875\u540C\u4E00\u4E2A\u672C\u673A\u514D\u8D39\u6E90\uFF08\u817E\u8BAF\u516C\u5F00\u884C\u60C5\uFF0C\u975E\u5B98\u65B9\u3001\u65E0 SLA\uFF09\u3002\u53EA\u6709\u6807\u8BB0\u4E3A\u300C\u56FA\u5B9A\u300D\u7684\u80A1\u7968\u4F1A\u51FA\u73B0\u5728\u5E95\u90E8\u680F\uFF0C\u81EA\u9009\u6E05\u5355\u672C\u8EAB\u4E0D\u4F1A\u3002",
@@ -14212,6 +14295,7 @@ var zh = {
   "error.unavailable": "\u884C\u60C5\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   "error.market-unavailable": "\u884C\u60C5\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   "error.history-unavailable": "\u8BE5\u80A1\u7968\u6682\u65E0\u5386\u53F2\u65E5 K \u6570\u636E\u3002",
+  "error.fundamentals-unavailable": "\u516C\u53F8\u57FA\u672C\u9762\u6682\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
   "error.unknown": "\u64CD\u4F5C\u672A\u5B8C\u6210\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002"
 };
 var en2 = {
@@ -14226,6 +14310,7 @@ var en2 = {
   ...watchSignalsEn,
   ...quantScanEn,
   ...watchScheduleEn,
+  ...fundamentalsEn,
   "title": "Finance",
   "bar.title": "Fixed {count}",
   "bar.aria": "Fixed stocks bar",
@@ -14305,11 +14390,29 @@ var en2 = {
   "detail.no-history": "No historical market data",
   "detail.chart-notice": "Intraday charts, candlesticks, and volume will appear when a supporting data source is connected. No illustrative chart is drawn without verifiable data.",
   "detail.fundamentals": "Fundamentals",
-  "detail.no-fundamentals": "No verified financial statements or valuation data",
-  "detail.fundamentals-notice": "Reporting periods, disclosure dates, and sources will be shown when connected.",
   "detail.analysis": "Analysis",
   "detail.no-analysis": "Insufficient data for analysis",
   "detail.analysis-notice": "Reliable prices, financials, and announcements are required. Analysis should distinguish facts, inferences, and risks. Trading is not supported.",
+  "detail.holdings": "Holdings",
+  "detail.holdings.loading": "Loading holdings\u2026",
+  "detail.holdings.error": "Holdings are unavailable",
+  "detail.holdings.retry": "Retry",
+  "detail.holdings.empty": "This report disclosed no stock holdings. A money-market, commodity or bond ETF may have none.",
+  "detail.holdings.unconfigured": "Turn on the free source to see holdings.",
+  "detail.holdings.notice": "Weights, shares and value are as of the report, not a live basket. A quarter usually discloses only the top 10; the full book comes from the latest semi-annual or annual report. Shares are in 10,000s and value is converted from 10,000 CNY. The feed is public and unofficial. This is not investment advice.",
+  "detail.holdings.latest": "Latest filing {date} \xB7 {count} names \xB7 {coverage}",
+  "detail.holdings.full": "Latest full book {date} \xB7 {count} names",
+  "detail.holdings.coverage.top": "top 10",
+  "detail.holdings.coverage.partial": "partial disclosure",
+  "detail.holdings.coverage.all": "full disclosure",
+  "detail.holdings.truncated": "Showing the first {count} names",
+  "detail.holdings.name": "Stock",
+  "detail.holdings.weight": "Weight",
+  "detail.holdings.shares": "Shares (10k)",
+  "detail.holdings.value": "Value",
+  "detail.holdings.filter": "Filter holdings",
+  "detail.holdings.filter-placeholder": "Name or code",
+  "detail.holdings.empty-filter": "No matching holding",
   "page.subtitle": "Manual watchlist \xB7 A-share details and analysis",
   "page.back": "Back to conversation",
   "page.notice": "Quotes come from the same local free source as the Market tab (Tencent public endpoint, unofficial, no SLA). Only stocks marked \u201CFixed\u201D appear in the bottom bar; the watchlist itself never does.",
@@ -14367,6 +14470,7 @@ var en2 = {
   "error.unavailable": "Quotes are temporarily unavailable. Please try again later.",
   "error.market-unavailable": "Quotes are temporarily unavailable. Please try again later.",
   "error.history-unavailable": "No daily history is available for this stock.",
+  "error.fundamentals-unavailable": "Company fundamentals are temporarily unavailable. Please try again later.",
   "error.unknown": "The action could not be completed. Please try again."
 };
 function errorKey(code) {
@@ -15639,27 +15743,189 @@ function QuantScanView({ rpc, scope, sourceEnabled, t, format, onOpenStock }) {
   } }) : null, reportDate ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note" }, t("quantAuto.selected", { date: reportDate })) : null, !sourceEnabled ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-muted" }, t("quantScan.disabled")) : !value && !running ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-muted" }, t("quantScan.idle")) : null, running ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status", className: "dxs-mkt-muted" }, t("quantScan.running")) : null, auto && !running && value?.canContinue ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status", className: "dxs-mkt-muted" }, t("quantScan.waiting", { time: time(value.nextAllowedAt) })) : null, notice ? /* @__PURE__ */ import_react22.default.createElement("p", { role: "status", className: "dxs-mkt-note" }, t(notice)) : null, value && c2 ? /* @__PURE__ */ import_react22.default.createElement(import_react22.default.Fragment, null, /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note" }, t(value.partial ? "quantScan.partial" : "quantScan.complete")), value.provisional ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-note" }, t("quantScan.provisional")) : null, /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-quant-scan-summary" }, /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.coverage", { expected: count2(c2.expected), discovered: count2(c2.discovered), attempted: count2(c2.attempted), succeeded: count2(c2.dailySucceeded), insufficient: count2(c2.dailyInsufficient), failed: count2(c2.dailyFailed), remaining: count2(c2.notAttempted) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.filtered", { ranked: count2(c2.ranked), suspended: count2(c2.excludedSuspended), st: count2(c2.excludedST), unknown: count2(c2.excludedStatusUnknown), missing: count2(c2.missingFactors), dateMismatch: count2(c2.excludedDateMismatch) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.source", { source: value.source, date: value.sessionDate ?? "\u2014", time: time(value.updatedAt) }), " \xB7 ", t(`quantScan.state.${value.stopReason}`))), /* @__PURE__ */ import_react22.default.createElement("h3", null, t("quantScan.rank")), value.rows.length ? /* @__PURE__ */ import_react22.default.createElement("ol", { className: "dxs-quant-scan-list" }, value.rows.map((row) => /* @__PURE__ */ import_react22.default.createElement("li", { key: row.symbol, className: "dxs-quant-scan-row" }, /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-quant-scan-row-head" }, onOpenStock ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", className: "dxs-mkt-link", onClick: () => onOpenStock(row.symbol, row.name) }, /* @__PURE__ */ import_react22.default.createElement("span", null, row.name), /* @__PURE__ */ import_react22.default.createElement("small", null, row.symbol)) : /* @__PURE__ */ import_react22.default.createElement("span", null, /* @__PURE__ */ import_react22.default.createElement("strong", null, row.name), " ", row.symbol), /* @__PURE__ */ import_react22.default.createElement("strong", null, t("quantScan.score"), " ", ratio(row.score))), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.factors", { trend: ratio(row.scores.trend), momentum: ratio(row.scores.momentum), liquidity: ratio(row.scores.liquidity), risk: ratio(row.scores.risk) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.trendDetail", { close: price2(row.factors.close), ma20: price2(row.factors.ma20), ma60: price2(row.factors.ma60) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.returns", { r20: pct2(row.factors.return20), r60: pct2(row.factors.return60), volatility: plainPct2(row.factors.volatility20) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.amount", { amount: row.factors.amountMedian20 === null ? "\u2014" : typeof format?.compact === "function" ? format.compact(row.factors.amountMedian20) : String(row.factors.amountMedian20), samples: count2(row.factors.amountSamples20) })), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.bar", { date: row.sessionDate, adjustment: t(`workbench.adjustment.${row.adjustment}`), count: count2(row.validBars) }), row.provisional ? ` \xB7 ${t("quantScan.provisional-row")}` : "")))) : /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-mkt-muted" }, t("quantScan.empty"))) : null, /* @__PURE__ */ import_react22.default.createElement("details", { className: "dxs-quant-scan-method" }, /* @__PURE__ */ import_react22.default.createElement("summary", null, t("quantScan.method")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.method-body")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.limits")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("quantScan.no-advice"))));
 }
 
+// src/client/HoldingsPanel.tsx
+var import_react23 = __toESM(require("react"), 1);
+
+// src/holdings.ts
+var ETF_HOLDINGS_MAX_BYTES = 512 * 1024;
+var ETF_HOLDINGS_TTL_MS = 6 * 60 * 6e4;
+var FUND_SH = /^(?:51|56|58)\d{4}$|^50[12]\d{3}$/;
+function isExchangeFund(symbol) {
+  const match = /^(SH|SZ)\.(\d{6})$/.exec(symbol);
+  if (!match) return false;
+  const code = match[2];
+  if (match[1] === "SZ") return code.startsWith("159") || code.startsWith("16");
+  return FUND_SH.test(code);
+}
+
+// src/client/HoldingsPanel.tsx
+function useEtfHoldings(rpc, symbol) {
+  const [tick, setTick] = (0, import_react23.useState)(0);
+  const [state, setState] = (0, import_react23.useState)({ status: "loading", value: null });
+  (0, import_react23.useEffect)(() => {
+    if (!isExchangeFund(symbol)) return;
+    let disposed = false;
+    const controller = new AbortController();
+    setState({ status: "loading", value: null });
+    const run = async () => {
+      try {
+        if (!rpc?.call) throw new Error("finance/connection");
+        const result = await rpc.call("/api", MARKET_ENDPOINT, { kind: "holdings", symbol }, controller.signal);
+        if (disposed || controller.signal.aborted) return;
+        if (!result?.ok) {
+          setState({ status: "error", value: null });
+          return;
+        }
+        if (result.value?.status === "unconfigured") {
+          setState({ status: "unconfigured", value: null });
+          return;
+        }
+        const holdings = result.value?.holdings;
+        if (!holdings || holdings.symbol !== symbol) throw new Error("finance/invalid");
+        setState({ status: "ready", value: holdings });
+      } catch {
+        if (disposed || controller.signal.aborted) return;
+        setState({ status: "error", value: null });
+      }
+    };
+    void run();
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
+  }, [rpc, symbol, tick]);
+  return { ...state, retry: () => setTick((value) => value + 1) };
+}
+function HoldingTable({ period: period2, query, t, format }) {
+  const needle = query.trim().toLowerCase();
+  const rows = needle ? period2.holdings.filter((row) => row.name.toLowerCase().includes(needle) || row.code.toLowerCase().includes(needle)) : period2.holdings;
+  const max = rows.reduce((peak, row) => Math.max(peak, row.weight), 0);
+  if (!rows.length) return /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.holdings.empty-filter"));
+  return /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-holdings-scroll" }, /* @__PURE__ */ import_react23.default.createElement("table", null, /* @__PURE__ */ import_react23.default.createElement("caption", { className: "dxs-sr-only" }, t("detail.holdings")), /* @__PURE__ */ import_react23.default.createElement("thead", null, /* @__PURE__ */ import_react23.default.createElement("tr", null, /* @__PURE__ */ import_react23.default.createElement("th", { scope: "col" }, t("detail.holdings.name")), /* @__PURE__ */ import_react23.default.createElement("th", { scope: "col" }, t("detail.holdings.weight")), /* @__PURE__ */ import_react23.default.createElement("th", { scope: "col" }, t("detail.holdings.shares")), /* @__PURE__ */ import_react23.default.createElement("th", { scope: "col" }, t("detail.holdings.value")))), /* @__PURE__ */ import_react23.default.createElement("tbody", null, rows.map((row) => /* @__PURE__ */ import_react23.default.createElement("tr", { key: `${row.market ?? ""}:${row.code}` }, /* @__PURE__ */ import_react23.default.createElement("td", null, /* @__PURE__ */ import_react23.default.createElement("span", null, row.name), /* @__PURE__ */ import_react23.default.createElement("small", null, row.code)), /* @__PURE__ */ import_react23.default.createElement("td", null, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-holdings-weight" }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-holdings-bar", "aria-hidden": "true" }, /* @__PURE__ */ import_react23.default.createElement("span", { style: { width: `${max > 0 ? row.weight / max * 100 : 0}%` } })), /* @__PURE__ */ import_react23.default.createElement("span", null, format.percent(row.weight)))), /* @__PURE__ */ import_react23.default.createElement("td", null, format.ratio(row.shares)), /* @__PURE__ */ import_react23.default.createElement("td", null, format.compact(row.marketValue == null ? null : row.marketValue * 1e4)))))));
+}
+function PeriodBlock({ period: period2, heading, t, format }) {
+  const [query, setQuery] = (0, import_react23.useState)("");
+  return /* @__PURE__ */ import_react23.default.createElement("section", { className: "dxs-holdings-block" }, /* @__PURE__ */ import_react23.default.createElement("h4", null, heading), period2.truncated ? /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.holdings.truncated", { count: format.count(period2.holdings.length) })) : null, period2.holdings.length > 12 ? /* @__PURE__ */ import_react23.default.createElement("input", { className: "dxs-holdings-filter", type: "search", value: query, placeholder: t("detail.holdings.filter-placeholder"), "aria-label": t("detail.holdings.filter"), onChange: (event) => setQuery(event.target.value) }) : null, /* @__PURE__ */ import_react23.default.createElement(HoldingTable, { period: period2, query, t, format }));
+}
+function EtfHoldingsPanel({ symbol, rpc, t, format }) {
+  const holdings = useEtfHoldings(rpc, symbol);
+  if (!isExchangeFund(symbol)) return null;
+  const value = holdings.value;
+  const latest = value?.latest ?? null;
+  const full = value?.full && value.full.reportDate !== latest?.reportDate ? value.full : null;
+  return /* @__PURE__ */ import_react23.default.createElement("section", { className: "dxs-holdings", "aria-label": t("detail.holdings") }, /* @__PURE__ */ import_react23.default.createElement("header", null, /* @__PURE__ */ import_react23.default.createElement("h3", null, t("detail.holdings")), value?.source ? /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, value.source) : null), holdings.status === "loading" ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-muted" }, t("detail.holdings.loading")) : null, holdings.status === "unconfigured" ? /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.holdings.unconfigured")) : null, holdings.status === "error" ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-error" }, t("detail.holdings.error"), " ", /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: holdings.retry }, t("detail.holdings.retry"))) : null, holdings.status === "ready" && value?.applicable && !latest && !full ? /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.holdings.empty")) : null, latest ? /* @__PURE__ */ import_react23.default.createElement(
+    PeriodBlock,
+    {
+      period: latest,
+      t,
+      format,
+      heading: t("detail.holdings.latest", {
+        date: latest.reportDate,
+        count: format.count(latest.holdings.length),
+        coverage: t(latest.complete ? "detail.holdings.coverage.all" : latest.holdings.length <= 15 ? "detail.holdings.coverage.top" : "detail.holdings.coverage.partial")
+      })
+    }
+  ) : null, full ? /* @__PURE__ */ import_react23.default.createElement(PeriodBlock, { period: full, t, format, heading: t("detail.holdings.full", { date: full.reportDate, count: format.count(full.holdings.length) }) }) : null, holdings.status === "ready" && latest ? /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.holdings.notice")) : null);
+}
+
+// src/client/FundamentalsPanel.tsx
+var import_react24 = __toESM(require("react"), 1);
+function useFundamentals(rpc, symbol) {
+  const [tick, setTick] = (0, import_react24.useState)(0);
+  const [state, setState] = (0, import_react24.useState)(() => ({
+    status: isExchangeFund(symbol) ? "idle" : "loading",
+    value: null
+  }));
+  (0, import_react24.useEffect)(() => {
+    if (isExchangeFund(symbol)) {
+      setState({ status: "idle", value: null });
+      return;
+    }
+    let disposed = false;
+    const controller = new AbortController();
+    setState({ status: "loading", value: null });
+    const run = async () => {
+      try {
+        if (!rpc?.call) throw new Error("finance/connection");
+        const result = await rpc.call("/api", MARKET_ENDPOINT, { kind: "fundamentals", symbol }, controller.signal);
+        if (disposed || controller.signal.aborted) return;
+        if (!result?.ok) {
+          setState({ status: "error", value: null });
+          return;
+        }
+        if (result.value?.status === "unconfigured") {
+          setState({ status: "unconfigured", value: null });
+          return;
+        }
+        const fundamentals = result.value?.fundamentals;
+        if (!fundamentals || fundamentals.symbol !== symbol) throw new Error("finance/invalid");
+        setState({ status: "ready", value: fundamentals });
+      } catch {
+        if (disposed || controller.signal.aborted) return;
+        setState({ status: "error", value: null });
+      }
+    };
+    void run();
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
+  }, [rpc, symbol, tick]);
+  return { ...state, retry: () => setTick((value) => value + 1) };
+}
+function multiple(value, t, format) {
+  if (value === null || value === void 0) return "\u2014";
+  return value < 0 ? t("fundamentals.loss") : format.ratio(value);
+}
+function multipleTitle(value, format) {
+  return value === null || value === void 0 ? void 0 : format.ratio(value);
+}
+function Valuation({ valuation, t, format }) {
+  const cells = [
+    { key: "cap", label: t("fundamentals.cap"), value: valuation.totalMarketCap === null ? "\u2014" : format.compact(valuation.totalMarketCap), title: valuation.totalMarketCap === null ? void 0 : format.count(valuation.totalMarketCap) },
+    { key: "float-cap", label: t("fundamentals.float-cap"), value: valuation.floatMarketCap === null ? "\u2014" : format.compact(valuation.floatMarketCap), title: valuation.floatMarketCap === null ? void 0 : format.count(valuation.floatMarketCap) },
+    { key: "pe-static", label: t("fundamentals.pe-static"), value: multiple(valuation.peStatic, t, format), title: multipleTitle(valuation.peStatic, format) },
+    { key: "pe-ttm", label: t("fundamentals.pe-ttm"), value: multiple(valuation.peTtm, t, format), title: multipleTitle(valuation.peTtm, format) },
+    { key: "pe-dynamic", label: t("fundamentals.pe-dynamic"), value: multiple(valuation.peDynamic, t, format), title: multipleTitle(valuation.peDynamic, format) },
+    // A negative P/B is negative book value, not a loss, so it keeps its sign.
+    { key: "pb", label: t("fundamentals.pb"), value: valuation.pb === null ? "\u2014" : format.ratio(valuation.pb), title: multipleTitle(valuation.pb, format) }
+  ];
+  return /* @__PURE__ */ import_react24.default.createElement("div", { className: "dxs-fundamentals-block" }, /* @__PURE__ */ import_react24.default.createElement("h4", null, t("fundamentals.valuation")), /* @__PURE__ */ import_react24.default.createElement("div", { className: "dxs-fundamentals-grid" }, cells.map((cell) => /* @__PURE__ */ import_react24.default.createElement("div", { className: "dxs-fundamentals-cell", key: cell.key }, /* @__PURE__ */ import_react24.default.createElement("span", null, cell.label), /* @__PURE__ */ import_react24.default.createElement("strong", { title: cell.title }, cell.value)))), /* @__PURE__ */ import_react24.default.createElement("p", { className: "dxs-muted" }, t("fundamentals.valuation-note")));
+}
+function ReportTable({ fundamentals, t, format }) {
+  const periods = fundamentals.periods;
+  if (!periods.length) return /* @__PURE__ */ import_react24.default.createElement("p", { className: "dxs-muted" }, t(fundamentals.partial ? "fundamentals.reports-unavailable" : "fundamentals.empty"));
+  return /* @__PURE__ */ import_react24.default.createElement("div", { className: "dxs-fundamentals-block" }, /* @__PURE__ */ import_react24.default.createElement("div", { className: "dxs-fundamentals-subhead" }, /* @__PURE__ */ import_react24.default.createElement("h4", null, t("fundamentals.reports")), /* @__PURE__ */ import_react24.default.createElement("span", { className: "dxs-muted" }, t("fundamentals.cumulative"))), /* @__PURE__ */ import_react24.default.createElement("div", { className: "dxs-fundamentals-scroll" }, /* @__PURE__ */ import_react24.default.createElement("table", null, /* @__PURE__ */ import_react24.default.createElement("caption", { className: "dxs-sr-only" }, t("fundamentals.reports")), /* @__PURE__ */ import_react24.default.createElement("thead", null, /* @__PURE__ */ import_react24.default.createElement("tr", null, /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.report")), /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.revenue")), /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.revenue-yoy")), /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.net-profit")), /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.net-profit-yoy")), /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.eps")), /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.roe")), /* @__PURE__ */ import_react24.default.createElement("th", { scope: "col" }, t("fundamentals.gross-margin")))), /* @__PURE__ */ import_react24.default.createElement("tbody", null, periods.map((period2, index) => /* @__PURE__ */ import_react24.default.createElement("tr", { key: period2.reportDate, className: index === 0 ? "is-latest" : void 0 }, /* @__PURE__ */ import_react24.default.createElement("td", null, /* @__PURE__ */ import_react24.default.createElement("span", null, period2.reportName), /* @__PURE__ */ import_react24.default.createElement("small", null, period2.noticeDate ? `${t("fundamentals.notice")} ${period2.noticeDate}` : `${t("fundamentals.notice")} \u2014`)), /* @__PURE__ */ import_react24.default.createElement("td", { title: period2.revenue === null ? void 0 : format.count(period2.revenue) }, format.compact(period2.revenue)), /* @__PURE__ */ import_react24.default.createElement("td", null, format.change(period2.revenueYoY)), /* @__PURE__ */ import_react24.default.createElement("td", { title: period2.netProfit === null ? void 0 : format.count(period2.netProfit) }, format.compact(period2.netProfit)), /* @__PURE__ */ import_react24.default.createElement("td", null, format.change(period2.netProfitYoY)), /* @__PURE__ */ import_react24.default.createElement("td", null, format.ratio(period2.eps)), /* @__PURE__ */ import_react24.default.createElement("td", null, format.percent(period2.roe)), /* @__PURE__ */ import_react24.default.createElement("td", null, format.percent(period2.grossMargin))))))), /* @__PURE__ */ import_react24.default.createElement("p", { className: "dxs-muted" }, t("fundamentals.reports-note")));
+}
+function FundamentalsPanel({ symbol, rpc, t, format }) {
+  const state = useFundamentals(rpc, symbol);
+  if (isExchangeFund(symbol)) return null;
+  const value = state.value;
+  const hasValuation = value ? Object.values(value.valuation).some((item) => item !== null) : false;
+  return /* @__PURE__ */ import_react24.default.createElement("section", { className: "dxs-fundamentals", "aria-label": t("detail.fundamentals") }, /* @__PURE__ */ import_react24.default.createElement("header", null, /* @__PURE__ */ import_react24.default.createElement("div", null, /* @__PURE__ */ import_react24.default.createElement("h3", null, t("detail.fundamentals")), value ? /* @__PURE__ */ import_react24.default.createElement("p", { className: "dxs-muted" }, value.source) : null)), state.status === "loading" ? /* @__PURE__ */ import_react24.default.createElement("p", { role: "status", className: "dxs-muted" }, t("fundamentals.loading")) : null, state.status === "unconfigured" ? /* @__PURE__ */ import_react24.default.createElement("p", { className: "dxs-muted" }, t("fundamentals.unconfigured")) : null, state.status === "error" ? /* @__PURE__ */ import_react24.default.createElement("p", { role: "alert", className: "dxs-error" }, t("fundamentals.error"), " ", /* @__PURE__ */ import_react24.default.createElement("button", { type: "button", onClick: state.retry }, t("fundamentals.retry"))) : null, state.status === "ready" && value?.applicable ? /* @__PURE__ */ import_react24.default.createElement(import_react24.default.Fragment, null, hasValuation ? /* @__PURE__ */ import_react24.default.createElement(Valuation, { valuation: value.valuation, t, format }) : null, /* @__PURE__ */ import_react24.default.createElement(ReportTable, { fundamentals: value, t, format }), value.partial ? /* @__PURE__ */ import_react24.default.createElement("p", { role: "status", className: "dxs-muted" }, t("fundamentals.partial")) : null, /* @__PURE__ */ import_react24.default.createElement("p", { className: "dxs-muted dxs-fundamentals-disclaimer" }, t("fundamentals.disclaimer"))) : null);
+}
+
 // src/client/components.tsx
 var tone4 = (value) => value > 0 ? "dxs-up" : value < 0 ? "dxs-down" : "";
 function ShortcutHint({ t }) {
   const keys = fixedBarShortcutKeys();
   const label = fixedBarShortcutLabel();
-  return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-shortcut" }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-sr-only" }, t("page.bar-shortcut", { shortcut: label })), /* @__PURE__ */ import_react23.default.createElement("span", { "aria-hidden": "true" }, keys.map((key) => /* @__PURE__ */ import_react23.default.createElement("kbd", { key }, key))));
+  return /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-shortcut" }, /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-sr-only" }, t("page.bar-shortcut", { shortcut: label })), /* @__PURE__ */ import_react25.default.createElement("span", { "aria-hidden": "true" }, keys.map((key) => /* @__PURE__ */ import_react25.default.createElement("kbd", { key }, key))));
 }
 var quoteFor = (snapshot, symbol) => snapshot?.value?.quotes?.find((quote) => quote?.symbol === symbol);
 var sourceOf = (snapshot) => snapshot?.value?.source ?? null;
 function Status({ snapshot, quote, t, format }) {
-  if (snapshot.status === "loading") return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
-  if (snapshot.status === "failed") return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_WATCHLIST) }) : t("status.failed"));
-  return /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(quote)}`));
+  if (snapshot.status === "loading") return /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-muted" }, t("status.loading"));
+  if (snapshot.status === "failed") return /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-muted" }, snapshot.failure?.code ? t(errorKey(snapshot.failure.code), { max: format.count(MAX_WATCHLIST) }) : t("status.failed"));
+  return /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-muted" }, t(`status.${quoteStatus(quote)}`));
 }
 function StockChip({ item, quote, snapshot, open, t, format }) {
   const status = quoteStatus(quote);
-  return /* @__PURE__ */ import_react23.default.createElement("button", { className: "dxs-chip", onClick: () => open(item.symbol), title: t("chip.title", { symbol: item.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react23.default.createElement("strong", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react23.default.createElement("span", null, format.priceAt(quote?.price, quote?.pricePrecision)), quote?.price != null ? /* @__PURE__ */ import_react23.default.createElement("span", { className: tone4(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react23.default.createElement(Status, { snapshot, quote, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
+  return /* @__PURE__ */ import_react25.default.createElement("button", { className: "dxs-chip", onClick: () => open(item.symbol), title: t("chip.title", { symbol: item.symbol, status: t(`status.${status}`) }) }, /* @__PURE__ */ import_react25.default.createElement("strong", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react25.default.createElement("span", null, format.priceAt(quote?.price, quote?.pricePrecision)), quote?.price != null ? /* @__PURE__ */ import_react25.default.createElement("span", { className: tone4(quote.changePercent) }, format.change(quote.changePercent)) : /* @__PURE__ */ import_react25.default.createElement(Status, { snapshot, quote, t, format }), quote?.price != null && (snapshot.status === "failed" || status === "stale") ? /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-muted" }, t("stale")) : null);
 }
 function FixedStrip({ items, symbols, useResource, open, t, format }) {
   const snapshot = useResource(fixedAddressFor(symbols));
-  return /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-strip", "aria-label": t("bar.order") }, items.map((item) => /* @__PURE__ */ import_react23.default.createElement(StockChip, { key: item.symbol, item, quote: quoteFor(snapshot, item.symbol), snapshot, open, t, format })));
+  return /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-strip", "aria-label": t("bar.order") }, items.map((item) => /* @__PURE__ */ import_react25.default.createElement(StockChip, { key: item.symbol, item, quote: quoteFor(snapshot, item.symbol), snapshot, open, t, format })));
 }
 function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideBar, settings, t, format }) {
   const state = useWatchlist((value) => value);
@@ -15669,17 +15935,17 @@ function StockBar({ useWatchlist, useResource, rpc, collapse, open, hideBar, set
   const discreet = appearance.discreet;
   if (!fixed.length || discreet && !appearance.barInDiscreet) return null;
   const sourceOff = preference.status === "ready" && !preference.enabled;
-  return /* @__PURE__ */ import_react23.default.createElement("section", { className: `dxs dxs-bar${discreet ? " dxs-discreet" : ""}`, "aria-label": t(discreet ? "bar.aria.quiet" : "bar.aria") }, /* @__PURE__ */ import_react23.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "bar.expand" : "bar.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("bar.title", { count: format.count(fixed.length) })), !state.collapsed && (sourceOff ? /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-strip dxs-bar-hint" }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, t("bar.source-off")), /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t })) : /* @__PURE__ */ import_react23.default.createElement(FixedStrip, { key: `${preference.enabled ? "on" : "off"}:${fixed.map((item) => item.symbol).join(",")}`, items: fixed, symbols: fixed.map((item) => item.symbol), useResource, open, t, format })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-bar-actions" }, sourceOff ? null : /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", onClick: () => hideBar(), title: t("bar.hide-hint", { shortcut: fixedBarShortcutLabel() }), "aria-label": t("bar.hide") }, "\u2715"), /* @__PURE__ */ import_react23.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t(discreet ? "settings.discreet.title" : "title"))));
+  return /* @__PURE__ */ import_react25.default.createElement("section", { className: `dxs dxs-bar${discreet ? " dxs-discreet" : ""}`, "aria-label": t(discreet ? "bar.aria.quiet" : "bar.aria") }, /* @__PURE__ */ import_react25.default.createElement("button", { onClick: () => collapse(!state.collapsed), "aria-expanded": !state.collapsed, "aria-label": t(state.collapsed ? "bar.expand" : "bar.collapse") }, state.collapsed ? "\u25B8" : "\u25BE", " ", t("bar.title", { count: format.count(fixed.length) })), !state.collapsed && (sourceOff ? /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-strip dxs-bar-hint" }, /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-muted" }, t("bar.source-off")), /* @__PURE__ */ import_react25.default.createElement(SourceButton, { preference, t })) : /* @__PURE__ */ import_react25.default.createElement(FixedStrip, { key: `${preference.enabled ? "on" : "off"}:${fixed.map((item) => item.symbol).join(",")}`, items: fixed, symbols: fixed.map((item) => item.symbol), useResource, open, t, format })), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-bar-actions" }, sourceOff ? null : /* @__PURE__ */ import_react25.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-icon-button", onClick: () => hideBar(), title: t("bar.hide-hint", { shortcut: fixedBarShortcutLabel() }), "aria-label": t("bar.hide") }, "\u2715"), /* @__PURE__ */ import_react25.default.createElement("button", { onClick: () => open(state.selectedSymbol) }, t(discreet ? "settings.discreet.title" : "title"))));
 }
 function StockIcon({ size: size2 = 20 }) {
-  return /* @__PURE__ */ import_react23.default.createElement("svg", { width: size2, height: size2, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react23.default.createElement("path", { d: "M4 4v16h16M7 15l4-5 4 3 5-7", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }));
+  return /* @__PURE__ */ import_react25.default.createElement("svg", { width: size2, height: size2, viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react25.default.createElement("path", { d: "M4 4v16h16M7 15l4-5 4 3 5-7", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round" }));
 }
 function SettingsIcon() {
-  return /* @__PURE__ */ import_react23.default.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react23.default.createElement("circle", { cx: "12", cy: "12", r: "3.2", stroke: "currentColor", strokeWidth: "1.7" }), /* @__PURE__ */ import_react23.default.createElement("path", { d: "M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round" }));
+  return /* @__PURE__ */ import_react25.default.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react25.default.createElement("circle", { cx: "12", cy: "12", r: "3.2", stroke: "currentColor", strokeWidth: "1.7" }), /* @__PURE__ */ import_react25.default.createElement("path", { d: "M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round" }));
 }
 function AddStock({ add, count: count2, fixedCount, ready, rpc, t, format, sourceRevision }) {
-  const [exchange, setExchange] = (0, import_react23.useState)("SH"), [code, setCode] = (0, import_react23.useState)(""), [alias, setAlias] = (0, import_react23.useState)(""), [fix, setFix] = (0, import_react23.useState)(false), [error, setError] = (0, import_react23.useState)("");
-  const [picked, setPicked] = (0, import_react23.useState)(null);
+  const [exchange, setExchange] = (0, import_react25.useState)("SH"), [code, setCode] = (0, import_react25.useState)(""), [alias, setAlias] = (0, import_react25.useState)(""), [fix, setFix] = (0, import_react25.useState)(false), [error, setError] = (0, import_react25.useState)("");
+  const [picked, setPicked] = (0, import_react25.useState)(null);
   const submit = (event) => {
     event.preventDefault();
     try {
@@ -15701,18 +15967,18 @@ function AddStock({ add, count: count2, fixedCount, ready, rpc, t, format, sourc
     setPicked(match);
     setError("");
   };
-  return /* @__PURE__ */ import_react23.default.createElement("form", { className: "dxs-form", onSubmit: submit, noValidate: true }, /* @__PURE__ */ import_react23.default.createElement("h2", null, t("add.title")), /* @__PURE__ */ import_react23.default.createElement(InstrumentSearch, { rpc, onPick: pick, t, refreshToken: sourceRevision }), picked && /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-picked", role: "status" }, t("add.selected", { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-form-grid" }, /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-field" }, t("add.exchange"), /* @__PURE__ */ import_react23.default.createElement("select", { name: "exchange", value: exchange, onChange: (event) => {
+  return /* @__PURE__ */ import_react25.default.createElement("form", { className: "dxs-form", onSubmit: submit, noValidate: true }, /* @__PURE__ */ import_react25.default.createElement("h2", null, t("add.title")), /* @__PURE__ */ import_react25.default.createElement(InstrumentSearch, { rpc, onPick: pick, t, refreshToken: sourceRevision }), picked && /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-picked", role: "status" }, t("add.selected", { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-form-grid" }, /* @__PURE__ */ import_react25.default.createElement("label", { className: "dxs-field" }, t("add.exchange"), /* @__PURE__ */ import_react25.default.createElement("select", { name: "exchange", value: exchange, onChange: (event) => {
     setExchange(event.target.value);
     setPicked(null);
-  } }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react23.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-field" }, t("add.code"), /* @__PURE__ */ import_react23.default.createElement("input", { name: "code", value: code, onChange: (event) => {
+  } }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react25.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react25.default.createElement("label", { className: "dxs-field" }, t("add.code"), /* @__PURE__ */ import_react25.default.createElement("input", { name: "code", value: code, onChange: (event) => {
     setCode(event.target.value);
     setPicked(null);
-  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" }))), /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-field" }, t("add.alias"), /* @__PURE__ */ import_react23.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-form-submit" }, /* @__PURE__ */ import_react23.default.createElement("label", { className: "dxs-check" }, /* @__PURE__ */ import_react23.default.createElement("input", { type: "checkbox", name: "fixed", checked: fix, disabled: fixedCount >= MAX_FIXED, onChange: (event) => setFix(event.target.checked) }), " ", t("add.fix", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react23.default.createElement("button", { type: "submit", className: "dxs-primary", disabled: !ready || count2 >= MAX_WATCHLIST }, t("add.submit", { count: format.count(count2) }))), error && /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(error === "error.fixed-limit" ? MAX_FIXED : MAX_WATCHLIST) })));
+  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" }))), /* @__PURE__ */ import_react25.default.createElement("label", { className: "dxs-field" }, t("add.alias"), /* @__PURE__ */ import_react25.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-form-submit" }, /* @__PURE__ */ import_react25.default.createElement("label", { className: "dxs-check" }, /* @__PURE__ */ import_react25.default.createElement("input", { type: "checkbox", name: "fixed", checked: fix, disabled: fixedCount >= MAX_FIXED, onChange: (event) => setFix(event.target.checked) }), " ", t("add.fix", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react25.default.createElement("button", { type: "submit", className: "dxs-primary", disabled: !ready || count2 >= MAX_WATCHLIST }, t("add.submit", { count: format.count(count2) }))), error && /* @__PURE__ */ import_react25.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(error === "error.fixed-limit" ? MAX_FIXED : MAX_WATCHLIST) })));
 }
 function Detail({ item, previewing, onAdd, useResource, t, format, scope, locale, rpc }) {
   const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol);
   const changeTone2 = tone4(quote?.changePercent);
-  return /* @__PURE__ */ import_react23.default.createElement("article", { "aria-label": t("detail.aria", { symbol: item.symbol }) }, /* @__PURE__ */ import_react23.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-quote-identity" }, /* @__PURE__ */ import_react23.default.createElement("h2", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-symbol-line" }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-symbol" }, item.symbol), item.alias ? t("detail.alias") : "", item.fixed ? t("detail.fixed") : "", previewing ? t("detail.preview") : "", previewing && onAdd ? /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-preview-add", onClick: onAdd, title: t("detail.preview.add-hint") }, t("detail.preview.add-short")) : null)), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-quote-figures" }, /* @__PURE__ */ import_react23.default.createElement("div", { className: `dxs-price ${changeTone2}` }, format.priceAt(quote?.price, quote?.pricePrecision)), /* @__PURE__ */ import_react23.default.createElement("div", { className: `dxs-change ${changeTone2}` }, format.change(quote?.changePercent)), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-status-line" }, /* @__PURE__ */ import_react23.default.createElement(Status, { snapshot, quote, t, format }))), /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react23.default.createElement("dl", null, /* @__PURE__ */ import_react23.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react23.default.createElement("dd", null, sourceOf(snapshot) || t("detail.no-source")), /* @__PURE__ */ import_react23.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react23.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react23.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react23.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react23.default.createElement(StockWorkbench, { key: `${scope}:${item.symbol}`, symbol: item.symbol, scope, t, format, locale, rpc }), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-secondary" }, /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("detail.fundamentals")), /* @__PURE__ */ import_react23.default.createElement("p", null, t("detail.no-fundamentals")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.fundamentals-notice"))), /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react23.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice")))));
+  return /* @__PURE__ */ import_react25.default.createElement("article", { "aria-label": t("detail.aria", { symbol: item.symbol }) }, /* @__PURE__ */ import_react25.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-quote-identity" }, /* @__PURE__ */ import_react25.default.createElement("h2", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-symbol-line" }, /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-symbol" }, item.symbol), item.alias ? t("detail.alias") : "", item.fixed ? t("detail.fixed") : "", previewing ? t("detail.preview") : "", previewing && onAdd ? /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-preview-add", onClick: onAdd, title: t("detail.preview.add-hint") }, t("detail.preview.add-short")) : null)), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-quote-figures" }, /* @__PURE__ */ import_react25.default.createElement("div", { className: `dxs-price ${changeTone2}` }, format.priceAt(quote?.price, quote?.pricePrecision)), /* @__PURE__ */ import_react25.default.createElement("div", { className: `dxs-change ${changeTone2}` }, format.change(quote?.changePercent)), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-status-line" }, /* @__PURE__ */ import_react25.default.createElement(Status, { snapshot, quote, t, format }))), /* @__PURE__ */ import_react25.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react25.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react25.default.createElement("dl", null, /* @__PURE__ */ import_react25.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react25.default.createElement("dd", null, sourceOf(snapshot) || t("detail.no-source")), /* @__PURE__ */ import_react25.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react25.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react25.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react25.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react25.default.createElement(EtfHoldingsPanel, { symbol: item.symbol, rpc, t, format }), /* @__PURE__ */ import_react25.default.createElement(StockWorkbench, { key: `${scope}:${item.symbol}`, symbol: item.symbol, scope, t, format, locale, rpc }), /* @__PURE__ */ import_react25.default.createElement(FundamentalsPanel, { symbol: item.symbol, rpc, t, format }), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-secondary" }, /* @__PURE__ */ import_react25.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react25.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react25.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice")))));
 }
 function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move, select, preview, closePreview, setFixed, toggleBar, back, retryScope, settings, t, format, getLocale = () => "en" }) {
   const state = useWatchlist((value) => value);
@@ -15728,13 +15994,13 @@ function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move,
   const selected = previewItem ? void 0 : state.items.find((entry) => entry.symbol === state.selectedSymbol);
   const item = previewItem ?? selected ?? state.items[0];
   const fixedCount = fixedItems(state.items).length;
-  const [view, setView] = (0, import_react23.useState)("watchlist");
-  const [fixError, setFixError] = (0, import_react23.useState)("");
-  const [drillNotice, setDrillNotice] = (0, import_react23.useState)("");
-  const [settingsOpen, setSettingsOpen] = (0, import_react23.useState)(false);
-  const [sourceRevision, setSourceRevision] = (0, import_react23.useState)(0);
-  const previousSelection = (0, import_react23.useRef)(state.selectedSymbol);
-  (0, import_react23.useEffect)(() => {
+  const [view, setView] = (0, import_react25.useState)("watchlist");
+  const [fixError, setFixError] = (0, import_react25.useState)("");
+  const [drillNotice, setDrillNotice] = (0, import_react25.useState)("");
+  const [settingsOpen, setSettingsOpen] = (0, import_react25.useState)(false);
+  const [sourceRevision, setSourceRevision] = (0, import_react25.useState)(0);
+  const previousSelection = (0, import_react25.useRef)(state.selectedSymbol);
+  (0, import_react25.useEffect)(() => {
     if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView("watchlist");
     previousSelection.current = state.selectedSymbol;
   }, [state.selectedSymbol]);
@@ -15790,28 +16056,28 @@ function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move,
     if (state.barHidden) toggleBar();
   };
   const tabLabel = (normal, neutral) => t(discreet ? neutral : normal);
-  return /* @__PURE__ */ import_react23.default.createElement("main", { className: `dxs dxs-page${discreet ? " dxs-discreet" : ""}` }, /* @__PURE__ */ import_react23.default.createElement("header", { className: "dxs-titlebar", "data-window-drag": true }, /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-brand" }, /* @__PURE__ */ import_react23.default.createElement(StockIcon, { size: 16 }), /* @__PURE__ */ import_react23.default.createElement("h1", null, discreet ? t("settings.discreet.title") : t("title")), /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-context" }, discreet ? t("settings.discreet.subtitle") : view === "market" ? t("market.subtitle") : view === "quant-scan" ? t("quantScan.subtitle") : view === "hot" ? t("hot.subtitle") : view === "predict" ? t("predict.subtitle") : view === "global" ? t("global.subtitle") : view === "gold" ? t("gold.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react23.default.createElement(InstrumentLookup, { rpc, t, refreshToken: sourceRevision, onPick: (match) => openStock(match.symbol, match.name) }), /* @__PURE__ */ import_react23.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist" && !previewOpen, onClick: () => {
+  return /* @__PURE__ */ import_react25.default.createElement("main", { className: `dxs dxs-page${discreet ? " dxs-discreet" : ""}` }, /* @__PURE__ */ import_react25.default.createElement("header", { className: "dxs-titlebar", "data-window-drag": true }, /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-brand" }, /* @__PURE__ */ import_react25.default.createElement(StockIcon, { size: 16 }), /* @__PURE__ */ import_react25.default.createElement("h1", null, discreet ? t("settings.discreet.title") : t("title")), /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-context" }, discreet ? t("settings.discreet.subtitle") : view === "market" ? t("market.subtitle") : view === "quant-scan" ? t("quantScan.subtitle") : view === "hot" ? t("hot.subtitle") : view === "predict" ? t("predict.subtitle") : view === "global" ? t("global.subtitle") : view === "gold" ? t("gold.subtitle") : t("page.subtitle"))), /* @__PURE__ */ import_react25.default.createElement(InstrumentLookup, { rpc, t, refreshToken: sourceRevision, onPick: (match) => openStock(match.symbol, match.name) }), /* @__PURE__ */ import_react25.default.createElement("nav", { className: "dxs-view-tabs", "aria-label": t("page.view.aria") }, /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", "aria-pressed": view === "watchlist" && !previewOpen, onClick: () => {
     leavePreview();
     setView("watchlist");
-  } }, tabLabel("page.view.watchlist", "settings.tab.watchlist")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "market" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.watchlist", "settings.tab.watchlist")), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", "aria-pressed": view === "market" && !previewOpen, onClick: () => {
     leavePreview();
     setView("market");
-  } }, tabLabel("page.view.market", "settings.tab.market")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "hot" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.market", "settings.tab.market")), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", "aria-pressed": view === "hot" && !previewOpen, onClick: () => {
     leavePreview();
     setView("hot");
-  } }, tabLabel("page.view.hot", "settings.tab.hot")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "predict" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.hot", "settings.tab.hot")), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", "aria-pressed": view === "predict" && !previewOpen, onClick: () => {
     leavePreview();
     setView("predict");
-  } }, tabLabel("page.view.predict", "settings.tab.predict")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "global" && !previewOpen, onClick: () => {
+  } }, tabLabel("page.view.predict", "settings.tab.predict")), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", "aria-pressed": view === "global" && !previewOpen, onClick: () => {
     leavePreview();
     setView("global");
-  } }, tabLabel("global.view.tab", "settings.tab.global")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "gold" && !previewOpen, onClick: () => {
+  } }, tabLabel("global.view.tab", "settings.tab.global")), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", "aria-pressed": view === "gold" && !previewOpen, onClick: () => {
     leavePreview();
     setView("gold");
-  } }, tabLabel("gold.view.tab", "settings.tab.gold")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", "aria-pressed": view === "quant-scan" && !previewOpen, onClick: () => {
+  } }, tabLabel("gold.view.tab", "settings.tab.gold")), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", "aria-pressed": view === "quant-scan" && !previewOpen, onClick: () => {
     leavePreview();
     setView("quant-scan");
-  } }, tabLabel("quantScan.tab", "quantScan.tab.quiet"))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-header-actions" }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-settings-button", "aria-label": t("settings.open"), title: t("settings.open"), "aria-haspopup": "dialog", "aria-expanded": settingsOpen, onClick: () => setSettingsOpen(true) }, /* @__PURE__ */ import_react23.default.createElement(SettingsIcon, null), /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-settings-button-label" }, t("settings.open"))), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: back }, t("page.back")))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-body" }, drillNotice ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, drillNotice) : null, previewOpen ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-detail dxs-preview-page" }, /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-preview-bar" }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-preview-back", onClick: leavePreview }, "\u2190 ", t("preview.back")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("preview.bar", { name: previewItem?.alias || previewItem?.symbol || "" }))), /* @__PURE__ */ import_react23.default.createElement(Detail, { key: `preview:${previewItem?.symbol}`, item: previewItem, previewing: true, onAdd: state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : void 0, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc })) : view === "gold" ? /* @__PURE__ */ import_react23.default.createElement(GoldView, { rpc, t, format, locale: getLocale(), preference }) : view === "global" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(GlobalView, { key: `global:${sourceRevision}`, rpc, t, format, locale: getLocale(), preference, onChangeSource: changeSource })) : view === "quant-scan" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react23.default.createElement(QuantScanView, { rpc, scope: state.scopeStatus === "ready" ? state.scopeId : null, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpenStock: openStock })) : view === "hot" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(HotView, { rpc, t, format, onOpenStock: openStock, onAddMany: addMany }), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("hot.drill.hint"))) : view === "predict" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(PredictView, { rpc, t, format, onOpenStock: openStock }), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("predict.drill.hint"))) : view === "market" ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react23.default.createElement(MarketView, { key: `market:${sourceRevision}`, rpc, t, format, locale: getLocale(), scope: state.scopeId, discreet, preference, onChangeSource: changeSource, onOpenStock: openStock }), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("market.drill.hint"))) : /* @__PURE__ */ import_react23.default.createElement(import_react23.default.Fragment, null, sourceOff ? /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-banner is-warn dxs-source-card" }, /* @__PURE__ */ import_react23.default.createElement("div", null, /* @__PURE__ */ import_react23.default.createElement("strong", null, t("source.off-title", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("source.off-notice")), preference.status === "error" ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null), /* @__PURE__ */ import_react23.default.createElement(SourceButton, { preference, t, large: true })) : preference.status === "error" ? /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t("source.unavailable")) : null, state.placement === "occupied" && /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.occupied")), state.barHidden && /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))), state.scopeStatus === "loading" && /* @__PURE__ */ import_react23.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-banner" }, /* @__PURE__ */ import_react23.default.createElement("button", { onClick: retryScope }, t("page.scope-retry"))), state.storageError && /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react23.default.createElement("aside", { className: "dxs-rail", "aria-label": t("page.manage") }, /* @__PURE__ */ import_react23.default.createElement("header", { className: "dxs-rail-head" }, /* @__PURE__ */ import_react23.default.createElement("h2", null, t("page.my-watchlist")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-counts" }, t("page.counts", { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-rail-list" }, !state.items.length && /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-empty" }, /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("page.empty.lookup")), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint"))), /* @__PURE__ */ import_react23.default.createElement("ol", { className: "dxs-list" }, state.items.map((entry, index) => /* @__PURE__ */ import_react23.default.createElement("li", { key: entry.symbol, className: item?.symbol === entry.symbol ? "is-selected" : void 0 }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-select", "aria-pressed": item?.symbol === entry.symbol, onClick: () => select(entry.symbol) }, /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-row-name" }, /* @__PURE__ */ import_react23.default.createElement("strong", null, entry.alias || entry.symbol), entry.fixed ? /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-fixed-mark" }, t("page.fixed")) : null), /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-row-meta" }, entry.alias ? /* @__PURE__ */ import_react23.default.createElement("span", { className: "dxs-muted" }, entry.symbol) : null)), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === 0, "aria-label": t("page.move-up", { symbol: entry.symbol }), onClick: () => move(entry.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === state.items.length - 1, "aria-label": t("page.move-down", { symbol: entry.symbol }), onClick: () => move(entry.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button", "aria-pressed": entry.fixed, "aria-label": t(entry.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: entry.symbol }), title: entry.fixed ? t("page.unfix") : t("page.fix"), onClick: () => toggleFix(entry) }, entry.fixed ? "\u2605" : "\u2606"), /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", className: "dxs-icon-button dxs-remove", "aria-label": t("page.remove-aria", { symbol: entry.symbol }), title: t("page.remove"), onClick: () => remove(entry.symbol) }, "\u2715"))))), fixError && /* @__PURE__ */ import_react23.default.createElement("p", { role: "alert", className: "dxs-error" }, t(fixError, { max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-rail-foot" }, /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-bar-toggle" }, discreet && !appearance.barInDiscreet ? /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: showBarInDiscreet, title: t("page.bar-quiet-hint") }, t("page.bar-quiet-show")) : state.barHidden ? /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show")) : /* @__PURE__ */ import_react23.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-hide")), /* @__PURE__ */ import_react23.default.createElement(ShortcutHint, { t })), /* @__PURE__ */ import_react23.default.createElement(AddStock, { add, count: state.items.length, fixedCount, ready: state.scopeStatus === "ready", rpc, t, format, sourceRevision }), /* @__PURE__ */ import_react23.default.createElement("details", { className: "dxs-fineprint" }, /* @__PURE__ */ import_react23.default.createElement("summary", null, t("page.notes")), !sourceOff ? /* @__PURE__ */ import_react23.default.createElement("p", null, t("page.notice")) : null, /* @__PURE__ */ import_react23.default.createElement("p", null, t("page.fixed-hint", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react23.default.createElement("p", null, t("add.notice"))))), /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage" }, state.scopeStatus === "ready" ? /* @__PURE__ */ import_react23.default.createElement(WatchSignals, { key: state.scopeId, rpc, scope: state.scopeId, items: state.items, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpen: select }) : null, state.scopeStatus === "ready" && (item ? /* @__PURE__ */ import_react23.default.createElement(Detail, { key: `${state.scopeId}:${preference.enabled}:${item.symbol}`, item, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc }) : /* @__PURE__ */ import_react23.default.createElement("div", { className: "dxs-stage-empty" }, /* @__PURE__ */ import_react23.default.createElement("h2", null, t("page.select")), /* @__PURE__ */ import_react23.default.createElement("p", { className: "dxs-muted" }, t("page.select-hint")), /* @__PURE__ */ import_react23.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale(), rpc }))))))), settingsOpen ? /* @__PURE__ */ import_react23.default.createElement(
+  } }, tabLabel("quantScan.tab", "quantScan.tab.quiet"))), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-header-actions" }, /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-settings-button", "aria-label": t("settings.open"), title: t("settings.open"), "aria-haspopup": "dialog", "aria-expanded": settingsOpen, onClick: () => setSettingsOpen(true) }, /* @__PURE__ */ import_react25.default.createElement(SettingsIcon, null), /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-settings-button-label" }, t("settings.open"))), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", onClick: back }, t("page.back")))), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-body" }, drillNotice ? /* @__PURE__ */ import_react25.default.createElement("p", { role: "status", className: "dxs-banner" }, drillNotice) : null, previewOpen ? /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage dxs-stage-detail dxs-preview-page" }, /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-preview-bar" }, /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-preview-back", onClick: leavePreview }, "\u2190 ", t("preview.back")), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted" }, t("preview.bar", { name: previewItem?.alias || previewItem?.symbol || "" }))), /* @__PURE__ */ import_react25.default.createElement(Detail, { key: `preview:${previewItem?.symbol}:${preference.enabled}`, item: previewItem, previewing: true, onAdd: state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : void 0, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc })) : view === "gold" ? /* @__PURE__ */ import_react25.default.createElement(GoldView, { rpc, t, format, locale: getLocale(), preference }) : view === "global" ? /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react25.default.createElement(GlobalView, { key: `global:${sourceRevision}`, rpc, t, format, locale: getLocale(), preference, onChangeSource: changeSource })) : view === "quant-scan" ? /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react25.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react25.default.createElement(QuantScanView, { rpc, scope: state.scopeStatus === "ready" ? state.scopeId : null, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpenStock: openStock })) : view === "hot" ? /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react25.default.createElement(HotView, { rpc, t, format, onOpenStock: openStock, onAddMany: addMany }), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("hot.drill.hint"))) : view === "predict" ? /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react25.default.createElement(PredictView, { rpc, t, format, onOpenStock: openStock }), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("predict.drill.hint"))) : view === "market" ? /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react25.default.createElement(MarketView, { key: `market:${sourceRevision}`, rpc, t, format, locale: getLocale(), scope: state.scopeId, discreet, preference, onChangeSource: changeSource, onOpenStock: openStock }), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("market.drill.hint"))) : /* @__PURE__ */ import_react25.default.createElement(import_react25.default.Fragment, null, sourceOff ? /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-banner is-warn dxs-source-card" }, /* @__PURE__ */ import_react25.default.createElement("div", null, /* @__PURE__ */ import_react25.default.createElement("strong", null, t("source.off-title", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted" }, t("source.off-notice")), preference.status === "error" ? /* @__PURE__ */ import_react25.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null), /* @__PURE__ */ import_react25.default.createElement(SourceButton, { preference, t, large: true })) : preference.status === "error" ? /* @__PURE__ */ import_react25.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t("source.unavailable")) : null, state.placement === "occupied" && /* @__PURE__ */ import_react25.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.occupied")), state.barHidden && /* @__PURE__ */ import_react25.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))), state.scopeStatus === "loading" && /* @__PURE__ */ import_react25.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-banner" }, /* @__PURE__ */ import_react25.default.createElement("button", { onClick: retryScope }, t("page.scope-retry"))), state.storageError && /* @__PURE__ */ import_react25.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react25.default.createElement("aside", { className: "dxs-rail", "aria-label": t("page.manage") }, /* @__PURE__ */ import_react25.default.createElement("header", { className: "dxs-rail-head" }, /* @__PURE__ */ import_react25.default.createElement("h2", null, t("page.my-watchlist")), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-counts" }, t("page.counts", { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-rail-list" }, !state.items.length && /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-empty" }, /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted" }, t("page.empty.lookup")), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint"))), /* @__PURE__ */ import_react25.default.createElement("ol", { className: "dxs-list" }, state.items.map((entry, index) => /* @__PURE__ */ import_react25.default.createElement("li", { key: entry.symbol, className: item?.symbol === entry.symbol ? "is-selected" : void 0 }, /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-select", "aria-pressed": item?.symbol === entry.symbol, onClick: () => select(entry.symbol) }, /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-row-name" }, /* @__PURE__ */ import_react25.default.createElement("strong", null, entry.alias || entry.symbol), entry.fixed ? /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-fixed-mark" }, t("page.fixed")) : null), /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-row-meta" }, entry.alias ? /* @__PURE__ */ import_react25.default.createElement("span", { className: "dxs-muted" }, entry.symbol) : null)), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === 0, "aria-label": t("page.move-up", { symbol: entry.symbol }), onClick: () => move(entry.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === state.items.length - 1, "aria-label": t("page.move-down", { symbol: entry.symbol }), onClick: () => move(entry.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-icon-button", "aria-pressed": entry.fixed, "aria-label": t(entry.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: entry.symbol }), title: entry.fixed ? t("page.unfix") : t("page.fix"), onClick: () => toggleFix(entry) }, entry.fixed ? "\u2605" : "\u2606"), /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", className: "dxs-icon-button dxs-remove", "aria-label": t("page.remove-aria", { symbol: entry.symbol }), title: t("page.remove"), onClick: () => remove(entry.symbol) }, "\u2715"))))), fixError && /* @__PURE__ */ import_react25.default.createElement("p", { role: "alert", className: "dxs-error" }, t(fixError, { max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-rail-foot" }, /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-bar-toggle" }, discreet && !appearance.barInDiscreet ? /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", onClick: showBarInDiscreet, title: t("page.bar-quiet-hint") }, t("page.bar-quiet-show")) : state.barHidden ? /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show")) : /* @__PURE__ */ import_react25.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-hide")), /* @__PURE__ */ import_react25.default.createElement(ShortcutHint, { t })), /* @__PURE__ */ import_react25.default.createElement(AddStock, { add, count: state.items.length, fixedCount, ready: state.scopeStatus === "ready", rpc, t, format, sourceRevision }), /* @__PURE__ */ import_react25.default.createElement("details", { className: "dxs-fineprint" }, /* @__PURE__ */ import_react25.default.createElement("summary", null, t("page.notes")), !sourceOff ? /* @__PURE__ */ import_react25.default.createElement("p", null, t("page.notice")) : null, /* @__PURE__ */ import_react25.default.createElement("p", null, t("page.fixed-hint", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react25.default.createElement("p", null, t("add.notice"))))), /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage" }, state.scopeStatus === "ready" ? /* @__PURE__ */ import_react25.default.createElement(WatchSignals, { key: state.scopeId, rpc, scope: state.scopeId, items: state.items, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpen: select }) : null, state.scopeStatus === "ready" && (item ? /* @__PURE__ */ import_react25.default.createElement(Detail, { key: `${state.scopeId}:${preference.enabled}:${item.symbol}`, item, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc }) : /* @__PURE__ */ import_react25.default.createElement("div", { className: "dxs-stage-empty" }, /* @__PURE__ */ import_react25.default.createElement("h2", null, t("page.select")), /* @__PURE__ */ import_react25.default.createElement("p", { className: "dxs-muted" }, t("page.select-hint")), /* @__PURE__ */ import_react25.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale(), rpc }))))))), settingsOpen ? /* @__PURE__ */ import_react25.default.createElement(
     SettingsPanel,
     {
       settings,
@@ -16379,6 +16645,21 @@ var WATCHLIST_CSS = `
 .dxs-secondary{grid-template-columns:1fr}
 .dxs-instrument-summary .dxs-price{font-size:28px}
 }
+.dxs-holdings{margin:8px 0 0;padding:12px;border:1px solid var(--dxs-line-soft);border-radius:12px;background:var(--dxs-bg)}
+.dxs-holdings header{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.dxs-holdings h3,.dxs-holdings h4{margin:0;font-size:13px}
+.dxs-holdings h4{margin:0 0 6px}
+.dxs-holdings p{margin:4px 0}
+.dxs-holdings-block+.dxs-holdings-block{margin-top:14px}
+.dxs-holdings-filter{display:block;width:min(240px,100%);height:28px;margin:0 0 8px;padding:0 8px;border:1px solid var(--dxs-line);border-radius:6px;background:var(--dxs-bg)}
+.dxs-holdings-scroll{max-height:360px;overflow:auto;border:1px solid var(--dxs-line-soft);border-radius:8px}
+.dxs-holdings table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.dxs-holdings th,.dxs-holdings td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--dxs-line-soft);white-space:nowrap}
+.dxs-holdings th:first-child,.dxs-holdings td:first-child{text-align:left;white-space:normal}
+.dxs-holdings td small{display:block;color:var(--dxs-muted);font-size:11px}
+.dxs-holdings-weight{display:inline-flex;align-items:center;justify-content:flex-end;gap:8px}
+.dxs-holdings-bar{display:inline-block;width:72px;height:6px;border-radius:99px;background:var(--dxs-soft);overflow:hidden;flex:none}
+.dxs-holdings-bar>span{display:block;height:100%;background:var(--dxs-accent)}
 `;
 
 // src/client/gold/styles.ts
@@ -16602,6 +16883,33 @@ var QUANT_SCAN_CSS = `
 .dxs-quant-auto-reports ol{padding-left:20px}.dxs-quant-auto-reports li{margin:8px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 `;
 
+// src/client/fundamentals-styles.ts
+var FUNDAMENTALS_CSS = `
+.dxs-fundamentals{padding:18px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:10px;margin-bottom:16px;min-width:0}
+.dxs-fundamentals>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.dxs-fundamentals h3{font-size:13px;font-weight:600;margin:0}
+.dxs-fundamentals>header p{margin:2px 0 0!important}
+.dxs-fundamentals h4{font-size:12px;font-weight:600;margin:0 0 8px;color:var(--dxs-fg)}
+.dxs-fundamentals-block+.dxs-fundamentals-block{margin-top:18px}
+.dxs-fundamentals-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+.dxs-fundamentals-cell{display:grid;gap:2px;padding:8px 10px;border-radius:8px;background:var(--dxs-soft)}
+.dxs-fundamentals-cell span{font-size:11px;color:var(--dxs-muted)}
+.dxs-fundamentals-cell strong{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dxs-fundamentals-block>p{margin:8px 0 0!important}
+.dxs-fundamentals-subhead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.dxs-fundamentals-subhead span{font-size:11px}
+.dxs-fundamentals-scroll{overflow-x:auto;margin-top:8px}
+.dxs-fundamentals table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.dxs-fundamentals th{padding:6px 8px;font-size:11px;font-weight:500;color:var(--dxs-muted);text-align:right;white-space:nowrap;border-bottom:1px solid var(--dxs-line)}
+.dxs-fundamentals td{padding:7px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--dxs-line-soft)}
+.dxs-fundamentals th:first-child,.dxs-fundamentals td:first-child{text-align:left}
+.dxs-fundamentals td span{display:block}
+.dxs-fundamentals td small{display:block;font-size:11px;color:var(--dxs-muted)}
+.dxs-fundamentals tr.is-latest td{background:color-mix(in srgb,var(--dxs-accent) 6%,transparent)}
+.dxs-fundamentals-disclaimer{font-size:11px}
+@media(max-width:650px){.dxs-fundamentals{padding:12px}.dxs-fundamentals-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+`;
+
 // src/client/styles.ts
 var CSS = `
 .dxs{--dxs-bg:var(--dsw-alias-bg-layer-1,#fff);--dxs-soft:var(--dsw-alias-bg-layer-2,#f5f6f8);--dxs-title:var(--dsw-specific-sidebar-fill,var(--dxs-soft));--dxs-line:var(--dsw-alias-border-l2,#e2e5e9);--dxs-line-soft:var(--dsw-alias-border-l1,#eceef1);--dxs-fg:var(--dsw-alias-label-primary,#20252e);--dxs-muted:var(--dsw-alias-label-secondary,#717885);--dxs-accent:var(--dsw-alias-brand-primary,#4666d5);--dxs-up:var(--dsw-alias-state-error-primary,#bb5863);--dxs-down:var(--dsw-alias-state-success-primary,#2b865c);color:var(--dxs-fg);font:13px/1.5 var(--dsw-font-family,system-ui,sans-serif);box-sizing:border-box}.dxs *{box-sizing:border-box}.dxs button,.dxs input,.dxs select{font:inherit;color:inherit}.dxs button{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 10px;font-size:12px;line-height:1;cursor:pointer;border:1px solid var(--dxs-line);border-radius:6px;background:var(--dxs-bg);white-space:nowrap}.dxs button:hover:not(:disabled){background:var(--dxs-soft)}.dxs button:focus-visible,.dxs input:focus-visible,.dxs select:focus-visible{outline:2px solid var(--dxs-accent);outline-offset:2px}.dxs button:disabled{opacity:.45;cursor:not-allowed}.dxs .dxs-primary{background:var(--dxs-accent);border-color:transparent;color:var(--dsw-alias-label-primary-foreground,#fff);font-weight:550}.dxs .dxs-primary:hover:not(:disabled){background:color-mix(in srgb,var(--dxs-accent) 88%,#000)}.dxs .dxs-icon-button{width:28px;padding:0}.dxs :is(.dxs-select,.dxs-mkt-link,.dxs-mkt-tile,.dxs-mkt-group-label){height:auto;min-height:0}.dxs-bar{display:flex;align-items:center;gap:8px;width:100%;max-width:100vw;padding:5px 12px;border-top:1px solid var(--dsw-alias-border-l2,#ddd);background:var(--dsw-alias-bg-layer-1,#fff);min-height:40px}.dxs-strip{display:flex;align-items:center;gap:8px;min-width:0;flex:1;overflow-x:auto;padding:2px}.dxs-chip{display:flex;align-items:center;gap:8px;flex:none}.dxs-muted{color:var(--dsw-alias-label-secondary,#666);font-size:12px}.dxs-up{color:var(--dxs-up)}.dxs-down{color:var(--dxs-down)}.dxs-page{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:var(--dxs-bg)}.dxs-titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:50px;flex:none;padding:0 12px;padding-inline-start:max(12px,var(--dsh-frame-leading-clearance,0px));border-bottom:.5px solid var(--dsw-alias-border-l3,var(--dxs-line-soft));background:var(--dxs-title)}.dxs-brand{display:flex;align-items:center;gap:8px;min-width:0;flex:1}.dxs-brand svg{color:var(--dxs-accent);flex:none}.dxs-brand h1,.dxs h1{font-size:13px;font-weight:600;line-height:1.3;margin:0;letter-spacing:0}.dxs-context{color:var(--dxs-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-left:1px solid var(--dxs-line-soft);padding-left:8px}.dxs-header-actions{display:flex;align-items:center;gap:6px;flex:none}.dxs-body{flex:1;min-height:0;overflow:auto;padding:16px 20px 28px}.dxs h2{font-size:13px;font-weight:600;margin:0 0 8px}.dxs p{margin:8px 0}.dxs-notice{padding:10px 12px;background:var(--dsw-alias-bg-layer-2,#f4f4f5);border-radius:8px;margin:12px 0}.dxs-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px;margin-top:4px}.dxs-list{padding:0;list-style:none}.dxs-list li{margin:8px 0}.dxs-list .dxs-select{width:100%;height:auto;min-height:32px;padding:6px 10px;text-align:left;white-space:normal;justify-content:flex-start}.dxs-controls{display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap}.dxs-form{display:grid;gap:8px;margin-top:16px}.dxs input,.dxs select{min-width:0;width:100%;height:28px;padding:0 10px;font-size:12px;background:var(--dxs-bg);border:1px solid var(--dxs-line);border-radius:6px}.dxs-section{padding:18px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:10px;margin-bottom:16px}.dxs-price{font-size:30px;font-variant-numeric:tabular-nums}.dxs dl{display:grid;grid-template-columns:auto 1fr;gap:5px 16px}.dxs dd{margin:0;overflow-wrap:anywhere}.dxs-error{color:var(--dsw-alias-state-error-primary,#bc2737)}@media(max-width:650px){.dxs-body{padding:12px 12px 20px}.dxs-layout{grid-template-columns:1fr}.dxs-bar{padding:4px 8px;gap:6px}.dxs-context{display:none}.dxs-titlebar{gap:8px;padding-inline:8px}}` + CHART_CSS + `
@@ -16616,6 +16924,7 @@ ${QUANT_CSS}
 ${SETTINGS_CSS}
 ${WATCH_SIGNALS_CSS}
 ${QUANT_SCAN_CSS}
+${FUNDAMENTALS_CSS}
 
 /* \u2500\u2500 Glass material \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
    The Harness glass theme (dsh-x-ui) makes the shared surface tokens
@@ -16636,7 +16945,7 @@ ${QUANT_SCAN_CSS}
 `;
 
 // src/client/tool-view.tsx
-var import_react24 = __toESM(require("react"), 1);
+var import_react26 = __toESM(require("react"), 1);
 
 // src/client/quote-presentation.ts
 function readQuotePresentation(meta) {
@@ -16652,7 +16961,7 @@ function StockToolView({ phase, block, t, format, inspect }) {
   const quote = settled ? readQuotePresentation(block.meta) : null;
   const state = !settled ? phase === "preparing" ? "preparing" : "running" : block.isError ? "failed" : "done";
   const symbol = quote?.symbol ?? block.args?.text("symbol");
-  return /* @__PURE__ */ import_react24.default.createElement("section", { className: "dxs dxs-section", "aria-label": t("quote.title") }, /* @__PURE__ */ import_react24.default.createElement("strong", null, t("quote.title"), symbol ? ` \xB7 ${symbol}` : ""), /* @__PURE__ */ import_react24.default.createElement("p", { role: "status" }, t(`quote.${state}`)), settled && block.isError && /* @__PURE__ */ import_react24.default.createElement("p", { role: "alert" }, t(quoteErrorKey(block.error))), quote && !block.isError && /* @__PURE__ */ import_react24.default.createElement(import_react24.default.Fragment, null, /* @__PURE__ */ import_react24.default.createElement("dl", null, ["price", "open", "high", "low", "previousClose", "change", "changePercent"].map((key) => /* @__PURE__ */ import_react24.default.createElement(import_react24.default.Fragment, { key }, /* @__PURE__ */ import_react24.default.createElement("dt", null, t(`quote.${key}`)), /* @__PURE__ */ import_react24.default.createElement("dd", null, key === "changePercent" ? format.change(quote[key]) : format.price(quote[key])))), /* @__PURE__ */ import_react24.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react24.default.createElement("dd", null, quote.provider), /* @__PURE__ */ import_react24.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react24.default.createElement("dd", null, format.time(quote.quotedAt, t)), /* @__PURE__ */ import_react24.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react24.default.createElement("dd", null, format.time(quote.fetchedAt, t))), /* @__PURE__ */ import_react24.default.createElement("p", null, t("quote.notice"))), settled && !block.isError && !quote && /* @__PURE__ */ import_react24.default.createElement(import_react24.default.Fragment, null, /* @__PURE__ */ import_react24.default.createElement("p", null, t("quote.legacy")), /* @__PURE__ */ import_react24.default.createElement("pre", { style: { whiteSpace: "pre-wrap" } }, (block.content ?? []).filter((item) => item.type === "text").map((item) => item.text).join("\n"))), inspect && /* @__PURE__ */ import_react24.default.createElement("button", { onClick: inspect }, t("quote.inspect")));
+  return /* @__PURE__ */ import_react26.default.createElement("section", { className: "dxs dxs-section", "aria-label": t("quote.title") }, /* @__PURE__ */ import_react26.default.createElement("strong", null, t("quote.title"), symbol ? ` \xB7 ${symbol}` : ""), /* @__PURE__ */ import_react26.default.createElement("p", { role: "status" }, t(`quote.${state}`)), settled && block.isError && /* @__PURE__ */ import_react26.default.createElement("p", { role: "alert" }, t(quoteErrorKey(block.error))), quote && !block.isError && /* @__PURE__ */ import_react26.default.createElement(import_react26.default.Fragment, null, /* @__PURE__ */ import_react26.default.createElement("dl", null, ["price", "open", "high", "low", "previousClose", "change", "changePercent"].map((key) => /* @__PURE__ */ import_react26.default.createElement(import_react26.default.Fragment, { key }, /* @__PURE__ */ import_react26.default.createElement("dt", null, t(`quote.${key}`)), /* @__PURE__ */ import_react26.default.createElement("dd", null, key === "changePercent" ? format.change(quote[key]) : format.price(quote[key])))), /* @__PURE__ */ import_react26.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react26.default.createElement("dd", null, quote.provider), /* @__PURE__ */ import_react26.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react26.default.createElement("dd", null, format.time(quote.quotedAt, t)), /* @__PURE__ */ import_react26.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react26.default.createElement("dd", null, format.time(quote.fetchedAt, t))), /* @__PURE__ */ import_react26.default.createElement("p", null, t("quote.notice"))), settled && !block.isError && !quote && /* @__PURE__ */ import_react26.default.createElement(import_react26.default.Fragment, null, /* @__PURE__ */ import_react26.default.createElement("p", null, t("quote.legacy")), /* @__PURE__ */ import_react26.default.createElement("pre", { style: { whiteSpace: "pre-wrap" } }, (block.content ?? []).filter((item) => item.type === "text").map((item) => item.text).join("\n"))), inspect && /* @__PURE__ */ import_react26.default.createElement("button", { onClick: inspect }, t("quote.inspect")));
 }
 
 // src/client/index.ts

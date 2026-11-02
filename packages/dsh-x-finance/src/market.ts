@@ -14,6 +14,8 @@ import type { HotScanResult } from './hot.ts'
 import type { PredictScanResult } from './predict.ts'
 import { parseQuantScanRequest } from './quant-scan.ts'
 import type { QuantScanRequest, QuantScanResult } from './quant-scan.ts'
+import type { EtfHoldings } from './holdings.ts'
+import type { Fundamentals } from './fundamentals.ts'
 export type { QuantScanRequest, QuantScanResult, QuantCounts, QuantRow, QuantFactors } from './quant-scan.ts'
 export const MARKET_ENDPOINT = 'dsh-x-finance.market'
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference'
@@ -336,7 +338,9 @@ export type MarketTailScanResult = MarketUnconfigured | { status: 'ready'; tailS
 export type MarketCsi300FundsResult = MarketUnconfigured | { status: 'ready'; csi300Funds: Csi300FundShare }
 export type MarketPredictScanResult = MarketUnconfigured | { status: 'ready'; predictScan: PredictScanResult }
 export type MarketQuantScanResult = MarketUnconfigured | { status: 'ready'; quantScan: QuantScanResult | null }
-export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult | MarketQuantScanResult
+export type MarketHoldingsResult = MarketUnconfigured | { status: 'ready'; holdings: EtfHoldings }
+export type MarketFundamentalsResult = MarketUnconfigured | { status: 'ready'; fundamentals: Fundamentals }
+export type MarketResult = MarketOverviewResult | MarketBreadthResult | MarketBoardResult | MarketQuotesResult | MarketHistoryResult | MarketGlobalResult | MarketTailScanResult | MarketCsi300FundsResult | MarketPredictScanResult | MarketQuantScanResult | MarketHoldingsResult | MarketFundamentalsResult
 
 export type MarketRequest =
   | { kind: 'overview' }
@@ -350,6 +354,8 @@ export type MarketRequest =
   | { kind: 'hot-scan'; board?: string }
   | { kind: 'csi300-funds' }
   | { kind: 'predict-scan'; board?: string }
+  | { kind: 'holdings'; symbol: string }
+  | { kind: 'fundamentals'; symbol: string }
   | ({ kind: 'quant-scan' } & QuantScanRequest)
 
 /**
@@ -430,6 +436,17 @@ export interface MarketProvider {
    * adapter without it leaves only this special panel unavailable.
    */
   csi300Funds?(): Promise<Csi300FundShare>
+  /**
+   * Reported stock holdings for one ETF or LOF. Optional: an adapter without it
+   * leaves only the holdings section of that detail page unavailable.
+   */
+  holdings?(symbol: string): Promise<EtfHoldings>
+  /**
+   * Reported financials plus the current valuation multiples for one A-share.
+   * Optional: an adapter without it leaves only the fundamentals section
+   * unavailable, not the quote, the chart or the market board.
+   */
+  fundamentals?(symbol: string): Promise<Fundamentals>
   /**
    * Limit-up relay probabilities. Optional and independent from the hot screen:
    * a source that cannot serve daily bars leaves this panel unavailable without
@@ -816,6 +833,13 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
     if (typeof symbol !== 'string') throw stockMarketError('invalid-input')
     try { validateSymbol(symbol) } catch { throw stockMarketError('invalid-input') }
     return { kind: 'intraday', symbol }
+  }
+  if (kind === 'holdings' || kind === 'fundamentals') {
+    if (keys.join(',') !== 'kind,symbol') throw stockMarketError('invalid-input')
+    const symbol = (payload as { symbol?: unknown }).symbol
+    if (typeof symbol !== 'string') throw stockMarketError('invalid-input')
+    try { validateSymbol(symbol) } catch { throw stockMarketError('invalid-input') }
+    return { kind, symbol }
   }
   throw stockMarketError('invalid-input')
 }

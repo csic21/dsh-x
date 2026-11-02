@@ -285,3 +285,10 @@ No provider authentication, real model calls, Electron UI, or paid/network marke
 - **同时改版**：宽屏（≥1000px）下榜单改成 10 列对比表（排名 / 晋级概率 / 股票 / 连板 / 现价·涨幅 / 同组 / 偏差 / 同组接力 / 胜率 / 依据·风险），行高由 118px 降到 51px；窄屏保持卡片式，四个指标压成一行。新增 `predict.col.*` 中英词条。
 - **验证**：`pnpm --filter dsh-x-finance test` 与根 `pnpm test` 全绿（**586 passed / 0 failed**，1 skipped）；用真实 provider 数据在 1646×830 与 760×830 两个宽度下静态渲染核对，无横向溢出（`scrollWidth === clientWidth`）。
 - **仍未验证**：真实 Electron 窗口里的字体渲染与滚动性能；只做了两点宽度的静态截图与 jsdom 断言。
+
+## Company fundamentals — 2026-11-02
+
+- New host seam `dsh-x-finance.market` kind `fundamentals`: owner-only, one A-share symbol, 5-minute cache, 256 KiB cap, two fixed HTTPS hosts, redirects rejected, 10 s timeout. Only projected fields leave the Host; raw payloads and upstream errors never do.
+- The two upstreams are independent. A throttled report host keeps the valuation snapshot and marks it `partial`; only both failing is a panel error. An ETF/LOF answers locally without a request.
+- Parser tests cover hundredths scaling for PE/PB, negative multiples, missing cells, cumulative report periods, duplicate and foreign rows, the 8-period cap, and a one-host-down partial. Projection tests reject a wrong symbol, NaN, a negative market cap, unsorted periods and an ETF answer carrying a P&L.
+- jsdom panel tests cover the Chinese and English copy, the six valuation cells, loss labelling, unconfigured/error/retry/partial states, and the ETF no-request path. All fixtures are offline; no live upstream, real filing or Desktop acceptance is claimed.

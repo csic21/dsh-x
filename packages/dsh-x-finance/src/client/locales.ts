@@ -9,10 +9,11 @@ import { watchSignalsZh, watchSignalsEn } from './watch-signals-locales.ts'
 import { quantScanZh, quantScanEn } from './quant-scan-locales.ts'
 import { watchScheduleZh, watchScheduleEn } from './watch-schedule-locales.ts'
 import { quoteZh, quoteEn } from '../quote-messages.ts'
+import { fundamentalsZh, fundamentalsEn } from './fundamentals-locales.ts'
 // Dictionary keys and placeholders are checked in the locale contract tests.
 export const NS = 'dsh-x-finance'
 export const zh = {
-  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh, ...settingsZh, ...watchSignalsZh, ...quantScanZh, ...watchScheduleZh,
+  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh, ...settingsZh, ...watchSignalsZh, ...quantScanZh, ...watchScheduleZh, ...fundamentalsZh,
   'title': '金融',
   // The watchlist is the long list on this page; only explicitly fixed stocks
   // reach the bottom bar, so the two never share a label.
@@ -94,11 +95,29 @@ export const zh = {
   'detail.no-history': '暂无历史行情',
   'detail.chart-notice': '接入支持分时、K 线与成交量的数据源后展示。当前没有可验证的数据，不绘制示意走势。',
   'detail.fundamentals': '基本面',
-  'detail.no-fundamentals': '暂无已验证的财报与估值数据',
-  'detail.fundamentals-notice': '接入后将标明报告期、披露日期及来源。',
   'detail.analysis': '分析',
   'detail.no-analysis': '数据不足，暂不生成分析结论',
   'detail.analysis-notice': '需要可靠的行情、财务与公告依据；分析应区分事实、推断和风险。不提供交易执行。',
+  'detail.holdings': '持仓成分',
+  'detail.holdings.loading': '正在读取持仓成分…',
+  'detail.holdings.error': '持仓成分暂不可用',
+  'detail.holdings.retry': '重试',
+  'detail.holdings.empty': '本期没有披露股票持仓。货币、商品或债券 ETF 可能没有股票明细。',
+  'detail.holdings.unconfigured': '开启免费源后可查看持仓成分。',
+  'detail.holdings.notice': '权重、持股和市值都是报告期口径，不是实时持仓。季报通常只披露前十大；完整成分来自最近的半年报或年报。持股单位为万股，市值为万元折成的金额。数据来自公开非官方接口，不构成投资建议。',
+  'detail.holdings.latest': '最新披露 {date} · {count} 只 · {coverage}',
+  'detail.holdings.full': '最近完整持仓 {date} · {count} 只',
+  'detail.holdings.coverage.top': '前十大',
+  'detail.holdings.coverage.partial': '部分披露',
+  'detail.holdings.coverage.all': '全部披露',
+  'detail.holdings.truncated': '只展示前 {count} 只',
+  'detail.holdings.name': '股票',
+  'detail.holdings.weight': '占净值',
+  'detail.holdings.shares': '持股（万股）',
+  'detail.holdings.value': '持仓市值',
+  'detail.holdings.filter': '筛选成分',
+  'detail.holdings.filter-placeholder': '名称或代码',
+  'detail.holdings.empty-filter': '没有匹配的成分',
   'page.subtitle': '手动自选 · A 股详情与分析',
   'page.back': '返回对话',
   'page.notice': '行情来自「市场」页同一个本机免费源（腾讯公开行情，非官方、无 SLA）。只有标记为「固定」的股票会出现在底部栏，自选清单本身不会。',
@@ -156,11 +175,12 @@ export const zh = {
   'error.unavailable': '行情暂不可用，请稍后重试。',
   'error.market-unavailable': '行情暂不可用，请稍后重试。',
   'error.history-unavailable': '该股票暂无历史日 K 数据。',
+  'error.fundamentals-unavailable': '公司基本面暂不可用，请稍后重试。',
   'error.unknown': '操作未完成，请稍后重试。',
 }
 /** @type {Record<keyof typeof zh, string>} */
 export const en = {
-  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn, ...settingsEn, ...watchSignalsEn, ...quantScanEn, ...watchScheduleEn,
+  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn, ...settingsEn, ...watchSignalsEn, ...quantScanEn, ...watchScheduleEn, ...fundamentalsEn,
   'title': 'Finance',
   'bar.title': 'Fixed {count}',
   'bar.aria': 'Fixed stocks bar',
@@ -240,11 +260,29 @@ export const en = {
   'detail.no-history': 'No historical market data',
   'detail.chart-notice': 'Intraday charts, candlesticks, and volume will appear when a supporting data source is connected. No illustrative chart is drawn without verifiable data.',
   'detail.fundamentals': 'Fundamentals',
-  'detail.no-fundamentals': 'No verified financial statements or valuation data',
-  'detail.fundamentals-notice': 'Reporting periods, disclosure dates, and sources will be shown when connected.',
   'detail.analysis': 'Analysis',
   'detail.no-analysis': 'Insufficient data for analysis',
   'detail.analysis-notice': 'Reliable prices, financials, and announcements are required. Analysis should distinguish facts, inferences, and risks. Trading is not supported.',
+  'detail.holdings': 'Holdings',
+  'detail.holdings.loading': 'Loading holdings…',
+  'detail.holdings.error': 'Holdings are unavailable',
+  'detail.holdings.retry': 'Retry',
+  'detail.holdings.empty': 'This report disclosed no stock holdings. A money-market, commodity or bond ETF may have none.',
+  'detail.holdings.unconfigured': 'Turn on the free source to see holdings.',
+  'detail.holdings.notice': 'Weights, shares and value are as of the report, not a live basket. A quarter usually discloses only the top 10; the full book comes from the latest semi-annual or annual report. Shares are in 10,000s and value is converted from 10,000 CNY. The feed is public and unofficial. This is not investment advice.',
+  'detail.holdings.latest': 'Latest filing {date} · {count} names · {coverage}',
+  'detail.holdings.full': 'Latest full book {date} · {count} names',
+  'detail.holdings.coverage.top': 'top 10',
+  'detail.holdings.coverage.partial': 'partial disclosure',
+  'detail.holdings.coverage.all': 'full disclosure',
+  'detail.holdings.truncated': 'Showing the first {count} names',
+  'detail.holdings.name': 'Stock',
+  'detail.holdings.weight': 'Weight',
+  'detail.holdings.shares': 'Shares (10k)',
+  'detail.holdings.value': 'Value',
+  'detail.holdings.filter': 'Filter holdings',
+  'detail.holdings.filter-placeholder': 'Name or code',
+  'detail.holdings.empty-filter': 'No matching holding',
   'page.subtitle': 'Manual watchlist · A-share details and analysis',
   'page.back': 'Back to conversation',
   'page.notice': 'Quotes come from the same local free source as the Market tab (Tencent public endpoint, unofficial, no SLA). Only stocks marked “Fixed” appear in the bottom bar; the watchlist itself never does.',
@@ -302,6 +340,7 @@ export const en = {
   'error.unavailable': 'Quotes are temporarily unavailable. Please try again later.',
   'error.market-unavailable': 'Quotes are temporarily unavailable. Please try again later.',
   'error.history-unavailable': 'No daily history is available for this stock.',
+  'error.fundamentals-unavailable': 'Company fundamentals are temporarily unavailable. Please try again later.',
   'error.unknown': 'The action could not be completed. Please try again.',
 }
 

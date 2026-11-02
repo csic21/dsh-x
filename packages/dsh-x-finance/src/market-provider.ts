@@ -49,6 +49,16 @@ import {
 import type { TailMetrics, TailMinutePoint, TailScanCandidate, TailScanResult } from './tail-scan.ts'
 import type { GlobalMarketOverview, GlobalQuote } from './global.ts'
 import { validateSymbol } from './watchlist.ts'
+import {
+  ETF_HOLDINGS_MAX_BYTES, ETF_HOLDINGS_TTL_MS, emptyEtfHoldings, etfHoldingsUrl, isExchangeFund, parseEtfHoldingsScript,
+} from './holdings.ts'
+import type { EtfHoldings } from './holdings.ts'
+import {
+  FUNDAMENTALS_MAX_BYTES, FUNDAMENTALS_TTL_MS, composeFundamentals, emptyFundamentals,
+  emptyValuation, fundamentalsReportsUrl, fundamentalsValuationUrl,
+  parseReportPeriods, parseValuation,
+} from './fundamentals.ts'
+import type { FundamentalPeriod, Fundamentals } from './fundamentals.ts'
 import { MAX_ABSOLUTE_PRICE } from './chart-data.ts'
 import { randomUUID } from 'node:crypto'
 import { createQuantScanner, isQuantSymbol, parseQuantScanRequest, QUANT_SCAN_LIMITS } from './quant-scan.ts'
@@ -165,6 +175,7 @@ export interface MarketProviderOptions {
   boardTtlMs?: number
   globalTtlMs?: number
   csi300FundsTtlMs?: number
+  fundamentalsTtlMs?: number
   retryDelayMs?: number
   concurrency?: number
 }
@@ -1135,13 +1146,14 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     boardTtlMs = MARKET_BOARD_TTL_MS,
     globalTtlMs = GLOBAL_TTL_MS,
     csi300FundsTtlMs = CSI300_FUNDS_TTL_MS,
+    fundamentalsTtlMs = FUNDAMENTALS_TTL_MS,
     retryDelayMs = 200,
     concurrency = 6,
   } = options
   if (typeof fetchImpl !== 'function') throw new Error('market fetch unavailable')
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) throw new Error('invalid market timeout')
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 12) throw new Error('invalid market concurrency')
-  if (![overviewTtlMs, breadthTtlMs, boardTtlMs, globalTtlMs, csi300FundsTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0)) throw new Error('invalid market cache')
+  if (![overviewTtlMs, breadthTtlMs, boardTtlMs, globalTtlMs, csi300FundsTtlMs, fundamentalsTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0)) throw new Error('invalid market cache')
 
   const cache = new Map<string, CacheEntry<any>>()
   const inflight = new Map<string, Promise<any>>()
@@ -2013,6 +2025,48 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
   // breadth parser's quote filters, retries and low-coverage exception. Every
   // discovered identity gets a daily request, including ST/suspended stocks;
   // exclusions happen after retrieval and are reported separately.
+  async function loadHoldings(symbol: string): Promise<EtfHoldings> {
+    const text = await request(etfHoldingsUrl(symbol.slice(3)), 'utf-8', ETF_HOLDINGS_MAX_BYTES, {
+      referer: 'https://fundf10.eastmoney.com/',
+    })
+    return parseEtfHoldingsScript(text, symbol, now())
+  }
+
+  // The multiples and the P&L live on two hosts. Either may be throttled on its
+  // own, so one failure keeps the other half and marks the snapshot partial;
+  // only a failure of both is a failed panel.
+  async function loadFundamentals(symbol: string): Promise<Fundamentals> {
+    if (isExchangeFund(symbol)) return emptyFundamentals(symbol, now(), false)
+    const [valuationAnswer, reportsAnswer] = await Promise.allSettled([
+      requestJson(fundamentalsValuationUrl(symbol), FUNDAMENTALS_MAX_BYTES),
+      requestJson(fundamentalsReportsUrl(symbol), FUNDAMENTALS_MAX_BYTES),
+    ])
+    let partial = false
+    let name = ''
+    let valuation = emptyValuation()
+    let periods: FundamentalPeriod[] = []
+    let valuationOk = false
+    let reportsOk = false
+    if (valuationAnswer.status === 'fulfilled') {
+      try {
+        const parsed = parseValuation(valuationAnswer.value, symbol)
+        name = parsed.name
+        valuation = parsed.valuation
+        valuationOk = true
+      } catch { partial = true }
+    } else partial = true
+    if (reportsAnswer.status === 'fulfilled') {
+      try {
+        const parsed = parseReportPeriods(reportsAnswer.value, symbol, now())
+        name = name || parsed.name
+        periods = parsed.periods
+        reportsOk = true
+      } catch { partial = true }
+    } else partial = true
+    if (!valuationOk && !reportsOk) throw new Error('fundamentals unavailable')
+    return composeFundamentals({ symbol, name, valuation, periods, now: now(), partial })
+  }
+
   const quantScan = createQuantScanner({
     source: MARKET_SOURCE_NAME, now, id: randomUUID,
     page: async (offset, signal) => parseQuantRankPage(await requestJson(
@@ -2035,6 +2089,19 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
         ? csi300FundsTtlMs
         : Math.min(csi300FundsTtlMs, 5 * 60_000),
       loadCsi300FundShare),
+    // A quarterly book does not change during the session. Stocks never reach
+    // the fund host: the code-range check answers them without a request.
+    holdings: (input: unknown) => {
+      const symbol = validateSymbol(input)
+      if (!isExchangeFund(symbol)) return Promise.resolve(emptyEtfHoldings(symbol, now()))
+      return getOrLoad<EtfHoldings>(`holdings:${symbol}`, ETF_HOLDINGS_TTL_MS, () => loadHoldings(symbol))
+    },
+    // A filing changes quarterly and the multiples move with the price, so the
+    // snapshot is cached for minutes rather than for a reporting cycle.
+    fundamentals: (input: unknown) => {
+      const symbol = validateSymbol(input)
+      return getOrLoad<Fundamentals>(`fundamentals:${symbol}`, fundamentalsTtlMs, () => loadFundamentals(symbol))
+    },
     board: (input: unknown) => {
       const code = validateBoardCode(input)
       return getOrLoad(`board:${code}`, boardTtlMs, () => loadBoard(code))

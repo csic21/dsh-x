@@ -14,6 +14,8 @@ import { PREDICT_MODEL } from './predict-model.js';
 import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_SINA_ENDPOINT, GLOBAL_SINA_REFERER, GLOBAL_SINA_SOURCE, GLOBAL_TENCENT_ENDPOINT, GLOBAL_TENCENT_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, mergeGlobalSnapshots, parseGlobalQuotes, parseSinaGlobalQuotes, parseTencentGlobalQuotes, } from './global.js';
 import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, tailWindowSpec, } from './tail-scan.js';
 import { validateSymbol } from './watchlist.js';
+import { ETF_HOLDINGS_MAX_BYTES, ETF_HOLDINGS_TTL_MS, emptyEtfHoldings, etfHoldingsUrl, isExchangeFund, parseEtfHoldingsScript, } from './holdings.js';
+import { FUNDAMENTALS_MAX_BYTES, FUNDAMENTALS_TTL_MS, composeFundamentals, emptyFundamentals, emptyValuation, fundamentalsReportsUrl, fundamentalsValuationUrl, parseReportPeriods, parseValuation, } from './fundamentals.js';
 import { MAX_ABSOLUTE_PRICE } from './chart-data.js';
 import { randomUUID } from 'node:crypto';
 import { createQuantScanner, isQuantSymbol, parseQuantScanRequest, QUANT_SCAN_LIMITS } from './quant-scan.js';
@@ -1091,14 +1093,14 @@ export function buildCsi300FundShare(input) {
     };
 }
 export function createTencentMarketProvider(options = {}) {
-    const { fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = MARKET_TIMEOUT_MS, overviewTtlMs = MARKET_OVERVIEW_TTL_MS, breadthTtlMs = MARKET_CACHE_TTL_MS, boardTtlMs = MARKET_BOARD_TTL_MS, globalTtlMs = GLOBAL_TTL_MS, csi300FundsTtlMs = CSI300_FUNDS_TTL_MS, retryDelayMs = 200, concurrency = 6, } = options;
+    const { fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = MARKET_TIMEOUT_MS, overviewTtlMs = MARKET_OVERVIEW_TTL_MS, breadthTtlMs = MARKET_CACHE_TTL_MS, boardTtlMs = MARKET_BOARD_TTL_MS, globalTtlMs = GLOBAL_TTL_MS, csi300FundsTtlMs = CSI300_FUNDS_TTL_MS, fundamentalsTtlMs = FUNDAMENTALS_TTL_MS, retryDelayMs = 200, concurrency = 6, } = options;
     if (typeof fetchImpl !== 'function')
         throw new Error('market fetch unavailable');
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000)
         throw new Error('invalid market timeout');
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 12)
         throw new Error('invalid market concurrency');
-    if (![overviewTtlMs, breadthTtlMs, boardTtlMs, globalTtlMs, csi300FundsTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0))
+    if (![overviewTtlMs, breadthTtlMs, boardTtlMs, globalTtlMs, csi300FundsTtlMs, fundamentalsTtlMs, retryDelayMs].every(value => Number.isFinite(value) && value >= 0))
         throw new Error('invalid market cache');
     const cache = new Map();
     const inflight = new Map();
@@ -2054,6 +2056,58 @@ export function createTencentMarketProvider(options = {}) {
     // breadth parser's quote filters, retries and low-coverage exception. Every
     // discovered identity gets a daily request, including ST/suspended stocks;
     // exclusions happen after retrieval and are reported separately.
+    async function loadHoldings(symbol) {
+        const text = await request(etfHoldingsUrl(symbol.slice(3)), 'utf-8', ETF_HOLDINGS_MAX_BYTES, {
+            referer: 'https://fundf10.eastmoney.com/',
+        });
+        return parseEtfHoldingsScript(text, symbol, now());
+    }
+    // The multiples and the P&L live on two hosts. Either may be throttled on its
+    // own, so one failure keeps the other half and marks the snapshot partial;
+    // only a failure of both is a failed panel.
+    async function loadFundamentals(symbol) {
+        if (isExchangeFund(symbol))
+            return emptyFundamentals(symbol, now(), false);
+        const [valuationAnswer, reportsAnswer] = await Promise.allSettled([
+            requestJson(fundamentalsValuationUrl(symbol), FUNDAMENTALS_MAX_BYTES),
+            requestJson(fundamentalsReportsUrl(symbol), FUNDAMENTALS_MAX_BYTES),
+        ]);
+        let partial = false;
+        let name = '';
+        let valuation = emptyValuation();
+        let periods = [];
+        let valuationOk = false;
+        let reportsOk = false;
+        if (valuationAnswer.status === 'fulfilled') {
+            try {
+                const parsed = parseValuation(valuationAnswer.value, symbol);
+                name = parsed.name;
+                valuation = parsed.valuation;
+                valuationOk = true;
+            }
+            catch {
+                partial = true;
+            }
+        }
+        else
+            partial = true;
+        if (reportsAnswer.status === 'fulfilled') {
+            try {
+                const parsed = parseReportPeriods(reportsAnswer.value, symbol, now());
+                name = name || parsed.name;
+                periods = parsed.periods;
+                reportsOk = true;
+            }
+            catch {
+                partial = true;
+            }
+        }
+        else
+            partial = true;
+        if (!valuationOk && !reportsOk)
+            throw new Error('fundamentals unavailable');
+        return composeFundamentals({ symbol, name, valuation, periods, now: now(), partial });
+    }
     const quantScan = createQuantScanner({
         source: MARKET_SOURCE_NAME, now, id: randomUUID,
         page: async (offset, signal) => parseQuantRankPage(await requestJson(`${MARKET_STOCK_RANK_ENDPOINT}?_appver=11.17.0&board_code=aStock&sort_type=turnover&direct=down&offset=${offset}&count=${QUANT_SCAN_LIMITS.pageSize}`, MARKET_MAX_BYTES, timeoutMs, signal)),
@@ -2071,6 +2125,20 @@ export function createTencentMarketProvider(options = {}) {
         csi300Funds: () => getOrLoad('csi300-funds', value => value.history.length && value.historyCoverage >= CSI300_FUNDS_MIN_COVERAGE
             ? csi300FundsTtlMs
             : Math.min(csi300FundsTtlMs, 5 * 60_000), loadCsi300FundShare),
+        // A quarterly book does not change during the session. Stocks never reach
+        // the fund host: the code-range check answers them without a request.
+        holdings: (input) => {
+            const symbol = validateSymbol(input);
+            if (!isExchangeFund(symbol))
+                return Promise.resolve(emptyEtfHoldings(symbol, now()));
+            return getOrLoad(`holdings:${symbol}`, ETF_HOLDINGS_TTL_MS, () => loadHoldings(symbol));
+        },
+        // A filing changes quarterly and the multiples move with the price, so the
+        // snapshot is cached for minutes rather than for a reporting cycle.
+        fundamentals: (input) => {
+            const symbol = validateSymbol(input);
+            return getOrLoad(`fundamentals:${symbol}`, fundamentalsTtlMs, () => loadFundamentals(symbol));
+        },
         board: (input) => {
             const code = validateBoardCode(input);
             return getOrLoad(`board:${code}`, boardTtlMs, () => loadBoard(code));
