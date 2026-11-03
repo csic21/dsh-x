@@ -10,7 +10,6 @@ DSH-X 是运行在官方 [DeepSeek Harness](https://github.com/deepseek-ai/deeps
 | `dsh-x-finance` | A 股自选、市场全景（含沪深300基金规模占比下钻）、全球指数、量化分析、热点题材筛选、独立详情页、底部固定栏、黄金面板、设置面板与老板键低调模式；另含只读 Finnhub 报价工具 | 可用，行情源需显式开启 |
 | `dsh-x-browser` | 实验性浏览器工具：Desktop 内嵌 tab，或经 agent-browser 驱动外部 Chrome（CDP）；按轮授权与接管 | 实验性，默认不装 |
 | `dsh-x-delegate` | 把一个任务委派给本机 Codex、Grok 或 OpenCode，并可按次选择模型 | 可用；真实 CLI 回合不在仓库内验证 |
-| `dsh-x-chain` | 在一次模型 step 内顺序执行一串字面工具调用，回执守卫不成立就停下 | 可用；宿主侧工具，Auto 预设会逐步审查 |
 | `dsh-x-pet` | 窗口里的 Codex 兼容桌宠：同一套精灵表与动画时序，读取 `~/.codex/pets` 里的本机桌宠 | 可用；打包应用表现不在仓库内验证 |
 | `dsh-x-ui` | 玻璃界面：把面板、侧栏与浮层换成 liquid glass 材质，带流动底色与浮层模糊；其余插件的界面会一起跟随 | 可用；真实浏览器观感不在仓库内验证 |
 

@@ -16,3 +16,7 @@ docs/public/market-index.json
 
 # Local research cache (bars fetched by scripts/finance-research.mjs)
 packages/dsh-x-finance/.research/
+
+# chain benchmark scratch (isolated DSH_HOME, runs, validation workspaces)
+.bench/
+scripts/bench-chain/results/

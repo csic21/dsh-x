@@ -8,7 +8,6 @@
 | `dsh-x-finance` | A 股自选研究信号、公司基本面与估值、每日自选分析、全市场日线筛选、市场全景、全球指数、黄金面板与只读报价 | 按需 | 可用，免费行情源需显式开启 |
 | `dsh-x-browser` | 受控浏览器操作与权限边界；可选内嵌 tab 或外部 Chrome（CDP） | 不装（实验性） | 实验性，Electron 与打包行为不在本仓库验证 |
 | `dsh-x-delegate` | 把一个任务委派给本机 Codex、Grok 或 OpenCode | 按需 | 可用；真实 CLI 回合不在仓库内验证 |
-| `dsh-x-chain` | 在一个 step 内顺序执行一串字面工具调用，回执守卫不成立就停下 | 按需 | 可用；宿主侧工具，Auto 预设会逐步审查 |
 | `dsh-x-pet` | 窗口里的 Codex 兼容桌宠 | 按需 | 可用；打包应用表现不在仓库内验证 |
 | `dsh-x-ui` | 玻璃界面：半透明面板、流动底色与浮层模糊 | 按需 | 可用；真实浏览器观感不在仓库内验证 |
 
@@ -58,17 +57,6 @@
 - `delegate_codex`：`PATH` 上的 `codex exec --json`。Provider 名是 `delegate-codex`，可以和官方 `subagent_codex` 同时启用。
 - 每次调用可传 `model`。Grok / OpenCode 还可传 `permission`（默认 `read-only`）；Codex 可传 `sandbox`。
 - 认证沿用各 CLI 自己的 home。插件不复制凭据，也不继承当前会话。
-
-## dsh-x-chain
-
-把已经想清楚的一串动作交给工具层一次执行完，省掉步骤之间的模型往返：
-
-- `chain_run`：1–32 条字面工具调用，严格按顺序执行；参数必须预先封闭，不能用上一步的输出拼下一步。
-- 守卫只读真实回执（`ok` / `path` / `equals`），路径缺失或步骤没跑过都算不成立，停在该步之前。
-- 每步仍走官方工具管线：审批、沙箱、策略、取消与直接调用一致；默认白名单只有 `bash`、`read`、`write`、`edit`、`glob`、`grep`。
-- 每步成对写 `tool/ptc-dispatch-start` / `tool/ptc-dispatch`，UI 能看到子调用状态；Auto 预设仍会逐步审查，串 3 步就是 3 次 reviewer 调用。
-- 只做论文里的保守子集（动作银行 + 回执守卫）：不短路模型调用，不写替换证书，也不宣称 token 下降。CCS 的三个前置问题已逐条验证，结论在内核 schema 的归因字段上（见包内 `SPIKE-CCS.md`）。
-- 设置里的「动作链」页按会话统计链调用、步数、省下的往返与提前停下；数据落 `.dsh-x-chain/stats.json`。
 
 ## dsh-x-browser
 
