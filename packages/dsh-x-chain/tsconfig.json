@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "lib": ["es2023"],
-    "types": ["node"]
+    "jsx": "react",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": ["node", "react"]
   },
   "include": ["src", "test"]
 }

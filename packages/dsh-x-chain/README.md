@@ -97,7 +97,7 @@ HarnessMM 的完整链路是 EDG（可执行决策图）→ GDR（带守卫的�
 2. 缺 `usage` 会不会让 tokenMeter / 上下文压力计算失真；
 3. 合成回合进入日志后，UI 与重放会不会把它当成真实模型输出。
 
-这三条没有验证之前，本插件不写「省了 87%」这类数字。
+这三条没有验证之前，本插件不写「省了 87%」这类数字。三条的源码级结论见 [SPIKE-CCS.md](SPIKE-CCS.md)：①② 已排除，③（合成回合的归因）是内核 schema 问题，不解决不做 CCS。
 
 ## 嵌套调用与 Auto 预设
 
@@ -109,6 +109,16 @@ HarnessMM 的完整链路是 EDG（可执行决策图）→ GDR（带守卫的�
 代价要说清楚：**Auto 预设仍然逐步审查**。串 3 步就是 3 次 reviewer 调用，只是省掉了步骤之间的 3 次主模型往返。如果 reviewer 判定某一步需要人工批准，而当前策略是 `never`，该步会失败并停链——和直接调用同一工具的结果一致。
 
 工具必须在调用者可见的 registry 视图里（预设把文件与命令工具注册在 agent 平面，而不是全局层），所以插件用调用它的 agent 作为 scope 去取 schema；某个工具被 restriction 挡掉时，这一步报「not registered in this session」并停下，不会绕过限制去执行。
+
+## 收益页
+
+设置里新增一个 **动作链** 页（`settings.section`，id `dsh-x-chain`）：
+
+- 顶部四个总数：链调用、执行步数、省下往返、提前停下；
+- 下面按会话列出最近 20 条记录，带最近一次时间；
+- 数据来自 `POST /api/dsh-x-chain/stats`，走官方 connection 的认证信封，payload 必须为空，其他形状一律 400/415。
+
+记录在每次 `chain_run` 结束时写一次，落在官方 profile 目录下的 `.dsh-x-chain/stats.json`（不是会话目录，也不含凭据）。最多保留 200 个会话，按最近使用淘汰。数字就是工具结果里的 `executed` / `roundTripsSaved`，页面不重新推导、也不夸大。
 
 ## 安全边界
 

@@ -4,6 +4,8 @@ import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as chain from '../src/index.ts'
+import { registerChainTool } from '../src/tool.ts'
+import type { ChainResultSummary } from '../src/tool.ts'
 
 interface Seen {
   name: string
@@ -12,7 +14,7 @@ interface Seen {
   args: unknown
 }
 
-async function harness(t: test.TestContext, config: Record<string, unknown> = {}) {
+async function harness(t: test.TestContext, config: Record<string, unknown> = {}, onResult?: (summary: ChainResultSummary) => void) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -54,11 +56,21 @@ async function harness(t: test.TestContext, config: Record<string, unknown> = {}
     },
   }))
 
-  await ctx.plugin(chain, config)
+  if (onResult === undefined) await ctx.plugin(chain, config)
+  else {
+    registerChainTool(ctx, {
+      name: 'chain_run',
+      allowedTools: ['write', 'bash'],
+      maxSteps: 8,
+      maxStepChars: 1500,
+      continueOnError: config.continueOnError === true,
+      onResult,
+    })
+  }
   t.after(async () => { await ctx.fiber.dispose() })
 
   const events: { type: string, data: Record<string, unknown> }[] = []
-  const session = { append: (type: string, data: Record<string, unknown>) => { events.push({ type, data }) } }
+  const session = { id: 'session-fixture', append: (type: string, data: Record<string, unknown>) => { events.push({ type, data }) } }
   const agent = { session }
 
   const run = async (steps: unknown[], withAgent = false) => {
@@ -202,4 +214,16 @@ test('an unregistered tool fails the step without dispatching', async t => {
   assert.match(value.steps[0].text, /not registered/)
   assert.equal(value.stopped.reason, 'error')
   assert.equal(seen.length, 0)
+})
+
+
+test('a settled chain reports once to the accounting sink', async t => {
+  const reports: ChainResultSummary[] = []
+  const { run } = await harness(t, {}, summary => reports.push(summary))
+  await run([
+    { id: 'w', tool: 'write', arguments: { path: 'a', content: 'b' } },
+    { id: 'b', tool: 'bash', arguments: { command: 'echo ok' } },
+  ], true)
+  assert.equal(reports.length, 1)
+  assert.deepEqual(reports[0], { sessionId: 'session-fixture', executed: 2, saved: 1, tools: ['write', 'bash'] })
 })

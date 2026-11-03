@@ -36,6 +36,17 @@ export interface ChainToolOptions {
   readonly maxStepChars: number
   /** Continue after a failed step instead of stopping the chain. */
   readonly continueOnError: boolean
+  /** Observe one settled chain, for accounting and the settings page. */
+  readonly onResult?: (result: ChainResultSummary) => void
+}
+
+/** What one finished chain reports to its accounting sink. */
+export interface ChainResultSummary {
+  readonly sessionId?: string
+  readonly executed: number
+  readonly saved: number
+  readonly stopped?: ChainStop['reason']
+  readonly tools: string[]
 }
 
 /** Why a chain stopped before running every step. */
@@ -254,6 +265,15 @@ export function registerChainTool(ctx: Context, options: ChainToolOptions): void
           break
         }
       }
+
+      const summary: ChainResultSummary = {
+        ...(exec.agent === undefined ? {} : { sessionId: exec.agent.session.id }),
+        executed: settled.length,
+        saved: Math.max(0, settled.length - 1),
+        ...(stopped === undefined ? {} : { stopped: stopped.reason }),
+        tools: steps.map(step => step.tool),
+      }
+      try { options.onResult?.(summary) } catch { /* accounting never fails a chain */ }
 
       return {
         executed: settled.length,

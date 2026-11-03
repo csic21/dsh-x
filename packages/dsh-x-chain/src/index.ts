@@ -12,6 +12,8 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { createStatsRoute } from './routes.ts'
+import { createStatsStore } from './stats.ts'
 import { registerChainTool } from './tool.ts'
 
 export const name = 'dsh-x-chain'
@@ -40,6 +42,19 @@ export const DEFAULT_ALLOWED_TOOLS: readonly string[] = ['bash', 'read', 'write'
 /** The model-facing tool name. */
 export const TOOL_NAME = 'chain_run'
 
+/** The authenticated endpoint the settings page reads. */
+export const STATS_ENDPOINT = 'dsh-x-chain/stats'
+
+/** The slice of `profileContext` this plugin reads. */
+interface ProfileContextService {
+  readonly dir?: string
+}
+
+/** The slice of `connection` this plugin registers on. */
+interface ConnectionService {
+  fetch: { register(route: ReturnType<typeof createStatsRoute>): () => void }
+}
+
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, Math.trunc(value)))
@@ -65,11 +80,29 @@ export function resolveAllowedTools(configured: readonly string[] | undefined): 
  */
 export function apply(ctx: Context, config: Partial<Config> = {}): void {
   if (config.enabled === false) return
+  const profileDirectory = (ctx.get('profileContext') as ProfileContextService | undefined)?.dir
+  const stats = createStatsStore(profileDirectory === undefined ? {} : { profileDirectory })
+
   registerChainTool(ctx, {
     name: TOOL_NAME,
     allowedTools: resolveAllowedTools(config.allowedTools),
     maxSteps: clampInt(config.maxSteps, 8, 1, 32),
     maxStepChars: clampInt(config.maxStepChars, 1500, 200, 20_000),
     continueOnError: config.continueOnError === true,
+    onResult: result => stats.record({
+      sessionId: result.sessionId ?? 'unknown',
+      at: Date.now(),
+      executed: result.executed,
+      saved: result.saved,
+      ...(result.stopped === undefined ? {} : { stopped: result.stopped }),
+      tools: result.tools,
+    }),
+  })
+
+  // The Web shell is optional: a headless or CLI composition never reaches the
+  // page, and the tool above must keep working there.
+  ctx.inject(['connection'], injected => {
+    const connection = injected.get('connection') as ConnectionService | undefined
+    connection?.fetch.register(createStatsRoute(STATS_ENDPOINT, () => stats.snapshot()))
   })
 }

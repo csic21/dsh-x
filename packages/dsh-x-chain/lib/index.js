@@ -10,6 +10,8 @@
  *
  * @module dsh-x-chain
  */
+import { createStatsRoute } from './routes.js';
+import { createStatsStore } from './stats.js';
 import { registerChainTool } from './tool.js';
 export const name = 'dsh-x-chain';
 export const inject = ['tools'];
@@ -17,6 +19,8 @@ export const inject = ['tools'];
 export const DEFAULT_ALLOWED_TOOLS = ['bash', 'read', 'write', 'edit', 'glob', 'grep'];
 /** The model-facing tool name. */
 export const TOOL_NAME = 'chain_run';
+/** The authenticated endpoint the settings page reads. */
+export const STATS_ENDPOINT = 'dsh-x-chain/stats';
 function clampInt(value, fallback, min, max) {
     if (typeof value !== 'number' || !Number.isFinite(value))
         return fallback;
@@ -44,11 +48,27 @@ export function resolveAllowedTools(configured) {
 export function apply(ctx, config = {}) {
     if (config.enabled === false)
         return;
+    const profileDirectory = ctx.get('profileContext')?.dir;
+    const stats = createStatsStore(profileDirectory === undefined ? {} : { profileDirectory });
     registerChainTool(ctx, {
         name: TOOL_NAME,
         allowedTools: resolveAllowedTools(config.allowedTools),
         maxSteps: clampInt(config.maxSteps, 8, 1, 32),
         maxStepChars: clampInt(config.maxStepChars, 1500, 200, 20_000),
         continueOnError: config.continueOnError === true,
+        onResult: result => stats.record({
+            sessionId: result.sessionId ?? 'unknown',
+            at: Date.now(),
+            executed: result.executed,
+            saved: result.saved,
+            ...(result.stopped === undefined ? {} : { stopped: result.stopped }),
+            tools: result.tools,
+        }),
+    });
+    // The Web shell is optional: a headless or CLI composition never reaches the
+    // page, and the tool above must keep working there.
+    ctx.inject(['connection'], injected => {
+        const connection = injected.get('connection');
+        connection?.fetch.register(createStatsRoute(STATS_ENDPOINT, () => stats.snapshot()));
     });
 }

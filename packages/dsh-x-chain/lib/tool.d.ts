@@ -22,6 +22,16 @@ export interface ChainToolOptions {
     readonly maxStepChars: number;
     /** Continue after a failed step instead of stopping the chain. */
     readonly continueOnError: boolean;
+    /** Observe one settled chain, for accounting and the settings page. */
+    readonly onResult?: (result: ChainResultSummary) => void;
+}
+/** What one finished chain reports to its accounting sink. */
+export interface ChainResultSummary {
+    readonly sessionId?: string;
+    readonly executed: number;
+    readonly saved: number;
+    readonly stopped?: ChainStop['reason'];
+    readonly tools: string[];
 }
 /** Why a chain stopped before running every step. */
 export interface ChainStop {

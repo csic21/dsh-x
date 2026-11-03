@@ -67,7 +67,8 @@
 - 守卫只读真实回执（`ok` / `path` / `equals`），路径缺失或步骤没跑过都算不成立，停在该步之前。
 - 每步仍走官方工具管线：审批、沙箱、策略、取消与直接调用一致；默认白名单只有 `bash`、`read`、`write`、`edit`、`glob`、`grep`。
 - 每步成对写 `tool/ptc-dispatch-start` / `tool/ptc-dispatch`，UI 能看到子调用状态；Auto 预设仍会逐步审查，串 3 步就是 3 次 reviewer 调用。
-- 只做论文里的保守子集（动作银行 + 回执守卫）：不短路模型调用，不写替换证书，也不宣称 token 下降。
+- 只做论文里的保守子集（动作银行 + 回执守卫）：不短路模型调用，不写替换证书，也不宣称 token 下降。CCS 的三个前置问题已逐条验证，结论在内核 schema 的归因字段上（见包内 `SPIKE-CCS.md`）。
+- 设置里的「动作链」页按会话统计链调用、步数、省下的往返与提前停下；数据落 `.dsh-x-chain/stats.json`。
 
 ## dsh-x-browser
 

@@ -33,6 +33,8 @@ export interface Config {
 export declare const DEFAULT_ALLOWED_TOOLS: readonly string[];
 /** The model-facing tool name. */
 export declare const TOOL_NAME = "chain_run";
+/** The authenticated endpoint the settings page reads. */
+export declare const STATS_ENDPOINT = "dsh-x-chain/stats";
 /** Normalize the allowlist: non-empty strings, unique, never the chain tool itself. */
 export declare function resolveAllowedTools(configured: readonly string[] | undefined): string[];
 /**

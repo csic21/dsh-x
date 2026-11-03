@@ -194,6 +194,17 @@ export function registerChainTool(ctx, options) {
                     break;
                 }
             }
+            const summary = {
+                ...(exec.agent === undefined ? {} : { sessionId: exec.agent.session.id }),
+                executed: settled.length,
+                saved: Math.max(0, settled.length - 1),
+                ...(stopped === undefined ? {} : { stopped: stopped.reason }),
+                tools: steps.map(step => step.tool),
+            };
+            try {
+                options.onResult?.(summary);
+            }
+            catch { /* accounting never fails a chain */ }
             return {
                 executed: settled.length,
                 roundTripsSaved: Math.max(0, settled.length - 1),
