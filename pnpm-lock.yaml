@@ -105,6 +105,18 @@ importers:
         specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
         version: 0.2.1-rc.3(1f5d0a9b849aaa1244bc4f2e453f609a)
 
+  packages/dsh-x-chain:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: '*'
+        version: 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+      '@deepseek-ai/dsh-llm':
+        specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
+        version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-tools':
+        specifier: ^0.2.0-rc.2 || ^0.2.1-rc.2
+        version: 0.2.1-rc.3(1f5d0a9b849aaa1244bc4f2e453f609a)
+
   packages/dsh-x-code:
     dependencies:
       '@deepseek-ai/cordis':
