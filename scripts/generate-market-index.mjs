@@ -53,6 +53,12 @@ const packages = {
     category: 'fun',
     icon: 'icons/dsh-x-pet.svg',
   },
+  'dsh-x-chain': {
+    title: { en: 'Chain', zh: '动作链' },
+    description: { en: 'Run a literal bank of tool calls inside one model step, guarded by real receipts.', zh: '在一次模型 step 内顺序执行一串字面工具调用，回执守卫不成立就停下。' },
+    category: 'development',
+    icon: 'icons/dsh-x-chain.svg',
+  },
   'dsh-x-ui': {
     title: { en: 'Glass UI', zh: '玻璃界面' },
     description: { en: 'Turns the interface into liquid glass: translucent panels, a living backdrop, and real blur on floating surfaces.', zh: '把整个界面换成 liquid glass：半透明面板、流动底色，浮层上真正的模糊。' },
