@@ -196,6 +196,10 @@ test('projection bounds the result and drops unknown strategy ids', () => {
   assert.throws(() => projectHotScan({ ...raw, universe: { ...raw.universe, scanned: 6000 } }, now))
   // A row without a single known strategy is dropped, not shown without tags.
   assert.equal(projectHotScan({ ...raw, hits: [{ ...raw.hits[0], hits: ['bogus'] }] }, now).hits.length, 0)
+  // A first-day listing is not limited by the board's daily band: a +650.94%
+  // debut row must survive instead of discarding every other hit in the run.
+  const debut = projectHotScan({ ...raw, hits: [{ ...raw.hits[0], changePercent: 650.94 }] }, now)
+  assert.equal(debut.hits[0]?.changePercent, 650.94)
 })
 
 test('the market handler serves a hot scan to the owner and fails closed otherwise', async () => {

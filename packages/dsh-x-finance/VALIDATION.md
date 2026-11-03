@@ -292,3 +292,11 @@ No provider authentication, real model calls, Electron UI, or paid/network marke
 - The two upstreams are independent. A throttled report host keeps the valuation snapshot and marks it `partial`; only both failing is a panel error. An ETF/LOF answers locally without a request.
 - Parser tests cover hundredths scaling for PE/PB, negative multiples, missing cells, cumulative report periods, duplicate and foreign rows, the 8-period cap, and a one-host-down partial. Projection tests reject a wrong symbol, NaN, a negative market cap, unsorted periods and an ETF answer carrying a P&L.
 - jsdom panel tests cover the Chinese and English copy, the six valuation cells, loss labelling, unconfigured/error/retry/partial states, and the ETF no-request path. All fixtures are offline; no live upstream, real filing or Desktop acceptance is claimed.
+
+## 热点筛选被一只新股打空 — 2026-11-03
+
+- **现象**：工作台「热点」页点「运行筛选」后只剩「热点筛选暂不可用」，行业条、范围说明都在，但没有任何结果；同一时刻市场概览和底部报价正常。
+- **根因**：宿主投影 `projectHotScan` 把单行涨幅限制在 ±100%，而快照解析器 `parseHotRow` 允许 ±1000%。当天排行里有一只上市首日的新股（N皇冠新材，+650.94%）——首日不受板块涨跌停约束——投影遇到它直接抛 `finance/hot-scan-invalid`，`market-rpc` 再把整次扫描归为 `finance/hot-scan-unavailable`，于是 800 条命中全部被丢弃。规则层本身没有崩，坏在信任边界比数据源窄。
+- **修复**：投影的涨幅边界改成与解析器一致的 ±1000，并在代码里写明新股首日的原因；其余校验不变，异常载荷仍然整包拒绝。
+- **验证**：直接调用真实 provider + `projectHotScan`（2026-11-03 11:02 Asia/Shanghai）：修复前必然抛错，修复后 60 行 / 796 条命中 / 覆盖 5,576 / 历史层 120 只 / 2.3 s。新增回归测试喂入 +650.94% 的首日行，断言它被保留而不是拖垮整次投影；`pnpm --filter dsh-x-finance test` **502 passed / 0 failed**，含重新构建的 `lib`。
+- **未验证 / 使用前提**：Desktop 宿主进程仍加载着旧 `lib/hot.js`，需重启应用后才会用上这次修复；客户端没有改动，不需要单独刷新页面。

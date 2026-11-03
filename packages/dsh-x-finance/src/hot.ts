@@ -462,7 +462,11 @@ export function projectHotScan(raw: unknown, now: number): HotScanResult {
     const symbol = text(row.symbol, 12)
     const name = text(row.name, 64)
     const price = finite(row.price, 0.0001, 1e9)
-    const changePercent = finite(row.changePercent, -100, 100)
+    // A new listing can move far beyond the daily limit — an unconstrained
+    // ChiNext/STAR debut has printed +650% — so this keeps the same ±1000 the
+    // snapshot parser accepts. A narrower bound would fail the whole scan on
+    // one legitimate row.
+    const changePercent = finite(row.changePercent, -1000, 1000)
     const amount = finite(row.amount, 0, 1e15)
     const turnoverRate = row.turnoverRate === null ? null : finite(row.turnoverRate, 0, 100)
     const volumeRatio = row.volumeRatio === null ? null : finite(row.volumeRatio, 0, 1000)
