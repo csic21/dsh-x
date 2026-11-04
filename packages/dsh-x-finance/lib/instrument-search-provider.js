@@ -8,7 +8,7 @@
 //
 // Only projected matches leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
-import { SEARCH_MAX_RESULTS, SEARCH_SOURCE_NAME, normalizeSearchQuery, normalizeMatch, parseInstrumentHints, } from './instrument-search.js';
+import { SEARCH_MAX_RESULTS, SEARCH_SOURCE_NAME, normalizeSearchQuery, normalizeMatch, parseInstrumentHints, parseUsInstrumentHints, } from './instrument-search.js';
 export const SEARCH_URL = 'https://smartbox.gtimg.cn/s3/';
 export const SEARCH_TIMEOUT_MS = 8_000;
 export const SEARCH_MAX_BYTES = 64 * 1024;
@@ -66,7 +66,7 @@ export function createInstrumentSearchProvider(options = {}) {
         throw new Error('invalid search timeout');
     return {
         name: SEARCH_SOURCE_NAME,
-        async search(input, { signal } = {}) {
+        async search(input, { signal, market = 'cn' } = {}) {
             const query = normalizeSearchQuery(input);
             if (signal?.aborted)
                 fail('cancelled');
@@ -86,7 +86,10 @@ export function createInstrumentSearchProvider(options = {}) {
                     fail(`http ${response.status}`);
                 }
                 const text = await readText(response, controller.signal);
-                return parseInstrumentHints(text).slice(0, SEARCH_MAX_RESULTS).map(normalizeMatch);
+                // One upstream host serves both directories; the market only changes
+                // which rows are projected and how their identity is spelled.
+                const parse = market === 'us' ? parseUsInstrumentHints : parseInstrumentHints;
+                return parse(text).slice(0, SEARCH_MAX_RESULTS).map(normalizeMatch);
             }
             finally {
                 clearTimeout(timer);

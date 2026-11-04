@@ -39,4 +39,16 @@ ${FUNDAMENTALS_CSS}
 
 .dxs-bar{backdrop-filter:var(--dxu-blur-panel,none);-webkit-backdrop-filter:var(--dxu-blur-panel,none)}
 .dxs-page{background:var(--dxu-pane,var(--dxs-bg))}
+
+/* The lookup pill carries a market selector, so the field reads as "search
+   this market" instead of hiding which directory is answering. It is a native
+   select with the pill's own metrics: no custom popup, keyboard support for
+   free. */
+.dxs .dxs-lookup-market{flex:none;height:22px;max-width:78px;padding:0 2px;border:0;border-radius:6px;background:var(--dxs-line);color:var(--dxs-fg);font-size:11px;line-height:1;-webkit-app-region:no-drag}
+.dxs .dxs-lookup-market:focus-visible{outline:2px solid var(--dxs-accent);outline-offset:1px}
+.dxs .dxs-market-tag{display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:999px;background:var(--dxs-line);color:var(--dxs-muted);font-size:11px;white-space:nowrap}
+.dxs-us .dxs-quote-metadata[open]{margin-top:6px}
+.dxs-us .dxs-quote-metadata dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px}
+.dxs-us .dxs-quote-metadata dt{color:var(--dxs-muted)}
+.dxs-us .dxs-quote-metadata dd{margin:0;font-variant-numeric:tabular-nums}
 `

@@ -63,7 +63,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             overview?: undefined;
             breadth?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -73,6 +72,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -83,7 +83,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -93,6 +92,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -103,7 +103,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -113,6 +112,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -123,7 +123,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth: import("./market.ts").MarketBreadth;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -133,6 +132,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -143,7 +143,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             status: string;
             source: string;
             quotes: import("./market.ts").MarketQuote[];
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -153,6 +152,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -182,7 +182,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             status: string;
             intraday: import("./market.ts").MarketIntraday;
             holdings?: undefined;
@@ -193,6 +192,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -202,7 +202,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             status: string;
             holdings: import("./holdings.ts").EtfHoldings;
@@ -213,6 +212,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -222,7 +222,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             status: string;
@@ -233,6 +232,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -242,7 +242,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -253,6 +252,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -262,7 +262,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -273,6 +272,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -282,7 +282,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -293,6 +292,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -302,7 +302,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -313,6 +312,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan: import("./predict.ts").PredictScanResult;
             tailScan?: undefined;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -322,7 +322,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -333,6 +332,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             status: string;
             tailScan: import("./tail-scan.ts").TailScanResult;
             board?: undefined;
+            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -342,7 +342,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             breadth?: undefined;
             source?: undefined;
             quotes?: undefined;
-            history?: undefined;
             intraday?: undefined;
             holdings?: undefined;
             fundamentals?: undefined;
@@ -353,6 +352,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             tailScan?: undefined;
             status: string;
             board: import("./market.ts").BoardDetail;
+            history?: undefined;
         };
     } | {
         ok: boolean;

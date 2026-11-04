@@ -9,9 +9,9 @@
 // Only projected matches leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
 import {
-  SEARCH_MAX_RESULTS, SEARCH_SOURCE_NAME, normalizeSearchQuery, normalizeMatch, parseInstrumentHints,
+  SEARCH_MAX_RESULTS, SEARCH_SOURCE_NAME, normalizeSearchQuery, normalizeMatch, parseInstrumentHints, parseUsInstrumentHints,
 } from './instrument-search.ts'
-import type { InstrumentMatch } from './instrument-search.ts'
+import type { InstrumentMarket, InstrumentMatch } from './instrument-search.ts'
 
 export const SEARCH_URL = 'https://smartbox.gtimg.cn/s3/'
 export const SEARCH_TIMEOUT_MS = 8_000
@@ -24,7 +24,7 @@ export interface InstrumentSearchOptions {
 
 export interface InstrumentSearchProvider {
   name: string
-  search(query: string, options?: { signal?: AbortSignal }): Promise<InstrumentMatch[]>
+  search(query: string, options?: { signal?: AbortSignal, market?: InstrumentMarket }): Promise<InstrumentMatch[]>
 }
 
 function fail(message: string): never {
@@ -72,7 +72,7 @@ export function createInstrumentSearchProvider(options: InstrumentSearchOptions 
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) throw new Error('invalid search timeout')
   return {
     name: SEARCH_SOURCE_NAME,
-    async search(input: unknown, { signal }: { signal?: AbortSignal } = {}) {
+    async search(input: unknown, { signal, market = 'cn' }: { signal?: AbortSignal, market?: InstrumentMarket } = {}) {
       const query = normalizeSearchQuery(input)
       if (signal?.aborted) fail('cancelled')
       const controller = new AbortController()
@@ -91,7 +91,10 @@ export function createInstrumentSearchProvider(options: InstrumentSearchOptions 
           fail(`http ${response.status}`)
         }
         const text = await readText(response, controller.signal)
-        return parseInstrumentHints(text).slice(0, SEARCH_MAX_RESULTS).map(normalizeMatch)
+        // One upstream host serves both directories; the market only changes
+        // which rows are projected and how their identity is spelled.
+        const parse = market === 'us' ? parseUsInstrumentHints : parseInstrumentHints
+        return parse(text).slice(0, SEARCH_MAX_RESULTS).map(normalizeMatch)
       } finally {
         clearTimeout(timer)
         signal?.removeEventListener('abort', cancel)

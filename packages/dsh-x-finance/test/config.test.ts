@@ -143,8 +143,8 @@ test('freeSource alone enables the directory and projects A-share and ETF matche
     assert.deepEqual(status.result.value, { status: 'ready', enabled: true, available: true, source: 'smartbox.gtimg.cn (unofficial)', results: [] })
     const search = await callEndpoint(routes, SEARCH_RPC_ENDPOINT, { action: 'search', query: '比亚' })
     assert.deepEqual(search.result.value.results, [
-      { symbol: 'SZ.002594', name: names[0], kind: 'stock' },
-      { symbol: 'SH.510300', name: names[1], kind: 'etf' },
+      { symbol: 'SZ.002594', name: names[0], kind: 'stock', market: 'cn' },
+      { symbol: 'SH.510300', name: names[1], kind: 'etf', market: 'cn' },
     ])
   } finally {
     globalThis.fetch = original

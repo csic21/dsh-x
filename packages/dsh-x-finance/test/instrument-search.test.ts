@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SEARCH_MAX_QUERY, SEARCH_MAX_RESULTS, SEARCH_RPC_ENDPOINT, SEARCH_SOURCE_NAME,
-  normalizeMatch, normalizeSearchQuery, parseInstrumentHints, parseSearchRequest,
+  normalizeMatch, normalizeSearchQuery, parseInstrumentHints, parseSearchRequest, parseUsInstrumentHints,
 } from '../src/instrument-search.ts'
 import { SEARCH_MAX_BYTES, SEARCH_URL, createInstrumentSearchProvider } from '../src/instrument-search-provider.ts'
 import { createSearchHandler, createSearchRoute } from '../src/search-rpc.ts'
@@ -32,13 +32,13 @@ test('directory projection keeps exchange-tradable A-shares, ETFs, LOFs and REIT
     entry('sh', '100001', '权证示例', 'QZ'),
   ]))
   assert.deepEqual(matches, [
-    { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock' },
-    { symbol: 'SH.600519', name: '贵州茅台', kind: 'stock' },
-    { symbol: 'SH.510300', name: '沪深300ETF华泰柏瑞', kind: 'etf' },
-    { symbol: 'SZ.159941', name: '纳指ETF广发', kind: 'etf' },
-    { symbol: 'SZ.160706', name: '嘉实沪深300ETF联接(LOF)A', kind: 'fund' },
-    { symbol: 'SH.508006', name: '富国首创水务REIT', kind: 'reit' },
-    { symbol: 'BJ.430047', name: '诺思兰德', kind: 'stock' },
+    { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' },
+    { symbol: 'SH.600519', name: '贵州茅台', kind: 'stock', market: 'cn' },
+    { symbol: 'SH.510300', name: '沪深300ETF华泰柏瑞', kind: 'etf', market: 'cn' },
+    { symbol: 'SZ.159941', name: '纳指ETF广发', kind: 'etf', market: 'cn' },
+    { symbol: 'SZ.160706', name: '嘉实沪深300ETF联接(LOF)A', kind: 'fund', market: 'cn' },
+    { symbol: 'SH.508006', name: '富国首创水务REIT', kind: 'reit', market: 'cn' },
+    { symbol: 'BJ.430047', name: '诺思兰德', kind: 'stock', market: 'cn' },
   ])
 })
 
@@ -51,10 +51,10 @@ test('directory projection handles empty, duplicate, malformed and oversized pay
     'sz~00259~broken',
     'sz~ABCDEF~代码非法~py~GP-A',
     `sz~002595~${escape('名'.repeat(80))}~py~GP-A`,
-  ])), [{ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock' }])
+  ])), [{ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' }])
   assert.equal(parseInstrumentHints(hint(Array.from({ length: 30 }, (_, index) => entry('sh', String(600000 + index), `测试${index}`, 'GP-A')))).length, SEARCH_MAX_RESULTS)
   assert.deepEqual(parseInstrumentHints(hint([['sh', '600519', `${escape('贵州')}\n${escape('茅台')}`, 'py', 'GP-A'].join('~')])), [
-    { symbol: 'SH.600519', name: '贵州茅台', kind: 'stock' },
+    { symbol: 'SH.600519', name: '贵州茅台', kind: 'stock', market: 'cn' },
   ])
   for (const bad of ['', 'v_other="x"', 'v_hint="unterminated', 42, null, 'x'.repeat(262_145)]) {
     assert.throws(() => parseInstrumentHints(bad as any), { message: 'invalid-search-payload' })
@@ -75,16 +75,25 @@ test('queries are normalised and bounded before they leave the host', () => {
 
 test('search requests accept only the exact status or search envelopes', () => {
   assert.deepEqual(parseSearchRequest({ action: 'status' }), { action: 'status' })
-  assert.deepEqual(parseSearchRequest({ action: 'search', query: ' 比亚 ' }), { action: 'search', query: '比亚' })
-  for (const bad of [null, [], {}, { action: 'other' }, { action: 'status', extra: 1 }, { action: 'search' }, { action: 'search', query: '比亚', extra: 1 }, { query: '比亚' }]) {
+  assert.deepEqual(parseSearchRequest({ action: 'search', query: ' 比亚 ' }), { action: 'search', query: '比亚', market: 'cn' })
+  assert.deepEqual(parseSearchRequest({ action: 'search', query: 'apple', market: 'us' }), { action: 'search', query: 'apple', market: 'us' })
+  for (const bad of [null, [], {}, { action: 'other' }, { action: 'status', extra: 1 }, { action: 'search' }, { action: 'search', query: '比亚', extra: 1 }, { query: '比亚' },
+    { action: 'search', query: 'apple', market: 'hk' }, { action: 'search', query: 'apple', market: 'US' }]) {
     assert.throws(() => parseSearchRequest(bad as any), { code: 'invalid-request' })
   }
   assert.throws(() => parseSearchRequest({ action: 'search', query: '' }), { code: 'invalid-query' })
 })
 
 test('matches are re-projected so an adapter cannot leak extra fields or a bad identity', () => {
-  assert.deepEqual(normalizeMatch({ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', price: 999, raw: 'x' }), { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock' })
-  for (const bad of [null, { symbol: '002594', name: '比亚迪', kind: 'stock' }, { symbol: 'SZ.002594', name: '', kind: 'stock' }, { symbol: 'SZ.002594', name: '比亚迪', kind: 'index' }, 'x']) {
+  assert.deepEqual(normalizeMatch({ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', price: 999, raw: 'x' }), { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' })
+  // A provider compiled before the market field existed is still read as A-share.
+  assert.deepEqual(normalizeMatch({ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' }), { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' })
+  assert.deepEqual(normalizeMatch({ symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'AAPL.OQ' }), { symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'AAPL.OQ' })
+  assert.deepEqual(normalizeMatch({ symbol: 'us.brk.a', name: 'Berkshire', kind: 'stock', market: 'us', code: 'brk.a.n' }), { symbol: 'US.BRK.A', name: 'Berkshire', kind: 'stock', market: 'us', code: 'BRK.A.N' })
+  for (const bad of [null, { symbol: '002594', name: '比亚迪', kind: 'stock', market: 'cn' }, { symbol: 'SZ.002594', name: '', kind: 'stock', market: 'cn' }, { symbol: 'SZ.002594', name: '比亚迪', kind: 'index', market: 'cn' }, 'x',
+    { symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'MSFT.OQ' },
+    { symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'AAPL.XX' },
+    { symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'eu' }]) {
     assert.throws(() => normalizeMatch(bad as any), { message: 'invalid-match' })
   }
 })
@@ -105,8 +114,8 @@ test('provider calls the fixed directory endpoint with a bounded body and projec
   assert.equal(provider.name, SEARCH_SOURCE_NAME)
   const matches = await provider.search('比亚')
   assert.deepEqual(matches, [
-    { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock' },
-    { symbol: 'SH.510300', name: '沪深300ETF华泰柏瑞', kind: 'etf' },
+    { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' },
+    { symbol: 'SH.510300', name: '沪深300ETF华泰柏瑞', kind: 'etf', market: 'cn' },
   ])
   assert.equal(calls.length, 1)
   assert.equal(calls[0].url, `${SEARCH_URL}?q=${encodeURIComponent('比亚')}&t=all`)
@@ -145,7 +154,7 @@ test('provider honours caller cancellation', async () => {
 })
 
 const OWNER = { principal: { kind: 'owner' } }
-const results = [{ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', price: 1 }]
+const results = [{ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn', price: 1 }]
 // The handler returns a discriminated union; tests assert on both branches.
 const invoke = async (handler: any, payload: any, signal?: any, peer: any = OWNER): Promise<any> =>
   handler(SEARCH_RPC_ENDPOINT, payload, signal, peer)
@@ -186,7 +195,7 @@ test('search handler projects allowlisted fields only and maps provider failure'
   assert.deepEqual(status.value, { status: 'ready', enabled: true, available: true, source: SEARCH_SOURCE_NAME, results: [] })
   const search = await invoke(handler, { action: 'search', query: ' 比亚 ' })
   assert.equal(seen, '比亚')
-  assert.deepEqual(search.value, { status: 'ready', enabled: true, available: true, source: 'test-directory', results: [{ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock' }] })
+  assert.deepEqual(search.value, { status: 'ready', enabled: true, available: true, source: 'test-directory', results: [{ symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' }] })
   const failing = createSearchHandler({ enabled: () => true, provider: { name: 'test', search: async () => { throw new Error('upstream secret') } } })
   const failure = await invoke(failing, { action: 'search', query: '比亚' })
   assert.deepEqual(failure, { ok: false, error: { code: 'finance/search-unavailable', message: '名称搜索暂不可用，请稍后重试。', details: {} } })
@@ -215,4 +224,72 @@ test('exact search route echoes generic RPC envelopes and rejects malformed requ
   }
   assert.equal((await route.fetch(request(message, { 'content-type': 'text/plain' }))).status, 415)
   assert.equal((await route.fetch(request('x'.repeat(8193)))).status, 413)
+})
+
+
+test('US directory entries resolve to a US identity plus a venue-qualified code', () => {
+  const matches = parseUsInstrumentHints(hint([
+    entry('us', 'aapl.oq', 'Apple', 'GP'),
+    entry('us', 'brk.a.n', 'Berkshire Hathaway', 'GP'),
+    entry('us', 'spy.am', 'SPDR S&P 500 ETF', 'GP'),
+    entry('us', 'babaf.ps', 'Alibaba', 'GP'),
+    // Out of scope: unknown venues, a missing venue, other markets and indices.
+    entry('us', 'bad.zz', 'Unknown venue', 'GP'),
+    entry('us', 'tsla', 'No venue', 'GP'),
+    entry('hk', '01211', '比亚迪股份', 'GP'),
+    entry('us', 'some.zs', 'Index', 'ZS'),
+    entry('sh', '600519', '贵州茅台', 'GP-A'),
+  ]))
+  assert.deepEqual(matches, [
+    { symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'AAPL.OQ' },
+    { symbol: 'US.BRK.A', name: 'Berkshire Hathaway', kind: 'stock', market: 'us', code: 'BRK.A.N' },
+    { symbol: 'US.SPY', name: 'SPDR S&P 500 ETF', kind: 'stock', market: 'us', code: 'SPY.AM' },
+    { symbol: 'US.BABAF', name: 'Alibaba', kind: 'stock', market: 'us', code: 'BABAF.PS' },
+  ])
+  // The same malformed/oversized payload rules apply to both markets.
+  assert.deepEqual(parseUsInstrumentHints('v_hint="N";'), [])
+  for (const bad of ['', 'v_other="x"', 'not a hint', 42, null]) {
+    assert.throws(() => parseUsInstrumentHints(bad as any), { message: 'invalid-search-payload' })
+  }
+})
+
+test('a US query reuses the same host but keeps only US rows', async () => {
+  const calls: any[] = []
+  const payload = hint([
+    entry('sh', '600519', '贵州茅台', 'GP-A'),
+    entry('us', 'aapl.oq', 'Apple', 'GP'),
+  ])
+  const provider = createInstrumentSearchProvider({
+    fetchImpl: async (url: any) => {
+      calls.push(String(url))
+      return new Response(payload, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+    },
+  })
+  assert.deepEqual(await provider.search('apple', { market: 'us' }), [
+    { symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'AAPL.OQ' },
+  ])
+  assert.deepEqual(await provider.search('茅台'), [
+    { symbol: 'SH.600519', name: '贵州茅台', kind: 'stock', market: 'cn' },
+  ])
+  assert.deepEqual(calls, [`${SEARCH_URL}?q=apple&t=all`, `${SEARCH_URL}?q=${encodeURIComponent('茅台')}&t=all`])
+})
+
+test('the search handler forwards the requested market and re-validates US identities', async () => {
+  const seen: any[] = []
+  const handler = createSearchHandler({
+    enabled: () => true,
+    provider: {
+      name: 'test-directory',
+      async search(query: any, options: any) {
+        seen.push([query, options?.market])
+        return [{ symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'AAPL.OQ' }] as any
+      },
+    },
+  })
+  const result = await invoke(handler, { action: 'search', query: 'apple', market: 'us' })
+  assert.deepEqual(seen, [['apple', 'us']])
+  assert.deepEqual(result.value.results, [{ symbol: 'US.AAPL', name: 'Apple', kind: 'stock', market: 'us', code: 'AAPL.OQ' }])
+  const legacy = await invoke(handler, { action: 'search', query: 'apple' })
+  assert.deepEqual(seen.at(-1), ['apple', 'cn'])
+  assert.equal(legacy.value.results[0].market, 'us')
 })

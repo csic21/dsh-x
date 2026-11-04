@@ -9,6 +9,9 @@ import type { MarketController } from './market-preference.ts'
 import { createSinaGoldProvider } from './gold-provider.ts'
 import { createGoldRoute } from './gold-rpc.ts'
 import { createSearchRoute } from './search-rpc.ts'
+import { createUsRoute } from './us-rpc.ts'
+import { createTencentUsProvider } from './us-provider.ts'
+import type { UsProvider } from './us-provider.ts'
 import { createScopeRoute, loadProfileScope } from './scope.ts'
 import { financeQuoteTool } from './tool.ts'
 import { createWatchSignalScheduler, installWatchScheduleTimer } from './watch-signal-scheduler.ts'
@@ -52,6 +55,10 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
   // it the search route stays disabled and never fetches.
   let searchProvider: InstrumentSearchProvider | undefined
   try { searchProvider = createInstrumentSearchProvider() } catch { /* No fetch: search reports unavailable. */ }
+  // The US quote/history route is the same opt-in source, not a second switch.
+  // Without a fetch implementation the route answers uncompiled.
+  let usProvider: UsProvider | undefined
+  try { usProvider = createTencentUsProvider() } catch { /* No fetch: US quotes report unavailable. */ }
   ctx.tools.register(defineTool(financeQuoteTool()))
   ctx.inject(['connection', 'profileContext'], (host: any) => {
     let marketController: MarketController | undefined
@@ -83,6 +90,7 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
       try { return (await marketController.state()).enabled } catch { return false }
     }
     host.connection.fetch.register(createSearchRoute({ enabled: sourceEnabled, provider: searchProvider }))
+    host.connection.fetch.register(createUsRoute({ enabled: sourceEnabled, provider: usProvider }))
     // The gold panel shares the same explicit opt-in and the same source name;
     // it never becomes a second, separately switchable feed.
     const goldProvider = createSinaGoldProvider()

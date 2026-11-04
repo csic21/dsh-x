@@ -16,8 +16,8 @@ const bundle = await build({
   bundle: true, write: false, format: 'cjs', platform: 'node', external: ['react'],
 })
 
-const BYD = { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock' }
-const ETF = { symbol: 'SH.510300', name: '沪深300ETF华泰柏瑞', kind: 'etf' }
+const BYD = { symbol: 'SZ.002594', name: '比亚迪', kind: 'stock', market: 'cn' }
+const ETF = { symbol: 'SH.510300', name: '沪深300ETF华泰柏瑞', kind: 'etf', market: 'cn' }
 const LOF = { symbol: 'SZ.160706', name: '嘉实沪深300ETF联接(LOF)A', kind: 'fund' }
 
 async function harness(options: any = {}) {
@@ -42,6 +42,7 @@ async function harness(options: any = {}) {
       assert.equal(endpoint, SEARCH_RPC_ENDPOINT)
       if (payload?.action === 'status') return options.statusFails ? { ok: false, error: { code: 'finance/not-found' } } : { ok: true, value: { status: enabled ? 'ready' : 'disabled', enabled, available: options.providerMissing ? false : true, source: 'test', results: [] } }
       if (payload?.action !== 'search') return { ok: false, error: { code: 'finance/invalid-query' } }
+      if (options.rejectMarket && payload.market !== undefined) return { ok: false, error: { code: 'finance/invalid-query' } }
       if (options.searchFails) return { ok: false, error: { code: 'finance/search-unavailable' } }
       const rows = typeof options.rows === 'function' ? options.rows(payload.query) : options.rows ?? [BYD, ETF, LOF]
       if (options.delayMs) await new Promise(resolve => setTimeout(resolve, options.delayMs))
@@ -68,8 +69,15 @@ async function harness(options: any = {}) {
     await act(async () => element.dispatchEvent(new dom.window.Event('input', { bubbles: true })))
   }
   const key = async (name: string) => { await act(async () => input().dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: name, bubbles: true }))) }
+  const chooseMarket = async (value: string) => {
+    const select = dom.window.document.querySelector('select.dxs-lookup-market') as any
+    assert.ok(select, 'expected a market selector')
+    Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value')!.set!.call(select, value)
+    await act(async () => select.dispatchEvent(new dom.window.Event('change', { bubbles: true })))
+    await flush()
+  }
   return {
-    dom, document: dom.window.document, calls, picked, type, key, flush, input,
+    dom, document: dom.window.document, calls, picked, type, key, flush, input, chooseMarket,
     options: () => [...dom.window.document.querySelectorAll('[role="option"]')].map(element => element.textContent),
     button: (label: string) => [...dom.window.document.querySelectorAll('button')].find(element => element.textContent === label),
     async click(element: any) { assert.ok(element, 'Expected a clickable element'); await act(async () => element.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))) },
@@ -88,6 +96,7 @@ test('an enabled directory debounces a name query and picks the chosen instrumen
     await h.type('比亚')
     assert.equal(h.calls.length, 1, 'Nothing is requested before the debounce fires')
     await h.flush(40)
+    // An A-share query keeps the two-key envelope an older Host understands.
     assert.deepEqual(h.calls.at(-1), { endpoint: SEARCH_RPC_ENDPOINT, payload: { action: 'search', query: '比亚' } })
     assert.deepEqual(h.options(), ['比亚迪SZ.002594股票', '沪深300ETF华泰柏瑞SH.510300ETF', '嘉实沪深300ETF联接(LOF)ASZ.160706LOF'])
     assert.equal(h.input().getAttribute('aria-expanded'), 'true')
@@ -220,4 +229,24 @@ test('the lookup turns the source on in place and reports a directory that canno
     assert.match(unavailable.document.body.textContent!, /名称搜索不可用/)
     assert.equal(unavailable.document.querySelector('input[type="search"]'), null, 'no field is offered for a directory that is gone')
   } finally { await unavailable.close() }
+})
+
+test('the page lookup shows a failure under the pill instead of staying silent', async () => {
+  const h = await harness({ enabled: true, component: 'InstrumentLookup', searchFails: true, delay: 0 })
+  try {
+    await h.type('比亚')
+    await h.flush()
+    // The popover used to stay closed on error, so a failing directory looked
+    // like a dead input. It must now name the problem.
+    assert.match(h.document.querySelector('[role="alert"]')!.textContent!, /名称搜索暂不可用/)
+  } finally { await h.close() }
+})
+
+test('a US query against a Host that predates the market field asks for a restart', async () => {
+  const h = await harness({ enabled: true, component: 'InstrumentLookup', rejectMarket: true, delay: 0 })
+  try {
+    await h.type('apple')
+    await h.chooseMarket('us')
+    assert.match(h.document.querySelector('[role="alert"]')!.textContent!, /重启应用/)
+  } finally { await h.close() }
 })

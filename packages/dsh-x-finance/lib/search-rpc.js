@@ -40,7 +40,7 @@ export function createSearchHandler({ enabled, provider }) {
         if (!provider)
             return failure('finance/search-unavailable', '名称搜索暂不可用，请稍后重试。');
         try {
-            const matches = await provider.search(request.query, { signal });
+            const matches = await provider.search(request.query, { signal, market: request.market });
             // Re-validate the adapter's output so a replacement provider cannot leak
             // extra fields or a malformed identity through the RPC envelope.
             const results = matches.slice(0, SEARCH_MAX_RESULTS).map(normalizeMatch);

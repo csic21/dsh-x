@@ -6,6 +6,8 @@ import { createMarketController, createProfileMarketPreference } from './market-
 import { createSinaGoldProvider } from './gold-provider.js';
 import { createGoldRoute } from './gold-rpc.js';
 import { createSearchRoute } from './search-rpc.js';
+import { createUsRoute } from './us-rpc.js';
+import { createTencentUsProvider } from './us-provider.js';
 import { createScopeRoute, loadProfileScope } from './scope.js';
 import { financeQuoteTool } from './tool.js';
 import { createWatchSignalScheduler, installWatchScheduleTimer } from './watch-signal-scheduler.js';
@@ -28,6 +30,13 @@ export function apply(ctx, config = {}) {
         searchProvider = createInstrumentSearchProvider();
     }
     catch { /* No fetch: search reports unavailable. */ }
+    // The US quote/history route is the same opt-in source, not a second switch.
+    // Without a fetch implementation the route answers uncompiled.
+    let usProvider;
+    try {
+        usProvider = createTencentUsProvider();
+    }
+    catch { /* No fetch: US quotes report unavailable. */ }
     ctx.tools.register(defineTool(financeQuoteTool()));
     ctx.inject(['connection', 'profileContext'], (host) => {
         let marketController;
@@ -72,6 +81,7 @@ export function apply(ctx, config = {}) {
             }
         };
         host.connection.fetch.register(createSearchRoute({ enabled: sourceEnabled, provider: searchProvider }));
+        host.connection.fetch.register(createUsRoute({ enabled: sourceEnabled, provider: usProvider }));
         // The gold panel shares the same explicit opt-in and the same source name;
         // it never becomes a second, separately switchable feed.
         const goldProvider = createSinaGoldProvider();

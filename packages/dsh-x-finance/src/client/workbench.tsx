@@ -10,6 +10,7 @@ import { formatLocale } from './format.ts'
 import { validateScope } from '../watchlist.ts'
 import { useMarketHistory } from './market/history.ts'
 import { useMarketIntraday } from './market/intraday.ts'
+import { useUsHistory } from './us/data.ts'
 import { QuantReplay } from './QuantReplay.tsx'
 import { QuantPanel } from './quant/QuantPanel.tsx'
 import { IntradayChart } from './chart/IntradayChart.tsx'
@@ -65,7 +66,7 @@ function IntradayPanel({ session, t, locale }: any) {
   </>
 }
 
-export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
+export function StockWorkbench({ symbol, scope, t, format, locale, rpc, us = false, code }: any) {
   const [local, setLocal] = useState<any>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'market' | 'demo' | 'local'>('market')
   const [saveError, setSaveError] = useState(false)
@@ -107,15 +108,22 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
   }
   // The Hang Seng indices have a daily route only: the intraday endpoint is
   // A-share-only, so offering 分时 would open an error card for a real symbol.
-  const dailyOnly = typeof symbol === 'string' && symbol.startsWith('HK.')
+  // US listings are daily-only for the same reason: their session, currency and
+  // time zone are not the A-share intraday contract.
+  const dailyOnly = us || (typeof symbol === 'string' && symbol.startsWith('HK.'))
   useEffect(() => { if (dailyOnly && view === 'intraday') setView('1d') }, [dailyOnly, view])
   const views = dailyOnly ? VIEWS.filter(value => value !== 'intraday') : VIEWS
   const showIntraday = view === 'intraday' && mode === 'market' && !dailyOnly
-  const history = useMarketHistory(rpc, showIntraday ? null : symbol ?? null, adjustment, MARKET_HISTORY_MAX_LIMIT)
+  // US bars come from their own route and are always forward-adjusted; the
+  // A-share hook is called with null so it never requests a US symbol.
+  const adjustmentForRequest: MarketAdjustment = us ? 'forward' : adjustment
+  const marketHistory = useMarketHistory(rpc, us || showIntraday ? null : symbol ?? null, adjustmentForRequest, MARKET_HISTORY_MAX_LIMIT)
+  const usHistory = useUsHistory(rpc, us ? symbol ?? null : null, us ? code : undefined)
+  const history: any = us ? usHistory : marketHistory
   const intraday = useMarketIntraday(rpc, showIntraday ? symbol ?? null : null)
   // The benchmark is fetched only for a market-backed daily view. CSI 300 is
   // the default; when the chart itself is CSI 300, SSE Composite is used.
-  const benchmarkSymbol = mode === 'market' && view !== 'intraday' && symbol
+  const benchmarkSymbol = mode === 'market' && view !== 'intraday' && symbol && !us
     ? (symbol === 'SH.000300' ? 'SH.000001' : 'SH.000300')
     : null
   const benchmarkHistory = useMarketHistory(rpc, benchmarkSymbol, 'none', MARKET_HISTORY_MAX_LIMIT)
@@ -157,7 +165,7 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
     catch { return null }
   }, [sourceDataset, interval])
   const last = dataset?.bars.at(-1)
-  const notice = dataset?.kind === 'market' ? 'workbench.market-notice'
+  const notice = dataset?.kind === 'market' ? (us ? 'us.chart.notice' : 'workbench.market-notice')
     : dataset?.kind === 'demo' ? 'workbench.demo-notice' : 'workbench.local-notice'
   return <section className="dxs-workbench" aria-label={t('workbench.title')}>
     <header><h2>{t('workbench.title')}</h2><p className="dxs-muted">{t('workbench.daily')}</p></header>
@@ -170,7 +178,7 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
         <button type="button" aria-pressed={mode === 'demo'} onClick={showDemo}>{t('workbench.source.demo')}</button>
         <button type="button" aria-pressed={mode === 'local'} onClick={() => setMode('local')} disabled={!local}>{t('workbench.source.local')}</button>
       </div>
-      {mode === 'market' && view !== 'intraday' ? <label className="dxs-adjustment">{t('workbench.adjustment')}
+      {mode === 'market' && view !== 'intraday' && !us ? <label className="dxs-adjustment">{t('workbench.adjustment')}
         <select value={adjustment} onChange={event => changeAdjustment(normalizeAdjustment(event.target.value))}>
           {ADJUSTMENTS.map(value => <option key={value} value={value}>{t(`workbench.adjustment.${value}`)}</option>)}
         </select>
@@ -180,7 +188,7 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
       <button type="button" onClick={example}>{t('workbench.example')}</button>
       {mode !== 'market' && dataset ? <button type="button" onClick={() => { clear(); setMode('market') }}>{t('workbench.clear')}</button> : null}
     </div>
-    {mode === 'market' ? <p className="dxs-muted">{t('workbench.market-hint')}</p> : null}
+    {mode === 'market' ? <p className="dxs-muted">{t(us ? 'us.chart.hint' : 'workbench.market-hint')}</p> : null}
     {mode !== 'market' ? <p className="dxs-muted">{t('workbench.private')}</p> : null}
     <details><summary>{t('workbench.format')}</summary><p>{t('workbench.format-help')}</p></details>
     {busy && <p role="status">{t('workbench.loading')}</p>}
@@ -197,9 +205,9 @@ export function StockWorkbench({ symbol, scope, t, format, locale, rpc }: any) {
         {' '}<button type="button" onClick={intraday.refresh} disabled={intraday.refreshing}>{t('workbench.retry')}</button></p>
       : null}
     {mode === 'market' && view !== 'intraday' && (history.status === 'loading' || (history.status === 'ready' && history.refreshing)) && !dataset ? <p role="status" className="dxs-muted">{t('workbench.market-loading')}</p> : null}
-    {mode === 'market' && view !== 'intraday' && !dataset && history.status === 'unconfigured' ? <div className="dxs-chart-empty"><h3>{t('workbench.market-off-title')}</h3><p>{t('workbench.market-off')}</p></div> : null}
+    {mode === 'market' && view !== 'intraday' && !dataset && (history.status === 'unconfigured' || history.status === 'disabled') ? <div className="dxs-chart-empty"><h3>{t('workbench.market-off-title')}</h3><p>{t('workbench.market-off')}</p></div> : null}
     {mode === 'market' && view !== 'intraday' && !dataset && history.status === 'unavailable' ? <div className="dxs-chart-empty"><h3>{t('workbench.market-unavailable-title')}</h3><p>{t('workbench.market-unavailable')}</p></div> : null}
-    {mode === 'market' && view !== 'intraday' && !dataset && history.status === 'error' ? <div className="dxs-chart-empty" role="alert"><h3>{t('workbench.market-error-title')}</h3><p>{t('workbench.market-error')}</p><button type="button" onClick={history.refresh}>{t('workbench.retry')}</button></div> : null}
+    {mode === 'market' && view !== 'intraday' && !dataset && history.status === 'error' ? <div className="dxs-chart-empty" role="alert"><h3>{t(us ? 'us.history.title' : 'workbench.market-error-title')}</h3><p>{t(us && history.error ? history.error : 'workbench.market-error')}</p><button type="button" onClick={history.refresh}>{t('workbench.retry')}</button></div> : null}
     {mode === 'local' && !local ? <div className="dxs-chart-empty"><h3>{t('workbench.empty')}</h3><p>{t('workbench.hint')}</p><p className="dxs-muted">{t('workbench.no-realtime')}</p></div> : null}
     {dataset && view !== 'intraday' ? <>
       <div className={`dxs-data-banner ${dataset.kind === 'market' ? 'is-market' : ''}`} role="status">{t(notice)}</div>

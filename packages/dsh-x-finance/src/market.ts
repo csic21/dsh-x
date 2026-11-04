@@ -287,9 +287,9 @@ export interface MarketHistory {
    * quoted in HKD on the Hong Kong session, so the currency and zone follow the
    * symbol instead of being fixed at the A-share pair.
    */
-  amountUnit: 'CNY' | 'HKD'
-  currency: 'CNY' | 'HKD'
-  exchangeTimezone: 'Asia/Shanghai' | 'Asia/Hong_Kong'
+  amountUnit: 'CNY' | 'HKD' | 'USD'
+  currency: 'CNY' | 'HKD' | 'USD'
+  exchangeTimezone: 'Asia/Shanghai' | 'Asia/Hong_Kong' | 'America/New_York'
   /** First and last session dates actually returned. */
   firstSessionDate: string
   lastSessionDate: string

@@ -1,21 +1,38 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import { SEARCH_MAX_QUERY, SEARCH_RPC_ENDPOINT } from '../instrument-search.ts'
-import type { InstrumentKind, InstrumentMatch } from '../instrument-search.ts'
+import type { InstrumentKind, InstrumentMarket, InstrumentMatch } from '../instrument-search.ts'
 import { MARKET_PREFERENCE_ENDPOINT } from '../market.ts'
 import { errorKey } from './locales.ts'
 
 const KINDS: InstrumentKind[] = ['stock', 'etf', 'fund', 'reit']
-const valid = (match: any): match is InstrumentMatch => match && typeof match.symbol === 'string' &&
-  typeof match.name === 'string' && KINDS.includes(match.kind)
+
+/**
+ * A directory result is untrusted wire data, so it is reshaped here: a missing
+ * market (an older Host) reads as A-share, and a US row must carry a `US.`
+ * identity. Anything else is dropped instead of being shown as a pick.
+ */
+function toMatch(raw: any): InstrumentMatch | null {
+  if (!raw || typeof raw.symbol !== 'string' || typeof raw.name !== 'string' || !KINDS.includes(raw.kind)) return null
+  const market: InstrumentMarket = raw.market === 'us' ? 'us' : 'cn'
+  if (market === 'us' ? !/^US\./.test(raw.symbol) : !/^(SH|SZ|BJ)\.\d{6}$/.test(raw.symbol)) return null
+  return {
+    symbol: raw.symbol,
+    name: raw.name,
+    kind: raw.kind,
+    market,
+    ...(typeof raw.code === 'string' ? { code: raw.code } : {}),
+  }
+}
 
 type Availability = 'checking' | 'enabled' | 'disabled' | 'unavailable'
 
 /**
  * One directory lookup shared by both entry points: the add form (which only
- * fills the form) and the page lookup (which opens a preview). The list is the
- * same; what happens on a pick is the caller's business.
+ * fills the A-share form) and the page lookup (which opens a preview, and can
+ * switch to the US directory). The list is the same call; what happens on a
+ * pick is the caller's business.
  */
-function useInstrumentSearch({ rpc, onPick, delay = 250, refreshToken = 0 }: any) {
+function useInstrumentSearch({ rpc, onPick, delay = 250, refreshToken = 0, market = 'cn' }: any) {
   const [query, setQuery] = useState('')
   const [availability, setAvailability] = useState<Availability>('checking')
   const [checkTick, setCheckTick] = useState(0)
@@ -66,12 +83,28 @@ function useInstrumentSearch({ rpc, onPick, delay = 250, refreshToken = 0 }: any
       if (id !== request.current) return
       setState('loading')
       setError('')
+      // Show the in-flight state under the pill: a query that produces nothing
+      // visible reads as "the box is broken", which is exactly what it is not.
+      setOpen(true)
       try {
-        const result = await rpc.call('/api', SEARCH_RPC_ENDPOINT, { action: 'search', query: text }, local.signal)
+        // The market field is only sent when it is not the default, so an
+        // A-share query keeps the exact envelope a Host from before the US
+        // feature understands (a newer browser must not break an older Host).
+        const payload = market === 'us'
+          ? { action: 'search', query: text, market }
+          : { action: 'search', query: text }
+        const result = await rpc.call('/api', SEARCH_RPC_ENDPOINT, payload, local.signal)
         if (id !== request.current || local.signal.aborted) return
         if (!result?.ok) {
+          const code = result?.error?.code
           setState('error')
-          setError(errorKey(result?.error?.code))
+          // A US query needs the Host that knows the `market` field. If the
+          // running Host predates it, the rejection is a version skew, not a
+          // bad keyword; say so instead of blaming the input.
+          setError(market === 'us' && (code === 'finance/invalid-query' || code === 'finance/not-found')
+            ? 'lookup.us.needs-restart'
+            : errorKey(code))
+          setOpen(true)
           return
         }
         if (result.value?.status === 'disabled') {
@@ -79,7 +112,10 @@ function useInstrumentSearch({ rpc, onPick, delay = 250, refreshToken = 0 }: any
           setState('idle')
           return
         }
-        const list: InstrumentMatch[] = (Array.isArray(result.value?.results) ? result.value.results : []).filter(valid)
+        const list: InstrumentMatch[] = (Array.isArray(result.value?.results) ? result.value.results : [])
+          .map(toMatch)
+          .filter((match: InstrumentMatch | null): match is InstrumentMatch => Boolean(match))
+          .filter((match: InstrumentMatch) => match.market === market)
         setResults(list)
         setState('ready')
         setOpen(true)
@@ -88,10 +124,11 @@ function useInstrumentSearch({ rpc, onPick, delay = 250, refreshToken = 0 }: any
         if (id !== request.current || local.signal.aborted) return
         setState('error')
         setError('error.search-unavailable')
+        setOpen(true)
       }
     }, delay)
     return () => { clearTimeout(timer); local.abort() }
-  }, [query, availability, delay, rpc])
+  }, [query, availability, delay, rpc, market])
 
   const reset = () => {
     setQuery('')
@@ -158,7 +195,7 @@ function MatchList({ search, t }: any) {
     >
       <strong>{match.name}</strong>
       <span className="dxs-search-symbol">{match.symbol}</span>
-      <span className="dxs-search-kind">{t(`add.kind.${match.kind}`)}</span>
+      <span className="dxs-search-kind">{match.market === 'us' ? t('lookup.market.us') : t(`add.kind.${match.kind}`)}</span>
     </li>)}
   </ul>
 }
@@ -166,7 +203,8 @@ function MatchList({ search, t }: any) {
 /**
  * Name/code lookup for the watchlist form. It is an enhancement, never a
  * requirement: the manual exchange + code fields below stay available, and a
- * disabled directory explains how to turn the local free source on.
+ * disabled directory explains how to turn the local free source on. The form
+ * stays A-share only; US listings are view-only and live in the page lookup.
  */
 export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
   const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken })
@@ -184,6 +222,7 @@ export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0
     />
     {availability === 'checking' && <p className="dxs-muted" role="status">{t('add.search.checking')}</p>}
     {availability === 'enabled' && <p className="dxs-muted dxs-search-note">{t('add.search.notice')}</p>}
+    {availability === 'enabled' && <p className="dxs-muted dxs-search-note">{t('add.search.us-hint')}</p>}
     {availability === 'unavailable' && <p className="dxs-muted">{t('add.search.unavailable')}</p>}
     {availability === 'disabled' && <p className="dxs-muted">
       {t('add.search.disabled')}{' '}
@@ -211,10 +250,17 @@ function LookupIcon() {
  * error) opens in a popover under it. It reuses the same directory call as the
  * add form, but a pick only ever opens a preview — saving stays an explicit
  * second click on that page — so looking a stock up never edits the list.
+ *
+ * A market selector switches between the A-share directory and the US one. The
+ * two are separate identities: an A-share pick can be saved, a US pick is a
+ * view-only page with its own quote and daily source.
  */
 export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
-  const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken })
+  const [market, setMarket] = useState<InstrumentMarket>('cn')
+  const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken, market })
   const { availability } = search
+  const marketId = useId()
+  const us = market === 'us'
 
   // A directory that cannot answer is a state, not a text field: the pill says
   // what is missing and, when the switch is simply off, turns it on in place.
@@ -235,13 +281,21 @@ export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0
   return <div className="dxs-lookup-bar" role="search" aria-label={t('lookup.label')}>
     <div className="dxs-lookup">
       <LookupIcon />
+      <label className="dxs-sr-only" htmlFor={marketId}>{t('lookup.market.aria')}</label>
+      <select
+        id={marketId} className="dxs-lookup-market" value={market} title={t('lookup.market.hint')}
+        onChange={event => setMarket(event.target.value === 'us' ? 'us' : 'cn')}
+      >
+        <option value="cn">{t('lookup.market.cn')}</option>
+        <option value="us">{t('lookup.market.us')}</option>
+      </select>
       <label className="dxs-sr-only" htmlFor={search.inputId}>{t('lookup.label')}</label>
       <input
         id={search.inputId} className="dxs-lookup-input" type="search" name="instrument-lookup" autoComplete="off" spellCheck={false}
         role="combobox" aria-expanded={search.open && search.results.length > 0}
         aria-controls={search.open && search.results.length > 0 ? search.listId : undefined} aria-autocomplete="list"
         aria-activedescendant={search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : undefined}
-        placeholder={t('lookup.placeholder')} title={t('lookup.hint')} maxLength={SEARCH_MAX_QUERY}
+        placeholder={t(us ? 'lookup.placeholder.us' : 'lookup.placeholder')} title={t(us ? 'lookup.hint.us' : 'lookup.hint')} maxLength={SEARCH_MAX_QUERY}
         value={search.query}
         onChange={event => search.change(event.target.value)}
         onKeyDown={search.keyDown}
@@ -256,7 +310,7 @@ export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0
       {search.state === 'loading' ? <p className="dxs-lookup-note" role="status">{t('add.search.loading')}</p>
         : search.state === 'error' ? <p className="dxs-lookup-note dxs-error" role="alert">{t(search.error)}</p>
           : search.results.length ? <MatchList search={search} t={t} />
-            : <p className="dxs-lookup-note" role="status">{t('add.search.empty')}</p>}
+            : <p className="dxs-lookup-note" role="status">{t(us ? 'lookup.empty.us' : 'add.search.empty')}</p>}
     </div> : null}
   </div>
 }

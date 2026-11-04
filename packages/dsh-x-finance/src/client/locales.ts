@@ -10,10 +10,11 @@ import { quantScanZh, quantScanEn } from './quant-scan-locales.ts'
 import { watchScheduleZh, watchScheduleEn } from './watch-schedule-locales.ts'
 import { quoteZh, quoteEn } from '../quote-messages.ts'
 import { fundamentalsZh, fundamentalsEn } from './fundamentals-locales.ts'
+import { usZh, usEn } from './us-locales.ts'
 // Dictionary keys and placeholders are checked in the locale contract tests.
 export const NS = 'dsh-x-finance'
 export const zh = {
-  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh, ...settingsZh, ...watchSignalsZh, ...quantScanZh, ...watchScheduleZh, ...fundamentalsZh,
+  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh, ...settingsZh, ...watchSignalsZh, ...quantScanZh, ...watchScheduleZh, ...fundamentalsZh, ...usZh,
   'title': '金融',
   // The watchlist is the long list on this page; only explicitly fixed stocks
   // reach the bottom bar, so the two never share a label.
@@ -180,7 +181,7 @@ export const zh = {
 }
 /** @type {Record<keyof typeof zh, string>} */
 export const en = {
-  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn, ...settingsEn, ...watchSignalsEn, ...quantScanEn, ...watchScheduleEn, ...fundamentalsEn,
+  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn, ...settingsEn, ...watchSignalsEn, ...quantScanEn, ...watchScheduleEn, ...fundamentalsEn, ...usEn,
   'title': 'Finance',
   'bar.title': 'Fixed {count}',
   'bar.aria': 'Fixed stocks bar',

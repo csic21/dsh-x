@@ -47,7 +47,7 @@ function fixture(options: { store?: ScheduleStore; scope?: string; time?: number
     readScope: async () => scope, now: () => time, sourceEnabled: async () => enabled,
     wait: options.wait ?? (async () => {}),
     search: { enabled: () => enabled, provider: { name: 'fixture-directory', async search(query) {
-      searches++; return [{ symbol: `SH.${query}`, name: '测试股份', kind: 'stock' }]
+      searches++; return [{ symbol: `SH.${query}`, name: '测试股份', kind: 'stock', market: 'cn' }]
     } } },
     market: async () => enabled ? { name: 'fixture-free-source', async history(symbol: string) {
       histories++; inflight++; peak = Math.max(peak, inflight)

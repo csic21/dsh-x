@@ -96,10 +96,12 @@ export declare function globalQuoteTime(raw: unknown, now: number): string | nul
  * rather than an assumption. Three stamp spellings are accepted because the
  * feeds differ: `2026-10-23 16:42:55`, `2026/10/23 18:31:07` and the compact
  * `20261023161500`. Impossible dates, unknown zones and future instants become
- * null; a stamp older than `GLOBAL_MAX_QUOTE_AGE_MS` also becomes null, because
- * a year-old value shown as today's quote is worse than no card at all.
+ * null; a stamp older than `maxAgeMs` (by default `GLOBAL_MAX_QUOTE_AGE_MS`)
+ * also becomes null, because a long-dead value shown as today's quote is worse
+ * than no card at all. A caller with a different horizon (the US quote page
+ * keeps a suspended listing's real stamp) passes its own bound.
  */
-export declare function zonedQuoteTime(wall: unknown, timeZone: string, now: number): string | null;
+export declare function zonedQuoteTime(wall: unknown, timeZone: string, now: number, maxAgeMs?: number): string | null;
 /**
  * Reads East Money's `ulist.np` payload. Only catalogued identities are kept;
  * a row with an unknown code, a non-positive price or an impossible change is

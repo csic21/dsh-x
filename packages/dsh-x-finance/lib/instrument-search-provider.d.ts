@@ -1,4 +1,4 @@
-import type { InstrumentMatch } from './instrument-search.ts';
+import type { InstrumentMarket, InstrumentMatch } from './instrument-search.ts';
 export declare const SEARCH_URL = "https://smartbox.gtimg.cn/s3/";
 export declare const SEARCH_TIMEOUT_MS = 8000;
 export declare const SEARCH_MAX_BYTES: number;
@@ -10,6 +10,7 @@ export interface InstrumentSearchProvider {
     name: string;
     search(query: string, options?: {
         signal?: AbortSignal;
+        market?: InstrumentMarket;
     }): Promise<InstrumentMatch[]>;
 }
 /**

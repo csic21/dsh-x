@@ -17,6 +17,8 @@ import { useFinanceSettings } from './settings/store.ts'
 import { WatchSignals } from './watch-signals-view.tsx'
 import { QuantScanView } from './quant-scan-view.tsx'
 import { EtfHoldingsPanel } from './HoldingsPanel.tsx'
+import { UsDetail } from './us/UsView.tsx'
+import { isUsSymbol, normalizeUsCode, normalizeUsSymbol } from '../us-market.ts'
 import { FundamentalsPanel } from './FundamentalsPanel.tsx'
 const tone = (value: any) => value > 0 ? 'dxs-up' : value < 0 ? 'dxs-down' : ''
 function ShortcutHint({ t }: any) {
@@ -153,12 +155,17 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const appearance = useFinanceSettings(settings)
   const discreet = appearance.discreet
   // A preview is what the reader is looking at right now, so it outranks the
-  // saved row that happened to be selected before the drill-down.
-  const previewItem = state.preview ? { symbol: state.preview.symbol, alias: state.preview.name, fixed: false } : null
+  // saved row that happened to be selected before the drill-down. A US lookup
+  // keeps its venue-qualified code here: the watchlist store is A-share only
+  // and must not be asked to hold a `US.` identity.
+  const [usPreview, setUsPreview] = useState<any>(null)
+  const previewItem = usPreview
+    ? { symbol: usPreview.symbol, alias: usPreview.name, fixed: false, code: usPreview.code }
+    : state.preview ? { symbol: state.preview.symbol, alias: state.preview.name, fixed: false } : null
   // A preview is a standalone detail page, not a watchlist row: it only opens
   // once storage is ready, because the detail reads saved chart preferences.
   const previewOpen = Boolean(previewItem) && state.scopeStatus === 'ready'
-  const leavePreview = () => { closePreview(); setDrillNotice('') }
+  const leavePreview = () => { setUsPreview(null); closePreview(); setDrillNotice('') }
   const selected = previewItem ? undefined : state.items.find((entry: any) => entry.symbol === state.selectedSymbol)
   const item = previewItem ?? selected ?? state.items[0]
   const fixedCount = fixedItems(state.items).length
@@ -171,17 +178,38 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const [sourceRevision, setSourceRevision] = useState(0)
   const previousSelection = useRef(state.selectedSymbol)
   useEffect(() => {
-    if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) setView('watchlist')
+    if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) { setView('watchlist'); setUsPreview(null) }
     previousSelection.current = state.selectedSymbol
   }, [state.selectedSymbol])
+  // A rail row or a signal is always an A-share selection: it closes a US
+  // preview even when the selected symbol itself does not change.
+  const selectStock = (symbol: any) => { setUsPreview(null); select(symbol) }
   /**
    * Drill-down from the panorama: an exchange-qualified symbol opens the stock
    * detail and its daily chart. A stock that is not on the watchlist is opened
    * as a preview — nothing is written to the saved list until the reader adds
    * it on purpose, so clicking around the market never edits the watchlist.
    */
-  const openStock = (symbol: any, name: any) => {
+  const openStock = (symbol: any, name: any, code?: any) => {
+    // A US listing is view-only: it never enters the A-share watchlist or the
+    // bottom bar, so it lives in local preview state rather than the store.
+    if (isUsSymbol(symbol)) {
+      try {
+        const canonical = normalizeUsSymbol(symbol)
+        setUsPreview({
+          symbol: canonical,
+          name: typeof name === 'string' ? name.slice(0, 64) : '',
+          code: typeof code === 'string' ? normalizeUsCode(code, canonical) : undefined,
+        })
+        closePreview()
+        setDrillNotice(t('us.drill.preview', { name: name || canonical }))
+      } catch (failure: any) {
+        setDrillNotice(errorKey(failure?.code))
+      }
+      return
+    }
     if (typeof symbol !== 'string' || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) { setDrillNotice(t('market.drill.no-symbol')); return }
+    setUsPreview(null)
     const known = state.items.some((entry: any) => entry.symbol === symbol)
     try {
       if (known) {
@@ -201,7 +229,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const addPreview = (entry: any) => {
     try {
       add({ symbol: entry.symbol, alias: entry.alias, fixed: false })
-      select(entry.symbol)
+      selectStock(entry.symbol)
       setDrillNotice(t('market.drill.added', { name: entry.alias || entry.symbol }))
     } catch (failure: any) {
       setDrillNotice(errorKey(failure?.code))
@@ -235,7 +263,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
       <div className="dxs-brand"><StockIcon size={16} /><h1>{discreet ? t('settings.discreet.title') : t('title')}</h1><span className="dxs-context">{discreet ? t('settings.discreet.subtitle') : view === 'market' ? t('market.subtitle') : view === 'quant-scan' ? t('quantScan.subtitle') : view === 'hot' ? t('hot.subtitle') : view === 'predict' ? t('predict.subtitle') : view === 'global' ? t('global.subtitle') : view === 'gold' ? t('gold.subtitle') : t('page.subtitle')}</span></div>
       {/* Looking a stock up belongs to the page chrome, not to a tab: one
           compact pill for every view, and a pick opens the preview page. */}
-      <InstrumentLookup rpc={rpc} t={t} refreshToken={sourceRevision} onPick={(match: any) => openStock(match.symbol, match.name)} />
+      <InstrumentLookup rpc={rpc} t={t} refreshToken={sourceRevision} onPick={(match: any) => openStock(match.symbol, match.name, match.code)} />
       <nav className="dxs-view-tabs" aria-label={t('page.view.aria')}>
         <button type="button" aria-pressed={view === 'watchlist' && !previewOpen} onClick={() => { leavePreview(); setView('watchlist') }}>{tabLabel('page.view.watchlist', 'settings.tab.watchlist')}</button>
         <button type="button" aria-pressed={view === 'market' && !previewOpen} onClick={() => { leavePreview(); setView('market') }}>{tabLabel('page.view.market', 'settings.tab.market')}</button>
@@ -257,7 +285,9 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
         <button type="button" className="dxs-preview-back" onClick={leavePreview}>← {t('preview.back')}</button>
         <p className="dxs-muted">{t('preview.bar', { name: previewItem?.alias || previewItem?.symbol || '' })}</p>
       </div>
-      <Detail key={`preview:${previewItem?.symbol}:${preference.enabled}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
+      {usPreview
+        ? <UsDetail key={`us-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
+        : <Detail key={`preview:${previewItem?.symbol}:${preference.enabled}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />}
     </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView key={`global:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} onChangeSource={changeSource} /></div> : view === 'quant-scan' ? <div className="dxs-stage dxs-stage-market"><SourceButton preference={preference} t={t} /><QuantScanView rpc={rpc} scope={state.scopeStatus === 'ready' ? state.scopeId : null} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpenStock={openStock} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'predict' ? <div className="dxs-stage dxs-stage-market"><PredictView rpc={rpc} t={t} format={format} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('predict.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView key={`market:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} discreet={discreet} preference={preference} onChangeSource={changeSource} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
       {sourceOff ? <div className="dxs-banner is-warn dxs-source-card"><div><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p>{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</div><SourceButton preference={preference} t={t} large /></div> : preference.status === 'error' ? <p role="alert" className="dxs-banner dxs-error">{t('source.unavailable')}</p> : null}
       {state.placement === 'occupied' && <p role="status" className="dxs-banner">{t('page.occupied')}</p>}
@@ -274,7 +304,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
           <div className="dxs-rail-list">
             {!state.items.length && <div className="dxs-empty"><p className="dxs-muted">{t('page.empty')}</p><p className="dxs-muted">{t('page.empty.lookup')}</p><button type="button" onClick={() => setView('market')}>{t('page.view.market-hint')}</button></div>}
             <ol className="dxs-list">{state.items.map((entry: any, index: any) => <li key={entry.symbol} className={item?.symbol === entry.symbol ? 'is-selected' : undefined}>
-              <button type="button" className="dxs-select" aria-pressed={item?.symbol === entry.symbol} onClick={() => select(entry.symbol)}>
+              <button type="button" className="dxs-select" aria-pressed={item?.symbol === entry.symbol} onClick={() => selectStock(entry.symbol)}>
                 <span className="dxs-row-name"><strong>{entry.alias || entry.symbol}</strong>{entry.fixed ? <span className="dxs-fixed-mark">{t('page.fixed')}</span> : null}</span>
                 <span className="dxs-row-meta">{entry.alias ? <span className="dxs-muted">{entry.symbol}</span> : null}</span>
               </button>
@@ -304,7 +334,7 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
           </div>
         </aside>
         <div className="dxs-stage">
-          {state.scopeStatus === 'ready' ? <WatchSignals key={state.scopeId} rpc={rpc} scope={state.scopeId} items={state.items} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpen={select} /> : null}
+          {state.scopeStatus === 'ready' ? <WatchSignals key={state.scopeId} rpc={rpc} scope={state.scopeId} items={state.items} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpen={selectStock} /> : null}
           {state.scopeStatus === 'ready' && (item
             ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
             : <div className="dxs-stage-empty"><h2>{t('page.select')}</h2><p className="dxs-muted">{t('page.select-hint')}</p><StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} rpc={rpc} /></div>)}

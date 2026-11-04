@@ -102,7 +102,7 @@ test('real watch scheduler owns its in-flight batch; market admission follows it
   const pending = deferred<any>(), entered = deferred()
   const watch = createWatchSignalScheduler({ profileDirectory: '/unused', now: () => START, readScope: async () => SCOPE,
     store: { load: async () => null, save: async () => {} }, sourceEnabled: async () => true, wait: async () => {},
-    search: { enabled: () => true, provider: { name: 'fixture', search: async () => [{ symbol: stock().symbol, name: '样本', kind: 'stock' }] } },
+    search: { enabled: () => true, provider: { name: 'fixture', search: async () => [{ symbol: stock().symbol, name: '样本', kind: 'stock', market: 'cn' }] } },
     market: { name: 'fixture', history: async () => { entered.resolve(); return pending.promise } } as any,
   })
   const f = fixture({ watchRunning: async scope => (await watch.request({ action: 'get', scope })).running })

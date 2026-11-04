@@ -9,7 +9,7 @@ import { createOfficialLocale } from '../../../test/fixtures/locale.mjs'
 // DOM integration of the real published factory, using an explicit host fixture.
 // This does not claim a real browser layout or an assembled-kernel UI test.
 test('built client separates the watchlist from the fixed bar and supports add/order/remove/navigation/persistence',async()=>{
-  const dom=new JSDOM('<!doctype html><html><head></head><body><div id="app"></div></body></html>',{url:'http://localhost/'})
+  const dom=new JSDOM('<!doctype html><html><head></head><body><div id="app"></div></body></html>',{url:'http://localhost/',pretendToBeVisual:true})
   const original: any={window:(globalThis as any).window,document:globalThis.document,localStorage:globalThis.localStorage,IS_REACT_ACT_ENVIRONMENT:(globalThis as any).IS_REACT_ACT_ENVIRONMENT}
   ;(globalThis as any).window=dom.window;globalThis.document=dom.window.document;globalThis.localStorage=dom.window.localStorage;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
   let exported: any, selectedPanel: any=null
@@ -27,7 +27,16 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     rpcCalls.push(JSON.parse(JSON.stringify({endpoint,payload})))
     if(endpoint==='dsh-x-finance.scope')return {ok:true,value:{scope}}
     // Offline fixtures only: the directory never receives a live security here.
-    if(endpoint==='dsh-x-finance.search')return {ok:true,value:payload?.action==='status'?{status:'ready',enabled:true,source:'test-directory',results:[]}:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'SZ.002594',name:'比亚迪',kind:'stock'},{symbol:'SH.510300',name:'沪深300ETF华泰柏瑞',kind:'etf'}]}}
+    if(endpoint==='dsh-x-finance.search'){
+      if(payload?.action==='status')return {ok:true,value:{status:'ready',enabled:true,source:'test-directory',results:[]}}
+      // Offline fixtures only: the US row carries the venue code the daily route needs.
+      if(payload?.market==='us')return {ok:true,value:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'US.AAPL',name:'Apple',kind:'stock',market:'us',code:'AAPL.OQ'}]}}
+      return {ok:true,value:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'SZ.002594',name:'比亚迪',kind:'stock',market:'cn'},{symbol:'SH.510300',name:'沪深300ETF华泰柏瑞',kind:'etf',market:'cn'}]}}
+    }
+    if(endpoint==='dsh-x-finance.us'){
+      if(payload?.kind==='quote')return {ok:true,value:{status:'ready',quote:{symbol:'US.AAPL',name:'苹果',price:123.45,pricePrecision:2,change:3.45,changePercent:2.88,open:120.5,high:124,low:119.8,previousClose:120,volume:1000000,amount:123450000,currency:'USD',quotedAt:'2026-11-03T21:00:02.000Z',fetchedAt:'2026-11-04T07:00:00.000Z',marketStatus:'unknown',source:'腾讯美股 (unofficial)'}}}
+      return {ok:true,value:{status:'disabled'}}
+    }
     if(endpoint==='dsh-x-finance.market-preference')return {ok:true,value:{enabled:true,forced:false}}
     if(endpoint==='dsh-x-finance.watch-schedule')return {ok:true,value:{enabled:false,running:false,syncedCount:0,lastAttemptDate:null,updatedAt:null,resultDate:null,rows:[],error:null,sourceEnabled:true,partial:false,freshness:'empty',blockedReason:'disabled'}}
     // The daily chart is part of the same page; this fixture has no bars, so it
@@ -77,7 +86,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     await input(document.querySelector<HTMLElement & HTMLInputElement>('input[inputmode="numeric"]'),'600519')
     await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="alias"]'),'贵州茅台')
     await submit()
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('select'),'SZ')
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('select[name="exchange"]'),'SZ')
     await input(document.querySelector<HTMLElement & HTMLInputElement>('input[inputmode="numeric"]'),'000001')
     await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="alias"]'),'平安银行')
     await submit()
@@ -142,6 +151,27 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup-bar [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
     assert.match(document.body.textContent!, /临时查看（未加入自选）/)
     assert.deepEqual(saved().items.map((item: any)=>item.symbol),['SZ.000001'],'looking a stock up must not write the watchlist')
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-back')!)
+    // The same pill switches to the US directory. A US pick is view-only too:
+    // it renders its own quote page, asks for daily bars with the venue code and
+    // never touches the A-share watchlist or the bottom bar.
+    const market=document.querySelector<HTMLSelectElement>('select.dxs-lookup-market')!
+    assert.ok(market,'the lookup offers a market switch')
+    assert.equal(market.value,'cn')
+    Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype,'value')!.set!.call(market,'us')
+    await act(async()=>market.dispatchEvent(new dom.window.Event('change',{bubbles:true})))
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-lookup input[name="instrument-lookup"]')!,'apple')
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
+    assert.ok(rpcCalls.some((call: any)=>call.endpoint==='dsh-x-finance.search'&&call.payload.market==='us'),'the US market is sent upstream')
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup-bar [role="option"]')].find(option=>option.textContent!.includes('US.AAPL'))!)
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.match(document.body.textContent!, /US\.AAPL/)
+    assert.match(document.body.textContent!, /美股/)
+    assert.match(document.body.textContent!, /123\.45/)
+    assert.ok(rpcCalls.some((call: any)=>call.endpoint==='dsh-x-finance.us'&&call.payload.kind==='quote'),'the US page asks for a quote')
+    assert.ok(rpcCalls.some((call: any)=>call.endpoint==='dsh-x-finance.us'&&call.payload.kind==='history'&&call.payload.code==='AAPL.OQ'),'the daily request carries the venue code')
+    assert.deepEqual(saved().items.map((item: any)=>item.symbol),['SZ.000001'],'a US lookup must not write the watchlist')
+    assert.equal([...document.querySelectorAll('.dxs-strip .dxs-chip')].some((chip: any)=>chip.textContent?.includes('US.AAPL')),false,'a US listing never reaches the bottom bar')
     await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-back')!)
     // Name search in the add form: an explicit query, a debounce, then a pick
     // that fills the manual fields. The preview above unmounted the rail, so the

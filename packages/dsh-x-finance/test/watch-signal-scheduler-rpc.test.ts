@@ -84,7 +84,7 @@ test('internal RPC reuses market/search validation, refuses other business opera
   let allowed = false, searches = 0, histories = 0, captured = 0
   const rpc = createWatchScheduleRpc({
     allowed: async () => allowed,
-    search: { enabled: () => true, provider: { name: 'fixture', async search() { searches++; return [{ symbol: 'SH.600001', name: '股份', kind: 'stock' }] } } },
+    search: { enabled: () => true, provider: { name: 'fixture', async search() { searches++; return [{ symbol: 'SH.600001', name: '股份', kind: 'stock', market: 'cn' }] } } },
     market: { name: 'fixture', async history() { histories++; return { symbol: 'WRONG', bars: [] } } } as any,
     onHistory: () => { captured++ },
   })
