@@ -9,7 +9,7 @@ import { PLUGIN_PACKAGES, assessRelease, parseReleaseTag, pinVersions } from './
 const root = fileURLToPath(new URL('..', import.meta.url))
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
 const gitQuiet = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
-const tags = git('for-each-ref', '--sort=creatordate', '--format=%(refname:short)%09%(objectname)%09%(creatordate:unix)', 'refs/tags/plugins-v*')
+const tags = git('for-each-ref', '--sort=creatordate', '--format=%(refname:short)%09%(objectname)%09%(*objectname)%09%(creatordate:unix)', 'refs/tags/plugins-v*')
   .split('\n').filter(Boolean).map(line => parseReleaseTag(line)).filter(Boolean)
 
 const manifestAt = (name, commit) => {

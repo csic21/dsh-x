@@ -26,10 +26,16 @@ export const compareSemver = (a, b) => {
 }
 
 export const parseReleaseTag = (line, minimum = '0.2.0') => {
-  const [tag, commit, timestamp] = line.split('\t')
+  // `for-each-ref` is asked for both the object name and its peeled object:
+  // an annotated tag's objectname is the tag object, not the commit, and a Git
+  // install spec must point at a commit. Lightweight tags have no peeled name,
+  // so the two fall back to the same value.
+  const [tag, object, third, fourth] = line.split('\t')
   if (!tag?.startsWith('plugins-v')) return null
   const version = tag.slice('plugins-v'.length)
   if (!isSemver(version) || compareSemver(version, minimum) < 0) return null
+  const commit = fourth === undefined ? object : third || object
+  const timestamp = fourth === undefined ? third : fourth
   return { tag, version, commit, timestamp: Number(timestamp) }
 }
 

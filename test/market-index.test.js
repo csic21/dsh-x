@@ -7,6 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { marketInstallTarget, parseMarketIndex } from '@deepseek-ai/dsh-plugin-market-index'
 import { evaluatePluginCompatibility } from '@deepseek-ai/dsh-app-boot'
+import { parseReleaseTag } from '../scripts/plugin-versions.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const policy = JSON.parse(readFileSync(path.join(root, 'compatibility/policy.json'), 'utf8'))
@@ -34,8 +35,11 @@ test('generated market index parses as format 1 with commit-pinned Git install t
     // legitimately absent (its install target would not contain the version),
     // so the expectation mirrors those two rules.
     const clean = (name) => !execFileSync('git', ['status', '--porcelain', '--', `packages/${name}`], { cwd: root, encoding: 'utf8' }).trim()
-    const tagCommits = execFileSync('git', ['for-each-ref', '--format=%(objectname)', 'refs/tags/plugins-v*'], { cwd: root, encoding: 'utf8' })
+    const tagCommits = execFileSync('git', ['for-each-ref', '--format=%(objectname)%09%(*objectname)', 'refs/tags/plugins-v*'], { cwd: root, encoding: 'utf8' })
       .split('\n').filter(Boolean)
+      // Annotated tags peel to the commit they point at; the install target is
+      // always the commit, never the tag object.
+      .map(line => { const [object, peeled] = line.split('\t'); return peeled || object })
     const tagged = (name) => tagCommits.some(commit => {
       try {
         execFileSync('git', ['show', `${commit}:packages/${name}/package.json`], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] })
@@ -74,4 +78,21 @@ test('generated market index parses as format 1 with commit-pinned Git install t
       }
     }
   } finally { rmSync(directory, { recursive: true, force: true }) }
+})
+
+test('release tags peel annotated objects down to the published commit', () => {
+  // Lightweight tag: for-each-ref prints an empty peeled field.
+  assert.deepEqual(parseReleaseTag('plugins-v0.27.0\t0e0cb7a\t\t1700000000'), {
+    tag: 'plugins-v0.27.0', version: '0.27.0', commit: '0e0cb7a', timestamp: 1_700_000_000,
+  })
+  // Annotated tag: the object name is the tag object, the peeled name is the
+  // commit a Git install spec must use.
+  assert.deepEqual(parseReleaseTag('plugins-v0.27.0\t4d67bdb\t0e0cb7a\t1700000000'), {
+    tag: 'plugins-v0.27.0', version: '0.27.0', commit: '0e0cb7a', timestamp: 1_700_000_000,
+  })
+  // The three-field shape stays readable for callers that do not ask to peel.
+  assert.equal(parseReleaseTag('plugins-v0.27.0\t0e0cb7a\t1700000000').commit, '0e0cb7a')
+  assert.equal(parseReleaseTag('plugins-v0.27.0\t0e0cb7a\t1700000000').timestamp, 1_700_000_000)
+  assert.equal(parseReleaseTag('plugins-v0.1.0\t0e0cb7a\t\t1700000000'), null)
+  assert.equal(parseReleaseTag('not-a-release\t0e0cb7a\t\t1700000000'), null)
 })
