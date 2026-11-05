@@ -1,6 +1,7 @@
 import React from 'react'
 import { StockWorkbench } from '../workbench.tsx'
 import { useUsQuote } from './data.ts'
+import { NewsPanel } from '../news/NewsPanel.tsx'
 
 const tone = (value: any) => typeof value === 'number' && value > 0 ? 'dxs-up' : typeof value === 'number' && value < 0 ? 'dxs-down' : ''
 
@@ -10,7 +11,7 @@ const tone = (value: any) => typeof value === 'number' && value > 0 ? 'dxs-up' :
  * no minute chart. The quote and the forward-adjusted daily bars come from the
  * same opt-in local free source as the A-share board.
  */
-export function UsDetail({ item, scope, rpc, t, format, locale, previewing = true, onAdd, fixed = false, onToggleFixed }: any) {
+export function UsDetail({ item, scope, rpc, t, format, locale, previewing = true, onAdd, fixed = false, onToggleFixed, onOpenStock }: any) {
   const quote = useUsQuote(rpc, item?.symbol ?? null)
   const value = quote.value
   const status = quote.status === 'loading'
@@ -62,6 +63,12 @@ export function UsDetail({ item, scope, rpc, t, format, locale, previewing = tru
       key={`us:${item?.symbol ?? ''}:${scope ?? ''}`}
       us symbol={item?.symbol} code={item?.code} scope={scope}
       t={t} format={format} locale={locale} rpc={rpc}
+    />
+    <NewsPanel
+      key={`news:${item?.symbol ?? ''}`}
+      symbol={item?.symbol}
+      name={value?.name || item?.alias || item?.symbol}
+      rpc={rpc} t={t} format={format} onOpenStock={onOpenStock}
     />
     <p className="dxs-muted">{t('us.boundary')}</p>
   </article>

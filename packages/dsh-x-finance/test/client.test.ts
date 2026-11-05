@@ -54,7 +54,10 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     if(endpoint==='dsh-x-finance.market'&&payload?.kind==='fundamentals')return {ok:true,value:{status:'ready',fundamentals:{symbol:payload.symbol,name:'测试公司',applicable:true,source:'test-source',fetchedAt:'2026-10-16T07:00:00Z',currency:'CNY',valuation:{totalMarketCap:1e12,floatMarketCap:8e11,peStatic:10,peTtm:11,peDynamic:12,pb:1.5},periods:[{reportDate:'2026-09-30',reportName:'2026三季报',noticeDate:'2026-10-31',revenue:1e9,revenueYoY:1,netProfit:1e8,netProfitYoY:1,eps:1,bps:1,roe:10,grossMargin:20,netMargin:10,debtRatio:30}],latest:{reportDate:'2026-09-30',reportName:'2026三季报',noticeDate:'2026-10-31',revenue:1e9,revenueYoY:1,netProfit:1e8,netProfitYoY:1,eps:1,bps:1,roe:10,grossMargin:20,netMargin:10,debtRatio:30},partial:false}}}
     throw new Error(`unexpected endpoint ${endpoint}`)
   }}},layout:{selectPanel(value: any){selectedPanel=value;calls.push(value)}}}
-  vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load(value: any){assert.equal(value.id,'dsh-x-finance');exported=value.factory((name: any)=>{assert.equal(name,'react');return React})}}},globalThis,navigator:dom.window.navigator,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
+  // The intraday hook (behind the news tab) arms its poll through `window`, so
+  // the explicit window fixture has to carry the timers the browser would have.
+  const fixtureWindow = { __ModuleLoader__:{load(value: any){assert.equal(value.id,'dsh-x-finance');exported=value.factory((name: any)=>{assert.equal(name,'react');return React})}}, setTimeout, clearTimeout, addEventListener(){}, removeEventListener(){} }
+  vm.runInNewContext(await readFile(new URL('../lib/client.js',import.meta.url),'utf8'),{window:fixtureWindow,globalThis,navigator:dom.window.navigator,document:dom.window.document,URL,AbortController,setTimeout,clearTimeout,console})
   const { createRoot } = await import('react-dom/client')
   const root=createRoot(dom.window.document.getElementById('app')!)
   const saved=()=>JSON.parse(localStorage.getItem(storageKey)!)
@@ -256,11 +259,16 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     // The stock header carries its own view tabs; the chart is the first screen
     // and the fixed decision is available without going back to the rail.
     const detailTabs=[...document.querySelectorAll<HTMLElement>('.dxs-detail-tabs button')]
-    assert.deepEqual(detailTabs.map(button=>button.textContent),['行情','财务'])
+    assert.deepEqual(detailTabs.map(button=>button.textContent),['行情','财务','资讯'])
     assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-detail-fix')!.textContent!,/取消固定/)
     await click(detailTabs[1]!)
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
     assert.ok(document.querySelector('.dxs-fundamentals'),'the financials tab mounts the filing panel')
+    // The news tab is wired to the same detail header; this fixture has no news
+    // route, so the panel must still mount and report the failure it got.
+    await click(detailTabs[2]!)
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.ok(document.querySelector('.dxs-news'),'the news tab mounts the news panel')
     await click(detailTabs[0]!)
     // Discreet mode hides the bar by default, but the page offers a one-click
     // keep action; the bar then renders with the same neutral palette.

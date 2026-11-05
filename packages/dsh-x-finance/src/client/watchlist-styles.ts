@@ -40,6 +40,13 @@ export const WATCHLIST_CSS = `
 .dxs-row-quote:not(.dxs-up):not(.dxs-down) .dxs-row-change{color:var(--dxs-muted)}
 .dxs-row-quote.is-empty{color:var(--dxs-muted)}
 .dxs .dxs-list .dxs-controls{position:static;transform:none;display:flex;gap:1px;margin:0;padding:0 4px 0 0;border-radius:8px;background:transparent;opacity:1;pointer-events:auto}
+/* Reorder / fix / remove are row-level chores, not the row's content. They
+   stay out of the way until the row is pointed at or reached by keyboard, and
+   an invisible button never takes a click -- remove sits next to fix. */
+.dxs .dxs-list .dxs-controls button{opacity:0;pointer-events:none;transition:opacity .12s ease}
+.dxs .dxs-list li:hover .dxs-controls button,.dxs .dxs-list li:focus-within .dxs-controls button{opacity:1;pointer-events:auto}
+.dxs .dxs-list .dxs-controls button[aria-pressed=true]{opacity:1;pointer-events:auto}
+@media (hover:none){.dxs .dxs-list .dxs-controls button{opacity:1;pointer-events:auto}}
 .dxs .dxs-list .dxs-controls button,.dxs .dxs-list .dxs-controls .dxs-icon-button{width:24px;height:24px;padding:0;border-color:transparent;background:transparent;color:var(--dxs-muted);font-size:12px;border-radius:6px}
 .dxs .dxs-list .dxs-controls button:hover:not(:disabled){background:var(--dxs-soft);color:var(--dxs-fg)}
 .dxs .dxs-list .dxs-controls button[aria-pressed=true]{border-color:transparent;color:var(--dxs-accent);background:color-mix(in srgb,var(--dxs-accent) 12%,var(--dxs-bg))}

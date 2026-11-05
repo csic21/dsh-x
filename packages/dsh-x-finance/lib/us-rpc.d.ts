@@ -21,16 +21,16 @@ export declare function createUsHandler({ enabled, provider }: UsGate): (endpoin
 } | {
     ok: boolean;
     value: {
+        status: string;
         quote?: undefined;
         history?: undefined;
-        status: string;
     };
 } | {
     ok: boolean;
     value: {
-        history?: undefined;
         status: string;
         quote: import("./us-market.ts").UsQuote;
+        history?: undefined;
     };
 } | {
     ok: boolean;

@@ -1,6 +1,7 @@
 import React from 'react'
 import { StockWorkbench } from '../workbench.tsx'
 import { useHkQuote } from './data.ts'
+import { NewsPanel } from '../news/NewsPanel.tsx'
 
 const tone = (value: any) => typeof value === 'number' && value > 0 ? 'dxs-up' : typeof value === 'number' && value < 0 ? 'dxs-down' : ''
 
@@ -10,7 +11,7 @@ const tone = (value: any) => typeof value === 'number' && value > 0 ? 'dxs-up' :
  * no minute chart. The quote and the forward-adjusted daily bars come from the
  * same opt-in local free source as the A-share board.
  */
-export function HkDetail({ item, scope, rpc, t, format, locale, previewing = true, onAdd, fixed = false, onToggleFixed }: any) {
+export function HkDetail({ item, scope, rpc, t, format, locale, previewing = true, onAdd, fixed = false, onToggleFixed, onOpenStock }: any) {
   const quote = useHkQuote(rpc, item?.symbol ?? null)
   const value = quote.value
   const status = quote.status === 'loading'
@@ -62,6 +63,12 @@ export function HkDetail({ item, scope, rpc, t, format, locale, previewing = tru
       key={`hk:${item?.symbol ?? ''}:${scope ?? ''}`}
       hk symbol={item?.symbol} scope={scope}
       t={t} format={format} locale={locale} rpc={rpc}
+    />
+    <NewsPanel
+      key={`news:${item?.symbol ?? ''}`}
+      symbol={item?.symbol}
+      name={value?.name || item?.alias || item?.symbol}
+      rpc={rpc} t={t} format={format} onOpenStock={onOpenStock}
     />
     <p className="dxs-muted">{t('hk.boundary')}</p>
   </article>

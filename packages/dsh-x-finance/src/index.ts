@@ -8,6 +8,9 @@ import { createMarketController, createProfileMarketPreference } from './market-
 import type { MarketController } from './market-preference.ts'
 import { createSinaGoldProvider } from './gold-provider.ts'
 import { createGoldRoute } from './gold-rpc.ts'
+import { createSinaNewsProvider } from './news-provider.ts'
+import type { NewsProvider } from './news-provider.ts'
+import { createNewsRoute } from './news-rpc.ts'
 import { createSearchRoute } from './search-rpc.ts'
 import { createUsRoute } from './us-rpc.ts'
 import { createTencentUsProvider } from './us-provider.ts'
@@ -65,6 +68,10 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
   // Hong Kong reuses the same switch and host family as the US board.
   let hkProvider: HkProvider | undefined
   try { hkProvider = createTencentHkProvider() } catch { /* No fetch: HK quotes report unavailable. */ }
+  // News shares the same opt-in. Without a fetch implementation the route stays
+  // unconfigured instead of failing the page.
+  let newsProvider: NewsProvider | undefined
+  try { newsProvider = createSinaNewsProvider() } catch { /* No fetch: news reports unavailable. */ }
   ctx.tools.register(defineTool(financeQuoteTool()))
   ctx.inject(['connection', 'profileContext'], (host: any) => {
     let marketController: MarketController | undefined
@@ -103,6 +110,11 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
     const goldProvider = createSinaGoldProvider()
     host.connection.fetch.register(createGoldRoute({
       provider: async () => (await sourceEnabled()) ? goldProvider : undefined,
+    }))
+    // The news feed is text, not a quote, but it is the same explicit opt-in:
+    // closing the source stops the browser from receiving anything at all.
+    host.connection.fetch.register(createNewsRoute({
+      provider: async () => (await sourceEnabled()) ? newsProvider : undefined,
     }))
     if (marketController) {
       host.connection.fetch.register(createMarketRoute({ provider: () => marketController!.getProvider() }))

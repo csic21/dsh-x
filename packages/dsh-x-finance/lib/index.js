@@ -5,6 +5,8 @@ import { createMarketPreferenceRoute, createMarketRoute } from './market-rpc.js'
 import { createMarketController, createProfileMarketPreference } from './market-preference.js';
 import { createSinaGoldProvider } from './gold-provider.js';
 import { createGoldRoute } from './gold-rpc.js';
+import { createSinaNewsProvider } from './news-provider.js';
+import { createNewsRoute } from './news-rpc.js';
 import { createSearchRoute } from './search-rpc.js';
 import { createUsRoute } from './us-rpc.js';
 import { createTencentUsProvider } from './us-provider.js';
@@ -45,6 +47,13 @@ export function apply(ctx, config = {}) {
         hkProvider = createTencentHkProvider();
     }
     catch { /* No fetch: HK quotes report unavailable. */ }
+    // News shares the same opt-in. Without a fetch implementation the route stays
+    // unconfigured instead of failing the page.
+    let newsProvider;
+    try {
+        newsProvider = createSinaNewsProvider();
+    }
+    catch { /* No fetch: news reports unavailable. */ }
     ctx.tools.register(defineTool(financeQuoteTool()));
     ctx.inject(['connection', 'profileContext'], (host) => {
         let marketController;
@@ -96,6 +105,11 @@ export function apply(ctx, config = {}) {
         const goldProvider = createSinaGoldProvider();
         host.connection.fetch.register(createGoldRoute({
             provider: async () => (await sourceEnabled()) ? goldProvider : undefined,
+        }));
+        // The news feed is text, not a quote, but it is the same explicit opt-in:
+        // closing the source stops the browser from receiving anything at all.
+        host.connection.fetch.register(createNewsRoute({
+            provider: async () => (await sourceEnabled()) ? newsProvider : undefined,
         }));
         if (marketController) {
             host.connection.fetch.register(createMarketRoute({ provider: () => marketController.getProvider() }));

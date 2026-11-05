@@ -22,6 +22,7 @@ import { HkDetail } from './hk/HkView.tsx'
 import { isUsSymbol, normalizeUsCode, normalizeUsSymbol } from '../us-market.ts'
 import { isHkSymbol, normalizeHkSymbol } from '../hk-market.ts'
 import { FundamentalsPanel } from './FundamentalsPanel.tsx'
+import { NewsPanel } from './news/NewsPanel.tsx'
 import { isExchangeFund } from '../holdings.ts'
 const tone = (value: any) => value > 0 ? 'dxs-up' : value < 0 ? 'dxs-down' : ''
 function ShortcutHint({ t }: any) {
@@ -104,17 +105,18 @@ export function StockIcon({ size = 20 }) {
 function SettingsIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" /><path d="M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
 }
-function Detail({ item, previewing, onAdd, onToggleFixed, useResource, t, format, scope, locale, rpc }: any) {
+function Detail({ item, previewing, onAdd, onToggleFixed, useResource, t, format, scope, locale, rpc, onOpenStock }: any) {
   const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol)
   const changeTone = tone(quote?.changePercent)
   // An ETF's periodic disclosure is a holdings book; a stock's is financials.
-  // The two never share a tab, so the first screen is always the chart.
+  // The two never share a tab, so the first screen is always the chart. News is
+  // the third view on both: it is the only tab that can say why the price moved.
   const fund = isExchangeFund(item.symbol)
-  const [tab, setTab] = useState<'chart' | 'holdings' | 'fundamentals'>('chart')
+  const [tab, setTab] = useState<'chart' | 'holdings' | 'fundamentals' | 'news'>('chart')
   const article = useRef<HTMLElement>(null)
   const tabs: [typeof tab, string][] = fund
-    ? [['chart', t('detail.tab.chart')], ['holdings', t('detail.tab.holdings')]]
-    : [['chart', t('detail.tab.chart')], ['fundamentals', t('detail.tab.fundamentals')]]
+    ? [['chart', t('detail.tab.chart')], ['holdings', t('detail.tab.holdings')], ['news', t('news.tab')]]
+    : [['chart', t('detail.tab.chart')], ['fundamentals', t('detail.tab.fundamentals')], ['news', t('news.tab')]]
   // The same detail instance follows the rail selection, so a reader comparing
   // filings keeps the Financials tab across stocks. A tab that the new
   // instrument does not have (an ETF has no financials) falls back to the chart.
@@ -155,7 +157,8 @@ function Detail({ item, previewing, onAdd, onToggleFixed, useResource, t, format
     </div>
     {activeTab === 'chart' ? <StockWorkbench key={`${scope}:${item.symbol}`} symbol={item.symbol} scope={scope} t={t} format={format} locale={locale} rpc={rpc} />
       : activeTab === 'holdings' ? <EtfHoldingsPanel key={`holdings:${item.symbol}`} symbol={item.symbol} rpc={rpc} t={t} format={format} />
-        : <FundamentalsPanel key={`fundamentals:${item.symbol}`} symbol={item.symbol} rpc={rpc} t={t} format={format} />}
+        : activeTab === 'fundamentals' ? <FundamentalsPanel key={`fundamentals:${item.symbol}`} symbol={item.symbol} rpc={rpc} t={t} format={format} />
+          : <NewsPanel key={`news:${item.symbol}`} symbol={item.symbol} name={quote?.name || item.alias || item.symbol} rpc={rpc} t={t} format={format} onOpenStock={onOpenStock} />}
   </article>
 }
 /**
@@ -414,10 +417,10 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
         <p className="dxs-muted">{t('preview.bar', { name: previewItem?.alias || previewItem?.symbol || '' })}</p>
       </div>
       {board === 'us'
-        ? <UsDetail key={`us-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
+        ? <UsDetail key={`us-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} onOpenStock={openStock} />
         : board === 'hk'
-          ? <HkDetail key={`hk-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
-          : <Detail key={`preview:${previewItem?.symbol}:${preference.enabled}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />}
+          ? <HkDetail key={`hk-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} onOpenStock={openStock} />
+          : <Detail key={`preview:${previewItem?.symbol}:${preference.enabled}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} onOpenStock={openStock} />}
     </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView key={`global:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} onChangeSource={changeSource} /></div> : view === 'quant-scan' ? <div className="dxs-stage dxs-stage-market"><SourceButton preference={preference} t={t} /><QuantScanView rpc={rpc} scope={state.scopeStatus === 'ready' ? state.scopeId : null} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpenStock={openStock} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'predict' ? <div className="dxs-stage dxs-stage-market"><PredictView rpc={rpc} t={t} format={format} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('predict.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView key={`market:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} discreet={discreet} preference={preference} onChangeSource={changeSource} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
       {sourceOff ? <div className="dxs-banner is-warn dxs-source-card"><div><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p>{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</div><SourceButton preference={preference} t={t} large /></div> : preference.status === 'error' ? <p role="alert" className="dxs-banner dxs-error">{t('source.unavailable')}</p> : null}
       {state.placement === 'occupied' && <p role="status" className="dxs-banner">{t('page.occupied')}</p>}
@@ -450,10 +453,10 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
           {state.scopeStatus === 'ready' && state.items.length ? <WatchSignals key={state.scopeId} rpc={rpc} scope={state.scopeId} items={state.items.filter((entry: any) => { try { return marketOf(entry.symbol) === 'cn' } catch { return false } })} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpen={selectStock} /> : null}
           {state.scopeStatus === 'ready' && (item
             ? board === 'us'
-              ? <UsDetail key={`${state.scopeId}:us:${item.symbol}:${preference.enabled}`} item={item} fixed={item.fixed} onToggleFixed={() => toggleFix(item)} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
+              ? <UsDetail key={`${state.scopeId}:us:${item.symbol}:${preference.enabled}`} item={item} fixed={item.fixed} onToggleFixed={() => toggleFix(item)} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} onOpenStock={openStock} />
               : board === 'hk'
-                ? <HkDetail key={`${state.scopeId}:hk:${item.symbol}:${preference.enabled}`} item={item} fixed={item.fixed} onToggleFixed={() => toggleFix(item)} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
-                : <Detail key={`${state.scopeId}:${preference.enabled}`} item={item} onToggleFixed={() => toggleFix(item)} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
+                ? <HkDetail key={`${state.scopeId}:hk:${item.symbol}:${preference.enabled}`} item={item} fixed={item.fixed} onToggleFixed={() => toggleFix(item)} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} onOpenStock={openStock} />
+                : <Detail key={`${state.scopeId}:${preference.enabled}`} item={item} onToggleFixed={() => toggleFix(item)} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} onOpenStock={openStock} />
             : <div className="dxs-stage-empty dxs-start">
               <div className="dxs-start-card">
                 <h2>{t('page.start.title')}</h2>
