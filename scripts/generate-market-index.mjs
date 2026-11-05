@@ -31,7 +31,7 @@ const packages = {
   },
   'dsh-x-finance': {
     title: { en: 'Finance', zh: '金融' },
-    description: { en: 'A-share watchlist research signals, daily analysis, market-wide screening, global indices and gold; read-only.', zh: 'A 股自选研究信号、每日分析、全市场筛选、全球指数与黄金面板；只读。' },
+    description: { en: 'A-share watchlist research signals, daily analysis, market-wide screening, global indices, gold and market news next to the session; read-only.', zh: 'A 股自选研究信号、每日分析、全市场筛选、全球指数、黄金面板，以及与当日分时对照的个股资讯；只读。' },
     category: 'data',
     icon: 'icons/dsh-x-finance.svg',
   },
