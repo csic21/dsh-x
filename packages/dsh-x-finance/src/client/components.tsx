@@ -4,10 +4,10 @@ import { MarketView } from './market/MarketView.tsx'
 import { HotView } from './market/HotView.tsx'
 import { PredictView } from './market/PredictView.tsx'
 import { GlobalView } from './market/GlobalView.tsx'
-import { InstrumentLookup, InstrumentSearch } from './SearchBox.tsx'
-import { normalizeAShare, MAX_FIXED, MAX_WATCHLIST, fixedItems, quoteStatus } from '../watchlist.ts'
+import { InstrumentLookup } from './SearchBox.tsx'
+import { MAX_FIXED, MAX_WATCHLIST, fixedItems, quoteStatus } from '../watchlist.ts'
 import { fixedBarShortcutKeys, fixedBarShortcutLabel } from './shortcut.ts'
-import { addressFor, fixedAddressFor } from './resource.ts'
+import { addressFor, fixedAddressFor, watchlistAddressFor } from './resource.ts'
 import { errorKey } from './locales.ts'
 import { useMarketPreference } from './market/data.ts'
 import { SourceButton } from './source-button.tsx'
@@ -20,6 +20,7 @@ import { EtfHoldingsPanel } from './HoldingsPanel.tsx'
 import { UsDetail } from './us/UsView.tsx'
 import { isUsSymbol, normalizeUsCode, normalizeUsSymbol } from '../us-market.ts'
 import { FundamentalsPanel } from './FundamentalsPanel.tsx'
+import { isExchangeFund } from '../holdings.ts'
 const tone = (value: any) => value > 0 ? 'dxs-up' : value < 0 ? 'dxs-down' : ''
 function ShortcutHint({ t }: any) {
   const keys = fixedBarShortcutKeys()
@@ -90,64 +91,132 @@ export function StockIcon({ size = 20 }) {
 function SettingsIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" /><path d="M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
 }
-function AddStock({ add, count, fixedCount, ready, rpc, t, format, sourceRevision }: any) {
-  const [exchange, setExchange] = useState('SH'), [code, setCode] = useState(''), [alias, setAlias] = useState(''), [fix, setFix] = useState(false), [error, setError] = useState('')
-  const [picked, setPicked] = useState<any>(null)
-  const submit = (event: any) => {
-    event.preventDefault()
-    try { add({ symbol: normalizeAShare(exchange, code), alias, fixed: fix }); setCode(''); setAlias(''); setFix(false); setError(''); setPicked(null) }
-    catch (failure: any) { setError(errorKey(failure.code)) }
-  }
-  const pick = (match: any) => {
-    const [market, digits] = String(match.symbol).split('.')
-    setExchange(market); setCode(digits)
-    setAlias(current => current.trim() ? current : match.name)
-    setPicked(match); setError('')
-  }
-  return <form className="dxs-form" onSubmit={submit} noValidate>
-    <h2>{t('add.title')}</h2>
-    <InstrumentSearch rpc={rpc} onPick={pick} t={t} refreshToken={sourceRevision} />
-    {picked && <p className="dxs-picked" role="status">{t('add.selected', { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })}</p>}
-    <div className="dxs-form-grid">
-      <label className="dxs-field">{t('add.exchange')}<select name="exchange" value={exchange} onChange={event => { setExchange(event.target.value); setPicked(null) }}>{['SH', 'SZ', 'BJ'].map(value => <option key={value} value={value}>{t(`exchange.${value}`)}</option>)}</select></label>
-      <label className="dxs-field">{t('add.code')}<input name="code" value={code} onChange={event => { setCode(event.target.value); setPicked(null) }} inputMode="numeric" maxLength={6} placeholder="600519" required pattern="[0-9]{6}" /></label>
-    </div>
-    <label className="dxs-field">{t('add.alias')}<input name="alias" value={alias} onChange={event => setAlias(event.target.value)} maxLength={24} placeholder={t('add.alias.placeholder')} /></label>
-    <div className="dxs-form-submit">
-      <label className="dxs-check"><input type="checkbox" name="fixed" checked={fix} disabled={fixedCount >= MAX_FIXED} onChange={event => setFix(event.target.checked)} /> {t('add.fix', { max: format.count(MAX_FIXED) })}</label>
-      <button type="submit" className="dxs-primary" disabled={!ready || count >= MAX_WATCHLIST}>{t('add.submit', { count: format.count(count) })}</button>
-    </div>
-    {error && <p role="alert" className="dxs-error">{t(error, { max: format.count(error === 'error.fixed-limit' ? MAX_FIXED : MAX_WATCHLIST) })}</p>}
-  </form>
-}
-function Detail({ item, previewing, onAdd, useResource, t, format, scope, locale, rpc }: any) {
+function Detail({ item, previewing, onAdd, onToggleFixed, useResource, t, format, scope, locale, rpc }: any) {
   const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol)
   const changeTone = tone(quote?.changePercent)
-  return <article aria-label={t('detail.aria', { symbol: item.symbol })}>
-    <section className="dxs-section dxs-instrument-summary">
-      <div className="dxs-quote-identity">
-        <h2>{item.alias || quote?.name || item.symbol}</h2>
-        <p className="dxs-symbol-line"><span className="dxs-symbol">{item.symbol}</span>{item.alias ? t('detail.alias') : ''}{item.fixed ? t('detail.fixed') : ''}{previewing ? t('detail.preview') : ''}
-          {/* A preview is opened from the market and is not on the list yet;
-              saving it is this one explicit, compact action. */}
-          {previewing && onAdd ? <button type="button" className="dxs-preview-add" onClick={onAdd} title={t('detail.preview.add-hint')}>{t('detail.preview.add-short')}</button> : null}
-        </p>
-      </div>
-      <div className="dxs-quote-figures">
-        <div className={`dxs-price ${changeTone}`}>{format.priceAt(quote?.price, quote?.pricePrecision)}</div>
-        <div className={`dxs-change ${changeTone}`}>{format.change(quote?.changePercent)}</div>
-        <p className="dxs-status-line"><Status snapshot={snapshot} quote={quote} t={t} format={format} /></p>
-      </div>
-      <details className="dxs-quote-metadata"><summary>{t('detail.source')}</summary><dl><dt>{t('detail.source')}</dt><dd>{sourceOf(snapshot) || t('detail.no-source')}</dd><dt>{t('detail.quoted-at')}</dt><dd>{format.time(quote?.quotedAt, t)}</dd><dt>{t('detail.fetched-at')}</dt><dd>{format.time(quote?.fetchedAt, t)}</dd></dl>
-      <p className="dxs-muted">{t('detail.time-notice')}</p></details>
-    </section>
-    <EtfHoldingsPanel symbol={item.symbol} rpc={rpc} t={t} format={format} />
-    <StockWorkbench key={`${scope}:${item.symbol}`} symbol={item.symbol} scope={scope} t={t} format={format} locale={locale} rpc={rpc} />
-    <FundamentalsPanel symbol={item.symbol} rpc={rpc} t={t} format={format} />
-    <div className="dxs-secondary">
-      <details className="dxs-section"><summary>{t('detail.analysis')}</summary><p>{t('detail.no-analysis')}</p><p className="dxs-muted">{t('detail.analysis-notice')}</p></details>
+  // An ETF's periodic disclosure is a holdings book; a stock's is financials.
+  // The two never share a tab, so the first screen is always the chart.
+  const fund = isExchangeFund(item.symbol)
+  const [tab, setTab] = useState<'chart' | 'holdings' | 'fundamentals'>('chart')
+  const article = useRef<HTMLElement>(null)
+  const tabs: [typeof tab, string][] = fund
+    ? [['chart', t('detail.tab.chart')], ['holdings', t('detail.tab.holdings')]]
+    : [['chart', t('detail.tab.chart')], ['fundamentals', t('detail.tab.fundamentals')]]
+  // The same detail instance follows the rail selection, so a reader comparing
+  // filings keeps the Financials tab across stocks. A tab that the new
+  // instrument does not have (an ETF has no financials) falls back to the chart.
+  const activeTab = tabs.some(([key]) => key === tab) ? tab : 'chart'
+  useEffect(() => { if (activeTab !== tab) setTab(activeTab) }, [item.symbol])
+  const pick = (next: typeof tab) => {
+    if (next === tab) return
+    setTab(next)
+    // The tab bar is sticky, so a switch can happen far down the previous
+    // panel; bring the stock header back to the top instead of leaving the
+    // reader in the middle of a chart or a table.
+    article.current?.scrollIntoView?.({ block: 'start' })
+  }
+  return <article ref={article} aria-label={t('detail.aria', { symbol: item.symbol })}>
+    <div className="dxs-detail-top">
+      <section className="dxs-section dxs-instrument-summary">
+        <div className="dxs-quote-identity">
+          <h2>{item.alias || quote?.name || item.symbol}</h2>
+          <p className="dxs-symbol-line"><span className="dxs-symbol">{item.symbol}</span>{item.alias ? t('detail.alias') : ''}{previewing ? t('detail.preview') : ''}
+            {/* A preview is opened from the market and is not on the list yet;
+                saving it is this one explicit, compact action. A saved row gets
+                the same fixed/unfixed decision it has in the rail. */}
+            {previewing && onAdd ? <button type="button" className="dxs-preview-add" onClick={onAdd} title={t('detail.preview.add-hint')}>{t('detail.preview.add-short')}</button> : null}
+            {!previewing && onToggleFixed ? <button type="button" className="dxs-detail-fix" aria-pressed={Boolean(item.fixed)} onClick={onToggleFixed} title={t(item.fixed ? 'page.unfix-aria' : 'page.fix-aria', { symbol: item.symbol })}>{item.fixed ? t('detail.unfix') : t('detail.fix')}</button> : null}
+          </p>
+        </div>
+        <div className="dxs-quote-figures">
+          <div className={`dxs-price ${changeTone}`}>{format.priceAt(quote?.price, quote?.pricePrecision)}</div>
+          <div className={`dxs-change ${changeTone}`}>{format.change(quote?.changePercent)}</div>
+          <p className="dxs-status-line"><Status snapshot={snapshot} quote={quote} t={t} format={format} /></p>
+        </div>
+        <details className="dxs-quote-metadata"><summary>{t('detail.source')}</summary><dl><dt>{t('detail.source')}</dt><dd>{sourceOf(snapshot) || t('detail.no-source')}</dd><dt>{t('detail.quoted-at')}</dt><dd>{format.time(quote?.quotedAt, t)}</dd><dt>{t('detail.fetched-at')}</dt><dd>{format.time(quote?.fetchedAt, t)}</dd></dl>
+        <p className="dxs-muted">{t('detail.time-notice')}</p></details>
+      </section>
+      <nav className="dxs-detail-tabs" aria-label={t('detail.tabs.aria')}>
+        {tabs.map(([key, label]) => <button key={key} type="button" aria-pressed={activeTab === key} onClick={() => pick(key)}>{label}</button>)}
+      </nav>
     </div>
+    {activeTab === 'chart' ? <StockWorkbench key={`${scope}:${item.symbol}`} symbol={item.symbol} scope={scope} t={t} format={format} locale={locale} rpc={rpc} />
+      : activeTab === 'holdings' ? <EtfHoldingsPanel key={`holdings:${item.symbol}`} symbol={item.symbol} rpc={rpc} t={t} format={format} />
+        : <FundamentalsPanel key={`fundamentals:${item.symbol}`} symbol={item.symbol} rpc={rpc} t={t} format={format} />}
   </article>
+}
+/**
+ * The watchlist rail is also the page's quote board: every saved row carries
+ * the latest price and change, read through one batched resource so a ten-stock
+ * list costs two requests, not ten. Adding is not duplicated here — the header
+ * lookup is the single entry, and a picked stock is saved from its own page.
+ */
+function WatchRail({ items, selected, fixError, selectStock, move, toggleFix, remove, useResource, t, format, barHidden, toggleBar, showBarInDiscreet, discreet, appearance, quotesOff, setView }: any) {
+  const snapshot = useResource(watchlistAddressFor(items.map((entry: any) => entry.symbol)))
+  const quotes = new Map<string, any>((snapshot?.value?.quotes ?? []).map((quote: any) => [quote?.symbol, quote]))
+  const newestQuote = [...quotes.values()].filter((quote: any) => Number.isFinite(Date.parse(quote?.quotedAt))).sort((left: any, right: any) => Date.parse(right.quotedAt) - Date.parse(left.quotedAt))[0]
+  const newest = newestQuote ? Date.parse(newestQuote.quotedAt) : undefined
+  const source = typeof snapshot?.value?.source === 'string' && snapshot.value.source ? snapshot.value.source : t('page.quote.no-source')
+  const off = quotesOff || snapshot?.value?.status === 'unconfigured'
+  const live = Boolean(newest && quoteStatus(newestQuote) === 'recent')
+  const status = off
+    ? t('page.quote.off')
+    : snapshot?.status === 'loading'
+      ? t('page.quote.loading')
+      : snapshot?.status === 'failed'
+        ? t('page.quote.failed')
+        : `${t(live ? 'page.quote.live' : 'page.quote.recent', { source })}${newest ? ` · ${t('page.quote.updated', { time: format.clock(newest) })}` : ''}`
+  return <aside className="dxs-rail" aria-label={t('page.manage')}>
+    <header className="dxs-rail-head">
+      <div className="dxs-rail-heading">
+        <h2>{t('page.my-watchlist')}</h2>
+        <p className="dxs-counts">{t('page.counts', { count: format.count(items.length), fixed: format.count(fixedItems(items).length), max: format.count(MAX_FIXED) })}</p>
+      </div>
+      {items.length ? <p className={`dxs-rail-quote${off ? ' is-off' : live ? '' : ' is-idle'}`} title={t('page.quote.hint')}>
+        <span className="dxs-rail-dot" aria-hidden="true" />
+        <span>{status}</span>
+      </p> : null}
+    </header>
+    <div className="dxs-rail-list">
+      {!items.length && <div className="dxs-empty"><p className="dxs-muted">{t('page.empty')}</p><p className="dxs-muted">{t('page.empty.lookup')}</p><button type="button" onClick={() => setView('market')}>{t('page.view.market-hint')}</button></div>}
+      <ol className="dxs-list">{items.map((entry: any, index: any) => {
+        const quote = quotes.get(entry.symbol)
+        const changeTone = tone(quote?.changePercent)
+        const price = quote?.price == null ? '—' : format.priceAt(quote.price, quote.pricePrecision)
+        const change = quote?.price == null ? '—' : format.change(quote.changePercent)
+        return <li key={entry.symbol} className={selected === entry.symbol ? 'is-selected' : undefined}>
+          <button type="button" className="dxs-select" aria-pressed={selected === entry.symbol} title={t('chip.title', { symbol: entry.symbol, status: t(`status.${quoteStatus(quote)}`) })} onClick={() => selectStock(entry.symbol)}>
+            <span className="dxs-row-name"><strong>{entry.alias || entry.symbol}</strong></span>
+            <span className="dxs-row-meta">{entry.alias ? <span className="dxs-muted">{entry.symbol}</span> : null}</span>
+            <span className={`dxs-row-quote ${changeTone}${quote?.price == null ? ' is-empty' : ''}`}>
+              <span className="dxs-row-price">{price}</span>
+              <span className="dxs-row-change">{change}</span>
+            </span>
+          </button>
+          <div className="dxs-controls">
+            <button type="button" className="dxs-icon-button" disabled={index === 0} aria-label={t('page.move-up', { symbol: entry.symbol })} onClick={() => move(entry.symbol, -1)}>↑</button>
+            <button type="button" className="dxs-icon-button" disabled={index === items.length - 1} aria-label={t('page.move-down', { symbol: entry.symbol })} onClick={() => move(entry.symbol, 1)}>↓</button>
+            <button type="button" className="dxs-icon-button" aria-pressed={entry.fixed} aria-label={t(entry.fixed ? 'page.unfix-aria' : 'page.fix-aria', { symbol: entry.symbol })} title={entry.fixed ? t('page.unfix') : t('page.fix')} onClick={() => toggleFix(entry)}>{entry.fixed ? '★' : '☆'}</button>
+            <button type="button" className="dxs-icon-button dxs-remove" aria-label={t('page.remove-aria', { symbol: entry.symbol })} title={t('page.remove')} onClick={() => remove(entry.symbol)}>✕</button>
+          </div>
+        </li>
+      })}</ol>
+      {fixError && <p role="alert" className="dxs-error">{t(fixError, { max: format.count(MAX_FIXED) })}</p>}
+    </div>
+    <div className="dxs-rail-foot">
+      <p className="dxs-bar-toggle">
+        {discreet && !appearance.barInDiscreet
+          ? <button type="button" onClick={showBarInDiscreet} title={t('page.bar-quiet-hint')}>{t('page.bar-quiet-show')}</button>
+          : barHidden ? <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button> : <button type="button" onClick={() => toggleBar()}>{t('page.bar-hide')}</button>}
+        <ShortcutHint t={t} />
+      </p>
+      <details className="dxs-fineprint">
+        <summary>{t('page.notes')}</summary>
+        {!quotesOff ? <p>{t('page.notice')}</p> : null}
+        <p>{t('page.fixed-hint', { max: format.count(MAX_FIXED) })}</p>
+      </details>
+    </div>
+  </aside>
 }
 export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move, select, preview, closePreview, setFixed, toggleBar, back, retryScope, settings, t, format, getLocale = () => 'en' }: any) {
   const state = useWatchlist((value: any) => value)
@@ -168,8 +237,11 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const leavePreview = () => { setUsPreview(null); closePreview(); setDrillNotice('') }
   const selected = previewItem ? undefined : state.items.find((entry: any) => entry.symbol === state.selectedSymbol)
   const item = previewItem ?? selected ?? state.items[0]
-  const fixedCount = fixedItems(state.items).length
   const [view, setView] = useState<'watchlist' | 'market' | 'quant-scan' | 'hot' | 'predict' | 'global' | 'gold'>('watchlist')
+  // Switching a stock keeps the left rail in place but starts the detail at
+  // its header, never halfway down the previous chart.
+  const watchStage = useRef<HTMLDivElement>(null)
+  useEffect(() => { watchStage.current?.scrollTo?.({ top: 0 }) }, [item?.symbol])
   const [fixError, setFixError] = useState('')
   const [drillNotice, setDrillNotice] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -296,48 +368,41 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
       {state.scopeStatus === 'failed' && <p className="dxs-banner"><button onClick={retryScope}>{t('page.scope-retry')}</button></p>}
       {state.storageError && <p role="alert" className="dxs-banner dxs-error">{t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })}</p>}
       <div className="dxs-layout">
-        <aside className="dxs-rail" aria-label={t('page.manage')}>
-          <header className="dxs-rail-head">
-            <h2>{t('page.my-watchlist')}</h2>
-            <p className="dxs-counts">{t('page.counts', { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) })}</p>
-          </header>
-          <div className="dxs-rail-list">
-            {!state.items.length && <div className="dxs-empty"><p className="dxs-muted">{t('page.empty')}</p><p className="dxs-muted">{t('page.empty.lookup')}</p><button type="button" onClick={() => setView('market')}>{t('page.view.market-hint')}</button></div>}
-            <ol className="dxs-list">{state.items.map((entry: any, index: any) => <li key={entry.symbol} className={item?.symbol === entry.symbol ? 'is-selected' : undefined}>
-              <button type="button" className="dxs-select" aria-pressed={item?.symbol === entry.symbol} onClick={() => selectStock(entry.symbol)}>
-                <span className="dxs-row-name"><strong>{entry.alias || entry.symbol}</strong>{entry.fixed ? <span className="dxs-fixed-mark">{t('page.fixed')}</span> : null}</span>
-                <span className="dxs-row-meta">{entry.alias ? <span className="dxs-muted">{entry.symbol}</span> : null}</span>
-              </button>
-              <div className="dxs-controls">
-                <button type="button" className="dxs-icon-button" disabled={index === 0} aria-label={t('page.move-up', { symbol: entry.symbol })} onClick={() => move(entry.symbol, -1)}>↑</button>
-                <button type="button" className="dxs-icon-button" disabled={index === state.items.length - 1} aria-label={t('page.move-down', { symbol: entry.symbol })} onClick={() => move(entry.symbol, 1)}>↓</button>
-                <button type="button" className="dxs-icon-button" aria-pressed={entry.fixed} aria-label={t(entry.fixed ? 'page.unfix-aria' : 'page.fix-aria', { symbol: entry.symbol })} title={entry.fixed ? t('page.unfix') : t('page.fix')} onClick={() => toggleFix(entry)}>{entry.fixed ? '★' : '☆'}</button>
-                <button type="button" className="dxs-icon-button dxs-remove" aria-label={t('page.remove-aria', { symbol: entry.symbol })} title={t('page.remove')} onClick={() => remove(entry.symbol)}>✕</button>
-              </div>
-            </li>)}</ol>
-            {fixError && <p role="alert" className="dxs-error">{t(fixError, { max: format.count(MAX_FIXED) })}</p>}
-          </div>
-          <div className="dxs-rail-foot">
-            <p className="dxs-bar-toggle">
-              {discreet && !appearance.barInDiscreet
-                ? <button type="button" onClick={showBarInDiscreet} title={t('page.bar-quiet-hint')}>{t('page.bar-quiet-show')}</button>
-                : state.barHidden ? <button type="button" onClick={() => toggleBar()}>{t('page.bar-show')}</button> : <button type="button" onClick={() => toggleBar()}>{t('page.bar-hide')}</button>}
-              <ShortcutHint t={t} />
-            </p>
-            <AddStock add={add} count={state.items.length} fixedCount={fixedCount} ready={state.scopeStatus === 'ready'} rpc={rpc} t={t} format={format} sourceRevision={sourceRevision} />
-            <details className="dxs-fineprint">
-              <summary>{t('page.notes')}</summary>
-              {!sourceOff ? <p>{t('page.notice')}</p> : null}
-              <p>{t('page.fixed-hint', { max: format.count(MAX_FIXED) })}</p>
-              <p>{t('add.notice')}</p>
-            </details>
-          </div>
-        </aside>
-        <div className="dxs-stage">
-          {state.scopeStatus === 'ready' ? <WatchSignals key={state.scopeId} rpc={rpc} scope={state.scopeId} items={state.items} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpen={selectStock} /> : null}
+        <WatchRail
+          key={`rail:${preference.enabled ? 'on' : 'off'}`}
+          items={state.items}
+          selected={item?.symbol}
+          fixError={fixError}
+          selectStock={selectStock}
+          move={move}
+          toggleFix={toggleFix}
+          remove={remove}
+          useResource={useResource}
+          t={t}
+          format={format}
+          barHidden={state.barHidden}
+          toggleBar={toggleBar}
+          showBarInDiscreet={showBarInDiscreet}
+          discreet={discreet}
+          appearance={appearance}
+          quotesOff={sourceOff}
+          setView={setView}
+        />
+        <div className="dxs-stage" ref={watchStage}>
+          {state.scopeStatus === 'ready' && state.items.length ? <WatchSignals key={state.scopeId} rpc={rpc} scope={state.scopeId} items={state.items} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpen={selectStock} /> : null}
           {state.scopeStatus === 'ready' && (item
-            ? <Detail key={`${state.scopeId}:${preference.enabled}:${item.symbol}`} item={item} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
-            : <div className="dxs-stage-empty"><h2>{t('page.select')}</h2><p className="dxs-muted">{t('page.select-hint')}</p><StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} rpc={rpc} /></div>)}
+            ? <Detail key={`${state.scopeId}:${preference.enabled}`} item={item} onToggleFixed={() => toggleFix(item)} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
+            : <div className="dxs-stage-empty dxs-start">
+              <div className="dxs-start-card">
+                <h2>{t('page.start.title')}</h2>
+                <p>{t('page.start.body')}</p>
+                <div className="dxs-start-actions">
+                  <button type="button" className="dxs-primary" onClick={() => setView('market')}>{t(discreet ? 'settings.tab.market' : 'page.view.market-hint')}</button>
+                  <button type="button" onClick={() => setView('hot')}>{t(discreet ? 'settings.tab.hot' : 'page.view.hot')}</button>
+                </div>
+              </div>
+              <details className="dxs-start-local"><summary>{t('page.start.local')}</summary><StockWorkbench key={state.scopeId} scope={state.scopeId} t={t} format={format} locale={getLocale()} rpc={rpc} /></details>
+            </div>)}
         </div>
       </div>
     </>}

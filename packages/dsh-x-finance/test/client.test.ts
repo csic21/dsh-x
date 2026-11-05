@@ -23,6 +23,8 @@ test('built client separates the watchlist from the fixed bar and supports add/o
   const storageKey=`dsh-x-finance:watchlist:v2:${scope}`
   const locale = await createOfficialLocale()
   const rpcCalls: any[]=[]
+  // A moving quote keeps the rail's own "live" label testable on any run date.
+  const freshAt=new Date().toISOString()
   const ctx: any={locale,slots,on(){return()=>{}},effect(fn: any){const dispose=fn();effects.push(dispose);return dispose},resources:{register(provider: any){resources.push(provider);return()=>{}}},connection:{rpc:{call:async(channel: any,endpoint: any,payload: any)=>{
     rpcCalls.push(JSON.parse(JSON.stringify({endpoint,payload})))
     if(endpoint==='dsh-x-finance.scope')return {ok:true,value:{scope}}
@@ -68,8 +70,10 @@ test('built client separates the watchlist from the fixed bar and supports add/o
       const useResource=(address: any)=>{
         const path=String(address).replace('dsh-resource://dsh-x-finance/','')
         const [kind,rest]=path.split('/')
-        const symbols=kind==='fixed'?String(rest).split(','):[String(rest)]
-        return {status:'live',value:{source:'test-source',quotes:symbols.map(symbol=>({symbol,status:'unconfigured',name:'',price:null,changePercent:null,quotedAt:null,fetchedAt:'2026-10-16T07:00:00Z',marketStatus:'unknown'}))}}
+        const symbols=kind==='quote'?[String(rest)]:String(rest).split(',').filter(Boolean)
+        // The rail list carries prices; the detail and fixed bar keep the
+        // existing unconfigured fixture so their status text stays covered.
+        return {status:'live',value:{source:'test-source',quotes:symbols.map(symbol=>({symbol,status:kind==='list'?'available':'unconfigured',name:'',price:kind==='list'?12.34:null,pricePrecision:2,changePercent:kind==='list'?1.23:null,quotedAt:kind==='list'?freshAt:null,fetchedAt:'2026-10-16T07:00:00Z',marketStatus:'unknown'}))}}
       }
       return React.createElement(entry.component,{...face,useWatchlist,useResource,t:locale.bind(entry.options.locale)})
     }
@@ -77,20 +81,27 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     const click=async (button: any)=>act(async()=>button.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})))
     await render(page)
     assert.match(document.body.textContent,/还没有自选股票/)
+    // First run is a start card, not a stock detail with no stock in it.
+    assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-start-card')!.textContent!,/从一只股票开始/)
+    assert.ok(document.querySelector('details.dxs-start-local'),'the local chart import stays available')
+    assert.equal(document.querySelector('.dxs-detail-tabs'),null)
     const input=async(element: any,value: any)=>act(async()=>{
       const prototype=element.tagName==='SELECT'?dom.window.HTMLSelectElement.prototype:dom.window.HTMLInputElement.prototype
       ;(Object.getOwnPropertyDescriptor(prototype,'value'))!.set!.call(element,value)
       element.dispatchEvent(new dom.window.Event(element.tagName==='SELECT'?'change':'input',{bubbles:true}))
     })
-    const submit=async()=>act(async()=>(document.querySelector<HTMLElement & HTMLInputElement>('form'))!.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})))
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[inputmode="numeric"]'),'600519')
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="alias"]'),'贵州茅台')
-    await submit()
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('select[name="exchange"]'),'SZ')
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[inputmode="numeric"]'),'000001')
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="alias"]'),'平安银行')
-    await submit()
+    // The header search is the only add entry, so the rail starts without a
+    // form of its own: rows are quotes, not an editing surface.
+    assert.equal(document.querySelector('.dxs-form'),null,'the rail must not keep a second add form')
+    const add=async(item: any)=>act(async()=>page.options.inject().add(item))
+    await add({symbol:'SH.600519',alias:'贵州茅台',fixed:false})
+    await add({symbol:'SZ.000001',alias:'平安银行',fixed:false})
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.getAttribute('aria-label'),'SZ.000001 股票详情')
+    // Each rail row is a live quote: price and signed change, not just an alias.
+    const railText=()=>document.querySelector<HTMLElement & HTMLInputElement>('.dxs-rail')!.textContent!
+    assert.match(railText(),/平安银行/)
+    assert.match(railText(),/12\.34\+1\.23%/)
+    assert.match(railText(),/实时行情 · test-source/)
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="上移 SZ.000001"]'))
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('ol li'))!.textContent,/平安银行/)
     // Being on the watchlist is not being fixed: the bar is still absent.
@@ -145,7 +156,7 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     // preview page and writes nothing to the saved list.
     const lookup=document.querySelector<HTMLElement & HTMLInputElement>('.dxs-lookup input[name="instrument-lookup"]')!
     assert.ok(lookup,'the page offers a directory field of its own')
-    assert.ok(document.querySelector('input[name="instrument-search"]'),'the add form keeps its own directory field')
+    assert.equal(document.querySelector('input[name="instrument-search"]'),null,'the unified lookup replaced the rail search field')
     await input(lookup,'比亚')
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
     await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup-bar [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
@@ -173,34 +184,27 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.deepEqual(saved().items.map((item: any)=>item.symbol),['SZ.000001'],'a US lookup must not write the watchlist')
     assert.equal([...document.querySelectorAll('.dxs-strip .dxs-chip')].some((chip: any)=>chip.textContent?.includes('US.AAPL')),false,'a US listing never reaches the bottom bar')
     await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-back')!)
-    // Name search in the add form: an explicit query, a debounce, then a pick
-    // that fills the manual fields. The preview above unmounted the rail, so the
-    // field is re-read instead of reusing a detached node.
-    assert.match(document.body.textContent!, /搜索使用本机免费源/)
+    // Saving is the preview's explicit second step; the rail itself has no
+    // form, and the same directory lookup serves every view.
+    const backToCn=document.querySelector<HTMLSelectElement>('select.dxs-lookup-market')!
+    Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype,'value')!.set!.call(backToCn,'cn')
+    await act(async()=>backToCn.dispatchEvent(new dom.window.Event('change',{bubbles:true})))
     const beforeAddSearch=rpcCalls.length
-    await input(document.querySelector<HTMLElement & HTMLInputElement>('input[name="instrument-search"]'),'比亚')
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-lookup input[name="instrument-lookup"]')!,'比亚')
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
-    // Only the add form asks for a directory query here: the lookup above was
-    // already debounced and settled before this point.
     assert.deepEqual(rpcCalls.slice(beforeAddSearch).filter((call: any)=>call.payload?.action==='search'),[{endpoint:'dsh-x-finance.search',payload:{action:'search',query:'比亚'}}])
-    assert.match(document.body.textContent!, /比亚迪/)
-    await click([...document.querySelectorAll<HTMLElement>('.dxs-form [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
-    assert.equal(document.querySelector<HTMLInputElement>('input[name="code"]')!.value,'002594')
-    assert.equal(document.querySelector<HTMLSelectElement>('select[name="exchange"]')!.value,'SZ')
-    assert.equal(document.querySelector<HTMLInputElement>('input[name="alias"]')!.value,'比亚迪')
-    assert.match(document.body.textContent!, /已选择 比亚迪 · SZ.002594 · 股票/)
-    await submit()
-    // Adding an alias alone never fixes a stock to the bar.
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup-bar [role="option"]')].find(option=>option.textContent!.includes('比亚迪'))!)
+    assert.match(document.body.textContent!, /临时查看（未加入自选）/)
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-add')!)
+    // A saved preview never fixes itself to the bottom bar.
     assert.deepEqual(saved().items.at(-1),{symbol:'SZ.002594',alias:'比亚迪',fixed:false})
+    assert.equal((document.querySelector('article'))!.getAttribute('aria-label'),'SZ.002594 股票详情')
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 SZ.002594"]'))
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.getAttribute('aria-label'),'SZ.000001 股票详情')
-    const form=document.querySelector<HTMLElement & HTMLInputElement>('form')
-    await act(async()=>(form)!.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})))
-    assert.match((document.querySelector<HTMLElement & HTMLInputElement>('[role="alert"]'))!.textContent,/六位/)
     await act(async () => locale.setLocale('en'))
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('h1'))!.textContent, 'Finance')
-    assert.match((document.querySelector<HTMLElement & HTMLInputElement>('[role="alert"]'))!.textContent, /six-digit/)
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.textContent, /平安银行/)
+    assert.match(document.body.textContent!, /Live · test-source/)
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.textContent, /10\/16\/2026, 15:00:00 \(Shanghai\)/)
     assert.equal(entries.get('sidebar.panellist')[0].options.label(), 'Finance')
     assert.ok(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="Move SZ.000001 up"]'))
@@ -209,13 +213,20 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     await act(async () => (locale as any).addLanguage({ id: 'fr', label: 'Français', fallback: 'en' }))
     await act(async () => locale.setLocale('fr'))
     assert.equal((document.querySelector<HTMLElement & HTMLInputElement>('h1'))!.textContent, 'Finance')
-    assert.match((document.querySelector<HTMLElement & HTMLInputElement>('[role="alert"]'))!.textContent, /six-digit/)
     assert.match((document.querySelector<HTMLElement & HTMLInputElement>('article'))!.textContent, /16\/10\/2026 15:00:00 \(Shanghai\)/)
     await act(async () => locale.setLocale('zh'))
-    assert.match((document.querySelector<HTMLElement & HTMLInputElement>('[role="alert"]'))!.textContent, /六位/)
+    assert.match(document.body.textContent!, /实时行情 · test-source/)
     assert.match(document.body.textContent,/日 K 数据未开启/)
-    assert.match(document.body.textContent,/数据不足/)
     assert.equal(document.querySelectorAll('canvas').length,0)
+    // The stock header carries its own view tabs; the chart is the first screen
+    // and the fixed decision is available without going back to the rail.
+    const detailTabs=[...document.querySelectorAll<HTMLElement>('.dxs-detail-tabs button')]
+    assert.deepEqual(detailTabs.map(button=>button.textContent),['行情','财务'])
+    assert.match(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-detail-fix')!.textContent!,/取消固定/)
+    await click(detailTabs[1]!)
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.ok(document.querySelector('.dxs-fundamentals'),'the financials tab mounts the filing panel')
+    await click(detailTabs[0]!)
     // Discreet mode hides the bar by default, but the page offers a one-click
     // keep action; the bar then renders with the same neutral palette.
     await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-haspopup="dialog"]')!)

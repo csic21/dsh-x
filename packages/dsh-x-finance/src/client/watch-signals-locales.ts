@@ -3,6 +3,8 @@ export const watchSignalsZh = {
   'signal.title': '自选量化信号',
   'signal.subtitle': '逐只分析自选的日线趋势，显示规则触发的原因；自选不代表持仓。',
   'signal.run': '分析我的自选',
+  'signal.expand': '展开分析结果',
+  'signal.collapse': '收起分析结果',
   'signal.rerun': '重新分析',
   'signal.running': '分析中…',
   'signal.cancel': '停止分析',
@@ -45,6 +47,8 @@ export const watchSignalsZh = {
 export const watchSignalsEn: Record<keyof typeof watchSignalsZh, string> = {
   'signal.title': 'Watchlist research signals',
   'signal.subtitle': 'Review each watchlist instrument using daily trend rules; a watchlist is not a position.',
+  'signal.expand': 'Show analysis',
+  'signal.collapse': 'Hide analysis',
   'signal.run': 'Analyze watchlist',
   'signal.rerun': 'Analyze again',
   'signal.running': 'Analyzing…',

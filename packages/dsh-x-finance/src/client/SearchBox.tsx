@@ -200,42 +200,6 @@ function MatchList({ search, t }: any) {
   </ul>
 }
 
-/**
- * Name/code lookup for the watchlist form. It is an enhancement, never a
- * requirement: the manual exchange + code fields below stay available, and a
- * disabled directory explains how to turn the local free source on. The form
- * stays A-share only; US listings are view-only and live in the page lookup.
- */
-export function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0 }: any) {
-  const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken })
-  const { availability } = search
-  return <div className="dxs-search">
-    <label htmlFor={search.inputId}>{t('add.search')}</label>
-    <input
-      id={search.inputId} type="search" name="instrument-search" autoComplete="off" spellCheck={false}
-      role="combobox" aria-expanded={search.open && search.results.length > 0} aria-controls={search.listId} aria-autocomplete="list"
-      aria-activedescendant={search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : undefined}
-      placeholder={t('add.search.placeholder')} maxLength={SEARCH_MAX_QUERY}
-      value={search.query} disabled={availability === 'unavailable'}
-      onChange={event => search.change(event.target.value)}
-      onKeyDown={search.keyDown}
-    />
-    {availability === 'checking' && <p className="dxs-muted" role="status">{t('add.search.checking')}</p>}
-    {availability === 'enabled' && <p className="dxs-muted dxs-search-note">{t('add.search.notice')}</p>}
-    {availability === 'enabled' && <p className="dxs-muted dxs-search-note">{t('add.search.us-hint')}</p>}
-    {availability === 'unavailable' && <p className="dxs-muted">{t('add.search.unavailable')}</p>}
-    {availability === 'disabled' && <p className="dxs-muted">
-      {t('add.search.disabled')}{' '}
-      <button type="button" disabled={search.enabling} onClick={search.enable}>{t(search.enabling ? 'add.search.enabling' : 'add.search.enable')}</button>
-    </p>}
-    {search.enableError && <p role="alert" className="dxs-error">{t(search.enableError)}</p>}
-    {search.state === 'loading' && <p className="dxs-muted" role="status">{t('add.search.loading')}</p>}
-    {search.state === 'error' && <p role="alert" className="dxs-error">{t(search.error)}</p>}
-    <MatchList search={search} t={t} />
-    {search.state === 'ready' && search.results.length === 0 && <p className="dxs-muted" role="status">{t('add.search.empty')}</p>}
-  </div>
-}
-
 /** The magnifier that makes the pill read as a search field, not a stray input. */
 function LookupIcon() {
   return <svg className="dxs-lookup-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -247,9 +211,9 @@ function LookupIcon() {
 /**
  * Page-level lookup, sized as a title-bar control rather than a form row: one
  * pill, and everything that needs words (results, the disabled source, an
- * error) opens in a popover under it. It reuses the same directory call as the
- * add form, but a pick only ever opens a preview — saving stays an explicit
- * second click on that page — so looking a stock up never edits the list.
+ * error) opens in a popover under it. It is the page's only search and add
+ * entry, but a pick only ever opens a preview — saving stays an explicit second
+ * click on that page — so looking a stock up never edits the list.
  *
  * A market selector switches between the A-share directory and the US one. The
  * two are separate identities: an A-share pick can be saved, a US pick is a

@@ -79,6 +79,22 @@ test('watchlist signals are opt-in, explain their values and mark provisional ba
   } finally { await h.close() }
 })
 
+test('the watchlist analysis strip starts collapsed and can be expanded without running', async () => {
+  const h = await render(true)
+  try {
+    assert.equal(h.document.querySelector('.dxs-signal-body'), null, 'the stock detail must start above the fold')
+    assert.match(h.document.body.textContent ?? '', /点击分析后才会逐只请求/)
+    const toggle = h.document.querySelector<HTMLElement>('.dxs-signal-toggle')!
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false')
+    await act(async () => toggle.dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true })))
+    assert.ok(h.document.querySelector('.dxs-signal-body'), 'expanding reveals the method and schedule')
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true')
+    await act(async () => toggle.dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true })))
+    assert.equal(h.document.querySelector('.dxs-signal-body'), null)
+    assert.equal(h.calls.length, 0, 'opening the strip never starts an analysis')
+  } finally { await h.close() }
+})
+
 test('exit signal is conditional on holding and explains both averages', async () => {
   const h = await render(true, 'stock', '测试股份', 'sell')
   try {

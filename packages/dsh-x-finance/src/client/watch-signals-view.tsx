@@ -145,6 +145,9 @@ export function WatchSignals({ rpc, scope, items, sourceEnabled, t, format, onOp
   const [rows, setRows] = useState<WatchSignalRow[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
+  // The analysis is watchlist-level context, not the stock's primary panel:
+  // it starts collapsed and opens itself only when the reader runs it.
+  const [open, setOpen] = useState(false)
   const controller = useRef<AbortController | null>(null)
   const itemsKey = JSON.stringify(items.map(item => [item.symbol, item.alias]))
   useEffect(() => {
@@ -155,6 +158,7 @@ export function WatchSignals({ rpc, scope, items, sourceEnabled, t, format, onOp
   }, [itemsKey, sourceEnabled])
   const run = async () => {
     if (!sourceEnabled || !items.length || running) return
+    setOpen(true)
     controller.current?.abort()
     const local = new AbortController()
     controller.current = local
@@ -174,20 +178,31 @@ export function WatchSignals({ rpc, scope, items, sourceEnabled, t, format, onOp
     setRunning(false); setError('signal.cancelled')
   }
   const completed = rows.filter(row => row.status !== 'pending' && row.status !== 'skipped').length
+  // Opening a stock from a result should reveal that stock, not leave the
+  // expanded analysis above it; the summary strip collapses in the same click.
+  const openStock = (symbol: string) => { setOpen(false); onOpen?.(symbol) }
+  const hint = !items.length ? t('signal.empty')
+    : !sourceEnabled ? t('signal.disabled')
+      : rows.length ? `${running ? `${t('signal.running')} · ` : ''}${t('signal.progress', { completed, total: rows.length })}`
+        : t('signal.idle')
   return <section className="dxs-signal" aria-labelledby="dxs-signal-title">
     <header className="dxs-signal-head">
-      <div><h2 id="dxs-signal-title">{t('signal.title')}</h2><p>{t('signal.subtitle')}</p></div>
-      {running ? <button type="button" onClick={stop}>{t('signal.cancel')}</button>
-        : <button type="button" className="dxs-primary" onClick={() => { void run() }} disabled={!sourceEnabled || !items.length}>{t(rows.length ? 'signal.rerun' : 'signal.run')}</button>}
+      <div className="dxs-signal-title">
+        <h2 id="dxs-signal-title" title={t('signal.subtitle')}>{t('signal.title')}</h2>
+        <p className="dxs-signal-hint" role="status">{hint}</p>
+      </div>
+      <div className="dxs-signal-actions">
+        {running ? <button type="button" onClick={stop}>{t('signal.cancel')}</button>
+          : <button type="button" className="dxs-primary" onClick={() => { void run() }} disabled={!sourceEnabled || !items.length}>{t(rows.length ? 'signal.rerun' : 'signal.run')}</button>}
+        <button type="button" className="dxs-signal-toggle" aria-expanded={open} aria-controls="dxs-signal-body" title={t(open ? 'signal.collapse' : 'signal.expand')} onClick={() => setOpen(value => !value)}>{open ? '▴' : '▾'}<span className="dxs-sr-only">{t(open ? 'signal.collapse' : 'signal.expand')}</span></button>
+      </div>
     </header>
-    {!items.length ? <p className="dxs-muted">{t('signal.empty')}</p>
-      : !sourceEnabled ? <p className="dxs-muted">{t('signal.disabled')}</p>
-        : !rows.length ? <p className="dxs-muted">{t('signal.idle')}</p> : null}
-    {rows.length ? <p className="dxs-signal-progress" role="status">{running ? `${t('signal.running')} · ` : ''}{t('signal.progress', { completed, total: rows.length })}</p> : null}
-    {error ? <p className="dxs-signal-warning" role="status">{t(error)}</p> : null}
-    {rows.some(row => row.replay?.status === 'ready') ? <p className="dxs-signal-warning">{t('signal.replay-warning')}</p> : null}
-    {rows.length ? <ol className="dxs-signal-list">{rows.map(row => <SignalRow key={row.symbol} row={row} t={t} format={format} onOpen={onOpen} />)}</ol> : null}
-    {scope ? <WatchSchedulePanel rpc={rpc} scope={scope} items={items} sourceEnabled={sourceEnabled} t={t} format={format} onOpen={onOpen} /> : null}
-    <details className="dxs-signal-method"><summary>{t('signal.method')}</summary><p>{t('signal.method-body')}</p><p>{t('signal.notice')}</p><p>{t('signal.time-note')}</p><p>{t('signal.storage-note')}</p></details>
+    {open ? <div className="dxs-signal-body" id="dxs-signal-body">
+      {error ? <p className="dxs-signal-warning" role="status">{t(error)}</p> : null}
+      {rows.some(row => row.replay?.status === 'ready') ? <p className="dxs-signal-warning">{t('signal.replay-warning')}</p> : null}
+      {rows.length ? <ol className="dxs-signal-list">{rows.map(row => <SignalRow key={row.symbol} row={row} t={t} format={format} onOpen={openStock} />)}</ol> : null}
+      {scope ? <WatchSchedulePanel rpc={rpc} scope={scope} items={items} sourceEnabled={sourceEnabled} t={t} format={format} onOpen={openStock} /> : null}
+      <details className="dxs-signal-method"><summary>{t('signal.method')}</summary><p>{t('signal.method-body')}</p><p>{t('signal.notice')}</p><p>{t('signal.time-note')}</p><p>{t('signal.storage-note')}</p></details>
+    </div> : null}
   </section>
 }

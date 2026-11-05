@@ -10,26 +10,35 @@ export const WATCHLIST_CSS = `
 .dxs-banner strong{font-size:13px}
 .dxs-banner p{margin:2px 0 0}
 .dxs-banner .dxs-source-enable{flex:none}
-.dxs-layout{flex:1;min-height:0;grid-template-columns:minmax(268px,320px) minmax(0,1fr);gap:0;margin:0;align-items:stretch}
+.dxs-layout{flex:1;min-height:0;grid-template-columns:minmax(288px,340px) minmax(0,1fr);gap:0;margin:0;align-items:stretch}
 .dxs-layout>aside.dxs-rail,.dxs-stage{min-width:0;min-height:0}
 .dxs-layout>aside.dxs-rail{max-height:none;overflow:hidden}
 .dxs-rail{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--dxs-bg);border-right:1px solid var(--dxs-line-soft)}
-.dxs-rail-head{flex:none;padding:14px 14px 6px}
+.dxs-rail-head{flex:none;padding:14px 14px 8px}
 .dxs-rail-head h2{margin:0;font-size:14px;font-weight:650}
 .dxs-counts{margin:2px 0 0;color:var(--dxs-muted);font-size:12px;font-variant-numeric:tabular-nums}
+.dxs-rail-quote{display:flex;align-items:center;gap:6px;margin:6px 0 0;min-width:0;color:var(--dxs-muted);font-size:11px;font-variant-numeric:tabular-nums}
+.dxs-rail-quote>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dxs-rail-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dxs-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--dxs-accent) 16%,transparent)}
+.dxs-rail-quote.is-off .dxs-rail-dot,.dxs-rail-quote.is-idle .dxs-rail-dot{background:var(--dxs-muted);box-shadow:none}
 .dxs-rail-list{flex:1;min-height:0;overflow:auto;padding:4px 8px 8px}
 .dxs-list{margin:0}
 .dxs-list li{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;margin:1px 0;border-radius:8px}
 .dxs-list li.is-selected{background:color-mix(in srgb,var(--dxs-accent) 10%,var(--dxs-bg))}
 .dxs-list li.is-selected::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--dxs-accent)}
-.dxs .dxs-list .dxs-select{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;width:100%;height:auto;min-height:46px;margin:0;padding:7px 10px 7px 12px;border:0;border-radius:8px;background:transparent;box-shadow:none;text-align:left;white-space:normal;line-height:1.25}
+.dxs .dxs-list .dxs-select{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;row-gap:1px;align-items:center;align-content:center;width:100%;height:auto;min-height:48px;margin:0;padding:7px 10px 7px 12px;border:0;border-radius:8px;background:transparent;box-shadow:none;text-align:left;white-space:normal;line-height:1.25}
 .dxs .dxs-list .dxs-select:hover:not(:disabled){background:transparent}
 .dxs .dxs-list li:hover:not(.is-selected){background:color-mix(in srgb,var(--dxs-fg) 4%,var(--dxs-bg))}
-.dxs-row-name{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}
+.dxs-row-name{grid-column:1;grid-row:1;display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}
 .dxs-row-name strong{font-size:13px;font-weight:640;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dxs-row-meta{display:flex;align-items:center;gap:6px;min-height:16px;font-size:11px;font-variant-numeric:tabular-nums}
+.dxs-row-meta{grid-column:1;grid-row:2;display:flex;align-items:center;gap:6px;min-height:14px;font-size:10.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .dxs-row-meta:empty{display:none}
-.dxs-fixed-mark{display:inline-flex;align-items:center;height:16px;margin:0;padding:0 5px;border-radius:999px;background:color-mix(in srgb,var(--dxs-accent) 12%,var(--dxs-bg));color:var(--dxs-accent);font-size:10px;font-weight:650;line-height:1}
+.dxs-row-quote{grid-column:2;grid-row:1/span 2;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:0;min-width:56px;text-align:right;font-variant-numeric:tabular-nums;line-height:1.3;white-space:nowrap}
+.dxs-row-price{font-size:13px;font-weight:650;letter-spacing:-.01em}
+.dxs-row-change{font-size:11px;font-weight:600}
+.dxs-row-quote:not(.dxs-up):not(.dxs-down){color:var(--dxs-fg)}
+.dxs-row-quote:not(.dxs-up):not(.dxs-down) .dxs-row-change{color:var(--dxs-muted)}
+.dxs-row-quote.is-empty{color:var(--dxs-muted)}
 .dxs .dxs-list .dxs-controls{position:static;transform:none;display:flex;gap:1px;margin:0;padding:0 4px 0 0;border-radius:8px;background:transparent;opacity:1;pointer-events:auto}
 .dxs .dxs-list .dxs-controls button,.dxs .dxs-list .dxs-controls .dxs-icon-button{width:24px;height:24px;padding:0;border-color:transparent;background:transparent;color:var(--dxs-muted);font-size:12px;border-radius:6px}
 .dxs .dxs-list .dxs-controls button:hover:not(:disabled){background:var(--dxs-soft);color:var(--dxs-fg)}
@@ -44,16 +53,6 @@ export const WATCHLIST_CSS = `
 .dxs-shortcut kbd{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:18px;margin:0;padding:0 4px;border:1px solid var(--dxs-line);border-bottom-width:2px;border-radius:4px;background:var(--dxs-soft);color:var(--dxs-muted);font:inherit;font-size:10px;line-height:1}
 .dxs .dxs-bar-toggle button{height:24px;padding:0 2px;border:0;background:transparent;color:var(--dxs-muted)}
 .dxs .dxs-bar-toggle button:hover:not(:disabled){color:var(--dxs-fg);background:transparent}
-.dxs-rail-foot .dxs-search-results{position:static;bottom:auto;box-shadow:none}
-.dxs-form{margin-top:0;gap:8px}
-.dxs-form h2{margin:0;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--dxs-muted)}
-.dxs-form-grid{display:grid;grid-template-columns:minmax(96px,112px) minmax(0,1fr);gap:8px}
-.dxs-field{display:grid;gap:4px;min-width:0;font-size:11px;color:var(--dxs-muted)}
-.dxs-form-submit{display:flex;flex-direction:column;gap:8px}
-.dxs .dxs-form-submit .dxs-primary{width:100%}
-.dxs-picked{margin:0;padding:6px 8px;border-radius:8px;background:color-mix(in srgb,var(--dxs-accent) 8%,var(--dxs-bg));color:var(--dxs-fg);font-size:12px}
-.dxs-search{gap:4px}
-.dxs-search-note{margin:0;font-size:11px;line-height:1.45}
 .dxs-rail-foot .dxs-search-results{position:static;z-index:auto;margin-top:4px;box-shadow:none}
 .dxs-fineprint{font-size:11px;color:var(--dxs-muted)}
 .dxs-fineprint summary{cursor:pointer;width:fit-content}
@@ -67,23 +66,46 @@ export const WATCHLIST_CSS = `
 .dxs .dxs-preview-back:hover{border-color:var(--dxs-accent);color:var(--dxs-accent)}
 .dxs-stage-market{padding-top:14px}
 .dxs-stage-hint{margin:8px 0 0}
+/* First run: a start card instead of a detail page with no stock in it. */
+.dxs-start{display:flex;align-items:center;padding:12px 0 24px}
+.dxs-start-card{width:100%;max-width:760px;padding:26px 28px;border:1px solid var(--dxs-line-soft);border-radius:14px;background:var(--dxs-bg)}
+.dxs-start .dxs-start-card h2{margin:0;font-size:20px;line-height:1.3}
+.dxs-start-card p{margin:8px 0 0;max-width:620px;color:var(--dxs-muted);line-height:1.6}
+.dxs-start-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.dxs-start-local{width:100%;max-width:760px;font-size:12px;color:var(--dxs-muted)}
+.dxs-start-local>summary{cursor:pointer;width:fit-content;padding:2px 0}
+.dxs-start-local .dxs-workbench{margin-top:10px}
 .dxs-stage-empty{display:flex;flex-direction:column;gap:8px}
 .dxs-stage-empty h2{margin:0;font-size:18px}
 .dxs .dxs-symbol-line .dxs-preview-add{height:20px;margin-left:8px;padding:0 8px;border-color:color-mix(in srgb,var(--dxs-accent) 45%,var(--dxs-line));border-radius:999px;background:transparent;color:var(--dxs-accent);font-size:11px;font-weight:600}
 .dxs .dxs-symbol-line .dxs-preview-add:hover:not(:disabled){background:color-mix(in srgb,var(--dxs-accent) 10%,var(--dxs-bg))}
-.dxs-instrument-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px 20px;margin:0 0 8px;padding:2px 2px 12px;border:0;border-radius:0;background:transparent}
-.dxs-quote-identity{min-width:0}
+/* The stock header and its view tabs travel together: scrolling the chart or
+   a filing never hides which stock is open. The preview page keeps its own
+   sticky back bar, so it opts out of this one. */
+.dxs-detail-top{position:sticky;top:0;z-index:3;padding-top:6px;background:var(--dxs-soft)}
+.dxs-preview-page .dxs-detail-top{position:static;padding-top:0}
+.dxs-detail-tabs{display:flex;align-items:center;gap:2px;margin:0;border-bottom:1px solid var(--dxs-line-soft)}
+.dxs .dxs-detail-tabs button{height:30px;padding:0 12px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--dxs-muted);font-size:12px;font-weight:550}
+.dxs .dxs-detail-tabs button:hover:not(:disabled){background:transparent;color:var(--dxs-fg)}
+.dxs .dxs-detail-tabs button[aria-pressed=true]{color:var(--dxs-fg);border-bottom-color:var(--dxs-accent);font-weight:650}
+.dxs .dxs-symbol-line .dxs-detail-fix{height:20px;margin-left:8px;padding:0 8px;border:1px solid var(--dxs-line);border-radius:999px;background:transparent;color:var(--dxs-muted);font-size:11px;font-weight:600}
+.dxs .dxs-symbol-line .dxs-detail-fix[aria-pressed=true]{border-color:color-mix(in srgb,var(--dxs-accent) 45%,var(--dxs-line));color:var(--dxs-accent);background:color-mix(in srgb,var(--dxs-accent) 8%,var(--dxs-bg))}
+.dxs .dxs-symbol-line .dxs-detail-fix:hover:not(:disabled){border-color:color-mix(in srgb,var(--dxs-accent) 45%,var(--dxs-line));color:var(--dxs-fg)}
+/* Identity and quote sit next to each other, not at opposite ends of a
+   1300px stage: the price belongs to the name, not to the window edge. */
+.dxs-instrument-summary{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 28px;margin:0 0 8px;padding:2px 2px 12px;border:0;border-radius:0;background:transparent}
+.dxs-quote-identity{flex:0 1 auto;min-width:0;max-width:min(100%,640px)}
 .dxs-instrument-summary h2{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:22px;font-weight:650;line-height:1.2;letter-spacing:-.01em}
 .dxs-symbol-line{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin:4px 0 0;color:var(--dxs-muted);font-size:12px}
 .dxs-symbol{font-variant-numeric:tabular-nums;letter-spacing:.02em}
-.dxs-quote-figures{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.dxs-quote-figures{display:flex;flex:none;flex-direction:column;align-items:flex-start;gap:4px}
 .dxs-instrument-summary .dxs-price{margin:0;font-size:34px;font-weight:650;line-height:1;letter-spacing:-.02em}
 .dxs-quote-figures .dxs-change{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1}
 .dxs-quote-figures .dxs-change.dxs-up{background:color-mix(in srgb,var(--dxs-up) 12%,transparent)}
 .dxs-quote-figures .dxs-change.dxs-down{background:color-mix(in srgb,var(--dxs-down) 12%,transparent)}
 .dxs-quote-figures .dxs-change:not(.dxs-up):not(.dxs-down){background:var(--dxs-bg);color:var(--dxs-muted)}
-.dxs-status-line{margin:0;text-align:right}
-.dxs-quote-metadata{grid-column:1/-1}
+.dxs-status-line{margin:0;text-align:left}
+.dxs-quote-metadata{flex:1 1 100%}
 .dxs-secondary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
 .dxs-secondary .dxs-section{margin:0;padding:10px 12px;border-color:var(--dxs-line-soft);background:var(--dxs-bg)}
 .dxs-secondary summary{cursor:pointer;font-weight:600}
@@ -98,6 +120,18 @@ export const WATCHLIST_CSS = `
 .dxs-bar{min-height:44px;padding:6px 12px;background:var(--dxs-bg)}
 @media (hover:none){
 .dxs .dxs-list .dxs-controls{padding-right:4px}
+}
+/* The header lookup is the only add entry now, so a narrow window scrolls the
+   view tabs instead of dropping the search field. The market switch gives its
+   width back before the input gets unusable. */
+@media (max-width:900px){
+.dxs-titlebar>.dxs-view-tabs{flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.dxs-titlebar>.dxs-view-tabs::-webkit-scrollbar{display:none}
+.dxs .dxs-lookup-bar{flex-basis:170px}
+.dxs .dxs-lookup-market{max-width:52px;padding:0 0 0 2px;font-size:10px}
+}
+@media (max-width:700px){
+.dxs .dxs-lookup-bar{display:flex;flex-basis:160px}
 }
 @media (max-width:760px){
 .dxs-layout,.dxs-layout>aside.dxs-rail{grid-template-columns:1fr}

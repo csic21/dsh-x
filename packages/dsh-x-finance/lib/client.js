@@ -46,12 +46,6 @@ var LEGACY_STORAGE_KEY = "dsh-x-finance:watchlist:v1";
 var PREVIOUS_STORAGE_KEY = "dsh-x-stock:watchlist:v2";
 var PREVIOUS_LEGACY_STORAGE_KEY = "dsh-x-stock:watchlist:v1";
 var QUOTE_CHANNEL = "/api";
-function normalizeAShare(exchange, code) {
-  const market = String(exchange).trim().toUpperCase();
-  const digits = String(code).trim();
-  if (!["SH", "SZ", "BJ"].includes(market) || !/^\d{6}$/.test(digits)) throw watchlistError("invalid-code");
-  return `${market}.${digits}`;
-}
 function validateSymbol(symbol) {
   if (typeof symbol !== "string" || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) throw watchlistError("invalid-symbol");
   return symbol;
@@ -273,6 +267,7 @@ var QUANT_SCAN_LIMITS = Object.freeze({
 // src/market.ts
 var MARKET_ENDPOINT = "dsh-x-finance.market";
 var MARKET_PREFERENCE_ENDPOINT = "dsh-x-finance.market-preference";
+var MARKET_MAX_QUOTES = 8;
 var MARKET_CACHE_TTL_MS = 5 * 6e4;
 var MARKET_BOARD_TTL_MS = 2 * 6e4;
 var CSI300_FUND_SHARE_INDEX = "SH.000300";
@@ -395,7 +390,9 @@ function marketClock(now, quotedAt) {
 var PROTOCOL = "dsh-x-finance";
 var addressFor = (symbol) => `dsh-resource://${PROTOCOL}/quote/${validateSymbol(symbol)}`;
 var fixedAddressFor = (symbols) => `dsh-resource://${PROTOCOL}/fixed/${symbols.join(",")}`;
+var watchlistAddressFor = (symbols) => `dsh-resource://${PROTOCOL}/list/${symbols.join(",")}`;
 var FIXED_POLL_MS = 5e3;
+var WATCHLIST_POLL_MS = 1e4;
 var IDLE_POLL_MS = 6e4;
 var STALE_AFTER_MS = 18e4;
 function wait(ms2, signal, target) {
@@ -417,47 +414,77 @@ function wait(ms2, signal, target) {
 }
 function parseSymbols(path) {
   const [kind, rest = ""] = String(path).slice(1).split("/");
-  const raw = kind === "fixed" ? rest.split(",") : [rest];
+  if (kind !== "quote" && kind !== "fixed" && kind !== "list") throw new Error("invalid resource address");
+  const raw = kind === "quote" ? [rest] : rest.split(",");
   const symbols = raw.filter(Boolean).map(validateSymbol);
-  if (!symbols.length || symbols.length > MAX_FIXED || new Set(symbols).size !== symbols.length) throw new Error("invalid resource address");
-  return { realtime: kind === "fixed", symbols };
+  const limit = kind === "list" ? MAX_WATCHLIST : MAX_FIXED;
+  if (kind !== "list" && !symbols.length) throw new Error("invalid resource address");
+  if (symbols.length > limit || new Set(symbols).size !== symbols.length) throw new Error("invalid resource address");
+  return { kind, symbols, realtimeMs: kind === "list" ? WATCHLIST_POLL_MS : FIXED_POLL_MS };
+}
+function chunksOf(symbols, size2) {
+  const chunks = [];
+  for (let offset = 0; offset < symbols.length; offset += size2) chunks.push(symbols.slice(offset, offset + size2));
+  return chunks;
+}
+async function readQuotes(rpc, symbols, signal) {
+  if (!symbols.length) return { ok: true, value: { status: "ready", source: null, quotes: [] } };
+  const quotes = [];
+  let source = null;
+  let unconfigured = 0;
+  const chunks = chunksOf(symbols, MARKET_MAX_QUOTES);
+  for (const batch of chunks) {
+    let result;
+    try {
+      result = await rpc.call(QUOTE_CHANNEL, MARKET_ENDPOINT, { kind: "quotes", symbols: batch }, signal);
+    } catch {
+      if (signal.aborted) return null;
+      return { ok: false, error: { code: "finance/connection", message: "Connection lost", details: {} } };
+    }
+    if (signal.aborted) return null;
+    if (!result.ok) return result;
+    if (result.value?.status === "unconfigured") {
+      unconfigured += 1;
+      continue;
+    }
+    const received = Array.isArray(result.value?.quotes) ? result.value.quotes : null;
+    if (!received || batch.some((symbol) => !received.some((quote) => quote?.symbol === symbol))) {
+      return { ok: false, error: { code: "finance/invalid", message: "Invalid quote response", details: {} } };
+    }
+    if (!source && typeof result.value.source === "string") source = result.value.source;
+    quotes.push(...received);
+  }
+  if (unconfigured) return { ok: true, value: { status: "unconfigured", source: null, quotes: [] } };
+  return { ok: true, value: { status: "ready", source, quotes } };
 }
 function quoteResource(rpc, documentObject = globalThis.document, navigatorObject = globalThis.navigator) {
   return {
     protocol: PROTOCOL,
     async *open(address, { signal }) {
-      const { realtime, symbols } = parseSymbols(new URL(address).pathname);
+      const { kind, symbols, realtimeMs } = parseSymbols(new URL(address).pathname);
       while (!signal.aborted) {
         if (documentObject?.hidden || navigatorObject?.onLine === false) {
           yield { ok: false, error: { code: navigatorObject?.onLine === false ? "finance/offline" : "finance/hidden", message: "Updates paused", details: {} } };
           await wait(Infinity, signal, documentObject);
           continue;
         }
-        let result;
-        try {
-          result = await rpc.call(QUOTE_CHANNEL, MARKET_ENDPOINT, { kind: "quotes", symbols }, signal);
-        } catch {
-          result = { ok: false, error: { code: "finance/connection", message: "Connection lost", details: {} } };
-        }
-        if (signal.aborted) return;
-        if (result.ok && result.value?.status === "unconfigured") result = { ok: true, value: { status: "unconfigured", source: null, quotes: [] } };
-        else if (result.ok) {
-          const quotes = Array.isArray(result.value?.quotes) ? result.value.quotes : null;
-          if (!quotes || symbols.some((symbol) => !quotes.some((quote) => quote?.symbol === symbol))) result = { ok: false, error: { code: "finance/invalid", message: "Invalid quote response", details: {} } };
-          else result = { ok: true, value: { status: "ready", source: typeof result.value.source === "string" ? result.value.source : null, quotes: symbols.map((symbol) => quotes.find((quote) => quote.symbol === symbol)) } };
+        let result = await readQuotes(rpc, symbols, signal);
+        if (!result) return;
+        if (result.ok && result.value?.status === "ready") {
+          result = { ok: true, value: { status: "ready", source: result.value.source, quotes: symbols.map((symbol) => result.value.quotes.find((quote) => quote?.symbol === symbol)) } };
         }
         yield result;
         const unconfigured = result.ok && result.value?.status === "unconfigured";
-        await wait(unconfigured ? Infinity : pollDelay(result, realtime), signal, documentObject);
+        await wait(unconfigured || !symbols.length ? Infinity : pollDelay(result, kind !== "quote", void 0, realtimeMs), signal, documentObject);
       }
     }
   };
 }
-function pollDelay(result, realtime, now = Date.now()) {
+function pollDelay(result, realtime, now = Date.now(), realtimeMs = FIXED_POLL_MS) {
   if (!realtime) return IDLE_POLL_MS;
   const times = (result?.ok ? result.value?.quotes ?? [] : []).map((quote) => Date.parse(quote?.quotedAt)).filter((time) => Number.isFinite(time));
   if (!times.length) return IDLE_POLL_MS;
-  return now - Math.max(...times) > STALE_AFTER_MS ? IDLE_POLL_MS : FIXED_POLL_MS;
+  return now - Math.max(...times) > STALE_AFTER_MS ? IDLE_POLL_MS : realtimeMs;
 }
 
 // src/client/components.tsx
@@ -1108,6 +1135,12 @@ function createFormatters(getLocale) {
       const date = value ? new Date(value) : null;
       if (!date || !Number.isFinite(date.getTime())) return t("time.missing");
       return t("time.shanghai", { time: new Intl.DateTimeFormat(formatLocale(getLocale()), { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(date) });
+    },
+    /** A short clock for a dense list; the quote's own Beijing time is the fact. */
+    clock(value) {
+      const date = value ? new Date(value) : null;
+      if (!date || !Number.isFinite(date.getTime())) return "\u2014";
+      return new Intl.DateTimeFormat(formatLocale(getLocale()), { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(date);
     },
     /**
      * A quote from another exchange is only meaningful in that exchange's own
@@ -11560,6 +11593,8 @@ var watchSignalsZh = {
   "signal.title": "\u81EA\u9009\u91CF\u5316\u4FE1\u53F7",
   "signal.subtitle": "\u9010\u53EA\u5206\u6790\u81EA\u9009\u7684\u65E5\u7EBF\u8D8B\u52BF\uFF0C\u663E\u793A\u89C4\u5219\u89E6\u53D1\u7684\u539F\u56E0\uFF1B\u81EA\u9009\u4E0D\u4EE3\u8868\u6301\u4ED3\u3002",
   "signal.run": "\u5206\u6790\u6211\u7684\u81EA\u9009",
+  "signal.expand": "\u5C55\u5F00\u5206\u6790\u7ED3\u679C",
+  "signal.collapse": "\u6536\u8D77\u5206\u6790\u7ED3\u679C",
   "signal.rerun": "\u91CD\u65B0\u5206\u6790",
   "signal.running": "\u5206\u6790\u4E2D\u2026",
   "signal.cancel": "\u505C\u6B62\u5206\u6790",
@@ -11601,6 +11636,8 @@ var watchSignalsZh = {
 var watchSignalsEn = {
   "signal.title": "Watchlist research signals",
   "signal.subtitle": "Review each watchlist instrument using daily trend rules; a watchlist is not a position.",
+  "signal.expand": "Show analysis",
+  "signal.collapse": "Hide analysis",
   "signal.run": "Analyze watchlist",
   "signal.rerun": "Analyze again",
   "signal.running": "Analyzing\u2026",
@@ -12189,6 +12226,12 @@ var zh = {
   "detail.preview.add-short": "\u52A0\u5165\u81EA\u9009",
   "detail.preview.add-hint": "\u628A\u8FD9\u53EA\u80A1\u7968\u4FDD\u5B58\u5230\u81EA\u9009\u6E05\u5355\uFF08\u4E0D\u56FA\u5B9A\u5230\u5E95\u90E8\u680F\uFF09",
   "detail.source": "\u6570\u636E\u6765\u6E90",
+  "detail.tabs.aria": "\u4E2A\u80A1\u89C6\u56FE",
+  "detail.tab.chart": "\u884C\u60C5",
+  "detail.tab.holdings": "\u6301\u4ED3",
+  "detail.tab.fundamentals": "\u8D22\u52A1",
+  "detail.fix": "\u56FA\u5B9A\u5230\u5E95\u90E8\u680F",
+  "detail.unfix": "\u53D6\u6D88\u56FA\u5B9A",
   "detail.no-source": "\u5C1A\u672A\u5F00\u542F\u884C\u60C5\u6765\u6E90",
   "detail.quoted-at": "\u62A5\u4EF7\u65F6\u95F4",
   "detail.fetched-at": "\u83B7\u53D6\u65F6\u95F4",
@@ -12239,8 +12282,16 @@ var zh = {
   "page.my-watchlist": "\u6211\u7684\u81EA\u9009",
   "page.counts": "\u5171 {count} \u53EA \xB7 \u5DF2\u56FA\u5B9A {fixed}/{max}",
   "page.fixed-hint": "\u81EA\u9009\u53EA\u662F\u6E05\u5355\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u51FA\u73B0\u5728\u5E95\u90E8\uFF1B\u70B9\u300C\u56FA\u5B9A\u300D\u624D\u4F1A\u8FDB\u5165\u56FA\u5B9A\u680F\uFF08\u6700\u591A {max} \u53EA\uFF0C\u53EF\u6EDA\u52A8\u67E5\u770B\uFF09\u3002",
-  "page.empty": "\u8FD8\u6CA1\u6709\u81EA\u9009\u80A1\u7968\u3002\u6DFB\u52A0\u4E00\u53EA\u5F00\u59CB\u3002",
-  "page.empty.lookup": "\u4E5F\u53EF\u4EE5\u76F4\u63A5\u7528\u9876\u90E8\u7684\u67E5\u8BE2\u6846\u770B\u4EFB\u610F\u80A1\u7968\u7684\u8BE6\u60C5\u4E0E\u65E5 K\uFF0C\u4E0D\u4F1A\u52A0\u5165\u81EA\u9009\u3002",
+  "page.empty": "\u8FD8\u6CA1\u6709\u81EA\u9009\u80A1\u7968\u3002\u7528\u9876\u90E8\u7684\u641C\u7D22\u627E\u5230\u80A1\u7968\uFF0C\u6253\u5F00\u8BE6\u60C5\u540E\u70B9\u300C\u52A0\u5165\u81EA\u9009\u300D\u3002",
+  "page.empty.lookup": "\u641C\u7D22\u6846\u4E5F\u80FD\u770B\u4EFB\u610F\u80A1\u7968\u7684\u8BE6\u60C5\u4E0E\u65E5 K\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u52A0\u5165\u81EA\u9009\u3002",
+  "page.quote.live": "\u5B9E\u65F6\u884C\u60C5 \xB7 {source}",
+  "page.quote.recent": "\u6700\u8FD1\u884C\u60C5 \xB7 {source}",
+  "page.quote.updated": "\u66F4\u65B0\u4E8E {time}",
+  "page.quote.loading": "\u6B63\u5728\u83B7\u53D6\u884C\u60C5\u2026",
+  "page.quote.failed": "\u884C\u60C5\u66F4\u65B0\u5931\u8D25",
+  "page.quote.off": "\u884C\u60C5\u672A\u5F00\u542F",
+  "page.quote.no-source": "\u6765\u6E90\u672A\u77E5",
+  "page.quote.hint": "\u4EF7\u683C\u4E3A\u6700\u8FD1\u4E00\u6B21\u62A5\u4EF7\uFF0C\u53EF\u80FD\u5EF6\u8FDF\u6216\u4E3A\u4F11\u5E02\u4EF7\uFF1B\u4E0D\u6784\u6210\u6295\u8D44\u5EFA\u8BAE\u3002",
   "page.move-up": "\u4E0A\u79FB {symbol}",
   "page.move-down": "\u4E0B\u79FB {symbol}",
   "page.fixed": "\u56FA\u5B9A",
@@ -12252,6 +12303,9 @@ var zh = {
   "page.remove": "\u79FB\u9664",
   "page.select": "\u9009\u4E00\u53EA\u80A1\u7968\uFF0C\u770B\u6E05\u5B83\u7684\u60C5\u51B5",
   "page.select-hint": "\u8FD9\u91CC\u5C06\u5C55\u793A\u62A5\u4EF7\u3001\u8D70\u52BF\u3001\u57FA\u672C\u9762\u548C\u6709\u4F9D\u636E\u7684\u5206\u6790\u3002\u5E95\u90E8\u56FA\u5B9A\u680F\u53EA\u8D1F\u8D23\u5DE5\u4F5C\u65F6\u7684\u5FEB\u6377\u67E5\u770B\u3002",
+  "page.start.title": "\u4ECE\u4E00\u53EA\u80A1\u7968\u5F00\u59CB",
+  "page.start.body": "\u7528\u9876\u90E8\u300C\u67E5\u8BE2\u80A1\u7968\u300D\u627E\u5230\u540D\u79F0\u6216\u4EE3\u7801\uFF0C\u6253\u5F00\u8BE6\u60C5\u540E\u70B9\u300C\u52A0\u5165\u81EA\u9009\u300D\u3002\u4E5F\u53EF\u4EE5\u5148\u53BB\u5E02\u573A\u6216\u70ED\u70B9\u91CC\u901B\u4E00\u5708\uFF1B\u672C\u5730\u56FE\u8868\u5BFC\u5165\u4ECD\u53EF\u4ECE\u4E0B\u65B9\u5C55\u5F00\u3002",
+  "page.start.local": "\u672C\u5730\u56FE\u8868\u4E0E\u5BFC\u5165",
   "error.invalid-code": "\u8BF7\u9009\u62E9\u4EA4\u6613\u6240\u5E76\u8F93\u5165\u516D\u4F4D\u80A1\u7968\u4EE3\u7801\u3002",
   "error.invalid-symbol": "A \u80A1\u4EE3\u7801\u987B\u5305\u542B\u4EA4\u6613\u6240\u548C\u516D\u4F4D\u6570\u5B57\u3002",
   "error.invalid-item": "\u65E0\u6548\u7684\u81EA\u9009\u9879\u3002",
@@ -12365,6 +12419,12 @@ var en2 = {
   "detail.preview.add-short": "Add to watchlist",
   "detail.preview.add-hint": "Save this stock to the watchlist (it is not fixed to the bottom bar)",
   "detail.source": "Data source",
+  "detail.tabs.aria": "Stock view",
+  "detail.tab.chart": "Overview",
+  "detail.tab.holdings": "Holdings",
+  "detail.tab.fundamentals": "Financials",
+  "detail.fix": "Pin to bar",
+  "detail.unfix": "Unpin",
   "detail.no-source": "No quote source is on",
   "detail.quoted-at": "Quote time",
   "detail.fetched-at": "Retrieved at",
@@ -12415,8 +12475,16 @@ var en2 = {
   "page.my-watchlist": "My watchlist",
   "page.counts": "{count} in total \xB7 {fixed}/{max} fixed",
   "page.fixed-hint": "The watchlist is only a list and never shows up at the bottom by itself; press \u201CFix\u201D to put a stock in the bottom bar (max {max}, scrollable).",
-  "page.empty": "No stocks yet. Add one to get started.",
-  "page.empty.lookup": "You can also look any stock up from the field above and see its details and daily chart without adding it.",
+  "page.empty": "No stocks yet. Search at the top, open a stock, then choose Add to watchlist.",
+  "page.empty.lookup": "The search field also previews any stock and its daily chart without adding it automatically.",
+  "page.quote.live": "Live \xB7 {source}",
+  "page.quote.recent": "Latest quote \xB7 {source}",
+  "page.quote.updated": "updated {time}",
+  "page.quote.loading": "Loading quotes\u2026",
+  "page.quote.failed": "Quote update failed",
+  "page.quote.off": "Quotes are off",
+  "page.quote.no-source": "Source unknown",
+  "page.quote.hint": "The price is the latest quote; it may be delayed or a market-closed print. Not investment advice.",
   "page.move-up": "Move {symbol} up",
   "page.move-down": "Move {symbol} down",
   "page.fixed": "Fixed",
@@ -12428,6 +12496,9 @@ var en2 = {
   "page.remove": "Remove",
   "page.select": "Select a stock to explore",
   "page.select-hint": "Quotes, charts, fundamentals, and evidence-based analysis will appear here. The bottom fixed bar provides a quick glance while you work.",
+  "page.start.title": "Start with one stock",
+  "page.start.body": "Look a name or code up in the search field above, open its details, then choose Add to watchlist. You can also browse the market or hot screen first; local chart import stays available below.",
+  "page.start.local": "Local chart and import",
   "error.invalid-code": "Choose an exchange and enter a six-digit stock code.",
   "error.invalid-symbol": "An A-share code must include an exchange and six digits.",
   "error.invalid-item": "Invalid watchlist item.",
@@ -14965,31 +15036,6 @@ function MatchList({ search, t }) {
     /* @__PURE__ */ import_react16.default.createElement("span", { className: "dxs-search-kind" }, match.market === "us" ? t("lookup.market.us") : t(`add.kind.${match.kind}`))
   )));
 }
-function InstrumentSearch({ rpc, onPick, t, delay = 250, refreshToken = 0 }) {
-  const search = useInstrumentSearch({ rpc, onPick, delay, refreshToken });
-  const { availability } = search;
-  return /* @__PURE__ */ import_react16.default.createElement("div", { className: "dxs-search" }, /* @__PURE__ */ import_react16.default.createElement("label", { htmlFor: search.inputId }, t("add.search")), /* @__PURE__ */ import_react16.default.createElement(
-    "input",
-    {
-      id: search.inputId,
-      type: "search",
-      name: "instrument-search",
-      autoComplete: "off",
-      spellCheck: false,
-      role: "combobox",
-      "aria-expanded": search.open && search.results.length > 0,
-      "aria-controls": search.listId,
-      "aria-autocomplete": "list",
-      "aria-activedescendant": search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : void 0,
-      placeholder: t("add.search.placeholder"),
-      maxLength: SEARCH_MAX_QUERY,
-      value: search.query,
-      disabled: availability === "unavailable",
-      onChange: (event) => search.change(event.target.value),
-      onKeyDown: search.keyDown
-    }
-  ), availability === "checking" && /* @__PURE__ */ import_react16.default.createElement("p", { className: "dxs-muted", role: "status" }, t("add.search.checking")), availability === "enabled" && /* @__PURE__ */ import_react16.default.createElement("p", { className: "dxs-muted dxs-search-note" }, t("add.search.notice")), availability === "enabled" && /* @__PURE__ */ import_react16.default.createElement("p", { className: "dxs-muted dxs-search-note" }, t("add.search.us-hint")), availability === "unavailable" && /* @__PURE__ */ import_react16.default.createElement("p", { className: "dxs-muted" }, t("add.search.unavailable")), availability === "disabled" && /* @__PURE__ */ import_react16.default.createElement("p", { className: "dxs-muted" }, t("add.search.disabled"), " ", /* @__PURE__ */ import_react16.default.createElement("button", { type: "button", disabled: search.enabling, onClick: search.enable }, t(search.enabling ? "add.search.enabling" : "add.search.enable"))), search.enableError && /* @__PURE__ */ import_react16.default.createElement("p", { role: "alert", className: "dxs-error" }, t(search.enableError)), search.state === "loading" && /* @__PURE__ */ import_react16.default.createElement("p", { className: "dxs-muted", role: "status" }, t("add.search.loading")), search.state === "error" && /* @__PURE__ */ import_react16.default.createElement("p", { role: "alert", className: "dxs-error" }, t(search.error)), /* @__PURE__ */ import_react16.default.createElement(MatchList, { search, t }), search.state === "ready" && search.results.length === 0 && /* @__PURE__ */ import_react16.default.createElement("p", { className: "dxs-muted", role: "status" }, t("add.search.empty")));
-}
 function LookupIcon() {
   return /* @__PURE__ */ import_react16.default.createElement("svg", { className: "dxs-lookup-icon", width: "13", height: "13", viewBox: "0 0 16 16", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react16.default.createElement("circle", { cx: "7", cy: "7", r: "4.2", stroke: "currentColor", strokeWidth: "1.5" }), /* @__PURE__ */ import_react16.default.createElement("path", { d: "m10.3 10.3 2.7 2.7", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round" }));
 }
@@ -15816,6 +15862,7 @@ function WatchSignals({ rpc, scope, items, sourceEnabled, t, format, onOpen }) {
   const [rows, setRows] = (0, import_react22.useState)([]);
   const [running, setRunning] = (0, import_react22.useState)(false);
   const [error, setError] = (0, import_react22.useState)("");
+  const [open, setOpen] = (0, import_react22.useState)(false);
   const controller = (0, import_react22.useRef)(null);
   const itemsKey = JSON.stringify(items.map((item) => [item.symbol, item.alias]));
   (0, import_react22.useEffect)(() => {
@@ -15831,6 +15878,7 @@ function WatchSignals({ rpc, scope, items, sourceEnabled, t, format, onOpen }) {
   }, [itemsKey, sourceEnabled]);
   const run = async () => {
     if (!sourceEnabled || !items.length || running) return;
+    setOpen(true);
     controller.current?.abort();
     const local = new AbortController();
     controller.current = local;
@@ -15856,9 +15904,14 @@ function WatchSignals({ rpc, scope, items, sourceEnabled, t, format, onOpen }) {
     setError("signal.cancelled");
   };
   const completed = rows.filter((row) => row.status !== "pending" && row.status !== "skipped").length;
-  return /* @__PURE__ */ import_react22.default.createElement("section", { className: "dxs-signal", "aria-labelledby": "dxs-signal-title" }, /* @__PURE__ */ import_react22.default.createElement("header", { className: "dxs-signal-head" }, /* @__PURE__ */ import_react22.default.createElement("div", null, /* @__PURE__ */ import_react22.default.createElement("h2", { id: "dxs-signal-title" }, t("signal.title")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.subtitle"))), running ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", onClick: stop }, t("signal.cancel")) : /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", className: "dxs-primary", onClick: () => {
+  const openStock = (symbol) => {
+    setOpen(false);
+    onOpen?.(symbol);
+  };
+  const hint = !items.length ? t("signal.empty") : !sourceEnabled ? t("signal.disabled") : rows.length ? `${running ? `${t("signal.running")} \xB7 ` : ""}${t("signal.progress", { completed, total: rows.length })}` : t("signal.idle");
+  return /* @__PURE__ */ import_react22.default.createElement("section", { className: "dxs-signal", "aria-labelledby": "dxs-signal-title" }, /* @__PURE__ */ import_react22.default.createElement("header", { className: "dxs-signal-head" }, /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-signal-title" }, /* @__PURE__ */ import_react22.default.createElement("h2", { id: "dxs-signal-title", title: t("signal.subtitle") }, t("signal.title")), /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-signal-hint", role: "status" }, hint)), /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-signal-actions" }, running ? /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", onClick: stop }, t("signal.cancel")) : /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", className: "dxs-primary", onClick: () => {
     void run();
-  }, disabled: !sourceEnabled || !items.length }, t(rows.length ? "signal.rerun" : "signal.run"))), !items.length ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-muted" }, t("signal.empty")) : !sourceEnabled ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-muted" }, t("signal.disabled")) : !rows.length ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-muted" }, t("signal.idle")) : null, rows.length ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-signal-progress", role: "status" }, running ? `${t("signal.running")} \xB7 ` : "", t("signal.progress", { completed, total: rows.length })) : null, error ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-signal-warning", role: "status" }, t(error)) : null, rows.some((row) => row.replay?.status === "ready") ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-signal-warning" }, t("signal.replay-warning")) : null, rows.length ? /* @__PURE__ */ import_react22.default.createElement("ol", { className: "dxs-signal-list" }, rows.map((row) => /* @__PURE__ */ import_react22.default.createElement(SignalRow, { key: row.symbol, row, t, format, onOpen }))) : null, scope ? /* @__PURE__ */ import_react22.default.createElement(WatchSchedulePanel, { rpc, scope, items, sourceEnabled, t, format, onOpen }) : null, /* @__PURE__ */ import_react22.default.createElement("details", { className: "dxs-signal-method" }, /* @__PURE__ */ import_react22.default.createElement("summary", null, t("signal.method")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.method-body")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.notice")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.time-note")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.storage-note"))));
+  }, disabled: !sourceEnabled || !items.length }, t(rows.length ? "signal.rerun" : "signal.run")), /* @__PURE__ */ import_react22.default.createElement("button", { type: "button", className: "dxs-signal-toggle", "aria-expanded": open, "aria-controls": "dxs-signal-body", title: t(open ? "signal.collapse" : "signal.expand"), onClick: () => setOpen((value) => !value) }, open ? "\u25B4" : "\u25BE", /* @__PURE__ */ import_react22.default.createElement("span", { className: "dxs-sr-only" }, t(open ? "signal.collapse" : "signal.expand"))))), open ? /* @__PURE__ */ import_react22.default.createElement("div", { className: "dxs-signal-body", id: "dxs-signal-body" }, error ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-signal-warning", role: "status" }, t(error)) : null, rows.some((row) => row.replay?.status === "ready") ? /* @__PURE__ */ import_react22.default.createElement("p", { className: "dxs-signal-warning" }, t("signal.replay-warning")) : null, rows.length ? /* @__PURE__ */ import_react22.default.createElement("ol", { className: "dxs-signal-list" }, rows.map((row) => /* @__PURE__ */ import_react22.default.createElement(SignalRow, { key: row.symbol, row, t, format, onOpen: openStock }))) : null, scope ? /* @__PURE__ */ import_react22.default.createElement(WatchSchedulePanel, { rpc, scope, items, sourceEnabled, t, format, onOpen: openStock }) : null, /* @__PURE__ */ import_react22.default.createElement("details", { className: "dxs-signal-method" }, /* @__PURE__ */ import_react22.default.createElement("summary", null, t("signal.method")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.method-body")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.notice")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.time-note")), /* @__PURE__ */ import_react22.default.createElement("p", null, t("signal.storage-note")))) : null);
 }
 
 // src/client/quant-scan-view.tsx
@@ -16293,42 +16346,40 @@ function StockIcon({ size: size2 = 20 }) {
 function SettingsIcon() {
   return /* @__PURE__ */ import_react27.default.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" }, /* @__PURE__ */ import_react27.default.createElement("circle", { cx: "12", cy: "12", r: "3.2", stroke: "currentColor", strokeWidth: "1.7" }), /* @__PURE__ */ import_react27.default.createElement("path", { d: "M12 3.5v2.1M12 18.4v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M3.5 12h2.1M18.4 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round" }));
 }
-function AddStock({ add, count: count2, fixedCount, ready, rpc, t, format, sourceRevision }) {
-  const [exchange, setExchange] = (0, import_react27.useState)("SH"), [code, setCode] = (0, import_react27.useState)(""), [alias, setAlias] = (0, import_react27.useState)(""), [fix, setFix] = (0, import_react27.useState)(false), [error, setError] = (0, import_react27.useState)("");
-  const [picked, setPicked] = (0, import_react27.useState)(null);
-  const submit = (event) => {
-    event.preventDefault();
-    try {
-      add({ symbol: normalizeAShare(exchange, code), alias, fixed: fix });
-      setCode("");
-      setAlias("");
-      setFix(false);
-      setError("");
-      setPicked(null);
-    } catch (failure) {
-      setError(errorKey(failure.code));
-    }
-  };
-  const pick = (match) => {
-    const [market, digits] = String(match.symbol).split(".");
-    setExchange(market);
-    setCode(digits);
-    setAlias((current) => current.trim() ? current : match.name);
-    setPicked(match);
-    setError("");
-  };
-  return /* @__PURE__ */ import_react27.default.createElement("form", { className: "dxs-form", onSubmit: submit, noValidate: true }, /* @__PURE__ */ import_react27.default.createElement("h2", null, t("add.title")), /* @__PURE__ */ import_react27.default.createElement(InstrumentSearch, { rpc, onPick: pick, t, refreshToken: sourceRevision }), picked && /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-picked", role: "status" }, t("add.selected", { name: picked.name, symbol: picked.symbol, kind: t(`add.kind.${picked.kind}`) })), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-form-grid" }, /* @__PURE__ */ import_react27.default.createElement("label", { className: "dxs-field" }, t("add.exchange"), /* @__PURE__ */ import_react27.default.createElement("select", { name: "exchange", value: exchange, onChange: (event) => {
-    setExchange(event.target.value);
-    setPicked(null);
-  } }, ["SH", "SZ", "BJ"].map((value) => /* @__PURE__ */ import_react27.default.createElement("option", { key: value, value }, t(`exchange.${value}`))))), /* @__PURE__ */ import_react27.default.createElement("label", { className: "dxs-field" }, t("add.code"), /* @__PURE__ */ import_react27.default.createElement("input", { name: "code", value: code, onChange: (event) => {
-    setCode(event.target.value);
-    setPicked(null);
-  }, inputMode: "numeric", maxLength: 6, placeholder: "600519", required: true, pattern: "[0-9]{6}" }))), /* @__PURE__ */ import_react27.default.createElement("label", { className: "dxs-field" }, t("add.alias"), /* @__PURE__ */ import_react27.default.createElement("input", { name: "alias", value: alias, onChange: (event) => setAlias(event.target.value), maxLength: 24, placeholder: t("add.alias.placeholder") })), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-form-submit" }, /* @__PURE__ */ import_react27.default.createElement("label", { className: "dxs-check" }, /* @__PURE__ */ import_react27.default.createElement("input", { type: "checkbox", name: "fixed", checked: fix, disabled: fixedCount >= MAX_FIXED, onChange: (event) => setFix(event.target.checked) }), " ", t("add.fix", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react27.default.createElement("button", { type: "submit", className: "dxs-primary", disabled: !ready || count2 >= MAX_WATCHLIST }, t("add.submit", { count: format.count(count2) }))), error && /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-error" }, t(error, { max: format.count(error === "error.fixed-limit" ? MAX_FIXED : MAX_WATCHLIST) })));
-}
-function Detail({ item, previewing, onAdd, useResource, t, format, scope, locale, rpc }) {
+function Detail({ item, previewing, onAdd, onToggleFixed, useResource, t, format, scope, locale, rpc }) {
   const snapshot = useResource(addressFor(item.symbol)), quote = quoteFor(snapshot, item.symbol);
   const changeTone2 = tone5(quote?.changePercent);
-  return /* @__PURE__ */ import_react27.default.createElement("article", { "aria-label": t("detail.aria", { symbol: item.symbol }) }, /* @__PURE__ */ import_react27.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-quote-identity" }, /* @__PURE__ */ import_react27.default.createElement("h2", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-symbol-line" }, /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-symbol" }, item.symbol), item.alias ? t("detail.alias") : "", item.fixed ? t("detail.fixed") : "", previewing ? t("detail.preview") : "", previewing && onAdd ? /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-preview-add", onClick: onAdd, title: t("detail.preview.add-hint") }, t("detail.preview.add-short")) : null)), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-quote-figures" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: `dxs-price ${changeTone2}` }, format.priceAt(quote?.price, quote?.pricePrecision)), /* @__PURE__ */ import_react27.default.createElement("div", { className: `dxs-change ${changeTone2}` }, format.change(quote?.changePercent)), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-status-line" }, /* @__PURE__ */ import_react27.default.createElement(Status, { snapshot, quote, t, format }))), /* @__PURE__ */ import_react27.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react27.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react27.default.createElement("dl", null, /* @__PURE__ */ import_react27.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react27.default.createElement("dd", null, sourceOf(snapshot) || t("detail.no-source")), /* @__PURE__ */ import_react27.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react27.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react27.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react27.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react27.default.createElement(EtfHoldingsPanel, { symbol: item.symbol, rpc, t, format }), /* @__PURE__ */ import_react27.default.createElement(StockWorkbench, { key: `${scope}:${item.symbol}`, symbol: item.symbol, scope, t, format, locale, rpc }), /* @__PURE__ */ import_react27.default.createElement(FundamentalsPanel, { symbol: item.symbol, rpc, t, format }), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-secondary" }, /* @__PURE__ */ import_react27.default.createElement("details", { className: "dxs-section" }, /* @__PURE__ */ import_react27.default.createElement("summary", null, t("detail.analysis")), /* @__PURE__ */ import_react27.default.createElement("p", null, t("detail.no-analysis")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("detail.analysis-notice")))));
+  const fund = isExchangeFund(item.symbol);
+  const [tab, setTab] = (0, import_react27.useState)("chart");
+  const article = (0, import_react27.useRef)(null);
+  const tabs = fund ? [["chart", t("detail.tab.chart")], ["holdings", t("detail.tab.holdings")]] : [["chart", t("detail.tab.chart")], ["fundamentals", t("detail.tab.fundamentals")]];
+  const activeTab = tabs.some(([key]) => key === tab) ? tab : "chart";
+  (0, import_react27.useEffect)(() => {
+    if (activeTab !== tab) setTab(activeTab);
+  }, [item.symbol]);
+  const pick = (next) => {
+    if (next === tab) return;
+    setTab(next);
+    article.current?.scrollIntoView?.({ block: "start" });
+  };
+  return /* @__PURE__ */ import_react27.default.createElement("article", { ref: article, "aria-label": t("detail.aria", { symbol: item.symbol }) }, /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-detail-top" }, /* @__PURE__ */ import_react27.default.createElement("section", { className: "dxs-section dxs-instrument-summary" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-quote-identity" }, /* @__PURE__ */ import_react27.default.createElement("h2", null, item.alias || quote?.name || item.symbol), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-symbol-line" }, /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-symbol" }, item.symbol), item.alias ? t("detail.alias") : "", previewing ? t("detail.preview") : "", previewing && onAdd ? /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-preview-add", onClick: onAdd, title: t("detail.preview.add-hint") }, t("detail.preview.add-short")) : null, !previewing && onToggleFixed ? /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-detail-fix", "aria-pressed": Boolean(item.fixed), onClick: onToggleFixed, title: t(item.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: item.symbol }) }, item.fixed ? t("detail.unfix") : t("detail.fix")) : null)), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-quote-figures" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: `dxs-price ${changeTone2}` }, format.priceAt(quote?.price, quote?.pricePrecision)), /* @__PURE__ */ import_react27.default.createElement("div", { className: `dxs-change ${changeTone2}` }, format.change(quote?.changePercent)), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-status-line" }, /* @__PURE__ */ import_react27.default.createElement(Status, { snapshot, quote, t, format }))), /* @__PURE__ */ import_react27.default.createElement("details", { className: "dxs-quote-metadata" }, /* @__PURE__ */ import_react27.default.createElement("summary", null, t("detail.source")), /* @__PURE__ */ import_react27.default.createElement("dl", null, /* @__PURE__ */ import_react27.default.createElement("dt", null, t("detail.source")), /* @__PURE__ */ import_react27.default.createElement("dd", null, sourceOf(snapshot) || t("detail.no-source")), /* @__PURE__ */ import_react27.default.createElement("dt", null, t("detail.quoted-at")), /* @__PURE__ */ import_react27.default.createElement("dd", null, format.time(quote?.quotedAt, t)), /* @__PURE__ */ import_react27.default.createElement("dt", null, t("detail.fetched-at")), /* @__PURE__ */ import_react27.default.createElement("dd", null, format.time(quote?.fetchedAt, t))), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("detail.time-notice")))), /* @__PURE__ */ import_react27.default.createElement("nav", { className: "dxs-detail-tabs", "aria-label": t("detail.tabs.aria") }, tabs.map(([key, label]) => /* @__PURE__ */ import_react27.default.createElement("button", { key, type: "button", "aria-pressed": activeTab === key, onClick: () => pick(key) }, label)))), activeTab === "chart" ? /* @__PURE__ */ import_react27.default.createElement(StockWorkbench, { key: `${scope}:${item.symbol}`, symbol: item.symbol, scope, t, format, locale, rpc }) : activeTab === "holdings" ? /* @__PURE__ */ import_react27.default.createElement(EtfHoldingsPanel, { key: `holdings:${item.symbol}`, symbol: item.symbol, rpc, t, format }) : /* @__PURE__ */ import_react27.default.createElement(FundamentalsPanel, { key: `fundamentals:${item.symbol}`, symbol: item.symbol, rpc, t, format }));
+}
+function WatchRail({ items, selected, fixError, selectStock, move, toggleFix, remove, useResource, t, format, barHidden, toggleBar, showBarInDiscreet, discreet, appearance, quotesOff, setView }) {
+  const snapshot = useResource(watchlistAddressFor(items.map((entry) => entry.symbol)));
+  const quotes = new Map((snapshot?.value?.quotes ?? []).map((quote) => [quote?.symbol, quote]));
+  const newestQuote = [...quotes.values()].filter((quote) => Number.isFinite(Date.parse(quote?.quotedAt))).sort((left, right) => Date.parse(right.quotedAt) - Date.parse(left.quotedAt))[0];
+  const newest = newestQuote ? Date.parse(newestQuote.quotedAt) : void 0;
+  const source = typeof snapshot?.value?.source === "string" && snapshot.value.source ? snapshot.value.source : t("page.quote.no-source");
+  const off = quotesOff || snapshot?.value?.status === "unconfigured";
+  const live = Boolean(newest && quoteStatus(newestQuote) === "recent");
+  const status = off ? t("page.quote.off") : snapshot?.status === "loading" ? t("page.quote.loading") : snapshot?.status === "failed" ? t("page.quote.failed") : `${t(live ? "page.quote.live" : "page.quote.recent", { source })}${newest ? ` \xB7 ${t("page.quote.updated", { time: format.clock(newest) })}` : ""}`;
+  return /* @__PURE__ */ import_react27.default.createElement("aside", { className: "dxs-rail", "aria-label": t("page.manage") }, /* @__PURE__ */ import_react27.default.createElement("header", { className: "dxs-rail-head" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-rail-heading" }, /* @__PURE__ */ import_react27.default.createElement("h2", null, t("page.my-watchlist")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-counts" }, t("page.counts", { count: format.count(items.length), fixed: format.count(fixedItems(items).length), max: format.count(MAX_FIXED) }))), items.length ? /* @__PURE__ */ import_react27.default.createElement("p", { className: `dxs-rail-quote${off ? " is-off" : live ? "" : " is-idle"}`, title: t("page.quote.hint") }, /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-rail-dot", "aria-hidden": "true" }), /* @__PURE__ */ import_react27.default.createElement("span", null, status)) : null), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-rail-list" }, !items.length && /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-empty" }, /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("page.empty.lookup")), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint"))), /* @__PURE__ */ import_react27.default.createElement("ol", { className: "dxs-list" }, items.map((entry, index) => {
+    const quote = quotes.get(entry.symbol);
+    const changeTone2 = tone5(quote?.changePercent);
+    const price2 = quote?.price == null ? "\u2014" : format.priceAt(quote.price, quote.pricePrecision);
+    const change = quote?.price == null ? "\u2014" : format.change(quote.changePercent);
+    return /* @__PURE__ */ import_react27.default.createElement("li", { key: entry.symbol, className: selected === entry.symbol ? "is-selected" : void 0 }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-select", "aria-pressed": selected === entry.symbol, title: t("chip.title", { symbol: entry.symbol, status: t(`status.${quoteStatus(quote)}`) }), onClick: () => selectStock(entry.symbol) }, /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-row-name" }, /* @__PURE__ */ import_react27.default.createElement("strong", null, entry.alias || entry.symbol)), /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-row-meta" }, entry.alias ? /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-muted" }, entry.symbol) : null), /* @__PURE__ */ import_react27.default.createElement("span", { className: `dxs-row-quote ${changeTone2}${quote?.price == null ? " is-empty" : ""}` }, /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-row-price" }, price2), /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-row-change" }, change))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === 0, "aria-label": t("page.move-up", { symbol: entry.symbol }), onClick: () => move(entry.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === items.length - 1, "aria-label": t("page.move-down", { symbol: entry.symbol }), onClick: () => move(entry.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button", "aria-pressed": entry.fixed, "aria-label": t(entry.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: entry.symbol }), title: entry.fixed ? t("page.unfix") : t("page.fix"), onClick: () => toggleFix(entry) }, entry.fixed ? "\u2605" : "\u2606"), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button dxs-remove", "aria-label": t("page.remove-aria", { symbol: entry.symbol }), title: t("page.remove"), onClick: () => remove(entry.symbol) }, "\u2715")));
+  })), fixError && /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-error" }, t(fixError, { max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-rail-foot" }, /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-bar-toggle" }, discreet && !appearance.barInDiscreet ? /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: showBarInDiscreet, title: t("page.bar-quiet-hint") }, t("page.bar-quiet-show")) : barHidden ? /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show")) : /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-hide")), /* @__PURE__ */ import_react27.default.createElement(ShortcutHint, { t })), /* @__PURE__ */ import_react27.default.createElement("details", { className: "dxs-fineprint" }, /* @__PURE__ */ import_react27.default.createElement("summary", null, t("page.notes")), !quotesOff ? /* @__PURE__ */ import_react27.default.createElement("p", null, t("page.notice")) : null, /* @__PURE__ */ import_react27.default.createElement("p", null, t("page.fixed-hint", { max: format.count(MAX_FIXED) })))));
 }
 function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move, select, preview, closePreview, setFixed, toggleBar, back, retryScope, settings, t, format, getLocale = () => "en" }) {
   const state = useWatchlist((value) => value);
@@ -16345,8 +16396,11 @@ function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move,
   };
   const selected = previewItem ? void 0 : state.items.find((entry) => entry.symbol === state.selectedSymbol);
   const item = previewItem ?? selected ?? state.items[0];
-  const fixedCount = fixedItems(state.items).length;
   const [view, setView] = (0, import_react27.useState)("watchlist");
+  const watchStage = (0, import_react27.useRef)(null);
+  (0, import_react27.useEffect)(() => {
+    watchStage.current?.scrollTo?.({ top: 0 });
+  }, [item?.symbol]);
   const [fixError, setFixError] = (0, import_react27.useState)("");
   const [drillNotice, setDrillNotice] = (0, import_react27.useState)("");
   const [settingsOpen, setSettingsOpen] = (0, import_react27.useState)(false);
@@ -16452,7 +16506,29 @@ function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove, move,
   } }, tabLabel("gold.view.tab", "settings.tab.gold")), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", "aria-pressed": view === "quant-scan" && !previewOpen, onClick: () => {
     leavePreview();
     setView("quant-scan");
-  } }, tabLabel("quantScan.tab", "quantScan.tab.quiet"))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-header-actions" }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-settings-button", "aria-label": t("settings.open"), title: t("settings.open"), "aria-haspopup": "dialog", "aria-expanded": settingsOpen, onClick: () => setSettingsOpen(true) }, /* @__PURE__ */ import_react27.default.createElement(SettingsIcon, null), /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-settings-button-label" }, t("settings.open"))), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: back }, t("page.back")))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-body" }, drillNotice ? /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, drillNotice) : null, previewOpen ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-detail dxs-preview-page" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-preview-bar" }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-preview-back", onClick: leavePreview }, "\u2190 ", t("preview.back")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("preview.bar", { name: previewItem?.alias || previewItem?.symbol || "" }))), usPreview ? /* @__PURE__ */ import_react27.default.createElement(UsDetail, { key: `us-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`, item: previewItem, t, format, locale: getLocale(), scope: state.scopeId, rpc }) : /* @__PURE__ */ import_react27.default.createElement(Detail, { key: `preview:${previewItem?.symbol}:${preference.enabled}`, item: previewItem, previewing: true, onAdd: state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : void 0, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc })) : view === "gold" ? /* @__PURE__ */ import_react27.default.createElement(GoldView, { rpc, t, format, locale: getLocale(), preference }) : view === "global" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(GlobalView, { key: `global:${sourceRevision}`, rpc, t, format, locale: getLocale(), preference, onChangeSource: changeSource })) : view === "quant-scan" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react27.default.createElement(QuantScanView, { rpc, scope: state.scopeStatus === "ready" ? state.scopeId : null, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpenStock: openStock })) : view === "hot" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(HotView, { rpc, t, format, onOpenStock: openStock, onAddMany: addMany }), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("hot.drill.hint"))) : view === "predict" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(PredictView, { rpc, t, format, onOpenStock: openStock }), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("predict.drill.hint"))) : view === "market" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(MarketView, { key: `market:${sourceRevision}`, rpc, t, format, locale: getLocale(), scope: state.scopeId, discreet, preference, onChangeSource: changeSource, onOpenStock: openStock }), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("market.drill.hint"))) : /* @__PURE__ */ import_react27.default.createElement(import_react27.default.Fragment, null, sourceOff ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-banner is-warn dxs-source-card" }, /* @__PURE__ */ import_react27.default.createElement("div", null, /* @__PURE__ */ import_react27.default.createElement("strong", null, t("source.off-title", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("source.off-notice")), preference.status === "error" ? /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null), /* @__PURE__ */ import_react27.default.createElement(SourceButton, { preference, t, large: true })) : preference.status === "error" ? /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t("source.unavailable")) : null, state.placement === "occupied" && /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.occupied")), state.barHidden && /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))), state.scopeStatus === "loading" && /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-banner" }, /* @__PURE__ */ import_react27.default.createElement("button", { onClick: retryScope }, t("page.scope-retry"))), state.storageError && /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react27.default.createElement("aside", { className: "dxs-rail", "aria-label": t("page.manage") }, /* @__PURE__ */ import_react27.default.createElement("header", { className: "dxs-rail-head" }, /* @__PURE__ */ import_react27.default.createElement("h2", null, t("page.my-watchlist")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-counts" }, t("page.counts", { count: format.count(state.items.length), fixed: format.count(fixedCount), max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-rail-list" }, !state.items.length && /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-empty" }, /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("page.empty")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("page.empty.lookup")), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => setView("market") }, t("page.view.market-hint"))), /* @__PURE__ */ import_react27.default.createElement("ol", { className: "dxs-list" }, state.items.map((entry, index) => /* @__PURE__ */ import_react27.default.createElement("li", { key: entry.symbol, className: item?.symbol === entry.symbol ? "is-selected" : void 0 }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-select", "aria-pressed": item?.symbol === entry.symbol, onClick: () => selectStock(entry.symbol) }, /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-row-name" }, /* @__PURE__ */ import_react27.default.createElement("strong", null, entry.alias || entry.symbol), entry.fixed ? /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-fixed-mark" }, t("page.fixed")) : null), /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-row-meta" }, entry.alias ? /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-muted" }, entry.symbol) : null)), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-controls" }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === 0, "aria-label": t("page.move-up", { symbol: entry.symbol }), onClick: () => move(entry.symbol, -1) }, "\u2191"), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button", disabled: index === state.items.length - 1, "aria-label": t("page.move-down", { symbol: entry.symbol }), onClick: () => move(entry.symbol, 1) }, "\u2193"), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button", "aria-pressed": entry.fixed, "aria-label": t(entry.fixed ? "page.unfix-aria" : "page.fix-aria", { symbol: entry.symbol }), title: entry.fixed ? t("page.unfix") : t("page.fix"), onClick: () => toggleFix(entry) }, entry.fixed ? "\u2605" : "\u2606"), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-icon-button dxs-remove", "aria-label": t("page.remove-aria", { symbol: entry.symbol }), title: t("page.remove"), onClick: () => remove(entry.symbol) }, "\u2715"))))), fixError && /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-error" }, t(fixError, { max: format.count(MAX_FIXED) }))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-rail-foot" }, /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-bar-toggle" }, discreet && !appearance.barInDiscreet ? /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: showBarInDiscreet, title: t("page.bar-quiet-hint") }, t("page.bar-quiet-show")) : state.barHidden ? /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show")) : /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-hide")), /* @__PURE__ */ import_react27.default.createElement(ShortcutHint, { t })), /* @__PURE__ */ import_react27.default.createElement(AddStock, { add, count: state.items.length, fixedCount, ready: state.scopeStatus === "ready", rpc, t, format, sourceRevision }), /* @__PURE__ */ import_react27.default.createElement("details", { className: "dxs-fineprint" }, /* @__PURE__ */ import_react27.default.createElement("summary", null, t("page.notes")), !sourceOff ? /* @__PURE__ */ import_react27.default.createElement("p", null, t("page.notice")) : null, /* @__PURE__ */ import_react27.default.createElement("p", null, t("page.fixed-hint", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react27.default.createElement("p", null, t("add.notice"))))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage" }, state.scopeStatus === "ready" ? /* @__PURE__ */ import_react27.default.createElement(WatchSignals, { key: state.scopeId, rpc, scope: state.scopeId, items: state.items, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpen: selectStock }) : null, state.scopeStatus === "ready" && (item ? /* @__PURE__ */ import_react27.default.createElement(Detail, { key: `${state.scopeId}:${preference.enabled}:${item.symbol}`, item, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc }) : /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage-empty" }, /* @__PURE__ */ import_react27.default.createElement("h2", null, t("page.select")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("page.select-hint")), /* @__PURE__ */ import_react27.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale(), rpc }))))))), settingsOpen ? /* @__PURE__ */ import_react27.default.createElement(
+  } }, tabLabel("quantScan.tab", "quantScan.tab.quiet"))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-header-actions" }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-settings-button", "aria-label": t("settings.open"), title: t("settings.open"), "aria-haspopup": "dialog", "aria-expanded": settingsOpen, onClick: () => setSettingsOpen(true) }, /* @__PURE__ */ import_react27.default.createElement(SettingsIcon, null), /* @__PURE__ */ import_react27.default.createElement("span", { className: "dxs-settings-button-label" }, t("settings.open"))), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: back }, t("page.back")))), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-body" }, drillNotice ? /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, drillNotice) : null, previewOpen ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-detail dxs-preview-page" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-preview-bar" }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-preview-back", onClick: leavePreview }, "\u2190 ", t("preview.back")), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("preview.bar", { name: previewItem?.alias || previewItem?.symbol || "" }))), usPreview ? /* @__PURE__ */ import_react27.default.createElement(UsDetail, { key: `us-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`, item: previewItem, t, format, locale: getLocale(), scope: state.scopeId, rpc }) : /* @__PURE__ */ import_react27.default.createElement(Detail, { key: `preview:${previewItem?.symbol}:${preference.enabled}`, item: previewItem, previewing: true, onAdd: state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : void 0, useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc })) : view === "gold" ? /* @__PURE__ */ import_react27.default.createElement(GoldView, { rpc, t, format, locale: getLocale(), preference }) : view === "global" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(GlobalView, { key: `global:${sourceRevision}`, rpc, t, format, locale: getLocale(), preference, onChangeSource: changeSource })) : view === "quant-scan" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(SourceButton, { preference, t }), /* @__PURE__ */ import_react27.default.createElement(QuantScanView, { rpc, scope: state.scopeStatus === "ready" ? state.scopeId : null, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpenStock: openStock })) : view === "hot" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(HotView, { rpc, t, format, onOpenStock: openStock, onAddMany: addMany }), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("hot.drill.hint"))) : view === "predict" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(PredictView, { rpc, t, format, onOpenStock: openStock }), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("predict.drill.hint"))) : view === "market" ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage dxs-stage-market" }, /* @__PURE__ */ import_react27.default.createElement(MarketView, { key: `market:${sourceRevision}`, rpc, t, format, locale: getLocale(), scope: state.scopeId, discreet, preference, onChangeSource: changeSource, onOpenStock: openStock }), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted dxs-stage-hint" }, t("market.drill.hint"))) : /* @__PURE__ */ import_react27.default.createElement(import_react27.default.Fragment, null, sourceOff ? /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-banner is-warn dxs-source-card" }, /* @__PURE__ */ import_react27.default.createElement("div", null, /* @__PURE__ */ import_react27.default.createElement("strong", null, t("source.off-title", { max: format.count(MAX_FIXED) })), /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-muted" }, t("source.off-notice")), preference.status === "error" ? /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-error" }, t("source.unavailable")) : null), /* @__PURE__ */ import_react27.default.createElement(SourceButton, { preference, t, large: true })) : preference.status === "error" ? /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t("source.unavailable")) : null, state.placement === "occupied" && /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.occupied")), state.barHidden && /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.bar-hidden"), " ", /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => toggleBar() }, t("page.bar-show"))), state.scopeStatus === "loading" && /* @__PURE__ */ import_react27.default.createElement("p", { role: "status", className: "dxs-banner" }, t("page.scope-loading")), state.scopeStatus === "failed" && /* @__PURE__ */ import_react27.default.createElement("p", { className: "dxs-banner" }, /* @__PURE__ */ import_react27.default.createElement("button", { onClick: retryScope }, t("page.scope-retry"))), state.storageError && /* @__PURE__ */ import_react27.default.createElement("p", { role: "alert", className: "dxs-banner dxs-error" }, t(errorKey(state.storageError), { max: format.count(MAX_WATCHLIST) })), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-layout" }, /* @__PURE__ */ import_react27.default.createElement(
+    WatchRail,
+    {
+      key: `rail:${preference.enabled ? "on" : "off"}`,
+      items: state.items,
+      selected: item?.symbol,
+      fixError,
+      selectStock,
+      move,
+      toggleFix,
+      remove,
+      useResource,
+      t,
+      format,
+      barHidden: state.barHidden,
+      toggleBar,
+      showBarInDiscreet,
+      discreet,
+      appearance,
+      quotesOff: sourceOff,
+      setView
+    }
+  ), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage", ref: watchStage }, state.scopeStatus === "ready" && state.items.length ? /* @__PURE__ */ import_react27.default.createElement(WatchSignals, { key: state.scopeId, rpc, scope: state.scopeId, items: state.items, sourceEnabled: preference.status === "ready" && preference.enabled, t, format, onOpen: selectStock }) : null, state.scopeStatus === "ready" && (item ? /* @__PURE__ */ import_react27.default.createElement(Detail, { key: `${state.scopeId}:${preference.enabled}`, item, onToggleFixed: () => toggleFix(item), useResource, t, format, scope: state.scopeId, locale: getLocale(), rpc }) : /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-stage-empty dxs-start" }, /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-start-card" }, /* @__PURE__ */ import_react27.default.createElement("h2", null, t("page.start.title")), /* @__PURE__ */ import_react27.default.createElement("p", null, t("page.start.body")), /* @__PURE__ */ import_react27.default.createElement("div", { className: "dxs-start-actions" }, /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", className: "dxs-primary", onClick: () => setView("market") }, t(discreet ? "settings.tab.market" : "page.view.market-hint")), /* @__PURE__ */ import_react27.default.createElement("button", { type: "button", onClick: () => setView("hot") }, t(discreet ? "settings.tab.hot" : "page.view.hot")))), /* @__PURE__ */ import_react27.default.createElement("details", { className: "dxs-start-local" }, /* @__PURE__ */ import_react27.default.createElement("summary", null, t("page.start.local")), /* @__PURE__ */ import_react27.default.createElement(StockWorkbench, { key: state.scopeId, scope: state.scopeId, t, format, locale: getLocale(), rpc })))))))), settingsOpen ? /* @__PURE__ */ import_react27.default.createElement(
     SettingsPanel,
     {
       settings,
@@ -16921,26 +16997,35 @@ var WATCHLIST_CSS = `
 .dxs-banner strong{font-size:13px}
 .dxs-banner p{margin:2px 0 0}
 .dxs-banner .dxs-source-enable{flex:none}
-.dxs-layout{flex:1;min-height:0;grid-template-columns:minmax(268px,320px) minmax(0,1fr);gap:0;margin:0;align-items:stretch}
+.dxs-layout{flex:1;min-height:0;grid-template-columns:minmax(288px,340px) minmax(0,1fr);gap:0;margin:0;align-items:stretch}
 .dxs-layout>aside.dxs-rail,.dxs-stage{min-width:0;min-height:0}
 .dxs-layout>aside.dxs-rail{max-height:none;overflow:hidden}
 .dxs-rail{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--dxs-bg);border-right:1px solid var(--dxs-line-soft)}
-.dxs-rail-head{flex:none;padding:14px 14px 6px}
+.dxs-rail-head{flex:none;padding:14px 14px 8px}
 .dxs-rail-head h2{margin:0;font-size:14px;font-weight:650}
 .dxs-counts{margin:2px 0 0;color:var(--dxs-muted);font-size:12px;font-variant-numeric:tabular-nums}
+.dxs-rail-quote{display:flex;align-items:center;gap:6px;margin:6px 0 0;min-width:0;color:var(--dxs-muted);font-size:11px;font-variant-numeric:tabular-nums}
+.dxs-rail-quote>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dxs-rail-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dxs-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--dxs-accent) 16%,transparent)}
+.dxs-rail-quote.is-off .dxs-rail-dot,.dxs-rail-quote.is-idle .dxs-rail-dot{background:var(--dxs-muted);box-shadow:none}
 .dxs-rail-list{flex:1;min-height:0;overflow:auto;padding:4px 8px 8px}
 .dxs-list{margin:0}
 .dxs-list li{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;margin:1px 0;border-radius:8px}
 .dxs-list li.is-selected{background:color-mix(in srgb,var(--dxs-accent) 10%,var(--dxs-bg))}
 .dxs-list li.is-selected::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--dxs-accent)}
-.dxs .dxs-list .dxs-select{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;width:100%;height:auto;min-height:46px;margin:0;padding:7px 10px 7px 12px;border:0;border-radius:8px;background:transparent;box-shadow:none;text-align:left;white-space:normal;line-height:1.25}
+.dxs .dxs-list .dxs-select{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;row-gap:1px;align-items:center;align-content:center;width:100%;height:auto;min-height:48px;margin:0;padding:7px 10px 7px 12px;border:0;border-radius:8px;background:transparent;box-shadow:none;text-align:left;white-space:normal;line-height:1.25}
 .dxs .dxs-list .dxs-select:hover:not(:disabled){background:transparent}
 .dxs .dxs-list li:hover:not(.is-selected){background:color-mix(in srgb,var(--dxs-fg) 4%,var(--dxs-bg))}
-.dxs-row-name{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}
+.dxs-row-name{grid-column:1;grid-row:1;display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}
 .dxs-row-name strong{font-size:13px;font-weight:640;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dxs-row-meta{display:flex;align-items:center;gap:6px;min-height:16px;font-size:11px;font-variant-numeric:tabular-nums}
+.dxs-row-meta{grid-column:1;grid-row:2;display:flex;align-items:center;gap:6px;min-height:14px;font-size:10.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .dxs-row-meta:empty{display:none}
-.dxs-fixed-mark{display:inline-flex;align-items:center;height:16px;margin:0;padding:0 5px;border-radius:999px;background:color-mix(in srgb,var(--dxs-accent) 12%,var(--dxs-bg));color:var(--dxs-accent);font-size:10px;font-weight:650;line-height:1}
+.dxs-row-quote{grid-column:2;grid-row:1/span 2;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:0;min-width:56px;text-align:right;font-variant-numeric:tabular-nums;line-height:1.3;white-space:nowrap}
+.dxs-row-price{font-size:13px;font-weight:650;letter-spacing:-.01em}
+.dxs-row-change{font-size:11px;font-weight:600}
+.dxs-row-quote:not(.dxs-up):not(.dxs-down){color:var(--dxs-fg)}
+.dxs-row-quote:not(.dxs-up):not(.dxs-down) .dxs-row-change{color:var(--dxs-muted)}
+.dxs-row-quote.is-empty{color:var(--dxs-muted)}
 .dxs .dxs-list .dxs-controls{position:static;transform:none;display:flex;gap:1px;margin:0;padding:0 4px 0 0;border-radius:8px;background:transparent;opacity:1;pointer-events:auto}
 .dxs .dxs-list .dxs-controls button,.dxs .dxs-list .dxs-controls .dxs-icon-button{width:24px;height:24px;padding:0;border-color:transparent;background:transparent;color:var(--dxs-muted);font-size:12px;border-radius:6px}
 .dxs .dxs-list .dxs-controls button:hover:not(:disabled){background:var(--dxs-soft);color:var(--dxs-fg)}
@@ -16955,16 +17040,6 @@ var WATCHLIST_CSS = `
 .dxs-shortcut kbd{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:18px;margin:0;padding:0 4px;border:1px solid var(--dxs-line);border-bottom-width:2px;border-radius:4px;background:var(--dxs-soft);color:var(--dxs-muted);font:inherit;font-size:10px;line-height:1}
 .dxs .dxs-bar-toggle button{height:24px;padding:0 2px;border:0;background:transparent;color:var(--dxs-muted)}
 .dxs .dxs-bar-toggle button:hover:not(:disabled){color:var(--dxs-fg);background:transparent}
-.dxs-rail-foot .dxs-search-results{position:static;bottom:auto;box-shadow:none}
-.dxs-form{margin-top:0;gap:8px}
-.dxs-form h2{margin:0;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--dxs-muted)}
-.dxs-form-grid{display:grid;grid-template-columns:minmax(96px,112px) minmax(0,1fr);gap:8px}
-.dxs-field{display:grid;gap:4px;min-width:0;font-size:11px;color:var(--dxs-muted)}
-.dxs-form-submit{display:flex;flex-direction:column;gap:8px}
-.dxs .dxs-form-submit .dxs-primary{width:100%}
-.dxs-picked{margin:0;padding:6px 8px;border-radius:8px;background:color-mix(in srgb,var(--dxs-accent) 8%,var(--dxs-bg));color:var(--dxs-fg);font-size:12px}
-.dxs-search{gap:4px}
-.dxs-search-note{margin:0;font-size:11px;line-height:1.45}
 .dxs-rail-foot .dxs-search-results{position:static;z-index:auto;margin-top:4px;box-shadow:none}
 .dxs-fineprint{font-size:11px;color:var(--dxs-muted)}
 .dxs-fineprint summary{cursor:pointer;width:fit-content}
@@ -16978,23 +17053,46 @@ var WATCHLIST_CSS = `
 .dxs .dxs-preview-back:hover{border-color:var(--dxs-accent);color:var(--dxs-accent)}
 .dxs-stage-market{padding-top:14px}
 .dxs-stage-hint{margin:8px 0 0}
+/* First run: a start card instead of a detail page with no stock in it. */
+.dxs-start{display:flex;align-items:center;padding:12px 0 24px}
+.dxs-start-card{width:100%;max-width:760px;padding:26px 28px;border:1px solid var(--dxs-line-soft);border-radius:14px;background:var(--dxs-bg)}
+.dxs-start .dxs-start-card h2{margin:0;font-size:20px;line-height:1.3}
+.dxs-start-card p{margin:8px 0 0;max-width:620px;color:var(--dxs-muted);line-height:1.6}
+.dxs-start-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.dxs-start-local{width:100%;max-width:760px;font-size:12px;color:var(--dxs-muted)}
+.dxs-start-local>summary{cursor:pointer;width:fit-content;padding:2px 0}
+.dxs-start-local .dxs-workbench{margin-top:10px}
 .dxs-stage-empty{display:flex;flex-direction:column;gap:8px}
 .dxs-stage-empty h2{margin:0;font-size:18px}
 .dxs .dxs-symbol-line .dxs-preview-add{height:20px;margin-left:8px;padding:0 8px;border-color:color-mix(in srgb,var(--dxs-accent) 45%,var(--dxs-line));border-radius:999px;background:transparent;color:var(--dxs-accent);font-size:11px;font-weight:600}
 .dxs .dxs-symbol-line .dxs-preview-add:hover:not(:disabled){background:color-mix(in srgb,var(--dxs-accent) 10%,var(--dxs-bg))}
-.dxs-instrument-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px 20px;margin:0 0 8px;padding:2px 2px 12px;border:0;border-radius:0;background:transparent}
-.dxs-quote-identity{min-width:0}
+/* The stock header and its view tabs travel together: scrolling the chart or
+   a filing never hides which stock is open. The preview page keeps its own
+   sticky back bar, so it opts out of this one. */
+.dxs-detail-top{position:sticky;top:0;z-index:3;padding-top:6px;background:var(--dxs-soft)}
+.dxs-preview-page .dxs-detail-top{position:static;padding-top:0}
+.dxs-detail-tabs{display:flex;align-items:center;gap:2px;margin:0;border-bottom:1px solid var(--dxs-line-soft)}
+.dxs .dxs-detail-tabs button{height:30px;padding:0 12px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--dxs-muted);font-size:12px;font-weight:550}
+.dxs .dxs-detail-tabs button:hover:not(:disabled){background:transparent;color:var(--dxs-fg)}
+.dxs .dxs-detail-tabs button[aria-pressed=true]{color:var(--dxs-fg);border-bottom-color:var(--dxs-accent);font-weight:650}
+.dxs .dxs-symbol-line .dxs-detail-fix{height:20px;margin-left:8px;padding:0 8px;border:1px solid var(--dxs-line);border-radius:999px;background:transparent;color:var(--dxs-muted);font-size:11px;font-weight:600}
+.dxs .dxs-symbol-line .dxs-detail-fix[aria-pressed=true]{border-color:color-mix(in srgb,var(--dxs-accent) 45%,var(--dxs-line));color:var(--dxs-accent);background:color-mix(in srgb,var(--dxs-accent) 8%,var(--dxs-bg))}
+.dxs .dxs-symbol-line .dxs-detail-fix:hover:not(:disabled){border-color:color-mix(in srgb,var(--dxs-accent) 45%,var(--dxs-line));color:var(--dxs-fg)}
+/* Identity and quote sit next to each other, not at opposite ends of a
+   1300px stage: the price belongs to the name, not to the window edge. */
+.dxs-instrument-summary{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 28px;margin:0 0 8px;padding:2px 2px 12px;border:0;border-radius:0;background:transparent}
+.dxs-quote-identity{flex:0 1 auto;min-width:0;max-width:min(100%,640px)}
 .dxs-instrument-summary h2{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:22px;font-weight:650;line-height:1.2;letter-spacing:-.01em}
 .dxs-symbol-line{display:flex;flex-wrap:wrap;align-items:center;gap:0;margin:4px 0 0;color:var(--dxs-muted);font-size:12px}
 .dxs-symbol{font-variant-numeric:tabular-nums;letter-spacing:.02em}
-.dxs-quote-figures{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.dxs-quote-figures{display:flex;flex:none;flex-direction:column;align-items:flex-start;gap:4px}
 .dxs-instrument-summary .dxs-price{margin:0;font-size:34px;font-weight:650;line-height:1;letter-spacing:-.02em}
 .dxs-quote-figures .dxs-change{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1}
 .dxs-quote-figures .dxs-change.dxs-up{background:color-mix(in srgb,var(--dxs-up) 12%,transparent)}
 .dxs-quote-figures .dxs-change.dxs-down{background:color-mix(in srgb,var(--dxs-down) 12%,transparent)}
 .dxs-quote-figures .dxs-change:not(.dxs-up):not(.dxs-down){background:var(--dxs-bg);color:var(--dxs-muted)}
-.dxs-status-line{margin:0;text-align:right}
-.dxs-quote-metadata{grid-column:1/-1}
+.dxs-status-line{margin:0;text-align:left}
+.dxs-quote-metadata{flex:1 1 100%}
 .dxs-secondary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
 .dxs-secondary .dxs-section{margin:0;padding:10px 12px;border-color:var(--dxs-line-soft);background:var(--dxs-bg)}
 .dxs-secondary summary{cursor:pointer;font-weight:600}
@@ -17009,6 +17107,18 @@ var WATCHLIST_CSS = `
 .dxs-bar{min-height:44px;padding:6px 12px;background:var(--dxs-bg)}
 @media (hover:none){
 .dxs .dxs-list .dxs-controls{padding-right:4px}
+}
+/* The header lookup is the only add entry now, so a narrow window scrolls the
+   view tabs instead of dropping the search field. The market switch gives its
+   width back before the input gets unusable. */
+@media (max-width:900px){
+.dxs-titlebar>.dxs-view-tabs{flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+.dxs-titlebar>.dxs-view-tabs::-webkit-scrollbar{display:none}
+.dxs .dxs-lookup-bar{flex-basis:170px}
+.dxs .dxs-lookup-market{max-width:52px;padding:0 0 0 2px;font-size:10px}
+}
+@media (max-width:700px){
+.dxs .dxs-lookup-bar{display:flex;flex-basis:160px}
 }
 @media (max-width:760px){
 .dxs-layout,.dxs-layout>aside.dxs-rail{grid-template-columns:1fr}
@@ -17223,9 +17333,15 @@ var SETTINGS_CSS = `
 
 // src/client/watch-signals-styles.ts
 var WATCH_SIGNALS_CSS = `
-.dxs-signal{margin:0 0 16px;padding:16px;border:1px solid var(--dxs-line);border-radius:10px;background:var(--dxs-bg)}
-.dxs-signal-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
-.dxs-signal-head h2{margin:0;font-size:16px}.dxs-signal-head p{margin:3px 0 0;color:var(--dxs-muted)}
+.dxs-signal{margin:0 0 12px;padding:10px 14px;border:1px solid var(--dxs-line);border-radius:10px;background:var(--dxs-bg)}
+.dxs-signal-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.dxs-signal-title{min-width:0;flex:1}
+.dxs-signal-head h2{margin:0;font-size:14px}
+.dxs-signal-hint{margin:2px 0 0;color:var(--dxs-muted);font-size:12px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dxs-signal-actions{display:flex;align-items:center;gap:6px;flex:none}
+.dxs .dxs-signal-toggle{width:26px;height:26px;padding:0;border-color:transparent;background:transparent;color:var(--dxs-muted);font-size:11px}
+.dxs .dxs-signal-toggle:hover:not(:disabled){background:var(--dxs-soft);color:var(--dxs-fg)}
+.dxs-signal-body{margin-top:10px;padding-top:10px;border-top:1px solid var(--dxs-line-soft)}
 .dxs-signal-progress,.dxs-signal-meta{font-size:12px;color:var(--dxs-muted)}
 .dxs-signal-list{list-style:none;margin:10px 0;padding:0;display:grid;gap:8px}
 .dxs-signal-row{padding:10px 12px;border:1px solid var(--dxs-line-soft);border-radius:8px;background:var(--dxs-soft)}

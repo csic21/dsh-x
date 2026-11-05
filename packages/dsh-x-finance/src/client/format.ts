@@ -41,6 +41,12 @@ export function createFormatters(getLocale: any) {
       if (!date || !Number.isFinite(date.getTime())) return t('time.missing')
       return t('time.shanghai', { time: new Intl.DateTimeFormat(formatLocale(getLocale()), { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(date) })
     },
+    /** A short clock for a dense list; the quote's own Beijing time is the fact. */
+    clock(value: any) {
+      const date = value ? new Date(value) : null
+      if (!date || !Number.isFinite(date.getTime())) return '—'
+      return new Intl.DateTimeFormat(formatLocale(getLocale()), { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(date)
+    },
     /**
      * A quote from another exchange is only meaningful in that exchange's own
      * local time. The zone comes from the reviewed instrument catalogue, never

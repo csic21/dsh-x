@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { MAX_FIXED, MAX_WATCHLIST, normalizeAShare, parseSaved, quoteStatus, scopedStorageKey, STORAGE_KEY, LEGACY_STORAGE_KEY } from '../src/watchlist.ts'
 import { createWatchlistController } from '../src/client/controller.ts'
 import { mountWhenVacant } from '../src/client/placement.ts'
-import { quoteResource, addressFor, fixedAddressFor, pollDelay, FIXED_POLL_MS, IDLE_POLL_MS } from '../src/client/resource.ts'
-import { MARKET_ENDPOINT } from '../src/market.ts'
+import { quoteResource, addressFor, fixedAddressFor, watchlistAddressFor, pollDelay, FIXED_POLL_MS, WATCHLIST_POLL_MS, IDLE_POLL_MS } from '../src/client/resource.ts'
+import { MARKET_ENDPOINT, MARKET_MAX_QUOTES } from '../src/market.ts'
 import { fixedBarShortcutLabel, isApplePlatform, isFixedBarShortcut } from '../src/client/shortcut.ts'
 const scope = '11111111-1111-4111-8111-111111111111'
 const key = scopedStorageKey(scope)
@@ -151,6 +151,35 @@ test('resource asks the shared market route for the whole fixed bar in one call'
   const pending=stream.next();abort.abort();assert.equal((await pending).done,true);assert.equal(calls.length,1)
 })
 
+test('the watchlist rail quotes a long list in bounded batches and merges it in list order',async()=>{
+  const symbols=Array.from({length:MARKET_MAX_QUOTES*2+1},(_,index)=>`SZ.${100000+index}`)
+  const calls:any[]=[]
+  const rpc:any={call:async(channel: any,path: any,payload: any)=>{
+    calls.push(payload.symbols)
+    assert.equal(path,MARKET_ENDPOINT)
+    // Answer each batch backwards: the resource still owns the list order.
+    return {ok:true,value:quotePayload([...payload.symbols].reverse())}
+  }}
+  const abort=new AbortController()
+  const stream=quoteResource(rpc,new EventTarget(),{onLine:true}).open(watchlistAddressFor(symbols),{signal:abort.signal})
+  const value=(await stream.next()).value.value
+  assert.deepEqual(calls.map(batch=>batch.length),[8,8,1])
+  assert.deepEqual(value.quotes.map((quote: any)=>quote.symbol),symbols)
+  assert.equal(value.source,'腾讯行情 (unofficial)')
+  const pending=stream.next();abort.abort();assert.equal((await pending).done,true);assert.equal(calls.length,3)
+})
+
+test('an empty watchlist address is a valid empty snapshot and never calls the host',async()=>{
+  let calls=0
+  const abort=new AbortController()
+  const stream=quoteResource({call:async()=>{calls++;throw Error('must not run')}},new EventTarget(),{onLine:true}).open(watchlistAddressFor([]),{signal:abort.signal})
+  const first=(await stream.next()).value
+  assert.equal(first.ok,true)
+  assert.equal(first.value.status,'ready')
+  assert.deepEqual(first.value.quotes,[])
+  const pending=stream.next();abort.abort();assert.equal((await pending).done,true);assert.equal(calls,0)
+})
+
 test('one resource reads one stock and never polls a deliberately unconfigured source',async()=>{
   let calls=0
   const rpc: any={call:async(channel: any,path: any,payload: any)=>{calls++;assert.equal(path,MARKET_ENDPOINT);assert.deepEqual(payload,{kind:'quotes',symbols:['SH.600519']});return{ok:true,value:{status:'unconfigured',source:null}}}}
@@ -166,6 +195,8 @@ test('resource rejects malformed addresses and responses instead of inventing ro
   const resource=quoteResource({call:async()=>({ok:true,value:{status:'ready',source:'x',quotes:[]}})},new EventTarget(),{onLine:true})
   await assert.rejects(async()=>{const stream=resource.open('dsh-resource://dsh-x-finance/fixed/SH.600519,SH.600519',{signal:signal()});await stream.next()})
   await assert.rejects(async()=>{const stream=resource.open('dsh-resource://dsh-x-finance/quote/AAPL',{signal:signal()});await stream.next()})
+  await assert.rejects(async()=>{const stream=resource.open('dsh-resource://dsh-x-finance/list/SH.600519,SH.600519',{signal:signal()});await stream.next()})
+  await assert.rejects(async()=>{const stream=resource.open('dsh-resource://dsh-x-finance/watch/SH.600519',{signal:signal()});await stream.next()})
   const abort=new AbortController()
   const stream=resource.open(addressFor('SH.600519'),{signal:abort.signal})
   const result=(await stream.next()).value
@@ -176,6 +207,7 @@ test('resource rejects malformed addresses and responses instead of inventing ro
 test('realtime polling follows the quote time, not the wall clock',()=>{
   const fresh=quotePayload(['SH.600519'])
   assert.equal(pollDelay({ok:true,value:fresh},true,Date.parse('2026-10-16T07:00:30Z')),FIXED_POLL_MS)
+  assert.equal(pollDelay({ok:true,value:fresh},true,Date.parse('2026-10-16T07:00:30Z'),WATCHLIST_POLL_MS),WATCHLIST_POLL_MS)
   // A closed market, a suspension or a stale feed backs off to the idle poll.
   assert.equal(pollDelay({ok:true,value:fresh},true,Date.parse('2026-10-16T09:00:00Z')),IDLE_POLL_MS)
   assert.equal(pollDelay({ok:false,error:{code:'finance/connection'}},true,Date.parse('2026-10-16T07:00:00Z')),IDLE_POLL_MS)

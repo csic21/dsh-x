@@ -944,8 +944,7 @@ test('searching from the page opens a preview and leaves the watchlist untouched
     const input = dom.window.document.querySelector<HTMLInputElement>('.dxs-lookup input[type="search"]')
     assert.ok(input, 'the page offers a lookup field')
     assert.ok(input!.closest('.dxs-titlebar'), 'the lookup is part of the page chrome, not a band above the content')
-    assert.equal(input!.closest('.dxs-form'), null, 'looking a stock up is not a step of the add form')
-    assert.ok(dom.window.document.querySelector('.dxs-form input[type="search"]'), 'the add form keeps its own search')
+    assert.equal(dom.window.document.querySelector('.dxs-form'), null, 'the rail has no add form: the lookup is the only search')
     Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '比亚')
     await act(async () => input!.dispatchEvent(new dom.window.Event('input', { bubbles: true })))
     // The directory call is debounced, exactly like the add form.

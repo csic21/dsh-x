@@ -38,6 +38,12 @@ async function render(enabled = true, initialState: any = initial(), failDisable
     rpc, scope, items: [{ symbol, alias: '我的自选' }], sourceEnabled: enabled,
     t: translate, format: createFormatters(() => 'zh'),
   })))
+  // The strip is collapsed by default; the schedule lives in its body, so these
+  // tests open it once instead of asserting on hidden content.
+  const toggle = dom.window.document.querySelector<HTMLElement>('.dxs-signal-toggle')
+  assert.ok(toggle, 'the analysis strip offers an expand control')
+  await act(async () => toggle!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })))
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
   return { dom, document: dom.window.document, calls, async click(text: string) {
     const button = [...dom.window.document.querySelectorAll('button')].find(entry => entry.textContent?.includes(text))
     assert.ok(button, `button ${text} exists`)

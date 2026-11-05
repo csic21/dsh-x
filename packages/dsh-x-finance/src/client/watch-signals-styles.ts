@@ -1,7 +1,13 @@
 export const WATCH_SIGNALS_CSS = `
-.dxs-signal{margin:0 0 16px;padding:16px;border:1px solid var(--dxs-line);border-radius:10px;background:var(--dxs-bg)}
-.dxs-signal-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
-.dxs-signal-head h2{margin:0;font-size:16px}.dxs-signal-head p{margin:3px 0 0;color:var(--dxs-muted)}
+.dxs-signal{margin:0 0 12px;padding:10px 14px;border:1px solid var(--dxs-line);border-radius:10px;background:var(--dxs-bg)}
+.dxs-signal-head{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.dxs-signal-title{min-width:0;flex:1}
+.dxs-signal-head h2{margin:0;font-size:14px}
+.dxs-signal-hint{margin:2px 0 0;color:var(--dxs-muted);font-size:12px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dxs-signal-actions{display:flex;align-items:center;gap:6px;flex:none}
+.dxs .dxs-signal-toggle{width:26px;height:26px;padding:0;border-color:transparent;background:transparent;color:var(--dxs-muted);font-size:11px}
+.dxs .dxs-signal-toggle:hover:not(:disabled){background:var(--dxs-soft);color:var(--dxs-fg)}
+.dxs-signal-body{margin-top:10px;padding-top:10px;border-top:1px solid var(--dxs-line-soft)}
 .dxs-signal-progress,.dxs-signal-meta{font-size:12px;color:var(--dxs-muted)}
 .dxs-signal-list{list-style:none;margin:10px 0;padding:0;display:grid;gap:8px}
 .dxs-signal-row{padding:10px 12px;border:1px solid var(--dxs-line-soft);border-radius:8px;background:var(--dxs-soft)}
