@@ -11,10 +11,11 @@ import { watchScheduleZh, watchScheduleEn } from './watch-schedule-locales.ts'
 import { quoteZh, quoteEn } from '../quote-messages.ts'
 import { fundamentalsZh, fundamentalsEn } from './fundamentals-locales.ts'
 import { usZh, usEn } from './us-locales.ts'
+import { hkZh, hkEn } from './hk-locales.ts'
 // Dictionary keys and placeholders are checked in the locale contract tests.
 export const NS = 'dsh-x-finance'
 export const zh = {
-  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh, ...settingsZh, ...watchSignalsZh, ...quantScanZh, ...watchScheduleZh, ...fundamentalsZh, ...usZh,
+  ...quoteZh, ...chartZh, ...workbenchZh, ...marketZh, ...goldZh, ...globalZh, ...quantZh, ...settingsZh, ...watchSignalsZh, ...quantScanZh, ...watchScheduleZh, ...fundamentalsZh, ...usZh, ...hkZh,
   'title': '金融',
   // The watchlist is the long list on this page; only explicitly fixed stocks
   // reach the bottom bar, so the two never share a label.
@@ -46,7 +47,7 @@ export const zh = {
   'status.recent': '最近报价 · 可能延迟',
   'lookup.label': '查询股票',
   'lookup.placeholder': '搜索股票 / ETF',
-  'lookup.hint': '输入名称、拼音首字母或代码；选中后直接查看详情与日 K，不会加入自选。',
+  'lookup.hint': '输入名称、拼音首字母或代码，可写多个关键词（如「红利低波 易方达」）；选中后直接查看详情与日 K，不会加入自选。',
   'lookup.disabled': '开启免费源后搜索',
   'lookup.enable-error': '无法开启免费源',
   'lookup.unavailable-short': '名称搜索不可用',
@@ -62,7 +63,7 @@ export const zh = {
   'add.search.enable-error': '无法开启免费源，请检查 profile 目录权限，或手动配置 marketSource。',
   'add.search.unavailable': '名称搜索不可用；仍可手动填写交易所和代码。',
   'add.search.loading': '搜索中…',
-  'add.search.empty': '没有匹配的 A 股、ETF、LOF 或 REIT。',
+  'add.search.empty': '没有匹配的 A 股、ETF、LOF 或 REIT；去掉品牌词或只输入名称里的一段再试。',
   'add.search.results': '名称搜索结果',
   'add.selected': '已选择 {name} · {symbol} · {kind}，可填写别名后添加。',
   'add.kind.stock': '股票',
@@ -198,7 +199,7 @@ export const zh = {
 }
 /** @type {Record<keyof typeof zh, string>} */
 export const en = {
-  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn, ...settingsEn, ...watchSignalsEn, ...quantScanEn, ...watchScheduleEn, ...fundamentalsEn, ...usEn,
+  ...quoteEn, ...chartEn, ...workbenchEn, ...marketEn, ...goldEn, ...globalEn, ...quantEn, ...settingsEn, ...watchSignalsEn, ...quantScanEn, ...watchScheduleEn, ...fundamentalsEn, ...usEn, ...hkEn,
   'title': 'Finance',
   'bar.title': 'Fixed {count}',
   'bar.aria': 'Fixed stocks bar',
@@ -228,7 +229,7 @@ export const en = {
   'status.recent': 'Latest quote · Possibly delayed',
   'lookup.label': 'Look up a stock',
   'lookup.placeholder': 'Search a stock / ETF',
-  'lookup.hint': 'Type a name, pinyin initials or a code. A pick opens the details and daily chart without adding it to the watchlist.',
+  'lookup.hint': 'Type a name, pinyin initials or a code; several keywords work too, e.g. "apple inc". A pick opens the details and daily chart without adding it to the watchlist.',
   'lookup.disabled': 'Turn on the free source',
   'lookup.enable-error': 'Could not turn on the free source',
   'lookup.unavailable-short': 'Name search unavailable',
@@ -244,7 +245,7 @@ export const en = {
   'add.search.enable-error': 'Could not turn on the free source. Check profile directory permissions or configure marketSource manually.',
   'add.search.unavailable': 'Name search is unavailable; you can still enter the exchange and code manually.',
   'add.search.loading': 'Searching…',
-  'add.search.empty': 'No matching A-share, ETF, LOF or REIT.',
+  'add.search.empty': 'No matching A-share, ETF, LOF or REIT. Drop the brand word or try a shorter piece of the name.',
   'add.search.results': 'Name search results',
   'add.selected': 'Selected {name} · {symbol} · {kind}. Add an alias before adding it.',
   'add.kind.stock': 'Stock',

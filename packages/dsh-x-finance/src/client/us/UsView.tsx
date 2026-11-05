@@ -10,7 +10,7 @@ const tone = (value: any) => typeof value === 'number' && value > 0 ? 'dxs-up' :
  * no minute chart. The quote and the forward-adjusted daily bars come from the
  * same opt-in local free source as the A-share board.
  */
-export function UsDetail({ item, scope, rpc, t, format, locale }: any) {
+export function UsDetail({ item, scope, rpc, t, format, locale, previewing = true, onAdd, fixed = false, onToggleFixed }: any) {
   const quote = useUsQuote(rpc, item?.symbol ?? null)
   const value = quote.value
   const status = quote.status === 'loading'
@@ -29,7 +29,11 @@ export function UsDetail({ item, scope, rpc, t, format, locale }: any) {
         <p className="dxs-symbol-line">
           <span className="dxs-symbol">{item?.symbol}</span>
           <span className="dxs-market-tag">{t('us.market')}</span>
-          {t('detail.preview')}
+          {item?.alias ? t('detail.alias') : ''}{previewing ? t('detail.preview') : ''}
+          {/* A preview is not on the list yet; saving it is one explicit click.
+              A saved row gets the same fixed/unfixed decision as the rail. */}
+          {previewing && onAdd ? <button type="button" className="dxs-preview-add" onClick={onAdd} title={t('detail.preview.add-hint')}>{t('detail.preview.add-short')}</button> : null}
+          {!previewing && onToggleFixed ? <button type="button" className="dxs-detail-fix" aria-pressed={Boolean(fixed)} onClick={onToggleFixed} title={t(fixed ? 'page.unfix-aria' : 'page.fix-aria', { symbol: item?.symbol ?? '' })}>{fixed ? t('detail.unfix') : t('detail.fix')}</button> : null}
         </p>
       </div>
       <div className="dxs-quote-figures">

@@ -150,7 +150,7 @@ test('the US detail renders the quote, exchange-time stamp and the view-only bou
     // The stamp is shown in exchange time, not Beijing time and not retrieval time.
     assert.match(text, /2026\/11\/03 GMT-5 16:00/)
     assert.match(text, /不是北京时间/)
-    assert.match(text, /不写入自选/)
+    assert.match(text, /可以加入自选/)
     assert.match(text, /日 K 数据未开启/)
   } finally { await h.close() }
 })

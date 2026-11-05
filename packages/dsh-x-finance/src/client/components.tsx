@@ -5,7 +5,7 @@ import { HotView } from './market/HotView.tsx'
 import { PredictView } from './market/PredictView.tsx'
 import { GlobalView } from './market/GlobalView.tsx'
 import { InstrumentLookup } from './SearchBox.tsx'
-import { MAX_FIXED, MAX_WATCHLIST, fixedItems, quoteStatus } from '../watchlist.ts'
+import { MAX_FIXED, MAX_WATCHLIST, fixedItems, marketOf, quoteStatus } from '../watchlist.ts'
 import { fixedBarShortcutKeys, fixedBarShortcutLabel } from './shortcut.ts'
 import { addressFor, fixedAddressFor, watchlistAddressFor } from './resource.ts'
 import { errorKey } from './locales.ts'
@@ -18,7 +18,9 @@ import { WatchSignals } from './watch-signals-view.tsx'
 import { QuantScanView } from './quant-scan-view.tsx'
 import { EtfHoldingsPanel } from './HoldingsPanel.tsx'
 import { UsDetail } from './us/UsView.tsx'
+import { HkDetail } from './hk/HkView.tsx'
 import { isUsSymbol, normalizeUsCode, normalizeUsSymbol } from '../us-market.ts'
+import { isHkSymbol, normalizeHkSymbol } from '../hk-market.ts'
 import { FundamentalsPanel } from './FundamentalsPanel.tsx'
 import { isExchangeFund } from '../holdings.ts'
 const tone = (value: any) => value > 0 ? 'dxs-up' : value < 0 ? 'dxs-down' : ''
@@ -42,10 +44,21 @@ function Status({ snapshot, quote, t, format }: any) {
  * The shared opt-in now lives in its own module because the gold panel uses
  * the same control without importing the page.
  */
+/**
+ * The bottom bar and the rail mix boards now, so an overseas row has to say
+ * which currency its number is in. A-share rows stay unstyled: CNY is the
+ * default and a tag on every row would be noise.
+ */
+function currencyMark(symbol: any): string {
+  try {
+    const market = marketOf(symbol)
+    return market === 'hk' ? 'HK$' : market === 'us' ? 'US$' : ''
+  } catch { return '' }
+}
 function StockChip({ item, quote, snapshot, open, t, format }: any) {
   const status = quoteStatus(quote)
   return <button className="dxs-chip" onClick={() => open(item.symbol)} title={t('chip.title', { symbol: item.symbol, status: t(`status.${status}`) })}>
-    <strong>{item.alias || quote?.name || item.symbol}</strong><span>{format.priceAt(quote?.price, quote?.pricePrecision)}</span>
+    <strong>{item.alias || quote?.name || item.symbol}</strong><span>{currencyMark(item.symbol)}{format.priceAt(quote?.price, quote?.pricePrecision)}</span>
     {quote?.price != null ? <span className={tone(quote.changePercent)}>{format.change(quote.changePercent)}</span> : <Status snapshot={snapshot} quote={quote} t={t} format={format} />}
     {quote?.price != null && (snapshot.status === 'failed' || status === 'stale') ? <span className="dxs-muted">{t('stale')}</span> : null}
   </button>
@@ -224,19 +237,26 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const appearance = useFinanceSettings(settings)
   const discreet = appearance.discreet
   // A preview is what the reader is looking at right now, so it outranks the
-  // saved row that happened to be selected before the drill-down. A US lookup
-  // keeps its venue-qualified code here: the watchlist store is A-share only
-  // and must not be asked to hold a `US.` identity.
-  const [usPreview, setUsPreview] = useState<any>(null)
-  const previewItem = usPreview
-    ? { symbol: usPreview.symbol, alias: usPreview.name, fixed: false, code: usPreview.code }
+  // saved row that happened to be selected before the drill-down. An overseas
+  // lookup keeps its board and (for the US) its venue-qualified code here: the
+  // watchlist store is A-share only and must not be asked to hold a `US.` or
+  // `HK.` identity.
+  const [overseasPreview, setOverseasPreview] = useState<any>(null)
+  const previewItem = overseasPreview
+    ? { symbol: overseasPreview.symbol, alias: overseasPreview.name, fixed: false, code: overseasPreview.code }
     : state.preview ? { symbol: state.preview.symbol, alias: state.preview.name, fixed: false } : null
   // A preview is a standalone detail page, not a watchlist row: it only opens
   // once storage is ready, because the detail reads saved chart preferences.
   const previewOpen = Boolean(previewItem) && state.scopeStatus === 'ready'
-  const leavePreview = () => { setUsPreview(null); closePreview(); setDrillNotice('') }
+  const leavePreview = () => { setOverseasPreview(null); closePreview(); setDrillNotice('') }
   const selected = previewItem ? undefined : state.items.find((entry: any) => entry.symbol === state.selectedSymbol)
   const item = previewItem ?? selected ?? state.items[0]
+  // Which detail belongs on screen. The rail, the bar and the lookup all feed
+  // this one decision, so a saved overseas row opens the same view-only page a
+  // lookup preview does instead of the A-share panels.
+  const board = (() => {
+    try { return item ? marketOf(item.symbol) : 'cn' } catch { return 'cn' }
+  })()
   const [view, setView] = useState<'watchlist' | 'market' | 'quant-scan' | 'hot' | 'predict' | 'global' | 'gold'>('watchlist')
   // Switching a stock keeps the left rail in place but starts the detail at
   // its header, never halfway down the previous chart.
@@ -250,12 +270,12 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   const [sourceRevision, setSourceRevision] = useState(0)
   const previousSelection = useRef(state.selectedSymbol)
   useEffect(() => {
-    if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) { setView('watchlist'); setUsPreview(null) }
+    if (state.selectedSymbol && state.selectedSymbol !== previousSelection.current) { setView('watchlist'); setOverseasPreview(null) }
     previousSelection.current = state.selectedSymbol
   }, [state.selectedSymbol])
   // A rail row or a signal is always an A-share selection: it closes a US
   // preview even when the selected symbol itself does not change.
-  const selectStock = (symbol: any) => { setUsPreview(null); select(symbol) }
+  const selectStock = (symbol: any) => { setOverseasPreview(null); select(symbol) }
   /**
    * Drill-down from the panorama: an exchange-qualified symbol opens the stock
    * detail and its daily chart. A stock that is not on the watchlist is opened
@@ -268,7 +288,17 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
     if (isUsSymbol(symbol)) {
       try {
         const canonical = normalizeUsSymbol(symbol)
-        setUsPreview({
+        // A listing already on the list is selected, not previewed: opening a
+        // saved row must never create a second, temporary copy of it.
+        if (state.items.some((entry: any) => entry.symbol === canonical)) {
+          setOverseasPreview(null)
+          selectStock(canonical)
+          setView('watchlist')
+          setDrillNotice(t('market.drill.opened', { name: name || canonical }))
+          return
+        }
+        setOverseasPreview({
+          market: 'us',
           symbol: canonical,
           name: typeof name === 'string' ? name.slice(0, 64) : '',
           code: typeof code === 'string' ? normalizeUsCode(code, canonical) : undefined,
@@ -280,8 +310,32 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
       }
       return
     }
+    // A Hong Kong listing is view-only for the same reason as a US one, and it
+    // keeps its own board identity instead of entering the A-share store.
+    if (isHkSymbol(symbol)) {
+      try {
+        const canonical = normalizeHkSymbol(symbol)
+        if (state.items.some((entry: any) => entry.symbol === canonical)) {
+          setOverseasPreview(null)
+          selectStock(canonical)
+          setView('watchlist')
+          setDrillNotice(t('market.drill.opened', { name: name || canonical }))
+          return
+        }
+        setOverseasPreview({
+          market: 'hk',
+          symbol: canonical,
+          name: typeof name === 'string' ? name.slice(0, 64) : '',
+        })
+        closePreview()
+        setDrillNotice(t('hk.drill.preview', { name: name || canonical }))
+      } catch (failure: any) {
+        setDrillNotice(errorKey(failure?.code))
+      }
+      return
+    }
     if (typeof symbol !== 'string' || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) { setDrillNotice(t('market.drill.no-symbol')); return }
-    setUsPreview(null)
+    setOverseasPreview(null)
     const known = state.items.some((entry: any) => entry.symbol === symbol)
     try {
       if (known) {
@@ -300,7 +354,9 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
   }
   const addPreview = (entry: any) => {
     try {
-      add({ symbol: entry.symbol, alias: entry.alias, fixed: false })
+      // The US venue code is saved with the row: without it the chart could
+      // never be loaded again after a reload.
+      add({ symbol: entry.symbol, alias: entry.alias, fixed: false, ...(entry.code ? { code: entry.code } : {}) })
       selectStock(entry.symbol)
       setDrillNotice(t('market.drill.added', { name: entry.alias || entry.symbol }))
     } catch (failure: any) {
@@ -357,9 +413,11 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
         <button type="button" className="dxs-preview-back" onClick={leavePreview}>← {t('preview.back')}</button>
         <p className="dxs-muted">{t('preview.bar', { name: previewItem?.alias || previewItem?.symbol || '' })}</p>
       </div>
-      {usPreview
-        ? <UsDetail key={`us-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
-        : <Detail key={`preview:${previewItem?.symbol}:${preference.enabled}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />}
+      {board === 'us'
+        ? <UsDetail key={`us-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
+        : board === 'hk'
+          ? <HkDetail key={`hk-preview:${previewItem?.symbol}:${preference.enabled}:${sourceRevision}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
+          : <Detail key={`preview:${previewItem?.symbol}:${preference.enabled}`} item={previewItem} previewing onAdd={state.items.length < MAX_WATCHLIST ? () => addPreview(previewItem) : undefined} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />}
     </div> : view === 'gold' ? <GoldView rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} /> : view === 'global' ? <div className="dxs-stage dxs-stage-market"><GlobalView key={`global:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} preference={preference} onChangeSource={changeSource} /></div> : view === 'quant-scan' ? <div className="dxs-stage dxs-stage-market"><SourceButton preference={preference} t={t} /><QuantScanView rpc={rpc} scope={state.scopeStatus === 'ready' ? state.scopeId : null} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpenStock={openStock} /></div> : view === 'hot' ? <div className="dxs-stage dxs-stage-market"><HotView rpc={rpc} t={t} format={format} onOpenStock={openStock} onAddMany={addMany} /><p className="dxs-muted dxs-stage-hint">{t('hot.drill.hint')}</p></div> : view === 'predict' ? <div className="dxs-stage dxs-stage-market"><PredictView rpc={rpc} t={t} format={format} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('predict.drill.hint')}</p></div> : view === 'market' ? <div className="dxs-stage dxs-stage-market"><MarketView key={`market:${sourceRevision}`} rpc={rpc} t={t} format={format} locale={getLocale()} scope={state.scopeId} discreet={discreet} preference={preference} onChangeSource={changeSource} onOpenStock={openStock} /><p className="dxs-muted dxs-stage-hint">{t('market.drill.hint')}</p></div> : <>
       {sourceOff ? <div className="dxs-banner is-warn dxs-source-card"><div><strong>{t('source.off-title', { max: format.count(MAX_FIXED) })}</strong><p className="dxs-muted">{t('source.off-notice')}</p>{preference.status === 'error' ? <p role="alert" className="dxs-error">{t('source.unavailable')}</p> : null}</div><SourceButton preference={preference} t={t} large /></div> : preference.status === 'error' ? <p role="alert" className="dxs-banner dxs-error">{t('source.unavailable')}</p> : null}
       {state.placement === 'occupied' && <p role="status" className="dxs-banner">{t('page.occupied')}</p>}
@@ -389,9 +447,13 @@ export function StockPage({ useWatchlist, useResource, rpc, add, addMany, remove
           setView={setView}
         />
         <div className="dxs-stage" ref={watchStage}>
-          {state.scopeStatus === 'ready' && state.items.length ? <WatchSignals key={state.scopeId} rpc={rpc} scope={state.scopeId} items={state.items} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpen={selectStock} /> : null}
+          {state.scopeStatus === 'ready' && state.items.length ? <WatchSignals key={state.scopeId} rpc={rpc} scope={state.scopeId} items={state.items.filter((entry: any) => { try { return marketOf(entry.symbol) === 'cn' } catch { return false } })} sourceEnabled={preference.status === 'ready' && preference.enabled} t={t} format={format} onOpen={selectStock} /> : null}
           {state.scopeStatus === 'ready' && (item
-            ? <Detail key={`${state.scopeId}:${preference.enabled}`} item={item} onToggleFixed={() => toggleFix(item)} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
+            ? board === 'us'
+              ? <UsDetail key={`${state.scopeId}:us:${item.symbol}:${preference.enabled}`} item={item} fixed={item.fixed} onToggleFixed={() => toggleFix(item)} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
+              : board === 'hk'
+                ? <HkDetail key={`${state.scopeId}:hk:${item.symbol}:${preference.enabled}`} item={item} fixed={item.fixed} onToggleFixed={() => toggleFix(item)} t={t} format={format} locale={getLocale()} scope={state.scopeId} rpc={rpc} />
+                : <Detail key={`${state.scopeId}:${preference.enabled}`} item={item} onToggleFixed={() => toggleFix(item)} useResource={useResource} t={t} format={format} scope={state.scopeId} locale={getLocale()} rpc={rpc} />
             : <div className="dxs-stage-empty dxs-start">
               <div className="dxs-start-card">
                 <h2>{t('page.start.title')}</h2>

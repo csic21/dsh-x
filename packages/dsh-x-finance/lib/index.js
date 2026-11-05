@@ -8,6 +8,8 @@ import { createGoldRoute } from './gold-rpc.js';
 import { createSearchRoute } from './search-rpc.js';
 import { createUsRoute } from './us-rpc.js';
 import { createTencentUsProvider } from './us-provider.js';
+import { createHkRoute } from './hk-rpc.js';
+import { createTencentHkProvider } from './hk-provider.js';
 import { createScopeRoute, loadProfileScope } from './scope.js';
 import { financeQuoteTool } from './tool.js';
 import { createWatchSignalScheduler, installWatchScheduleTimer } from './watch-signal-scheduler.js';
@@ -37,6 +39,12 @@ export function apply(ctx, config = {}) {
         usProvider = createTencentUsProvider();
     }
     catch { /* No fetch: US quotes report unavailable. */ }
+    // Hong Kong reuses the same switch and host family as the US board.
+    let hkProvider;
+    try {
+        hkProvider = createTencentHkProvider();
+    }
+    catch { /* No fetch: HK quotes report unavailable. */ }
     ctx.tools.register(defineTool(financeQuoteTool()));
     ctx.inject(['connection', 'profileContext'], (host) => {
         let marketController;
@@ -82,6 +90,7 @@ export function apply(ctx, config = {}) {
         };
         host.connection.fetch.register(createSearchRoute({ enabled: sourceEnabled, provider: searchProvider }));
         host.connection.fetch.register(createUsRoute({ enabled: sourceEnabled, provider: usProvider }));
+        host.connection.fetch.register(createHkRoute({ enabled: sourceEnabled, provider: hkProvider }));
         // The gold panel shares the same explicit opt-in and the same source name;
         // it never becomes a second, separately switchable feed.
         const goldProvider = createSinaGoldProvider();

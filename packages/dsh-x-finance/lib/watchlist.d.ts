@@ -2,6 +2,13 @@ export interface WatchlistItem {
     symbol: string;
     alias: string;
     fixed: boolean;
+    /**
+     * US only: the venue-qualified code (`AAPL.OQ`) the daily endpoint needs.
+     * Without it a saved US row could show a quote but not its chart, so it is
+     * carried with the item instead of being re-derived on every open. The US
+     * route re-validates it; this field is not a trust boundary.
+     */
+    code?: string;
 }
 export interface SavedWatchlist {
     items: WatchlistItem[];
@@ -27,7 +34,23 @@ export declare const PREVIOUS_STORAGE_KEY = "dsh-x-stock:watchlist:v2";
 export declare const PREVIOUS_LEGACY_STORAGE_KEY = "dsh-x-stock:watchlist:v1";
 export declare const QUOTE_CHANNEL = "/api";
 export declare function normalizeAShare(exchange: unknown, code: unknown): string;
+/**
+ * The A-share exchange identity. Everything that is inherently A-share — daily
+ * history, intraday, fundamentals, holdings, signals, the tail scan — keeps
+ * using this narrower validator, so an overseas row can never drift into a
+ * route that would answer it with the wrong market's fields.
+ */
 export declare function validateSymbol(symbol: unknown): string;
+/** The three boards the page can save. */
+export type WatchMarket = 'cn' | 'hk' | 'us';
+/** Which board a saved symbol belongs to. Throws for anything else. */
+export declare function marketOf(symbol: unknown): WatchMarket;
+/** True for a watchable listing on any of the three boards. */
+export declare function isWatchSymbol(symbol: unknown): boolean;
+/** True when the symbol is an overseas listing rather than an A-share one. */
+export declare function isOverseasSymbol(symbol: unknown): boolean;
+/** The widest identity the watchlist accepts: A-share, Hong Kong or US. */
+export declare function validateWatchSymbol(symbol: unknown): string;
 export declare function normalizeItem(raw: unknown): WatchlistItem;
 export declare function parseSaved(raw: string | null | undefined): SavedWatchlist;
 export declare const fixedItems: (items: WatchlistItem[]) => WatchlistItem[];

@@ -9,9 +9,11 @@
 // Only projected matches leave this module. Raw payloads, upstream errors and
 // request details are never returned to the browser or written to disk.
 import {
-  SEARCH_MAX_RESULTS, SEARCH_SOURCE_NAME, normalizeSearchQuery, normalizeMatch, parseInstrumentHints, parseUsInstrumentHints,
+  SEARCH_MAX_RESULTS, SEARCH_RELAX_BELOW, SEARCH_SOURCE_NAME,
+  normalizeMatch, normalizeSearchQuery, parseHkInstrumentHints, parseInstrumentHints, parseUsInstrumentHints,
+  planSearch, rankCandidates,
 } from './instrument-search.ts'
-import type { InstrumentMarket, InstrumentMatch } from './instrument-search.ts'
+import type { InstrumentMarket, InstrumentMatch, SearchCandidate } from './instrument-search.ts'
 
 export const SEARCH_URL = 'https://smartbox.gtimg.cn/s3/'
 export const SEARCH_TIMEOUT_MS = 8_000
@@ -63,8 +65,17 @@ async function readText(response: Response, signal: AbortSignal): Promise<string
 }
 
 /**
- * Creates the opt-in directory adapter. Every query is re-validated, the
- * response body is bounded, and only allowlisted fields are projected.
+ * Creates the opt-in directory adapter. Every probe in the plan is
+ * re-validated, each response body is bounded, and only allowlisted fields are
+ * projected.
+ *
+ * The directory resolves one contiguous substring per request, so a compound
+ * query is probed in a short ladder instead of being sent verbatim: the typed
+ * query first, then its token concatenation, then the content tokens, then —
+ * only while the merged pool is still thin — one shortened CJK token. Probes
+ * stop as soon as a full page is in hand, and the whole ladder shares one
+ * timeout, so the worst case is still a bounded number of requests inside the
+ * existing 8 second budget.
  */
 export function createInstrumentSearchProvider(options: InstrumentSearchOptions = {}): InstrumentSearchProvider {
   const { fetchImpl = globalThis.fetch, timeoutMs = SEARCH_TIMEOUT_MS } = options
@@ -73,13 +84,20 @@ export function createInstrumentSearchProvider(options: InstrumentSearchOptions 
   return {
     name: SEARCH_SOURCE_NAME,
     async search(input: unknown, { signal, market = 'cn' }: { signal?: AbortSignal, market?: InstrumentMarket } = {}) {
-      const query = normalizeSearchQuery(input)
+      const plan = planSearch(normalizeSearchQuery(input))
       if (signal?.aborted) fail('cancelled')
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       const cancel = () => controller.abort()
       signal?.addEventListener('abort', cancel, { once: true })
-      try {
+      // One upstream host serves all three directories; the market only changes
+      // which rows are projected and how their identity is spelled.
+      const parse = market === 'us' ? parseUsInstrumentHints
+        : market === 'hk' ? parseHkInstrumentHints
+          : parseInstrumentHints
+      const candidates: SearchCandidate[] = []
+      const seen = new Set<string>()
+      const probe = async (query: string) => {
         const response = await fetchImpl(`${SEARCH_URL}?q=${encodeURIComponent(query)}&t=all`, {
           method: 'GET',
           redirect: 'error',
@@ -91,10 +109,33 @@ export function createInstrumentSearchProvider(options: InstrumentSearchOptions 
           fail(`http ${response.status}`)
         }
         const text = await readText(response, controller.signal)
-        // One upstream host serves both directories; the market only changes
-        // which rows are projected and how their identity is spelled.
-        const parse = market === 'us' ? parseUsInstrumentHints : parseInstrumentHints
-        return parse(text).slice(0, SEARCH_MAX_RESULTS).map(normalizeMatch)
+        for (const match of parse(text).map(normalizeMatch)) {
+          if (seen.has(match.symbol)) continue
+          seen.add(match.symbol)
+          candidates.push({ match, via: query, order: candidates.length })
+        }
+      }
+      try {
+        // A name that equals the query's own words answers the whole query, so
+        // it ends the ladder even when the pool is not full yet.
+        const joined = plan.tokens.join('').toUpperCase()
+        for (const [index, query] of plan.probes.entries()) {
+          if (candidates.length >= SEARCH_MAX_RESULTS) break
+          try {
+            await probe(query)
+          } catch (error) {
+            // The typed query failing is the answer, and a cancelled request
+            // stays cancelled. A later probe only exists for extra recall, so
+            // it stops the ladder instead of discarding what already matched.
+            if (index === 0 || signal?.aborted) throw error
+            break
+          }
+          if (candidates.some(candidate => candidate.match.name.toUpperCase() === joined)) break
+        }
+        if (plan.relax && candidates.length < SEARCH_RELAX_BELOW && !signal?.aborted) {
+          try { await probe(plan.relax) } catch { /* Keep the strict results. */ }
+        }
+        return rankCandidates(candidates, plan).slice(0, SEARCH_MAX_RESULTS)
       } finally {
         clearTimeout(timer)
         signal?.removeEventListener('abort', cancel)

@@ -407,7 +407,7 @@ export interface MarketProvider {
     overview(): Promise<MarketOverview>;
     breadth(): Promise<MarketBreadth>;
     board(code: string): Promise<BoardDetail>;
-    /** Unpaged current quotes for at most MARKET_MAX_QUOTES A-share symbols. */
+    /** Unpaged current quotes for at most MARKET_MAX_QUOTES watchable symbols (A-share, HK or US). */
     quotes(symbols: string[]): Promise<MarketQuote[]>;
     /**
      * Daily OHLCV history for one A-share or index; never synthesized. Optional:

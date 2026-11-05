@@ -7,7 +7,7 @@
 // source switch, not several. The global board itself is catalogued in
 // global.ts because it is a different upstream (East Money) from the A-share
 // Tencent feed, but it is enabled and disabled by the same preference.
-import { validateSymbol } from './watchlist.ts'
+import { validateSymbol, validateWatchSymbol } from './watchlist.ts'
 import type { GlobalMarketOverview } from './global.ts'
 import type { TailScanResult } from './tail-scan.ts'
 import type { HotScanResult } from './hot.ts'
@@ -402,7 +402,7 @@ export interface MarketProvider {
   overview(): Promise<MarketOverview>
   breadth(): Promise<MarketBreadth>
   board(code: string): Promise<BoardDetail>
-  /** Unpaged current quotes for at most MARKET_MAX_QUOTES A-share symbols. */
+  /** Unpaged current quotes for at most MARKET_MAX_QUOTES watchable symbols (A-share, HK or US). */
   quotes(symbols: string[]): Promise<MarketQuote[]>
   /**
    * Daily OHLCV history for one A-share or index; never synthesized. Optional:
@@ -810,8 +810,11 @@ export function parseMarketRequest(payload: unknown): MarketRequest {
     if (keys.join(',') !== 'kind,symbols') throw stockMarketError('invalid-input')
     const raw = (payload as { symbols?: unknown }).symbols
     if (!Array.isArray(raw) || !raw.length || raw.length > MARKET_MAX_QUOTES) throw stockMarketError('invalid-input')
+    // The watchlist can hold A-share, Hong Kong and US rows, and one batch
+    // request carries all three; the quote route is therefore the one place
+    // that accepts the widest identity.
     let symbols: string[]
-    try { symbols = raw.map(validateSymbol) } catch { throw stockMarketError('invalid-input') }
+    try { symbols = raw.map(validateWatchSymbol) } catch { throw stockMarketError('invalid-input') }
     if (new Set(symbols).size !== symbols.length) throw stockMarketError('invalid-input')
     return { kind: 'quotes', symbols }
   }

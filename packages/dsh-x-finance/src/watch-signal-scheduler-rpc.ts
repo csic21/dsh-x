@@ -6,7 +6,7 @@ import { createSearchHandler } from './search-rpc.ts'
 import type { InstrumentSearchGate } from './search-rpc.ts'
 import { SEARCH_RPC_ENDPOINT } from './instrument-search.ts'
 import { createRpcRoute, failure } from './rpc.ts'
-import { MAX_WATCHLIST, validateScope, validateSymbol } from './watchlist.ts'
+import { MAX_WATCHLIST, isOverseasSymbol, validateScope, validateSymbol } from './watchlist.ts'
 import type { WatchSignalScheduler } from './watch-signal-scheduler.ts'
 
 export const WATCH_SCHEDULE_ENDPOINT = 'dsh-x-finance.watch-schedule'
@@ -15,10 +15,15 @@ export type WatchScheduleRequest =
   | { action: 'enable'; scope: string; symbols: string[]; consent: true }
   | { action: 'sync'; scope: string; symbols: string[] }
 
-/** Reject, rather than silently truncate, duplicates, extras and oversized lists. */
+/**
+ * Reject duplicates, extras and oversized lists. The watchlist is mixed-board
+ * now, so an overseas row is dropped instead of failing the whole sync: only
+ * A-share rows have signals. An identity that is not a watchable board at all
+ * is still an error rather than being skipped.
+ */
 export function scheduleSymbols(input: unknown): string[] {
   if (!Array.isArray(input) || input.length > MAX_WATCHLIST) throw new Error('invalid symbols')
-  const symbols = input.map(validateSymbol)
+  const symbols = input.filter(value => !isOverseasSymbol(value)).map(validateSymbol)
   if (new Set(symbols).size !== symbols.length) throw new Error('duplicate symbols')
   return symbols
 }

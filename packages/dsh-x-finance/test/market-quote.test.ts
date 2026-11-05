@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createTencentMarketProvider, parseStockQuote, parseTencentBatch, parseTencentTimestamp } from '../src/market-provider.ts'
 import { projectQuotes } from '../src/market-rpc.ts'
-import { MARKET_MAX_QUOTES, MARKET_SOURCE_NAME } from '../src/market.ts'
+import { MARKET_MAX_QUOTES, MARKET_SOURCE_NAME, parseMarketRequest } from '../src/market.ts'
 
 const now = Date.parse('2026-10-18T09:40:00+08:00')
 const NAME = '贵州茅台'
@@ -142,4 +142,59 @@ test('the host projection fills unavailable rows, drops extra fields and never l
 test('parseTencentBatch keeps only well-formed 35+ field lines', () => {
   const batch = parseTencentBatch(`${line()}\nv_sh600519="1~2";\nv_pt01801080="${fields({ 2: '01801080' }).join('~')}";`)
   assert.deepEqual([...batch.keys()], ['sh600519', 'pt01801080'])
+})
+
+function hkFields(overrides: Record<number, string> = {}) {
+  const values = Array.from({ length: 78 }, () => '0')
+  Object.assign(values, {
+    0: '100', 1: '腾讯控股', 2: '00700', 3: '426.600', 4: '401.600', 5: '413.800',
+    30: '2026/11/05 11:35:24', 31: '25.000', 32: '6.22', 33: '429.000', 34: '410.200',
+    36: '31167235', 37: '13300000000', 75: 'HKD', ...overrides,
+  })
+  return values
+}
+function usFields(overrides: Record<number, string> = {}) {
+  const values = Array.from({ length: 78 }, () => '0')
+  Object.assign(values, {
+    0: '200', 1: '苹果', 2: 'AAPL.OQ', 3: '349.51', 4: '331.90', 5: '341.57',
+    30: '2026-11-04 16:00:01', 31: '17.61', 32: '5.31', 33: '354.50', 34: '340.00',
+    35: 'USD', 36: '89637749', 37: '31000000000', ...overrides,
+  })
+  return values
+}
+
+test('one batch carries A-share, Hong Kong and US rows in their own layouts', () => {
+  const text = [
+    `v_sh600519="${fields().join('~')}";`,
+    `v_hk00700="${hkFields().join('~')}";`,
+    `v_usAAPL="${usFields().join('~')}";`,
+  ].join('\n')
+  const parsed = parseTencentBatch(text)
+  assert.deepEqual([...parsed.keys()], ['sh600519', 'hk00700', 'usAAPL'])
+  const later = Date.parse('2026-11-05T04:00:00Z')
+  // Hong Kong prices keep three decimals and the stamp is Hong Kong wall time.
+  assert.deepEqual(parseStockQuote('hk00700', parsed.get('hk00700')!, later), {
+    symbol: 'HK.00700', status: 'available', name: '腾讯控股', price: 426.6,
+    pricePrecision: 3, changePercent: 6.22, quotedAt: '2026-11-05T03:35:24.000Z',
+    fetchedAt: null, marketStatus: 'unknown',
+  })
+  // A US row echoes its venue code, and its stamp is New York exchange time.
+  const us = parseStockQuote('usAAPL', parsed.get('usAAPL')!, later)
+  assert.equal(us.symbol, 'US.AAPL')
+  assert.equal(us.price, 349.51)
+  assert.equal(us.pricePrecision, 2)
+  assert.equal(us.quotedAt, '2026-11-04T21:00:01.000Z')
+  // A shifted or foreign echo must not be published under the wrong identity.
+  assert.throws(() => parseStockQuote('hk00700', hkFields({ 2: '00701' }), later), { message: 'stock quote mismatch' })
+  assert.throws(() => parseStockQuote('usAAPL', usFields({ 2: 'MSFT.OQ' }), later), { message: 'stock quote mismatch' })
+  // A Hang Seng index is not a listing and never becomes one through the batch.
+  assert.throws(() => parseStockQuote('hkHSI', hkFields(), later), { message: 'invalid stock quote key' })
+})
+
+test('the quote route accepts every watchable board and rejects an index code', () => {
+  const symbols = ['SH.600519', 'HK.00700', 'US.AAPL']
+  assert.deepEqual(parseMarketRequest({ kind: 'quotes', symbols }), { kind: 'quotes', symbols })
+  for (const bad of [['HK.HSI'], ['HK.700'], ['US.'], ['XX.1']]) {
+    assert.throws(() => parseMarketRequest({ kind: 'quotes', symbols: bad }), { code: 'invalid-input' })
+  }
 })

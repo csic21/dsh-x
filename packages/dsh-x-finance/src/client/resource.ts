@@ -1,8 +1,8 @@
-import { MAX_FIXED, MAX_WATCHLIST, QUOTE_CHANNEL, validateSymbol } from '../watchlist.ts'
+import { MAX_FIXED, MAX_WATCHLIST, QUOTE_CHANNEL, validateWatchSymbol } from '../watchlist.ts'
 import { MARKET_ENDPOINT, MARKET_MAX_QUOTES } from '../market.ts'
 export const PROTOCOL = 'dsh-x-finance'
 /** One stock at a time: the page's detail view. */
-export const addressFor = (symbol: any) => `dsh-resource://${PROTOCOL}/quote/${validateSymbol(symbol)}`
+export const addressFor = (symbol: any) => `dsh-resource://${PROTOCOL}/quote/${validateWatchSymbol(symbol)}`
 /** The whole fixed bottom bar, resolved by one upstream batch request. */
 export const fixedAddressFor = (symbols: any[]) => `dsh-resource://${PROTOCOL}/fixed/${symbols.join(',')}`
 /**
@@ -38,7 +38,7 @@ function parseSymbols(path: any): ParsedAddress {
   const [kind, rest = ''] = String(path).slice(1).split('/')
   if (kind !== 'quote' && kind !== 'fixed' && kind !== 'list') throw new Error('invalid resource address')
   const raw = kind === 'quote' ? [rest] : rest.split(',')
-  const symbols = raw.filter(Boolean).map(validateSymbol)
+  const symbols = raw.filter(Boolean).map(validateWatchSymbol)
   const limit = kind === 'list' ? MAX_WATCHLIST : MAX_FIXED
   // An empty list is a valid rail state (no watchlist); an empty single quote
   // is not, and a duplicate code would make one row own another row's price.

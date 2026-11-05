@@ -13,8 +13,9 @@ const KINDS: InstrumentKind[] = ['stock', 'etf', 'fund', 'reit']
  */
 function toMatch(raw: any): InstrumentMatch | null {
   if (!raw || typeof raw.symbol !== 'string' || typeof raw.name !== 'string' || !KINDS.includes(raw.kind)) return null
-  const market: InstrumentMarket = raw.market === 'us' ? 'us' : 'cn'
-  if (market === 'us' ? !/^US\./.test(raw.symbol) : !/^(SH|SZ|BJ)\.\d{6}$/.test(raw.symbol)) return null
+  const market: InstrumentMarket = raw.market === 'us' ? 'us' : raw.market === 'hk' ? 'hk' : 'cn'
+  const shape = market === 'us' ? /^US\./ : market === 'hk' ? /^HK\.\d{5}$/ : /^(SH|SZ|BJ)\.\d{6}$/
+  if (!shape.test(raw.symbol)) return null
   return {
     symbol: raw.symbol,
     name: raw.name,
@@ -88,21 +89,22 @@ function useInstrumentSearch({ rpc, onPick, delay = 250, refreshToken = 0, marke
       setOpen(true)
       try {
         // The market field is only sent when it is not the default, so an
-        // A-share query keeps the exact envelope a Host from before the US
-        // feature understands (a newer browser must not break an older Host).
-        const payload = market === 'us'
-          ? { action: 'search', query: text, market }
-          : { action: 'search', query: text }
+        // A-share query keeps the exact envelope a Host from before the
+        // overseas boards existed understands (a newer browser must not break
+        // an older Host).
+        const payload = market === 'cn'
+          ? { action: 'search', query: text }
+          : { action: 'search', query: text, market }
         const result = await rpc.call('/api', SEARCH_RPC_ENDPOINT, payload, local.signal)
         if (id !== request.current || local.signal.aborted) return
         if (!result?.ok) {
           const code = result?.error?.code
           setState('error')
-          // A US query needs the Host that knows the `market` field. If the
-          // running Host predates it, the rejection is a version skew, not a
-          // bad keyword; say so instead of blaming the input.
-          setError(market === 'us' && (code === 'finance/invalid-query' || code === 'finance/not-found')
-            ? 'lookup.us.needs-restart'
+          // An overseas query needs the Host that knows the `market` field. If
+          // the running Host predates it, the rejection is a version skew, not
+          // a bad keyword; say so instead of blaming the input.
+          setError(market !== 'cn' && (code === 'finance/invalid-query' || code === 'finance/not-found')
+            ? (market === 'us' ? 'lookup.us.needs-restart' : 'lookup.hk.needs-restart')
             : errorKey(code))
           setOpen(true)
           return
@@ -195,7 +197,7 @@ function MatchList({ search, t }: any) {
     >
       <strong>{match.name}</strong>
       <span className="dxs-search-symbol">{match.symbol}</span>
-      <span className="dxs-search-kind">{match.market === 'us' ? t('lookup.market.us') : t(`add.kind.${match.kind}`)}</span>
+      <span className="dxs-search-kind">{match.market === 'us' ? t('lookup.market.us') : match.market === 'hk' ? t('lookup.market.hk') : t(`add.kind.${match.kind}`)}</span>
     </li>)}
   </ul>
 }
@@ -225,6 +227,7 @@ export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0
   const { availability } = search
   const marketId = useId()
   const us = market === 'us'
+  const hk = market === 'hk'
 
   // A directory that cannot answer is a state, not a text field: the pill says
   // what is missing and, when the switch is simply off, turns it on in place.
@@ -248,9 +251,10 @@ export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0
       <label className="dxs-sr-only" htmlFor={marketId}>{t('lookup.market.aria')}</label>
       <select
         id={marketId} className="dxs-lookup-market" value={market} title={t('lookup.market.hint')}
-        onChange={event => setMarket(event.target.value === 'us' ? 'us' : 'cn')}
+        onChange={event => setMarket(event.target.value === 'us' ? 'us' : event.target.value === 'hk' ? 'hk' : 'cn')}
       >
         <option value="cn">{t('lookup.market.cn')}</option>
+        <option value="hk">{t('lookup.market.hk')}</option>
         <option value="us">{t('lookup.market.us')}</option>
       </select>
       <label className="dxs-sr-only" htmlFor={search.inputId}>{t('lookup.label')}</label>
@@ -259,7 +263,7 @@ export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0
         role="combobox" aria-expanded={search.open && search.results.length > 0}
         aria-controls={search.open && search.results.length > 0 ? search.listId : undefined} aria-autocomplete="list"
         aria-activedescendant={search.open && search.active >= 0 && search.results[search.active] ? search.optionId(search.active) : undefined}
-        placeholder={t(us ? 'lookup.placeholder.us' : 'lookup.placeholder')} title={t(us ? 'lookup.hint.us' : 'lookup.hint')} maxLength={SEARCH_MAX_QUERY}
+        placeholder={t(us ? 'lookup.placeholder.us' : hk ? 'lookup.placeholder.hk' : 'lookup.placeholder')} title={t(us ? 'lookup.hint.us' : hk ? 'lookup.hint.hk' : 'lookup.hint')} maxLength={SEARCH_MAX_QUERY}
         value={search.query}
         onChange={event => search.change(event.target.value)}
         onKeyDown={search.keyDown}
@@ -274,7 +278,7 @@ export function InstrumentLookup({ rpc, onPick, t, delay = 250, refreshToken = 0
       {search.state === 'loading' ? <p className="dxs-lookup-note" role="status">{t('add.search.loading')}</p>
         : search.state === 'error' ? <p className="dxs-lookup-note dxs-error" role="alert">{t(search.error)}</p>
           : search.results.length ? <MatchList search={search} t={t} />
-            : <p className="dxs-lookup-note" role="status">{t(us ? 'lookup.empty.us' : 'add.search.empty')}</p>}
+            : <p className="dxs-lookup-note" role="status">{t(us ? 'lookup.empty.us' : hk ? 'lookup.empty.hk' : 'add.search.empty')}</p>}
     </div> : null}
   </div>
 }

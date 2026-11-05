@@ -7,7 +7,7 @@
 // source switch, not several. The global board itself is catalogued in
 // global.ts because it is a different upstream (East Money) from the A-share
 // Tencent feed, but it is enabled and disabled by the same preference.
-import { validateSymbol } from './watchlist.js';
+import { validateSymbol, validateWatchSymbol } from './watchlist.js';
 import { parseQuantScanRequest } from './quant-scan.js';
 export const MARKET_ENDPOINT = 'dsh-x-finance.market';
 export const MARKET_PREFERENCE_ENDPOINT = 'dsh-x-finance.market-preference';
@@ -445,9 +445,12 @@ export function parseMarketRequest(payload) {
         const raw = payload.symbols;
         if (!Array.isArray(raw) || !raw.length || raw.length > MARKET_MAX_QUOTES)
             throw stockMarketError('invalid-input');
+        // The watchlist can hold A-share, Hong Kong and US rows, and one batch
+        // request carries all three; the quote route is therefore the one place
+        // that accepts the widest identity.
         let symbols;
         try {
-            symbols = raw.map(validateSymbol);
+            symbols = raw.map(validateWatchSymbol);
         }
         catch {
             throw stockMarketError('invalid-input');

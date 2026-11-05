@@ -33,10 +33,15 @@ test('built client separates the watchlist from the fixed bar and supports add/o
       if(payload?.action==='status')return {ok:true,value:{status:'ready',enabled:true,source:'test-directory',results:[]}}
       // Offline fixtures only: the US row carries the venue code the daily route needs.
       if(payload?.market==='us')return {ok:true,value:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'US.AAPL',name:'Apple',kind:'stock',market:'us',code:'AAPL.OQ'}]}}
+      if(payload?.market==='hk')return {ok:true,value:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'HK.00700',name:'腾讯控股',kind:'stock',market:'hk'}]}}
       return {ok:true,value:{status:'ready',enabled:true,source:'test-directory',results:[{symbol:'SZ.002594',name:'比亚迪',kind:'stock',market:'cn'},{symbol:'SH.510300',name:'沪深300ETF华泰柏瑞',kind:'etf',market:'cn'}]}}
     }
     if(endpoint==='dsh-x-finance.us'){
       if(payload?.kind==='quote')return {ok:true,value:{status:'ready',quote:{symbol:'US.AAPL',name:'苹果',price:123.45,pricePrecision:2,change:3.45,changePercent:2.88,open:120.5,high:124,low:119.8,previousClose:120,volume:1000000,amount:123450000,currency:'USD',quotedAt:'2026-11-03T21:00:02.000Z',fetchedAt:'2026-11-04T07:00:00.000Z',marketStatus:'unknown',source:'腾讯美股 (unofficial)'}}}
+      return {ok:true,value:{status:'disabled'}}
+    }
+    if(endpoint==='dsh-x-finance.hk'){
+      if(payload?.kind==='quote')return {ok:true,value:{status:'ready',quote:{symbol:'HK.00700',name:'腾讯控股',price:426.6,pricePrecision:3,change:25,changePercent:6.22,open:413.8,high:429,low:410.2,previousClose:401.6,volume:31167235,amount:13300000000,currency:'HKD',quotedAt:'2026-11-05T03:35:24.000Z',fetchedAt:'2026-11-05T03:40:00.000Z',marketStatus:'unknown',source:'腾讯港股 (unofficial)'}}}
       return {ok:true,value:{status:'disabled'}}
     }
     if(endpoint==='dsh-x-finance.market-preference')return {ok:true,value:{enabled:true,forced:false}}
@@ -183,7 +188,37 @@ test('built client separates the watchlist from the fixed bar and supports add/o
     assert.ok(rpcCalls.some((call: any)=>call.endpoint==='dsh-x-finance.us'&&call.payload.kind==='history'&&call.payload.code==='AAPL.OQ'),'the daily request carries the venue code')
     assert.deepEqual(saved().items.map((item: any)=>item.symbol),['SZ.000001'],'a US lookup must not write the watchlist')
     assert.equal([...document.querySelectorAll('.dxs-strip .dxs-chip')].some((chip: any)=>chip.textContent?.includes('US.AAPL')),false,'a US listing never reaches the bottom bar')
-    await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-back')!)
+    // Saving a US row keeps the venue code with it: without that code the
+    // daily chart could not be loaded again after a restart.
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-add')!)
+    assert.deepEqual(saved().items.at(-1),{symbol:'US.AAPL',alias:'Apple',fixed:false,code:'AAPL.OQ'})
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 US.AAPL"]')!)
+    // A Hong Kong listing can be saved from the same preview. The saved row
+    // then opens the overseas page from the rail, and the bottom bar marks the
+    // currency instead of presenting an HKD number as if it were CNY.
+    const marketHk=document.querySelector<HTMLSelectElement>('select.dxs-lookup-market')!
+    Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype,'value')!.set!.call(marketHk,'hk')
+    await act(async()=>marketHk.dispatchEvent(new dom.window.Event('change',{bubbles:true})))
+    await input(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-lookup input[name="instrument-lookup"]')!,'腾讯')
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,320))})
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-lookup-bar [role="option"]')].find(option=>option.textContent!.includes('HK.00700'))!)
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
+    assert.match(document.body.textContent!, /腾讯控股/)
+    assert.match(document.body.textContent!, /港股/)
+    assert.ok(rpcCalls.some((call: any)=>call.endpoint==='dsh-x-finance.hk'&&call.payload.kind==='quote'),'the HK page asks its own route for a quote')
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('.dxs-preview-add')!)
+    assert.deepEqual(saved().items.at(-1),{symbol:'HK.00700',alias:'腾讯控股',fixed:false})
+    // The saved HK row opens the same overseas page, not the A-share panels.
+    assert.match(document.querySelector<HTMLElement>('article')!.textContent!, /腾讯控股/)
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-list li')].find(li=>li.textContent!.includes('HK.00700'))!.querySelector('[aria-label="固定 HK.00700 到底部栏"]')!)
+    // The bar is its own mounted entry in this harness, so it is rendered on
+    // its own to prove the currency mark rather than inferred from state.
+    await render(entries.get('shell.bottom')[0])
+    assert.match(document.querySelector<HTMLElement>('.dxs-strip')!.textContent!, /HK\$/)
+    await render(page)
+    // Leave the fixture state the rest of this test expects.
+    await click([...document.querySelectorAll<HTMLElement>('.dxs-list li')].find(li=>li.textContent!.includes('HK.00700'))!.querySelector('[aria-label="取消固定 HK.00700"]')!)
+    await click(document.querySelector<HTMLElement & HTMLInputElement>('[aria-label="移除 HK.00700"]')!)
     // Saving is the preview's explicit second step; the rail itself has no
     // form, and the same directory lookup serves every view.
     const backToCn=document.querySelector<HTMLSelectElement>('select.dxs-lookup-market')!

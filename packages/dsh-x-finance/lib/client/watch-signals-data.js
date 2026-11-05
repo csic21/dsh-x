@@ -3,7 +3,7 @@
 // No broker account, holding, trading instruction, model or disk is involved.
 import { MARKET_ENDPOINT } from '../market.js';
 import { SEARCH_RPC_ENDPOINT } from '../instrument-search.js';
-import { MAX_WATCHLIST, validateSymbol } from '../watchlist.js';
+import { MAX_WATCHLIST, marketOf, validateSymbol } from '../watchlist.js';
 import { evaluateWatchSignal } from '../watch-signals.js';
 import { replayWatchSignals } from '../watch-signal-backtest.js';
 export const WATCH_SIGNAL_CONCURRENCY = 2;
@@ -19,7 +19,18 @@ function checkedItems(input) {
     if (!Array.isArray(input) || input.length > MAX_WATCHLIST)
         throw new TypeError('invalid watchlist');
     const seen = new Set();
-    return input.map(item => {
+    // Signals are computed from A-share daily bars. A mixed watchlist is normal
+    // now, so overseas rows are skipped rather than failing the whole scan; an
+    // identity that is not a watchable board at all is still an error.
+    const items = input.filter(item => {
+        try {
+            return marketOf(item?.symbol) === 'cn';
+        }
+        catch {
+            return true;
+        }
+    });
+    return items.map(item => {
         const symbol = validateSymbol(item?.symbol);
         if (seen.has(symbol))
             throw new TypeError('duplicate symbol');

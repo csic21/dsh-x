@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_FIXED, MAX_WATCHLIST, normalizeAShare, parseSaved, quoteStatus, scopedStorageKey, STORAGE_KEY, LEGACY_STORAGE_KEY } from '../src/watchlist.ts'
+import { MAX_FIXED, MAX_WATCHLIST, isWatchSymbol, marketOf, normalizeAShare, parseSaved, quoteStatus, scopedStorageKey, STORAGE_KEY, LEGACY_STORAGE_KEY } from '../src/watchlist.ts'
 import { createWatchlistController } from '../src/client/controller.ts'
 import { mountWhenVacant } from '../src/client/placement.ts'
 import { quoteResource, addressFor, fixedAddressFor, watchlistAddressFor, pollDelay, FIXED_POLL_MS, WATCHLIST_POLL_MS, IDLE_POLL_MS } from '../src/client/resource.ts'
@@ -22,6 +22,32 @@ test('A-share identity is exchange-qualified and keeps leading zeros', () => {
   assert.throws(() => parseSaved(JSON.stringify({version:2,items:[{symbol:'SH.600519'},{symbol:'SH.600519'}]})))
   assert.throws(() => parseSaved(JSON.stringify({version:2,items:Array.from({length:MAX_WATCHLIST + 1},() => ({symbol:'SH.600519'}))})))
   assert.throws(() => parseSaved(JSON.stringify({version:2,items:Array.from({length:MAX_FIXED + 1},(_,index) => ({symbol:`SZ.00000${index}`,fixed:true}))})))
+})
+
+test('the watchlist holds all three boards and keeps the US venue code', () => {
+  assert.equal(marketOf('SH.600519'), 'cn')
+  assert.equal(marketOf('HK.00700'), 'hk')
+  assert.equal(marketOf('US.BRK.A'), 'us')
+  // The Hang Seng indices are letters: they are chart-only and not watchable.
+  assert.equal(isWatchSymbol('HK.HSI'), false)
+  for (const bad of ['HK.700', 'HK.007000', 'US.', 'US.', 'US.ABCDEFG', 'hk.00700', 'HK.00700.1', 'aapl', '', null, 7]) {
+    assert.equal(isWatchSymbol(bad), false)
+    assert.throws(() => marketOf(bad), { message: 'invalid-symbol' })
+  }
+  const saved = parseSaved(JSON.stringify({ version: 2, items: [
+    { symbol: 'SH.600519', alias: '贵州茅台' },
+    { symbol: 'HK.00700', alias: '腾讯控股', fixed: true },
+    { symbol: 'US.AAPL', code: 'aapl.oq' },
+  ] }))
+  assert.deepEqual(saved.items, [
+    { symbol: 'SH.600519', alias: '贵州茅台', fixed: false },
+    { symbol: 'HK.00700', alias: '腾讯控股', fixed: true },
+    { symbol: 'US.AAPL', alias: '', fixed: false, code: 'AAPL.OQ' },
+  ])
+  // A venue code only exists for a US row; on another board it is dropped.
+  assert.deepEqual(parseSaved(JSON.stringify({ version: 2, items: [{ symbol: 'HK.00700', code: 'AAPL.OQ' }] })).items,
+    [{ symbol: 'HK.00700', alias: '', fixed: false }])
+  assert.throws(() => parseSaved(JSON.stringify({ version: 2, items: [{ symbol: 'US.AAPL', code: 'nope' }] })), { message: 'invalid-item' })
 })
 
 test('a version 1 payload is imported as a watchlist with nothing fixed', () => {

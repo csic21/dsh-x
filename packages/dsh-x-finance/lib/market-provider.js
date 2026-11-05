@@ -13,7 +13,10 @@ import { PREDICT_BARS, PREDICT_MAX_CANDIDATES, PREDICT_MAX_ROWS, PREDICT_TTL_MS,
 import { PREDICT_MODEL } from './predict-model.js';
 import { GLOBAL_INSTRUMENTS, GLOBAL_MARKET_ENDPOINT, GLOBAL_MARKET_SOURCE, GLOBAL_SINA_ENDPOINT, GLOBAL_SINA_REFERER, GLOBAL_SINA_SOURCE, GLOBAL_TENCENT_ENDPOINT, GLOBAL_TENCENT_SOURCE, GLOBAL_TTL_MS, globalQuoteTime, mergeGlobalSnapshots, parseGlobalQuotes, parseSinaGlobalQuotes, parseTencentGlobalQuotes, } from './global.js';
 import { TAIL_SCAN_FILTERS, TAIL_SCAN_MAX_HISTORY, TAIL_SCAN_MAX_INTRADAY, TAIL_SCAN_MAX_RESULTS, TAIL_SCAN_MIN_AMOUNT, TAIL_SCAN_MIN_DAY_CHANGE, TAIL_SCAN_MIN_TAIL_CHANGE, TAIL_SCAN_MIN_TAIL_RATIO, TAIL_SCAN_MIN_VOLUME_RATIO, TAIL_SCAN_TTL_MS, computeDailyVolumeContext, computeTailMetrics, scoreTailCandidate, tailQuantFromBars, tailWindowSpec, } from './tail-scan.js';
-import { validateSymbol } from './watchlist.js';
+import { validateSymbol, validateWatchSymbol } from './watchlist.js';
+import { HK_EXCHANGE_TIME_ZONE, HK_MAX_QUOTE_AGE_MS } from './hk-market.js';
+import { US_EXCHANGE_TIME_ZONE, US_MAX_QUOTE_AGE_MS } from './us-market.js';
+import { zonedQuoteTime } from './global.js';
 import { ETF_HOLDINGS_MAX_BYTES, ETF_HOLDINGS_TTL_MS, emptyEtfHoldings, etfHoldingsUrl, isExchangeFund, parseEtfHoldingsScript, } from './holdings.js';
 import { FUNDAMENTALS_MAX_BYTES, FUNDAMENTALS_TTL_MS, composeFundamentals, emptyFundamentals, emptyValuation, fundamentalsReportsUrl, fundamentalsValuationUrl, parseReportPeriods, parseValuation, } from './fundamentals.js';
 import { MAX_ABSOLUTE_PRICE } from './chart-data.js';
@@ -268,7 +271,9 @@ export function parseTencentBatch(text) {
         const line = raw.trim();
         if (!line)
             continue;
-        const match = /^v_((?:sh|sz|bj)\d{6}|hk[A-Z]+|pt\d{8})="([^"]*)";?$/.exec(line);
+        // `hk[A-Z]+` is the Hang Seng indices; `hk\d{5}` and `us…` are listings the
+        // watchlist can hold. All three arrive in one request.
+        const match = /^v_((?:sh|sz|bj)\d{6}|hk[A-Z]+|hk\d{5}|us[A-Z][A-Z0-9]{0,5}(?:\.[A-Z])?|pt\d{8})="([^"]*)";?$/.exec(line);
         if (!match)
             continue;
         const fields = match[2].split('~');
@@ -487,33 +492,95 @@ function parseIndexQuote(key, fields, now) {
         quotedAt: parseTencentTimestamp(fields[30], now),
     };
 }
-/** Parses one `v_sh600519="..."` stock line into the projected quote. */
+const ASHARE_KEY = /^(sh|sz|bj)(\d{6})$/;
+const HK_KEY = /^hk(\d{5})$/;
+const US_KEY = /^us([A-Z][A-Z0-9]{0,5}(?:\.[A-Z])?)$/;
+/**
+ * Parses one batch line into the projected quote. The batch host answers three
+ * layouts in a single response — A-share, Hong Kong and US — so the key prefix
+ * decides which fields apply. A-line and overseas lines share the columns the
+ * page shows (3 price, 4 previous close, 30 stamp, 31 change, 32 percent) but
+ * not the timestamp format or the exchange time zone, so those are converted
+ * per board instead of being read as Shanghai wall time.
+ */
 export function parseStockQuote(key, fields, now) {
-    const [market, digits] = [key.slice(0, 2), key.slice(2)];
-    const symbol = `${market.toUpperCase()}.${digits}`;
-    validateSymbol(symbol);
-    if (fields[2] !== digits)
-        throw new Error('stock quote mismatch');
-    const name = cleanText(fields[1], 64);
-    const price = finiteNumber(fields[3], 0.0001, 1e9);
-    const changePercent = finiteNumber(fields[32], -100, 100);
-    if (!name || price === null || changePercent === null)
-        throw new Error('invalid stock quote');
-    return {
-        symbol,
-        status: 'available',
-        name,
-        price,
-        // The raw field keeps the quoted width, so a 3- or 4-decimal ETF price is
-        // displayed as quoted instead of being rounded to two decimals.
-        pricePrecision: quotePrecision(fields[3]),
-        changePercent,
-        quotedAt: parseTencentTimestamp(fields[30], now),
-        fetchedAt: null,
-        // The source has no suspension flag; the UI labels freshness instead of
-        // claiming a session state it cannot verify.
-        marketStatus: 'unknown',
-    };
+    const ashare = ASHARE_KEY.exec(key);
+    if (ashare) {
+        const symbol = `${ashare[1].toUpperCase()}.${ashare[2]}`;
+        validateSymbol(symbol);
+        if (fields[2] !== ashare[2])
+            throw new Error('stock quote mismatch');
+        const name = cleanText(fields[1], 64);
+        const price = finiteNumber(fields[3], 0.0001, 1e9);
+        const changePercent = finiteNumber(fields[32], -100, 100);
+        if (!name || price === null || changePercent === null)
+            throw new Error('invalid stock quote');
+        return {
+            symbol,
+            status: 'available',
+            name,
+            price,
+            // The raw field keeps the quoted width, so a 3- or 4-decimal ETF price is
+            // displayed as quoted instead of being rounded to two decimals.
+            pricePrecision: quotePrecision(fields[3]),
+            changePercent,
+            quotedAt: parseTencentTimestamp(fields[30], now),
+            fetchedAt: null,
+            // The source has no suspension flag; the UI labels freshness instead of
+            // claiming a session state it cannot verify.
+            marketStatus: 'unknown',
+        };
+    }
+    const hk = HK_KEY.exec(key);
+    if (hk) {
+        const symbol = `HK.${hk[1]}`;
+        validateWatchSymbol(symbol);
+        if (fields[2] !== hk[1])
+            throw new Error('stock quote mismatch');
+        const name = cleanText(fields[1], 64);
+        const price = finiteNumber(fields[3], 0.0001, 1e9);
+        const changePercent = finiteNumber(fields[32], -100, 100);
+        if (!name || price === null || changePercent === null)
+            throw new Error('invalid stock quote');
+        return {
+            symbol,
+            status: 'available',
+            name,
+            price,
+            pricePrecision: quotePrecision(fields[3]),
+            changePercent,
+            quotedAt: zonedQuoteTime(fields[30], HK_EXCHANGE_TIME_ZONE, now, HK_MAX_QUOTE_AGE_MS),
+            fetchedAt: null,
+            marketStatus: 'unknown',
+        };
+    }
+    const us = US_KEY.exec(key);
+    if (us) {
+        const ticker = us[1];
+        const symbol = `US.${ticker}`;
+        validateWatchSymbol(symbol);
+        // The US row echoes its venue-qualified code (`AAPL.OQ`), not the ticker.
+        const echoed = (fields[2] ?? '').trim().toUpperCase();
+        if (echoed && !echoed.startsWith(`${ticker}.`))
+            throw new Error('stock quote mismatch');
+        const name = cleanText(fields[1], 64);
+        const price = finiteNumber(fields[3], 0.0001, 1e9);
+        const changePercent = finiteNumber(fields[32], -100, 100);
+        if (!name || price === null || changePercent === null)
+            throw new Error('invalid stock quote');
+        return {
+            symbol,
+            status: 'available',
+            name,
+            price,
+            pricePrecision: quotePrecision(fields[3]),
+            changePercent,
+            quotedAt: zonedQuoteTime(fields[30], US_EXCHANGE_TIME_ZONE, now, US_MAX_QUOTE_AGE_MS),
+            fetchedAt: null,
+            marketStatus: 'unknown',
+        };
+    }
+    throw new Error('invalid stock quote key');
 }
 /**
  * Parses the fields the tail scan needs. A missing or malformed field makes the
@@ -2149,7 +2216,7 @@ export function createTencentMarketProvider(options = {}) {
         quotes: (input) => {
             if (!Array.isArray(input) || !input.length || input.length > MARKET_MAX_QUOTES)
                 throw new Error('invalid market quote request');
-            const symbols = input.map(validateSymbol);
+            const symbols = input.map(validateWatchSymbol);
             if (new Set(symbols).size !== symbols.length)
                 throw new Error('invalid market quote request');
             const codes = symbols.map(symbol => `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`);

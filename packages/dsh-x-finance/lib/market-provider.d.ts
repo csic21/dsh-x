@@ -191,7 +191,14 @@ export declare function parseHotPage(payload: any): {
     total: number;
     rows: HotSnapshot[];
 };
-/** Parses one `v_sh600519="..."` stock line into the projected quote. */
+/**
+ * Parses one batch line into the projected quote. The batch host answers three
+ * layouts in a single response — A-share, Hong Kong and US — so the key prefix
+ * decides which fields apply. A-line and overseas lines share the columns the
+ * page shows (3 price, 4 previous close, 30 stamp, 31 change, 32 percent) but
+ * not the timestamp format or the exchange time zone, so those are converted
+ * per board instead of being read as Shanghai wall time.
+ */
 export declare function parseStockQuote(key: string, fields: string[], now: number): MarketQuote;
 /** Extra Tencent quote fields used only by the local tail scan. */
 export interface TailQuote {

@@ -16,7 +16,12 @@ export type WatchScheduleRequest = {
     scope: string;
     symbols: string[];
 };
-/** Reject, rather than silently truncate, duplicates, extras and oversized lists. */
+/**
+ * Reject duplicates, extras and oversized lists. The watchlist is mixed-board
+ * now, so an overseas row is dropped instead of failing the whole sync: only
+ * A-share rows have signals. An identity that is not a watchable board at all
+ * is still an error rather than being skipped.
+ */
 export declare function scheduleSymbols(input: unknown): string[];
 export declare function parseWatchScheduleRequest(input: unknown): WatchScheduleRequest;
 /** Only register this exact route on the official shared Connection owner bridge. */
@@ -57,6 +62,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             status: string;
             source: null;
             quantScan?: undefined;
@@ -72,11 +78,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             status: string;
             quantScan: import("./quant-scan.ts").QuantScanResult | null;
             overview?: undefined;
@@ -92,11 +98,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             status: string;
             overview: import("./market.ts").MarketOverview;
@@ -112,11 +118,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             status: string;
@@ -132,11 +138,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -152,7 +158,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
@@ -177,6 +182,7 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -192,11 +198,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -212,11 +218,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -232,11 +238,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -252,11 +258,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -272,11 +278,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -292,11 +298,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan?: undefined;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -312,11 +318,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             predictScan: import("./predict.ts").PredictScanResult;
             tailScan?: undefined;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -332,11 +338,11 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             status: string;
             tailScan: import("./tail-scan.ts").TailScanResult;
             board?: undefined;
-            history?: undefined;
         };
     } | {
         ok: boolean;
         value: {
+            history?: undefined;
             quantScan?: undefined;
             overview?: undefined;
             breadth?: undefined;
@@ -352,7 +358,6 @@ export declare function createWatchScheduleRpc(options: ScheduleRpcOptions): {
             tailScan?: undefined;
             status: string;
             board: import("./market.ts").BoardDetail;
-            history?: undefined;
         };
     } | {
         ok: boolean;

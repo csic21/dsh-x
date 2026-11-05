@@ -4,7 +4,18 @@
 // that bar is the single bounded collection. Quotes and credentials are never
 // persisted. Error codes are stable data; the client owns localized
 // presentation.
-export interface WatchlistItem { symbol: string; alias: string; fixed: boolean }
+export interface WatchlistItem {
+  symbol: string
+  alias: string
+  fixed: boolean
+  /**
+   * US only: the venue-qualified code (`AAPL.OQ`) the daily endpoint needs.
+   * Without it a saved US row could show a quote but not its chart, so it is
+   * carried with the item instead of being re-derived on every open. The US
+   * route re-validates it; this field is not a trust boundary.
+   */
+  code?: string
+}
 export interface SavedWatchlist { items: WatchlistItem[]; collapsed: boolean; barHidden: boolean }
 export const watchlistError = (code: any) => Object.assign(new Error(code), { code })
 /** Safety bound for the scrollable page list, not a product limit. */
@@ -28,16 +39,65 @@ export function normalizeAShare(exchange: unknown, code: unknown): string {
   if (!['SH', 'SZ', 'BJ'].includes(market) || !/^\d{6}$/.test(digits)) throw watchlistError('invalid-code')
   return `${market}.${digits}`
 }
+/**
+ * The A-share exchange identity. Everything that is inherently A-share — daily
+ * history, intraday, fundamentals, holdings, signals, the tail scan — keeps
+ * using this narrower validator, so an overseas row can never drift into a
+ * route that would answer it with the wrong market's fields.
+ */
 export function validateSymbol(symbol: unknown): string {
   if (typeof symbol !== 'string' || !/^(SH|SZ|BJ)\.\d{6}$/.test(symbol)) throw watchlistError('invalid-symbol')
   return symbol
 }
+
+/** The three boards the page can save. */
+export type WatchMarket = 'cn' | 'hk' | 'us'
+const CN_SYMBOL = /^(SH|SZ|BJ)\.\d{6}$/
+// Hong Kong listings are five digits with their leading zeros; the Hang Seng
+// indices (`HK.HSI`) are letters and belong to the chart-only index route.
+const HK_SYMBOL = /^HK\.\d{5}$/
+// The same ticker shape the US board uses, including a dotted class (`BRK.A`).
+const US_SYMBOL = /^US\.[A-Z][A-Z0-9]{0,5}(?:\.[A-Z])?$/
+
+/** Which board a saved symbol belongs to. Throws for anything else. */
+export function marketOf(symbol: unknown): WatchMarket {
+  if (typeof symbol !== 'string') throw watchlistError('invalid-symbol')
+  if (CN_SYMBOL.test(symbol)) return 'cn'
+  if (HK_SYMBOL.test(symbol)) return 'hk'
+  if (US_SYMBOL.test(symbol)) return 'us'
+  throw watchlistError('invalid-symbol')
+}
+
+/** True for a watchable listing on any of the three boards. */
+export function isWatchSymbol(symbol: unknown): boolean {
+  try { marketOf(symbol); return true } catch { return false }
+}
+
+/** True when the symbol is an overseas listing rather than an A-share one. */
+export function isOverseasSymbol(symbol: unknown): boolean {
+  try { return marketOf(symbol) !== 'cn' } catch { return false }
+}
+
+/** The widest identity the watchlist accepts: A-share, Hong Kong or US. */
+export function validateWatchSymbol(symbol: unknown): string {
+  if (!isWatchSymbol(symbol)) throw watchlistError('invalid-symbol')
+  return symbol as string
+}
+
+// Shape only: the venue must still belong to the symbol, which the US route
+// checks against its own allowlist before a request is made.
+const US_VENUE_CODE = /^[A-Z][A-Z0-9]{0,5}(?:\.[A-Z])?\.[A-Z]{1,2}$/
+
 export function normalizeItem(raw: unknown): WatchlistItem {
-  const item = raw as {symbol?: unknown, alias?: unknown, fixed?: unknown}
+  const item = raw as {symbol?: unknown, alias?: unknown, fixed?: unknown, code?: unknown}
   if (!item || typeof item !== 'object') throw watchlistError('invalid-item')
-  const symbol = validateSymbol(item.symbol)
+  const symbol = validateWatchSymbol(item.symbol)
   const alias = typeof item.alias === 'string' ? item.alias.trim().slice(0, 24) : ''
-  return { symbol, alias, fixed: item.fixed === true }
+  const code = marketOf(symbol) === 'us' && typeof item.code === 'string'
+    ? item.code.trim().toUpperCase()
+    : ''
+  if (code && !US_VENUE_CODE.test(code)) throw watchlistError('invalid-item')
+  return { symbol, alias, fixed: item.fixed === true, ...(code ? { code } : {}) }
 }
 export function parseSaved(raw: string | null | undefined): SavedWatchlist {
   if (!raw) return { items: [], collapsed: false, barHidden: false }

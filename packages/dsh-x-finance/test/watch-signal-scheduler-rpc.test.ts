@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { createWatchScheduleHandler, createWatchScheduleRoute, createWatchScheduleRpc, WATCH_SCHEDULE_ENDPOINT, parseWatchScheduleRequest } from '../src/watch-signal-scheduler-rpc.ts'
+import { createWatchScheduleHandler, createWatchScheduleRoute, createWatchScheduleRpc, WATCH_SCHEDULE_ENDPOINT, parseWatchScheduleRequest, scheduleSymbols } from '../src/watch-signal-scheduler-rpc.ts'
 import { createWatchSignalScheduler } from '../src/watch-signal-scheduler.ts'
 import { MARKET_ENDPOINT } from '../src/market.ts'
 import { SEARCH_RPC_ENDPOINT } from '../src/instrument-search.ts'
@@ -136,4 +136,14 @@ test('plugin wires the schedule only inside the official timer scope and release
   for (const dispose of disposers.splice(0).reverse()) dispose()
   assert.equal(stopped, 1)
   assert.equal((await call({ action: 'get', scope: currentScope })).error.code, 'finance/schedule-disposed')
+})
+
+test('a mixed watchlist syncs only its A-share rows', () => {
+  // Overseas rows have no A-share signals; they are dropped instead of failing
+  // the whole sync, while a non-watchable identity is still rejected.
+  assert.deepEqual(scheduleSymbols(['SH.600519', 'HK.00700', 'US.AAPL', 'SZ.000001']), ['SH.600519', 'SZ.000001'])
+  assert.throws(() => scheduleSymbols(['HK.HSI']))
+  assert.throws(() => scheduleSymbols(['XX.1']))
+  assert.throws(() => scheduleSymbols([42]))
+  assert.deepEqual(scheduleSymbols(['HK.00700']), [])
 })

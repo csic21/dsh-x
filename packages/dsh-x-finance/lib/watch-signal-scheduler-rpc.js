@@ -3,13 +3,18 @@ import { MARKET_ENDPOINT } from './market.js';
 import { createSearchHandler } from './search-rpc.js';
 import { SEARCH_RPC_ENDPOINT } from './instrument-search.js';
 import { createRpcRoute, failure } from './rpc.js';
-import { MAX_WATCHLIST, validateScope, validateSymbol } from './watchlist.js';
+import { MAX_WATCHLIST, isOverseasSymbol, validateScope, validateSymbol } from './watchlist.js';
 export const WATCH_SCHEDULE_ENDPOINT = 'dsh-x-finance.watch-schedule';
-/** Reject, rather than silently truncate, duplicates, extras and oversized lists. */
+/**
+ * Reject duplicates, extras and oversized lists. The watchlist is mixed-board
+ * now, so an overseas row is dropped instead of failing the whole sync: only
+ * A-share rows have signals. An identity that is not a watchable board at all
+ * is still an error rather than being skipped.
+ */
 export function scheduleSymbols(input) {
     if (!Array.isArray(input) || input.length > MAX_WATCHLIST)
         throw new Error('invalid symbols');
-    const symbols = input.map(validateSymbol);
+    const symbols = input.filter(value => !isOverseasSymbol(value)).map(validateSymbol);
     if (new Set(symbols).size !== symbols.length)
         throw new Error('duplicate symbols');
     return symbols;

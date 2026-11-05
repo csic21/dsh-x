@@ -12,6 +12,9 @@ import { createSearchRoute } from './search-rpc.ts'
 import { createUsRoute } from './us-rpc.ts'
 import { createTencentUsProvider } from './us-provider.ts'
 import type { UsProvider } from './us-provider.ts'
+import { createHkRoute } from './hk-rpc.ts'
+import { createTencentHkProvider } from './hk-provider.ts'
+import type { HkProvider } from './hk-provider.ts'
 import { createScopeRoute, loadProfileScope } from './scope.ts'
 import { financeQuoteTool } from './tool.ts'
 import { createWatchSignalScheduler, installWatchScheduleTimer } from './watch-signal-scheduler.ts'
@@ -59,6 +62,9 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
   // Without a fetch implementation the route answers uncompiled.
   let usProvider: UsProvider | undefined
   try { usProvider = createTencentUsProvider() } catch { /* No fetch: US quotes report unavailable. */ }
+  // Hong Kong reuses the same switch and host family as the US board.
+  let hkProvider: HkProvider | undefined
+  try { hkProvider = createTencentHkProvider() } catch { /* No fetch: HK quotes report unavailable. */ }
   ctx.tools.register(defineTool(financeQuoteTool()))
   ctx.inject(['connection', 'profileContext'], (host: any) => {
     let marketController: MarketController | undefined
@@ -91,6 +97,7 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
     }
     host.connection.fetch.register(createSearchRoute({ enabled: sourceEnabled, provider: searchProvider }))
     host.connection.fetch.register(createUsRoute({ enabled: sourceEnabled, provider: usProvider }))
+    host.connection.fetch.register(createHkRoute({ enabled: sourceEnabled, provider: hkProvider }))
     // The gold panel shares the same explicit opt-in and the same source name;
     // it never becomes a second, separately switchable feed.
     const goldProvider = createSinaGoldProvider()
