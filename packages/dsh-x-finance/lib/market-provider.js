@@ -2080,7 +2080,7 @@ export function createTencentMarketProvider(options = {}) {
         }
         // The gate runs before the row cap: a candidate outside a paying segment is
         // not a "ranked lower" row, it is a refusal, and it must not consume a slot.
-        const gated = rows.filter(row => passesGate(row.streak, cross.hotShare));
+        const gated = rows.filter(row => passesGate(row.streak, cross.hotShare, factorState));
         const sessionDate = barsBySymbol.size
             ? [...barsBySymbol.values()].map(bars => bars.at(-1).sessionDate).sort().at(-1)
             : shanghaiToday(now());

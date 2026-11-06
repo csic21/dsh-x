@@ -8,7 +8,7 @@
 // wrong on any single day.
 import type { PredictCrossSection, PredictFeatureName, PredictTransform, PredictVector } from './predict-features.ts'
 import { boardLimitRate, predictFeatures, percentileRank } from './predict-features.ts'
-import { factorCalibrate, factorStandardise, isFactorStateReady } from './factor-state.ts'
+import { factorWeight, shrunkEdge } from './factor-state.ts'
 import type { FactorState } from './factor-state.ts'
 import { PREDICT_MODEL } from './predict-model.ts'
 
@@ -229,10 +229,17 @@ function standardised(vector: PredictVector, name: string, state?: FactorState |
   if (modelIndex === undefined) return 0
   const value = vector[name as PredictFeatureName]
   if (!Number.isFinite(value)) return 0
-  if (isFactorStateReady(state, PREDICT_MODEL.features)) return factorStandardise(state, modelIndex, value)
-  const mean = PREDICT_MODEL.mean[modelIndex] ?? 0
-  const scale = PREDICT_MODEL.scale[modelIndex] || 1
-  return Math.max(-5, Math.min(5, (value - mean) / scale))
+  // The daily state is blended in rather than switched on: the first sessions
+  // nudge the frozen ruler, and only a long run of evidence owns it.
+  const weight = factorWeight(state, PREDICT_MODEL.features)
+  const frozenMean = PREDICT_MODEL.mean[modelIndex] ?? 0
+  const frozenScale = PREDICT_MODEL.scale[modelIndex] || 1
+  if (weight > 0 && state) {
+    const centre = weight * (state.center[modelIndex] ?? frozenMean) + (1 - weight) * frozenMean
+    const spread = Math.max(1e-6, weight * (state.spread[modelIndex] ?? frozenScale) + (1 - weight) * frozenScale)
+    return Math.max(-5, Math.min(5, (value - centre) / spread))
+  }
+  return Math.max(-5, Math.min(5, (value - frozenMean) / frozenScale))
 }
 
 function linearScore(
@@ -257,7 +264,10 @@ function linearScore(
  */
 export function predictProbability(vector: PredictVector, state?: FactorState | null): number {
   const eta = linearScore(PREDICT_MODEL.limitUp, PREDICT_MODEL.features, vector, state)
-  const corrected = isFactorStateReady(state, PREDICT_MODEL.features) ? factorCalibrate(state, eta) : eta
+  const weight = factorWeight(state, PREDICT_MODEL.features)
+  const slope = weight > 0 && state ? 1 + weight * (state.calibration.a - 1) : 1
+  const shift = weight > 0 && state ? weight * state.calibration.b : 0
+  const corrected = slope * eta + shift
   return Math.min(0.999, Math.max(0.001, 1 / (1 + Math.exp(-Math.max(-12, Math.min(12, corrected))))))
 }
 
@@ -378,12 +388,19 @@ export function sortPredictRows(rows: PredictRow[]): PredictRow[] {
  * lately", the sentiment bucket says "is the whole tape paying lately".
  * Either one being positive is enough to look; both negative is a refusal.
  */
-export function netEdgeOf(streak: number, hotShare: number): number | null {
+export function netEdgeOf(streak: number, hotShare: number, state?: FactorState | null): number | null {
   const streakBucket = baseBucketFor(PREDICT_MODEL.baseRates.streak, streak)
   const sentimentBucket = baseBucketFor(PREDICT_MODEL.baseRates.sentiment, hotShare)
-  const edges = [streakBucket?.tradeReturn, sentimentBucket?.tradeReturn]
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-  return edges.length ? Math.max(...edges) : null
+  if (!streakBucket || !sentimentBucket) return null
+  // With no daily evidence the shipped table decides. With evidence, each
+  // bucket's own edge takes over smoothly, pulled back toward that prior.
+  if (factorWeight(state, PREDICT_MODEL.features) <= 0 || !state) {
+    return Math.max(streakBucket.tradeReturn, sentimentBucket.tradeReturn)
+  }
+  return Math.max(
+    shrunkEdge(state, 'streak', streakBucket.key, streakBucket.tradeReturn),
+    shrunkEdge(state, 'regime', sentimentBucket.key, sentimentBucket.tradeReturn),
+  )
 }
 
 /**
@@ -392,8 +409,8 @@ export function netEdgeOf(streak: number, hotShare: number): number | null {
  * backtest, so a negative number here is a negative expectancy, not a rounding
  * difference. A missing bucket fails closed.
  */
-export function passesGate(streak: number, hotShare: number): boolean {
-  const edge = netEdgeOf(streak, hotShare)
+export function passesGate(streak: number, hotShare: number, state?: FactorState | null): boolean {
+  const edge = netEdgeOf(streak, hotShare, state)
   return edge !== null && edge > GATE_MIN_EDGE
 }
 

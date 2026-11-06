@@ -14,18 +14,28 @@
 //     return, so the screen can report which factors still carry signal;
 //   * a two-parameter logistic recalibration of the frozen model's logit, so
 //     "18%" keeps meaning eighteen percent after the base rate drifts.
+//   * the net edge of each streak and sentiment bucket, which is what lets the
+//     evidence gate open and close by itself instead of reading a frozen table.
 //
 // Nothing here refits the model. A daily refit on roughly two hundred rows and
 // twenty-one factors fits noise, and picking the best of many daily refits is a
 // multiple-testing machine. Beliefs update every day; structure changes only
 // through an evidence gate that lives outside this file.
-export const FACTOR_STATE_VERSION = 1;
+export const FACTOR_STATE_VERSION = 2;
 export const FACTOR_STATE_FILE = 'factor-state.json';
 export const FACTOR_STATE_MAX_BYTES = 256 * 1024;
 /** Sessions for the exponential weight to halve. 60 ≈ one quarter. */
 export const FACTOR_HALF_LIFE = 60;
-/** Sessions of evidence before the state is allowed to override the frozen model. */
-export const FACTOR_MIN_SESSIONS = 20;
+/**
+ * The state never replaces the frozen statistics outright: it is blended in
+ * with `sessions / (sessions + FACTOR_BLEND_SESSIONS)`. One good week should
+ * move the ruler a little, not take it over.
+ */
+export const FACTOR_BLEND_SESSIONS = 10;
+/** Pseudo-count pulling a bucket edge back toward its shipped prior. */
+export const FACTOR_EDGE_PRIOR_WEIGHT = 30;
+/** A bucket's effective sample count stops growing here. */
+export const FACTOR_EDGE_MAX_COUNT = 600;
 /** Standardised inputs are clipped at five deviations, exactly like the fit. */
 export const FACTOR_CLIP = 5;
 /** A cross-section thinner than this cannot estimate a spread. */
@@ -96,6 +106,22 @@ export function factorAlpha(sessions, halfLife) {
     const decay = 1 - Math.pow(2, -1 / Math.max(1, halfLife));
     return Math.max(1 / (sessions + 1), decay);
 }
+/**
+ * How much of the daily state may be used, from 0 (frozen only) to 1 (fully
+ * daily). A hard "20 sessions before it counts" switch left the screen frozen
+ * for a month; this ramps instead, so the first week already nudges the ruler.
+ */
+export function factorWeight(state, features) {
+    if (!state)
+        return 0;
+    if (state.features.length !== features.length)
+        return 0;
+    if (state.features.some((name, index) => name !== features[index]))
+        return 0;
+    if (!(state.sessions > 0))
+        return 0;
+    return Math.min(1, state.sessions / (state.sessions + FACTOR_BLEND_SESSIONS));
+}
 export function emptyFactorState(features, asOf = '1970-01-01') {
     return {
         version: FACTOR_STATE_VERSION,
@@ -108,7 +134,17 @@ export function emptyFactorState(features, asOf = '1970-01-01') {
         ic: new Array(features.length).fill(0),
         icSpread: new Array(features.length).fill(0),
         calibration: { a: 1, b: 0 },
+        edges: { streak: [], regime: [] },
     };
+}
+function bucketOf(buckets, value) {
+    if (!Number.isFinite(value))
+        return null;
+    for (const bucket of buckets) {
+        if (value >= bucket.from && (bucket.to === null || value <= bucket.to))
+            return bucket;
+    }
+    return null;
 }
 /**
  * Folds new sessions into the state. Sessions at or before `asOf` are ignored,
@@ -151,11 +187,62 @@ export function updateFactorState(previous, features, sessions, model) {
             state.ic[index] = state.ic[index] + alpha * delta;
             state.icSpread[index] = (1 - alpha) * state.icSpread[index] + alpha * delta * delta;
         }
+        if (model?.buckets)
+            updateEdges(state, alpha, rows, model.buckets);
         updateCalibration(state, alpha, rows, features, model);
         state.sessions += 1;
         state.asOf = session.sessionDate;
     }
     return state;
+}
+/**
+ * Exponentially weighted net edge per bucket. A bucket with no trades this
+ * session keeps its estimate but loses evidence, so a segment that stops
+ * appearing also stops being trusted.
+ */
+function updateEdges(state, alpha, rows, buckets) {
+    const dimensions = [
+        ['streak', buckets.streak, row => row.vector.streak ?? Number.NaN],
+        ['regime', buckets.regime, row => row.vector.hotShare ?? Number.NaN],
+    ];
+    for (const [dimension, spec, valueOf] of dimensions) {
+        const groups = new Map();
+        for (const row of rows) {
+            if (!finite(row.netReturn))
+                continue;
+            const bucket = bucketOf(spec, valueOf(row));
+            if (!bucket)
+                continue;
+            const list = groups.get(bucket.key) ?? [];
+            list.push(row.netReturn);
+            groups.set(bucket.key, list);
+        }
+        const previous = new Map(state.edges[dimension].map(bucket => [bucket.key, bucket]));
+        const next = [];
+        for (const bucket of spec) {
+            const values = groups.get(bucket.key);
+            const existing = previous.get(bucket.key);
+            const decayed = (existing?.n ?? 0) * (1 - alpha);
+            if (!values) {
+                if (existing && decayed >= 0.5)
+                    next.push({ ...existing, n: decayed });
+                continue;
+            }
+            const count = values.length;
+            const total = decayed + count;
+            const mean = meanOf(values);
+            const edge = total > 0 ? ((existing?.edge ?? 0) * decayed + mean * count) / total : mean;
+            const second = ((existing ? existing.variance + existing.edge ** 2 : 0) * decayed
+                + values.reduce((sum, value) => sum + value * value, 0)) / Math.max(1e-9, total);
+            next.push({
+                key: bucket.key,
+                n: Math.min(FACTOR_EDGE_MAX_COUNT, total),
+                edge,
+                variance: Math.max(0, second - edge * edge),
+            });
+        }
+        state.edges[dimension] = next.filter(bucket => bucket.n >= 0.5);
+    }
 }
 /**
  * One averaged gradient step on (a, b). The learning rate is deliberately
@@ -197,24 +284,11 @@ function cloneState(state) {
         ic: [...state.ic],
         icSpread: [...state.icSpread],
         calibration: { ...state.calibration },
+        edges: {
+            streak: state.edges.streak.map(bucket => ({ ...bucket })),
+            regime: state.edges.regime.map(bucket => ({ ...bucket })),
+        },
     };
-}
-/**
- * Whether this state may replace the frozen statistics. A state that has not
- * seen enough sessions, or that was built for another feature list, is refused
- * rather than partially applied.
- */
-export function isFactorStateReady(state, features) {
-    if (!state || state.sessions < FACTOR_MIN_SESSIONS)
-        return false;
-    if (state.features.length !== features.length)
-        return false;
-    if (state.features.some((name, index) => name !== features[index]))
-        return false;
-    return state.center.length === features.length
-        && state.spread.length === features.length
-        && state.center.every(value => Number.isFinite(value))
-        && state.spread.every(value => Number.isFinite(value) && value > 0);
 }
 /** Standardised, clipped input for one factor, exactly as the fit defined it. */
 export function factorStandardise(state, index, value) {
@@ -222,16 +296,26 @@ export function factorStandardise(state, index, value) {
     const spread = state.spread[index] || 1;
     return Math.max(-FACTOR_CLIP, Math.min(FACTOR_CLIP, (value - center) / spread));
 }
-/** The frozen logit, recalibrated against the base rate actually observed. */
-export function factorCalibrate(state, logit) {
-    const bounded = Math.max(-12, Math.min(12, logit));
-    return state.calibration.a * bounded + state.calibration.b;
+/**
+ * The bucket's edge pulled back toward its shipped prior. With no observations
+ * the answer is exactly the prior; with many it is almost the live estimate.
+ */
+export function shrunkEdge(state, dimension, key, prior) {
+    const bucket = state?.edges[dimension].find(entry => entry.key === key);
+    if (!bucket || bucket.n <= 0)
+        return prior;
+    return (bucket.edge * bucket.n + prior * FACTOR_EDGE_PRIOR_WEIGHT) / (bucket.n + FACTOR_EDGE_PRIOR_WEIGHT);
 }
 export function parseFactorState(value) {
-    exact(value, ['version', 'asOf', 'halfLife', 'sessions', 'features', 'center', 'spread', 'ic', 'icSpread', 'calibration']);
-    const raw = value;
-    if (raw.version !== FACTOR_STATE_VERSION)
+    const version = value?.version;
+    const versioned = version === 1 || version === FACTOR_STATE_VERSION;
+    if (!versioned)
         fail();
+    const keys = version === 1
+        ? ['version', 'asOf', 'halfLife', 'sessions', 'features', 'center', 'spread', 'ic', 'icSpread', 'calibration']
+        : ['version', 'asOf', 'halfLife', 'sessions', 'features', 'center', 'spread', 'ic', 'icSpread', 'calibration', 'edges'];
+    exact(value, keys);
+    const raw = value;
     if (typeof raw.asOf !== 'string' || !CLOCK.test(raw.asOf) || !Number.isFinite(Date.parse(raw.asOf)))
         fail();
     if (!finite(raw.halfLife, 5, 250) || !Number.isInteger(raw.sessions) || raw.sessions < 0 || raw.sessions > 20_000)
@@ -262,5 +346,36 @@ export function parseFactorState(value) {
     exact(raw.calibration, ['a', 'b']);
     if (!finite(raw.calibration.a, 0.25, 4) || !finite(raw.calibration.b, -2.5, 2.5))
         fail();
-    return cloneState(raw);
+    const edges = version === 1
+        ? { streak: [], regime: [] }
+        : { streak: readEdges(raw.edges?.streak), regime: readEdges(raw.edges?.regime) };
+    return {
+        version: FACTOR_STATE_VERSION,
+        asOf: raw.asOf,
+        halfLife: raw.halfLife,
+        sessions: raw.sessions,
+        features: [...raw.features],
+        center: [...raw.center],
+        spread: [...raw.spread],
+        ic: [...raw.ic],
+        icSpread: [...raw.icSpread],
+        calibration: { a: raw.calibration.a, b: raw.calibration.b },
+        edges,
+    };
+}
+function readEdges(raw) {
+    if (raw === undefined)
+        return [];
+    if (!Array.isArray(raw) || raw.length > 32)
+        fail();
+    const seen = new Set();
+    return raw.map((entry) => {
+        exact(entry, ['key', 'n', 'edge', 'variance']);
+        if (typeof entry.key !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(entry.key) || seen.has(entry.key))
+            fail();
+        seen.add(entry.key);
+        if (!finite(entry.n, 0, 1e6) || !finite(entry.edge, -100, 100) || !finite(entry.variance, 0, 1e4))
+            fail();
+        return { key: entry.key, n: entry.n, edge: entry.edge, variance: entry.variance };
+    });
 }

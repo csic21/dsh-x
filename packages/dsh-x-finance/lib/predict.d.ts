@@ -258,14 +258,14 @@ export declare function sortPredictRows(rows: PredictRow[]): PredictRow[];
  * lately", the sentiment bucket says "is the whole tape paying lately".
  * Either one being positive is enough to look; both negative is a refusal.
  */
-export declare function netEdgeOf(streak: number, hotShare: number): number | null;
+export declare function netEdgeOf(streak: number, hotShare: number, state?: FactorState | null): number | null;
 /**
  * Refuses a row unless its segment is expected to pay after cost. The shipped
  * base rates are computed with the same tradability and cost model as the
  * backtest, so a negative number here is a negative expectancy, not a rounding
  * difference. A missing bucket fails closed.
  */
-export declare function passesGate(streak: number, hotShare: number): boolean;
+export declare function passesGate(streak: number, hotShare: number, state?: FactorState | null): boolean;
 export declare const GATE_MIN_EDGE = 0;
 /**
  * Re-validates a Host result at the browser boundary, exactly like the other

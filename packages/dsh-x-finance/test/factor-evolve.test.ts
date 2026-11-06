@@ -107,3 +107,30 @@ test('a disabled source does no work and makes no request', async () => {
     assert.equal((await readFactorJournal(path.join(directory, '.dsh-x-finance')))!.sessions.length, 1)
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
+
+test('the job scans once after the close and never before it', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'factor-evolve-'))
+  try {
+    const store = path.join(directory, '.dsh-x-finance')
+    let clock = Date.parse('2026-01-05T01:00:00.000Z') // 09:00 Shanghai, before the close
+    let scans = 0
+    const evolve = createFactorEvolve({
+      profileDirectory: directory,
+      provider: async () => ({ history: async () => ({ bars: barsFor() }) } as any),
+      sourceEnabled: async () => true,
+      scan: async () => { scans += 1; await appendJournalSession(store, session(12)) },
+      now: () => clock,
+    })
+    await evolve.tick()
+    assert.equal(scans, 0, 'nothing may be collected during the session')
+
+    clock = Date.parse('2026-01-05T09:00:00.000Z') // 17:00 Shanghai
+    await evolve.tick()
+    assert.equal(scans, 1)
+    assert.equal((await readFactorJournal(store))!.sessions.length, 1)
+
+    clock += 10 * 60_000
+    await evolve.tick()
+    assert.equal(scans, 1, 'the day is already journaled')
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})

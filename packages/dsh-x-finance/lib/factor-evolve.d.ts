@@ -3,6 +3,10 @@ import type { MarketProvider } from './market.ts';
 import type { JournalSession } from './factor-journal.ts';
 /** The Host ticks more often than the journal can change; this throttles the work. */
 export declare const FACTOR_EVOLVE_MIN_INTERVAL_MS: number;
+/** The close is at 15:00; 16:45 leaves room for the free source to settle. */
+export declare const FACTOR_SCAN_AFTER_MINUTES: number;
+/** A failed collection waits this long before its second attempt. */
+export declare const FACTOR_SCAN_RETRY_MS: number;
 /** A session needs its T+2 close; four calendar days covers a weekend. */
 export declare const FACTOR_LABEL_AFTER_DAYS = 4;
 /** A session that still has no usable bars after this long is dropped. */
@@ -20,6 +24,12 @@ export interface FactorEvolveOptions {
     profileDirectory: string;
     provider: () => Promise<MarketProvider | undefined>;
     sourceEnabled: () => Promise<boolean>;
+    /**
+     * Runs one predict scan so the day's candidates reach the journal. The job
+     * only calls it after the close and only when the day is still missing:
+     * collection has to be automatic, or the loop waits for a human click.
+     */
+    scan?: () => Promise<void>;
     now?: () => number;
     maxSessions?: number;
     maxRequests?: number;

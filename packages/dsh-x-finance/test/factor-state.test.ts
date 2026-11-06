@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  FACTOR_MIN_SESSIONS, factorAlpha, factorCalibrate, factorStandardise,
-  isFactorStateReady, parseFactorState, updateFactorState,
+  FACTOR_BLEND_SESSIONS, factorAlpha, factorStandardise, factorWeight,
+  parseFactorState, shrunkEdge, updateFactorState,
 } from '../src/factor-state.ts'
 import type { FactorSession } from '../src/factor-state.ts'
 
@@ -57,17 +57,18 @@ test('sessions arrive unordered and are folded in date order', () => {
   assert.equal(state.asOf, day(3))
 })
 
-test('readiness needs both enough sessions and the exact feature order', () => {
+test('the daily state ramps in instead of switching on after a month', () => {
   let state = null
-  for (let index = 1; index < FACTOR_MIN_SESSIONS; index++) {
+  assert.equal(factorWeight(state, FEATURES), 0)
+  for (let index = 1; index <= FACTOR_BLEND_SESSIONS; index++) {
     state = updateFactorState(state, FEATURES, [session(day(index), new Array(10).fill(index))])
   }
-  assert.equal(isFactorStateReady(state, FEATURES), false)
-  state = updateFactorState(state, FEATURES, [session(day(FACTOR_MIN_SESSIONS), new Array(10).fill(99))])
-  assert.equal(isFactorStateReady(state, FEATURES), true)
-  assert.equal(isFactorStateReady(state, ['b', 'a']), false)
-  assert.equal(isFactorStateReady(state, ['a']), false)
-  assert.equal(isFactorStateReady(null, FEATURES), false)
+  // Ten sessions against ten prior ones: exactly half of the ruler is daily.
+  assert.ok(Math.abs(factorWeight(state, FEATURES) - 0.5) < 1e-12)
+  assert.ok(factorWeight(state, FEATURES) > 0, 'the first sessions already count')
+  assert.equal(factorWeight(state, ['b', 'a']), 0)
+  assert.equal(factorWeight(state, ['a']), 0)
+  assert.equal(factorWeight(null, FEATURES), 0)
 })
 
 test('a persistent mismatch between the shipped probability and the outcome moves the calibration', () => {
@@ -86,7 +87,6 @@ test('standardising centres, scales and clips', () => {
   assert.ok(Math.abs(factorStandardise(state, 0, state.center[0]!)) < 1e-12)
   assert.equal(factorStandardise(state, 0, 1e6), 5)
   assert.equal(factorStandardise(state, 0, -1e6), -5)
-  assert.equal(factorCalibrate({ ...state, calibration: { a: 1, b: 0 } }, 2), 2)
 })
 
 test('a corrupt state is refused instead of partially applied', () => {
@@ -102,7 +102,7 @@ test('a corrupt state is refused instead of partially applied', () => {
   rejects(value => { value.spread = [0, 1] })
   rejects(value => { value.center = [Number.NaN, 0] })
   rejects(value => { value.calibration = { a: 10, b: 0 } })
-  rejects(value => { value.version = 2 })
+  rejects(value => { value.version = 3 })
   rejects(value => { value.asOf = 'not-a-date' })
   rejects(value => { value.features = ['a', 'a'] })
 })
@@ -110,4 +110,61 @@ test('a corrupt state is refused instead of partially applied', () => {
 test('a feature list that does not match the state is refused', () => {
   const state = updateFactorState(null, FEATURES, [session(day(1), new Array(10).fill(1))])
   assert.throws(() => updateFactorState(state, ['b', 'a'], []), { code: 'finance/factor-state-invalid' })
+})
+
+const EDGE_MODEL = {
+  intercept: 0,
+  coef: [0, 0],
+  buckets: {
+    streak: [{ key: 's0', from: -1, to: 0.5 }, { key: 's4', from: 3.5, to: null }],
+    regime: [{ key: 'cold', from: -1, to: 33 }, { key: 'hot', from: 67, to: null }],
+  },
+}
+
+const edgeSession = (date: string, streak: number, hotShare: number, netReturn: number): FactorSession => ({
+  sessionDate: date,
+  rows: Array.from({ length: 10 }, (_, index) => ({
+    vector: { a: index, b: 1, streak, hotShare },
+    netReturn,
+    label: 0,
+  })),
+})
+
+test('bucket edges learn from labelled trades and are shrunk toward their prior', () => {
+  let state = null
+  for (let index = 1; index <= 30; index++) {
+    state = updateFactorState(state, FEATURES, [edgeSession(day(index), 4, 80, 2)], EDGE_MODEL)
+  }
+  assert.ok(state)
+  // Observed +2% against a -1% prior, with 300 effective observations.
+  const shrunk = shrunkEdge(state, 'streak', 's4', -1)
+  assert.ok(shrunk > 1.5 && shrunk < 2, `shrunk ${shrunk}`)
+  const regime = shrunkEdge(state, 'regime', 'hot', -2)
+  assert.ok(regime > 1 && regime < 2, `regime ${regime}`)
+  assert.equal(shrunkEdge(state, 'streak', 's0', -3), -3, 'an unseen bucket keeps its prior')
+  assert.equal(shrunkEdge(null, 'streak', 's4', -1), -1)
+})
+
+test('a bucket that stops appearing loses evidence instead of keeping it forever', () => {
+  let state = null
+  for (let index = 1; index <= 30; index++) {
+    state = updateFactorState(state, FEATURES, [edgeSession(day(index), 4, 80, 2)], EDGE_MODEL)
+  }
+  const before = state!.edges.streak.find(bucket => bucket.key === 's4')!.n
+  for (let index = 1; index <= 20; index++) {
+    state = updateFactorState(state, FEATURES, [edgeSession(day(index + 30), 0, 10, -1)], EDGE_MODEL)
+  }
+  const after = state!.edges.streak.find(bucket => bucket.key === 's4')?.n ?? 0
+  assert.ok(after < before, `${after} should be below ${before}`)
+})
+
+test('a version 1 state is migrated with empty bucket edges', () => {
+  const legacy = {
+    version: 1, asOf: '1970-01-01', halfLife: 60, sessions: 0,
+    features: FEATURES, center: [0, 0], spread: [1, 1], ic: [0, 0], icSpread: [0, 0],
+    calibration: { a: 1, b: 0 },
+  }
+  const migrated = parseFactorState(legacy)
+  assert.equal(migrated.version, 2)
+  assert.deepEqual(migrated.edges, { streak: [], regime: [] })
 })

@@ -152,6 +152,12 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
         profileDirectory: scheduledHost.profileContext.dir,
         provider: () => sourceChanges ? Promise.resolve(undefined) : marketController?.getProvider() ?? Promise.resolve(undefined),
         sourceEnabled: async () => !sourceChanges && await sourceEnabled(),
+        // After the close the job runs the same scan a reader would run, so the
+        // journal fills without anyone opening the panel.
+        scan: async () => {
+          const provider = await Promise.resolve(marketController?.getProvider())
+          await provider?.predictScan?.({})
+        },
       })
       scheduledHost.connection.fetch.register(createWatchScheduleRoute(scheduler))
       scheduledHost.connection.fetch.register(createQuantScheduleRoute(quant))

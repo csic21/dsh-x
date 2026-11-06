@@ -16,6 +16,10 @@ import { isBuyableOpen, netReturnPercent, roundTripCostPercent } from './trade.j
 import { profileStoreDirectory } from './store-path.js';
 /** The Host ticks more often than the journal can change; this throttles the work. */
 export const FACTOR_EVOLVE_MIN_INTERVAL_MS = 5 * 60_000;
+/** The close is at 15:00; 16:45 leaves room for the free source to settle. */
+export const FACTOR_SCAN_AFTER_MINUTES = 16 * 60 + 45;
+/** A failed collection waits this long before its second attempt. */
+export const FACTOR_SCAN_RETRY_MS = 45 * 60_000;
 /** A session needs its T+2 close; four calendar days covers a weekend. */
 export const FACTOR_LABEL_AFTER_DAYS = 4;
 /** A session that still has no usable bars after this long is dropped. */
@@ -24,6 +28,14 @@ export const FACTOR_LABEL_MAX_SESSIONS = 2;
 export const FACTOR_LABEL_MAX_REQUESTS = 120;
 const CONCURRENCY = 4;
 const days = 86_400_000;
+function shanghaiClock(time) {
+    const shifted = new Date(time + 8 * 3_600_000);
+    return {
+        date: shifted.toISOString().slice(0, 10),
+        weekday: shifted.getUTCDay(),
+        minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
+    };
+}
 function limitUp(bar, previousClose, rate) {
     if (!(previousClose > 0) || !(bar.close > 0))
         return false;
@@ -72,6 +84,41 @@ export function createFactorEvolve(options) {
     let current = { running: false, lastRunAt: null, labeled: 0, pending: 0, error: null };
     let running = null;
     let disposed = false;
+    let scanDay = '';
+    let scanAttempts = 0;
+    let scanAt = 0;
+    /**
+     * One scan per trading day, after the close. Two attempts at most, spaced
+     * out: a holiday has no final bar for today, and the job must not spend the
+     * budget retrying a day that will never produce one.
+     */
+    async function collect(directory, journal) {
+        if (!options.scan)
+            return false;
+        const clock = shanghaiClock(now());
+        if (clock.weekday < 1 || clock.weekday > 5 || clock.minutes < FACTOR_SCAN_AFTER_MINUTES)
+            return false;
+        if (scanDay !== clock.date) {
+            scanDay = clock.date;
+            scanAttempts = 0;
+            scanAt = 0;
+        }
+        if (scanAttempts >= 2)
+            return false;
+        if (scanAt && now() - scanAt < FACTOR_SCAN_RETRY_MS)
+            return false;
+        if (journal?.sessions.some(session => session.sessionDate === clock.date))
+            return false;
+        scanAttempts += 1;
+        scanAt = now();
+        try {
+            await options.scan();
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
     async function run() {
         try {
             if (!(await options.sourceEnabled()))
@@ -80,7 +127,9 @@ export function createFactorEvolve(options) {
             if (!provider?.history)
                 return current;
             const directory = await profileStoreDirectory(options.profileDirectory);
-            const journal = await readFactorJournal(directory);
+            let journal = await readFactorJournal(directory);
+            if (await collect(directory, journal))
+                journal = await readFactorJournal(directory);
             if (!journal?.sessions.length)
                 return current;
             const today = shanghaiToday(now());
@@ -110,7 +159,14 @@ export function createFactorEvolve(options) {
                     next = updateFactorState(next, PREDICT_MODEL.features, [{
                             sessionDate: session.sessionDate,
                             rows: observations,
-                        }], { intercept: PREDICT_MODEL.limitUp.intercept, coef: PREDICT_MODEL.limitUp.coef });
+                        }], {
+                        intercept: PREDICT_MODEL.limitUp.intercept,
+                        coef: PREDICT_MODEL.limitUp.coef,
+                        buckets: {
+                            streak: PREDICT_MODEL.baseRates.streak,
+                            regime: PREDICT_MODEL.baseRates.sentiment,
+                        },
+                    });
                     current = { ...current, labeled: current.labeled + 1 };
                 }
                 // An old session with no usable bars is dropped so it cannot retry
