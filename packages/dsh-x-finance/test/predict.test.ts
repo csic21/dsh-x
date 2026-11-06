@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  PREDICT_BARS, PREDICT_MAX_ROWS, PREDICT_TTL_MS, baseBucketFor, predictProbability,
-  predictReasons, projectPredictScan, readRegime, scoreCandidate, sortPredictRows,
+  PREDICT_BARS, PREDICT_MAX_ROWS, PREDICT_TTL_MS, baseBucketFor, netEdgeOf, passesGate,
+  predictProbability, predictReasons, projectPredictScan, readRegime, scoreCandidate, sortPredictRows,
 } from '../src/predict.ts'
 import { PREDICT_MODEL } from '../src/predict-model.ts'
 import type { PredictRow, PredictScanResult } from '../src/predict.ts'
@@ -237,6 +237,7 @@ test('projection keeps a well-formed result and sorts by probability', () => {
     },
     universe: { expected: 5577, covered: 5570, candidates: 90, scored: rows.length, failed: 3, partial: true },
     baseRates: PREDICT_MODEL.baseRates,
+    gate: { applied: true, passed: rows.length, rejected: 0 },
     rows,
   }
   const projected = projectPredictScan(JSON.parse(JSON.stringify(result)), NOW)
@@ -373,4 +374,13 @@ test('the RPC handler projects a provider result and hides upstream failures', a
   assert.equal(unavailable.error.code, 'finance/predict-scan-unavailable')
   const peer: any = await handler(MARKET_ENDPOINT, { kind: 'predict-scan' }, undefined, { principal: { kind: 'peer' } })
   assert.equal(peer.error.code, 'finance/forbidden')
+})
+
+test('the gate only passes a segment whose measured edge is positive', () => {
+  assert.equal(passesGate(2, 50), netEdgeOf(2, 50)! > 0)
+  assert.equal(passesGate(4, 80), netEdgeOf(4, 80)! > 0)
+  assert.equal(passesGate(-5, -5), false, 'no bucket must fail closed')
+  assert.equal(netEdgeOf(-5, -5), null)
+  const edge = netEdgeOf(1, 50)
+  assert.ok(edge !== null && Number.isFinite(edge))
 })

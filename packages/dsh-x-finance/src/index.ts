@@ -23,6 +23,7 @@ import { financeQuoteTool } from './tool.ts'
 import { createWatchSignalScheduler, installWatchScheduleTimer } from './watch-signal-scheduler.ts'
 import type { WatchSignalScheduler } from './watch-signal-scheduler.ts'
 import { createWatchScheduleRoute } from './watch-signal-scheduler-rpc.ts'
+import { createFactorEvolve } from './factor-evolve.ts'
 import { createQuantScanScheduler } from './quant-scan-scheduler.ts'
 import type { QuantScanScheduler } from './quant-scan-scheduler.ts'
 import { createQuantScheduleRoute } from './quant-scan-scheduler-rpc.ts'
@@ -83,7 +84,9 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
       marketController = createMarketController({
         forced: marketForced,
         store,
-        createProvider: () => createTencentMarketProvider(),
+        // The daily factor state lives in the profile store; without it the
+        // screen falls back to the frozen model unchanged.
+        createProvider: () => createTencentMarketProvider({ profileDirectory: host.profileContext.dir }),
       })
       const controller = marketController
       marketController = {
@@ -142,6 +145,14 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
         watchRunning: async scope => (await scheduler.request({ action: 'get', scope })).running,
       })
       quantScheduler = quant
+      // The daily correction rides the same official timer: it only labels
+      // sessions the journal already holds, so it costs at most a bounded
+      // number of history requests and catches up by itself after a restart.
+      const evolve = createFactorEvolve({
+        profileDirectory: scheduledHost.profileContext.dir,
+        provider: () => sourceChanges ? Promise.resolve(undefined) : marketController?.getProvider() ?? Promise.resolve(undefined),
+        sourceEnabled: async () => !sourceChanges && await sourceEnabled(),
+      })
       scheduledHost.connection.fetch.register(createWatchScheduleRoute(scheduler))
       scheduledHost.connection.fetch.register(createQuantScheduleRoute(quant))
       // One official ctx-owned timer: admit the watch task first, then let the
@@ -149,9 +160,12 @@ export function apply(ctx: Context, config: FinanceConfig = {}) {
       installWatchScheduleTimer(scheduledHost, {
         ...scheduler,
         async tick() {
-          try { return await scheduler.tick() } finally { await quant.tick() }
+          try { return await scheduler.tick() } finally {
+            await quant.tick()
+            await evolve.tick()
+          }
         },
-        dispose() { quant.dispose(); scheduler.dispose() },
+        dispose() { evolve.dispose(); quant.dispose(); scheduler.dispose() },
       })
       scheduledHost.effect(() => () => {
         if (watchScheduler === scheduler) watchScheduler = undefined

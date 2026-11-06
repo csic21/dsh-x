@@ -1,4 +1,5 @@
 import type { PredictCrossSection, PredictTransform, PredictVector } from './predict-features.ts';
+import type { FactorState } from './factor-state.ts';
 export interface PredictBaseBucket {
     key: string;
     from: number;
@@ -185,17 +186,32 @@ export interface PredictScanResult {
         partial: boolean;
     };
     baseRates: PredictModel['baseRates'];
+    /**
+     * The evidence gate. Rows whose segment is not expected to pay after cost are
+     * dropped before they reach the browser, and the counts say how many.
+     */
+    gate: PredictGate;
     rows: PredictRow[];
+}
+export interface PredictGate {
+    applied: boolean;
+    /** Candidates that survived the gate. */
+    passed: number;
+    /** Candidates rejected because their segment's net edge is not positive. */
+    rejected: number;
 }
 /**
  * Applies the shipped coefficients to one feature vector. The output is a
  * probability of the next session closing limit-up; the model predicts no
  * return, because the measured out-of-sample rank correlation for returns is
  * negative and a point estimate would be false precision.
+ *
+ * A ready factor state recalibrates the logit in place, so the number keeps
+ * meaning what it says after the base rate drifts away from the fit.
  */
-export declare function predictProbability(vector: PredictVector): number;
+export declare function predictProbability(vector: PredictVector, state?: FactorState | null): number;
 /** Strongest stock-level contributors to the promotion probability. */
-export declare function predictReasons(vector: PredictVector): {
+export declare function predictReasons(vector: PredictVector, state?: FactorState | null): {
     reasons: string[];
     risks: string[];
 };
@@ -227,7 +243,7 @@ interface PredictBarLike {
  * short or carries a hole. The board rate comes from the symbol and the quoted
  * name, never from the browser.
  */
-export declare function scoreCandidate(candidate: PredictCandidate, cross: PredictCrossSection): PredictRow | null;
+export declare function scoreCandidate(candidate: PredictCandidate, cross: PredictCrossSection, state?: FactorState | null): PredictRow | null;
 /**
  * Ranks by promotion probability, then by streak, then by symbol. Ordering by
  * return would mean inventing a return model: the measured out-of-sample rank
@@ -235,6 +251,22 @@ export declare function scoreCandidate(candidate: PredictCandidate, cross: Predi
  * this pipeline can defend.
  */
 export declare function sortPredictRows(rows: PredictRow[]): PredictRow[];
+/**
+ * The measured net edge of the segments this row belongs to, or null when no
+ * bucket covers it. Two dimensions are kept separate because they answer
+ * different questions: the streak bucket says "is this board height paying
+ * lately", the sentiment bucket says "is the whole tape paying lately".
+ * Either one being positive is enough to look; both negative is a refusal.
+ */
+export declare function netEdgeOf(streak: number, hotShare: number): number | null;
+/**
+ * Refuses a row unless its segment is expected to pay after cost. The shipped
+ * base rates are computed with the same tradability and cost model as the
+ * backtest, so a negative number here is a negative expectancy, not a rounding
+ * difference. A missing bucket fails closed.
+ */
+export declare function passesGate(streak: number, hotShare: number): boolean;
+export declare const GATE_MIN_EDGE = 0;
 /**
  * Re-validates a Host result at the browser boundary, exactly like the other
  * market projections: unknown fields are dropped, out-of-range numbers are

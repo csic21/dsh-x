@@ -321,7 +321,7 @@ export function PredictView({ rpc, t, format, onOpenStock }: PredictViewProps) {
         <ol className="dxs-predict-list">
           {rows.map((row, index) => <Row key={row.symbol} row={row} rank={index + 1} t={t} format={format} onOpenStock={onOpenStock} />)}
         </ol>
-      </> : <p className="dxs-mkt-muted">{query ? t('predict.empty-filter') : t('predict.empty')}</p>}
+      </> : <p className="dxs-mkt-muted">{query ? t('predict.empty-filter') : result.gate.rejected > 0 ? t('predict.gate.empty', { rejected: format.count(result.gate.rejected) }) : t('predict.empty')}</p>}
 
       <h3 className="dxs-predict-section">{t('predict.patterns')}</h3>
       <p className="dxs-mkt-muted">{t('predict.patterns-hint')}</p>

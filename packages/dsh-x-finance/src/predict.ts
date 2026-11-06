@@ -8,6 +8,8 @@
 // wrong on any single day.
 import type { PredictCrossSection, PredictFeatureName, PredictTransform, PredictVector } from './predict-features.ts'
 import { boardLimitRate, predictFeatures, percentileRank } from './predict-features.ts'
+import { factorCalibrate, factorStandardise, isFactorStateReady } from './factor-state.ts'
+import type { FactorState } from './factor-state.ts'
 import { PREDICT_MODEL } from './predict-model.ts'
 
 export interface PredictBaseBucket {
@@ -184,7 +186,20 @@ export interface PredictScanResult {
     partial: boolean
   }
   baseRates: PredictModel['baseRates']
+  /**
+   * The evidence gate. Rows whose segment is not expected to pay after cost are
+   * dropped before they reach the browser, and the counts say how many.
+   */
+  gate: PredictGate
   rows: PredictRow[]
+}
+
+export interface PredictGate {
+  applied: boolean
+  /** Candidates that survived the gate. */
+  passed: number
+  /** Candidates rejected because their segment's net edge is not positive. */
+  rejected: number
 }
 
 const MODEL_INDEX = new Map(PREDICT_MODEL.features.map((name, index) => [name, index]))
@@ -204,18 +219,30 @@ const STOCK_FEATURES: PredictFeatureName[] = [
  * Standardises one feature exactly the way the research script did, including
  * the five-deviation clip: an unseen spike then contributes as much as the
  * largest one in the training sample instead of taking over the score.
+ *
+ * When a daily factor state is ready it supplies the centre and spread instead
+ * of the frozen training sample: a +25% twenty-day return is extreme in a quiet
+ * tape and ordinary in a hot one, and the frozen ruler cannot tell them apart.
  */
-function standardised(vector: PredictVector, name: string): number {
+function standardised(vector: PredictVector, name: string, state?: FactorState | null): number {
   const modelIndex = MODEL_INDEX.get(name)
   if (modelIndex === undefined) return 0
+  const value = vector[name as PredictFeatureName]
+  if (!Number.isFinite(value)) return 0
+  if (isFactorStateReady(state, PREDICT_MODEL.features)) return factorStandardise(state, modelIndex, value)
   const mean = PREDICT_MODEL.mean[modelIndex] ?? 0
   const scale = PREDICT_MODEL.scale[modelIndex] || 1
-  return Math.max(-5, Math.min(5, (vector[name as PredictFeatureName] - mean) / scale))
+  return Math.max(-5, Math.min(5, (value - mean) / scale))
 }
 
-function linearScore(weights: { intercept: number; coef: number[] }, names: readonly string[], vector: PredictVector): number {
+function linearScore(
+  weights: { intercept: number; coef: number[] },
+  names: readonly string[],
+  vector: PredictVector,
+  state?: FactorState | null,
+): number {
   let value = weights.intercept
-  for (const name of names) value += (weights.coef[MODEL_INDEX.get(name) ?? -1] ?? 0) * standardised(vector, name)
+  for (const name of names) value += (weights.coef[MODEL_INDEX.get(name) ?? -1] ?? 0) * standardised(vector, name, state)
   return value
 }
 
@@ -224,18 +251,25 @@ function linearScore(weights: { intercept: number; coef: number[] }, names: read
  * probability of the next session closing limit-up; the model predicts no
  * return, because the measured out-of-sample rank correlation for returns is
  * negative and a point estimate would be false precision.
+ *
+ * A ready factor state recalibrates the logit in place, so the number keeps
+ * meaning what it says after the base rate drifts away from the fit.
  */
-export function predictProbability(vector: PredictVector): number {
-  const eta = linearScore(PREDICT_MODEL.limitUp, PREDICT_MODEL.features, vector)
-  return Math.min(0.999, Math.max(0.001, 1 / (1 + Math.exp(-Math.max(-12, Math.min(12, eta))))))
+export function predictProbability(vector: PredictVector, state?: FactorState | null): number {
+  const eta = linearScore(PREDICT_MODEL.limitUp, PREDICT_MODEL.features, vector, state)
+  const corrected = isFactorStateReady(state, PREDICT_MODEL.features) ? factorCalibrate(state, eta) : eta
+  return Math.min(0.999, Math.max(0.001, 1 / (1 + Math.exp(-Math.max(-12, Math.min(12, corrected))))))
 }
 
 /** Strongest stock-level contributors to the promotion probability. */
-export function predictReasons(vector: PredictVector): { reasons: string[]; risks: string[] } {
+export function predictReasons(
+  vector: PredictVector,
+  state?: FactorState | null,
+): { reasons: string[]; risks: string[] } {
   const scored = STOCK_FEATURES
     .map(name => ({
       name,
-      contribution: (PREDICT_MODEL.limitUp.coef[MODEL_INDEX.get(name) ?? -1] ?? 0) * standardised(vector, name),
+      contribution: (PREDICT_MODEL.limitUp.coef[MODEL_INDEX.get(name) ?? -1] ?? 0) * standardised(vector, name, state),
     }))
     .filter(entry => Math.abs(entry.contribution) > 0.05)
     .sort((left, right) => right.contribution - left.contribution)
@@ -295,14 +329,15 @@ interface PredictBarLike {
 export function scoreCandidate(
   candidate: PredictCandidate,
   cross: PredictCrossSection,
+  state?: FactorState | null,
 ): PredictRow | null {
   const rate = boardLimitRate(candidate.symbol, candidate.name)
   if (rate === null) return null
   const vector = predictFeatures(candidate.bars, rate, cross, PREDICT_MODEL.transform)
   if (!vector) return null
-  const pLimitUp = predictProbability(vector)
+  const pLimitUp = predictProbability(vector, state)
   const streakBucket = baseBucketFor(PREDICT_MODEL.baseRates.streak, vector.streak)
-  const { reasons, risks } = predictReasons(vector)
+  const { reasons, risks } = predictReasons(vector, state)
   if (!Number.isFinite(pLimitUp)) return null
   return {
     symbol: candidate.symbol,
@@ -335,6 +370,34 @@ export function sortPredictRows(rows: PredictRow[]): PredictRow[] {
     || right.streak - left.streak
     || left.symbol.localeCompare(right.symbol))
 }
+
+/**
+ * The measured net edge of the segments this row belongs to, or null when no
+ * bucket covers it. Two dimensions are kept separate because they answer
+ * different questions: the streak bucket says "is this board height paying
+ * lately", the sentiment bucket says "is the whole tape paying lately".
+ * Either one being positive is enough to look; both negative is a refusal.
+ */
+export function netEdgeOf(streak: number, hotShare: number): number | null {
+  const streakBucket = baseBucketFor(PREDICT_MODEL.baseRates.streak, streak)
+  const sentimentBucket = baseBucketFor(PREDICT_MODEL.baseRates.sentiment, hotShare)
+  const edges = [streakBucket?.tradeReturn, sentimentBucket?.tradeReturn]
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  return edges.length ? Math.max(...edges) : null
+}
+
+/**
+ * Refuses a row unless its segment is expected to pay after cost. The shipped
+ * base rates are computed with the same tradability and cost model as the
+ * backtest, so a negative number here is a negative expectancy, not a rounding
+ * difference. A missing bucket fails closed.
+ */
+export function passesGate(streak: number, hotShare: number): boolean {
+  const edge = netEdgeOf(streak, hotShare)
+  return edge !== null && edge > GATE_MIN_EDGE
+}
+
+export const GATE_MIN_EDGE = 0
 
 /**
  * Re-validates a Host result at the browser boundary, exactly like the other
@@ -506,6 +569,13 @@ export function projectPredictScan(raw: unknown, now: number): PredictScanResult
     })
   }
 
+  const rawGate = (value.gate && typeof value.gate === 'object') ? value.gate : {}
+  const gate: PredictGate = {
+    applied: rawGate.applied !== false,
+    passed: finite(rawGate.passed, 0, 100_000) ?? rows.length,
+    rejected: finite(rawGate.rejected, 0, 100_000) ?? 0,
+  }
+
   return {
     source,
     fetchedAt: new Date(now).toISOString(),
@@ -520,6 +590,7 @@ export function projectPredictScan(raw: unknown, now: number): PredictScanResult
     },
     universe: universeOut,
     baseRates,
+    gate,
     rows: sortPredictRows(rows),
   }
 }

@@ -147,6 +147,11 @@ export interface MarketProviderOptions {
     fundamentalsTtlMs?: number;
     retryDelayMs?: number;
     concurrency?: number;
+    /**
+     * Profile directory whose `.dsh-x-finance` store holds the daily factor
+     * state. Without it the screen uses the frozen model only.
+     */
+    profileDirectory?: string;
 }
 /**
  * The upstream stamp is `yyyyMMddHHmmss` in exchange time (China Standard

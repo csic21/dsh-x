@@ -21,15 +21,19 @@ import {
 } from './hot.ts'
 import type { HotBar, HotHit, HotScanResult, HotSnapshot } from './hot.ts'
 import {
-  HOT_CHANGE, PREDICT_POPULATION_GAP, boardLimitRate, isPredictCandidate, isPredictUniverse,
+  HOT_CHANGE, PREDICT_POPULATION_GAP, boardLimitRate, isPredictCandidate, isPredictUniverse, predictFeatures,
 } from './predict-features.ts'
 import type { PredictCrossSection } from './predict-features.ts'
 import {
   PREDICT_BARS, PREDICT_MAX_CANDIDATES, PREDICT_MAX_ROWS, PREDICT_TTL_MS,
-  baseBucketFor, readRegime, scoreCandidate, sortPredictRows,
+  baseBucketFor, passesGate, readRegime, scoreCandidate, sortPredictRows,
 } from './predict.ts'
 import { PREDICT_MODEL } from './predict-model.ts'
 import type { PredictRow, PredictScanResult } from './predict.ts'
+import type { FactorState } from './factor-state.ts'
+import { readFactorState } from './factor-state-store.ts'
+import { appendJournalSession } from './factor-journal.ts'
+import { profileStoreDirectory } from './store-path.ts'
 import type {
   BoardDetail, Csi300Fund, Csi300FundShare, Csi300FundSharePoint, MarketAdjustment, MarketBreadth,
   MarketDailyBar, MarketHistory, MarketIndex, MarketOverview, MarketQuote, MarketSector, MarketStock,
@@ -181,6 +185,11 @@ export interface MarketProviderOptions {
   fundamentalsTtlMs?: number
   retryDelayMs?: number
   concurrency?: number
+  /**
+   * Profile directory whose `.dsh-x-finance` store holds the daily factor
+   * state. Without it the screen uses the frozen model only.
+   */
+  profileDirectory?: string
 }
 
 interface CacheEntry<T> { expires: number; value: T }
@@ -1965,6 +1974,23 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     }
   }
 
+  /**
+   * The daily factor state, when the profile has one. Cached for five minutes
+   * so a refresh does not re-read the file, and nullable on every failure: a
+   * missing or corrupt correction silently leaves the frozen statistics in
+   * place instead of taking the screen down.
+   */
+  const journaledDates = new Set<string>()
+
+  async function loadFactorState(): Promise<FactorState | null> {
+    const directory = options.profileDirectory
+    if (!directory) return null
+    return getOrLoad(`factor-state:${directory}`, 5 * 60_000, async () => {
+      try { return await readFactorState(await profileStoreDirectory(directory)) }
+      catch { return null }
+    })
+  }
+
   async function loadPredictScan(input: { board?: string }): Promise<PredictScanResult> {
     const started = now()
     const boardCode = input.board ? `pt01${input.board}` : 'aStock'
@@ -2004,6 +2030,7 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
     })
 
     const rows: PredictRow[] = []
+    const factorState = await loadFactorState()
     for (const entry of candidates) {
       const bars = barsBySymbol.get(entry.stock.symbol)
       if (!bars) continue
@@ -2014,15 +2041,42 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
         changePercent: entry.stock.changePercent,
         bars,
         final: bars.at(-1)!.isFinal,
-      }, cross)
+      }, cross, factorState)
       if (!row) { failed += 1; continue }
       rows.push(row)
     }
 
+    // The gate runs before the row cap: a candidate outside a paying segment is
+    // not a "ranked lower" row, it is a refusal, and it must not consume a slot.
+    const gated = rows.filter(row => passesGate(row.streak, cross.hotShare))
     const sessionDate = barsBySymbol.size
       ? [...barsBySymbol.values()].map(bars => bars.at(-1)!.sessionDate).sort().at(-1)!
       : shanghaiToday(now())
     const barFinal = finals.length > 0 && finals.every(value => value === true)
+
+    // The finished session is journaled before the display gate runs: the gate
+    // decides what a reader sees, while the state has to learn from the whole
+    // population, including the candidates the gate refused.
+    const directory = options.profileDirectory
+    if (directory && barFinal && sessionDate === shanghaiToday(now()) && !journaledDates.has(sessionDate)) {
+      const journalRows = []
+      for (const entry of candidates) {
+        const bars = barsBySymbol.get(entry.stock.symbol)
+        if (!bars?.length) continue
+        const rate = boardLimitRate(entry.stock.symbol, entry.stock.name)
+        if (rate === null) continue
+        const vector = predictFeatures(bars, rate, cross, PREDICT_MODEL.transform)
+        if (!vector) continue
+        journalRows.push({ symbol: entry.stock.symbol, close: bars.at(-1)!.close, rate, vector })
+      }
+      if (journalRows.length) {
+        journaledDates.add(sessionDate)
+        void (async () => {
+          try { await appendJournalSession(await profileStoreDirectory(directory), { sessionDate, rows: journalRows }) }
+          catch { journaledDates.delete(sessionDate) }
+        })()
+      }
+    }
     const staleDays = Math.max(0, Math.round(
       (Date.parse(`${sessionDate}T00:00:00Z`) - Date.parse(`${PREDICT_MODEL.trainedThrough}T00:00:00Z`)) / 86_400_000,
     ))
@@ -2063,7 +2117,8 @@ export function createTencentMarketProvider(options: MarketProviderOptions = {})
         partial: state.partial || failed > 0,
       },
       baseRates: PREDICT_MODEL.baseRates,
-      rows: sortPredictRows(rows).slice(0, PREDICT_MAX_ROWS),
+      gate: { applied: true, passed: gated.length, rejected: rows.length - gated.length },
+      rows: sortPredictRows(gated).slice(0, PREDICT_MAX_ROWS),
     }
   }
 

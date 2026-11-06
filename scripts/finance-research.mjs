@@ -3,19 +3,23 @@
 //
 //   node scripts/finance-research.mjs fetch [--limit 1200] [--bars 640]
 //   node scripts/finance-research.mjs fit   [--out packages/dsh-x-finance/src/predict-model.ts]
+//   node scripts/finance-research.mjs evolve [--profile ~/.dsh/profiles/<name>]
 //   node scripts/finance-research.mjs scan  [--top 15]
 //
 // `fetch` builds a deterministic, liquidity-independent sample of the A-share
 // market and caches daily forward-adjusted bars under `.research/`. `fit`
 // extracts features with the same module the Host uses, runs a monthly
 // walk-forward evaluation, then fits the shipped coefficients on the whole
-// sample and writes `src/predict-model.ts`. `scan` runs the real Host provider
-// end to end and prints today's ranking, which is the integration check.
+// sample and writes `src/predict-model.ts`. `evolve` folds every labelled
+// session into the daily factor state (centre, spread, IC and calibration) and
+// writes it next to the profile's other finance state, which is what the Host
+// reads on the next scan. `scan` runs the real Host provider end to end and
+// prints today's ranking, which is the integration check.
 //
 // The evaluation is deliberately pessimistic: every out-of-sample number comes
 // from coefficients fitted strictly before the month being predicted, and the
-// backtest drops sessions where the next open was a sealed limit board (those
-// cannot be bought).
+// backtest only books trades whose entry open was actually tradable — a board
+// that opens on its limit is excluded, not filled at the limit price.
 import { mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +28,12 @@ import {
   PREDICT_FEATURE_NAMES, PREDICT_MIN_BARS, HOT_CHANGE, PREDICT_POPULATION_GAP,
   boardLimitRate, predictFeatures, predictKnots,
 } from '../packages/dsh-x-finance/src/predict-features.ts'
+import { PREDICT_MODEL } from '../packages/dsh-x-finance/src/predict-model.ts'
+import { predictProbability } from '../packages/dsh-x-finance/src/predict.ts'
+import { evaluateRanking, isBuyableOpen, isOneWordBar, netReturnPercent, roundTripCostPercent } from '../packages/dsh-x-finance/src/trade.ts'
+import { fitReturnModel, predictNetReturn, renderReturnModel } from '../packages/dsh-x-finance/src/return-model.ts'
+import { FACTOR_STATE_FILE, updateFactorState } from '../packages/dsh-x-finance/src/factor-state.ts'
+import { writeFactorState } from '../packages/dsh-x-finance/src/factor-state-store.ts'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const researchDir = path.join(root, 'packages/dsh-x-finance/.research')
@@ -39,6 +49,8 @@ const args = parseArgs({ allowPositionals: true, options: {
   limit: { type: 'string', default: '1200' },
   bars: { type: 'string', default: '640' },
   out: { type: 'string', default: 'packages/dsh-x-finance/src/predict-model.ts' },
+  'return-out': { type: 'string', default: 'packages/dsh-x-finance/src/predict-return-model.ts' },
+  profile: { type: 'string' },
   top: { type: 'string', default: '15' },
   refresh: { type: 'boolean', default: false },
 } })
@@ -236,17 +248,26 @@ function materialize(candidates, transform) {
     const today = bars[index]
     const next = bars[index + 1]
     const after = bars[index + 2]
-    const tradeReturn = (after.close / next.open - 1) * 100
     const gapNext = (next.open / today.close - 1) * 100
     const closeNext = (next.close / today.close - 1) * 100
     const limitNext = (next.close / today.close - 1) * 100 >= rate - 0.4
       && next.high - next.close <= Math.max(1e-6, next.close * 1e-4)
-    // A sealed board cannot be bought at the open; the return model and the
-    // backtest only see sessions where the open was actually tradable.
-    const sealed = Math.abs(next.high - next.low) <= Math.max(1e-6, next.close * 1e-4)
+    const gross = (next.open > 0 && after.close > 0) ? (after.close / next.open - 1) * 100 : 0
+    // What the trade actually pays: an open on the limit cannot be bought, and
+    // the cost grows with how crowded the entry was. `legacyNet` keeps the old
+    // flat 0.2% accounting so `evolve` can show exactly what changed.
+    const buyable = isBuyableOpen(next, today.close, rate)
+    const cost = roundTripCostPercent(gapNext, rate)
+    const net = netReturnPercent(next.open, after.close, cost) ?? 0
     rows.push({
       symbol: stock.symbol, name: stock.name, date: today.sessionDate, rate, vector,
-      label: { limitUp: limitNext ? 1 : 0, tradeReturn, gapNext, closeNext, buyable: !sealed ? 1 : 0 },
+      label: {
+        limitUp: limitNext ? 1 : 0,
+        gross, net, cost, gapNext, closeNext,
+        buyable: buyable ? 1 : 0,
+        legacyBuyable: isOneWordBar(next) ? 0 : 1,
+        legacyNet: gross - COST_PERCENT,
+      },
     })
   }
   rows.sort((left, right) => left.date.localeCompare(right.date) || left.symbol.localeCompare(right.symbol))
@@ -328,7 +349,7 @@ function fitLogistic(rows, names, stats, lambda = 12) {
 
 function fitLinear(rows, names, stats, lambda = 30) {
   const X = design(rows, names, stats)
-  const y = rows.map(row => row.label.tradeReturn)
+  const y = rows.map(row => row.label.net)
   const p = names.length + 1
   const hessian = Array.from({ length: p }, () => new Array(p).fill(0))
   const grad = new Array(p).fill(0)
@@ -411,7 +432,7 @@ function crossSectionIC(rows) {
   for (const dayRows of byDate.values()) {
     if (dayRows.length < 4) continue
     const predicted = rank(dayRows.map(row => row.score))
-    const actual = rank(dayRows.map(row => row.label.tradeReturn))
+    const actual = rank(dayRows.map(row => row.label.net))
     total += pearson(predicted.map((value, index) => ({ x: value, y: actual[index] })))
     days += 1
   }
@@ -436,7 +457,7 @@ function topBacktest(rows, k, options = {}) {
   for (const day of days) {
     const picks = byDate.get(day).sort((left, right) => score(right) - score(left)).slice(0, k)
     if (!picks.length) continue
-    const net = picks.map(row => row.label.tradeReturn - COST_PERCENT)
+    const net = picks.map(row => row.label.net)
     const average = net.reduce((sum, value) => sum + value, 0) / net.length
     for (const value of net) { trades += 1; if (value > 0) wins += 1 }
     returns.push(average)
@@ -466,13 +487,13 @@ function bucketStats(rows, keyOf, edges) {
   return buckets.filter(bucket => bucket.rows.length).map(bucket => {
     const n = bucket.rows.length
     const sum = (pick) => bucket.rows.reduce((total, row) => total + pick(row), 0)
-    const returns = bucket.rows.map(row => row.label.tradeReturn).sort((left, right) => left - right)
+    const returns = bucket.rows.map(row => row.label.net).sort((left, right) => left - right)
     return {
       key: bucket.key, from: bucket.from, to: bucket.to, n,
       pLimitUp: sum(row => row.label.limitUp) / n * 100,
       gapNext: sum(row => row.label.gapNext) / n,
-      tradeReturn: sum(row => row.label.tradeReturn) / n,
-      winRate: bucket.rows.filter(row => row.label.tradeReturn > 0).length / n * 100,
+      tradeReturn: sum(row => row.label.net) / n,
+      winRate: bucket.rows.filter(row => row.label.net > 0).length / n * 100,
       medianTradeReturn: returns[returns.length >> 1],
     }
   })
@@ -492,26 +513,33 @@ function monthsBetween(from, to) {
   return list
 }
 
-function fitStage() {
-  if (!existsSync(cacheFile)) throw new Error('no cached bars: run fetch first')
-  const stocks = readCache()
-  log(`loaded ${stocks.length} symbols`)
-  const candidates = buildCandidates(stocks)
-  if (!candidates.length) throw new Error('no candidate sessions')
+/**
+ * The one-year holdout at the end of the sample, plus the market-level knots
+ * fitted strictly before it. Out-of-sample months are therefore never
+ * transformed with information from their own future.
+ */
+function sampleSplit(candidates) {
   const rawDates = candidates.map(candidate => candidate.stock.bars[candidate.index].sessionDate).sort()
   const lastDate = rawDates.at(-1)
   const cutoff = new Date(`${lastDate}T00:00:00Z`)
   cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1)
   const holdoutFrom = cutoff.toISOString().slice(0, 10)
-
-  // Market-level knots come from the pre-holdout period only, so the out-of-
-  // sample months are never transformed with information from their own future.
   const before = candidates.filter(candidate => candidate.stock.bars[candidate.index].sessionDate < holdoutFrom)
   const transform = {
     upShare: predictKnots(before.map(candidate => candidate.section.upShare)),
     hotShare: predictKnots(before.map(candidate => candidate.section.hotShare)),
     medianChange: predictKnots(before.map(candidate => candidate.section.medianChange)),
   }
+  return { lastDate, holdoutFrom, transform }
+}
+
+function fitStage() {
+  if (!existsSync(cacheFile)) throw new Error('no cached bars: run fetch first')
+  const stocks = readCache()
+  log(`loaded ${stocks.length} symbols`)
+  const candidates = buildCandidates(stocks)
+  if (!candidates.length) throw new Error('no candidate sessions')
+  const { lastDate, holdoutFrom, transform } = sampleSplit(candidates)
   const all = materialize(candidates, transform)
   const names = [...PREDICT_FEATURE_NAMES]
   const dates = [...new Set(all.map(row => row.date))].sort()
@@ -571,8 +599,8 @@ function fitStage() {
       key,
       n: rows.length,
       pLimitUp: rows.reduce((sum, row) => sum + row.label.limitUp, 0) / rows.length * 100,
-      tradeReturn: rows.reduce((sum, row) => sum + row.label.tradeReturn, 0) / rows.length,
-      winRate: rows.filter(row => row.label.tradeReturn > 0).length / rows.length * 100,
+      tradeReturn: rows.reduce((sum, row) => sum + row.label.net, 0) / rows.length,
+      winRate: rows.filter(row => row.label.net > 0).length / rows.length * 100,
     }
   }
   const levelOf = value => value < 33 ? 'cold' : value >= 67 ? 'hot' : 'normal'
@@ -608,6 +636,12 @@ function fitStage() {
 
   const finalStats = standardize(all, names)
   const finalLogistic = fitLogistic(all, names, finalStats)
+  // The return head is fitted on the same rows and shipped beside the
+  // classifier. `evolve` measures it walk-forward; this is the frozen copy.
+  const returnModel = fitReturnModel(
+    all.map(row => ({ sessionDate: row.date, vector: row.vector, netReturn: row.label.net })),
+    names,
+  )
 
   const model = {
     version: 1,
@@ -626,11 +660,159 @@ function fitStage() {
   const outPath = path.resolve(root, args.values.out)
   writeFileSync(outPath, renderModel(model))
   log(`wrote ${path.relative(root, outPath)}`)
+  const returnPath = path.resolve(root, args.values['return-out'])
+  writeFileSync(returnPath, renderReturnModel(returnModel))
+  log(`wrote ${path.relative(root, returnPath)} (${returnModel.sample.rows} rows, lambda ${returnModel.lambda})`)
   log(`AUC ${metrics.auc.toFixed(3)}  Brier ${brier.toFixed(4)}  base ${baseRate.toFixed(1)}%  IC ${metrics.ic.toFixed(3)}`)
   for (const top of metrics.top) log(`  top${top.k} by residual: days ${top.days} trades ${top.trades} win ${top.winRate.toFixed(1)}% avg ${top.avgNet.toFixed(2)}% total ${top.total.toFixed(1)}% maxDD ${top.maxDrawdown.toFixed(1)}%`)
   for (const bucket of baseRates.streak) log(`  ${bucket.key}: n=${bucket.n} p=${bucket.pLimitUp.toFixed(1)}% gap=${bucket.gapNext.toFixed(2)}% trade=${bucket.tradeReturn.toFixed(2)}% win=${bucket.winRate.toFixed(1)}%`)
   for (const group of byRegime) log(`  oos ${group.key}: n=${group.n} trade=${group.tradeReturn.toFixed(2)}% win=${group.winRate.toFixed(1)}%`)
   for (const group of byProbability) log(`  oos ${group.key}: n=${group.n} p=${group.pLimitUp.toFixed(1)}% trade=${group.tradeReturn.toFixed(2)}%`)
+}
+
+// ---- evolve --------------------------------------------------------------
+
+/**
+ * Folds every labelled session into the daily factor state and reports what the
+ * screen would have done out of sample. This is the command a daily job runs
+ * after the close: it writes only the state, never the coefficients, so the
+ * structure can only change through the promotion gate.
+ */
+async function evolveStage() {
+  if (!existsSync(cacheFile)) throw new Error('no cached bars: run fetch first')
+  const stocks = readCache()
+  const candidates = buildCandidates(stocks)
+  if (!candidates.length) throw new Error('no candidate sessions')
+  const { lastDate, holdoutFrom, transform } = sampleSplit(candidates)
+  const all = materialize(candidates, transform)
+  const names = [...PREDICT_FEATURE_NAMES]
+  if (PREDICT_MODEL.features.join(',') !== names.join(',')) {
+    throw new Error('model feature order differs from PREDICT_FEATURE_NAMES')
+  }
+
+  // The return head is fitted on the pre-holdout rows only, then held fixed
+  // while the holdout is replayed. This is the number the old screen never had.
+  const train = all.filter(row => row.date < holdoutFrom)
+  if (train.length < 800) throw new Error('not enough pre-holdout rows')
+  const returnModel = fitReturnModel(
+    train.map(row => ({ sessionDate: row.date, vector: row.vector, netReturn: row.label.net })),
+    names,
+  )
+
+  const byDate = new Map()
+  for (const row of all) {
+    const list = byDate.get(row.date) ?? []
+    list.push(row)
+    byDate.set(row.date, list)
+  }
+  const days = [...byDate.keys()].sort()
+  const coefficients = { intercept: PREDICT_MODEL.limitUp.intercept, coef: PREDICT_MODEL.limitUp.coef }
+
+  let state = null
+  const legacy = [], calibrated = [], expected = []
+  for (const day of days) {
+    const rows = byDate.get(day)
+    // Today's cross-section is known at today's close, and the trade happens at
+    // tomorrow's open: folding the session in before scoring is not lookahead.
+    state = updateFactorState(state, names, [{
+      sessionDate: day,
+      rows: rows.map(row => ({ vector: row.vector, netReturn: row.label.net, label: row.label.limitUp })),
+    }], coefficients)
+    if (day < holdoutFrom) continue
+    for (const row of rows) {
+      if (row.label.legacyBuyable) {
+        legacy.push({ symbol: row.symbol, sessionDate: day, score: predictProbability(row.vector), netReturn: row.label.legacyNet })
+      }
+      if (!row.label.buyable) continue
+      calibrated.push({ symbol: row.symbol, sessionDate: day, score: predictProbability(row.vector, state), netReturn: row.label.net })
+      expected.push({
+        symbol: row.symbol, sessionDate: day,
+        score: predictNetReturn(returnModel, row.vector), netReturn: row.label.net,
+        // Carried for the gate experiment below; the ranking ignores extras.
+        streak: row.vector.streak, hot: row.vector.hotShare,
+      })
+    }
+  }
+  if (!expected.length) throw new Error('no out-of-sample trades')
+
+  // Both fine-grained and coarse rankings are reported: a value that only works
+  // in the top three is a lottery, not an edge.
+  for (const [label, rows] of [['legacy', legacy], ['calibrated', calibrated], ['expected', expected]]) {
+    for (const k of [3, 5, 10]) {
+      const metrics = evaluateRanking(rows, k)
+      log(`  ${label.padEnd(10)} top${String(k).padEnd(2)} days ${metrics.days} trades ${metrics.trades} win ${metrics.winRate.toFixed(1)}% avg ${metrics.avgNet.toFixed(2)}% total ${metrics.total.toFixed(1)}% maxDD ${metrics.maxDrawdown.toFixed(1)}% IC ${metrics.ic.toFixed(3)} IR ${metrics.icIr.toFixed(2)} mono ${metrics.monotonicity.toFixed(2)}`)
+    }
+  }
+  // The ranking question and the population question are different. A negative
+  // ic says the order is wrong; a negative segment says no order can save it.
+  // Both are printed, because the second one decides whether to keep trading
+  // this population at all.
+  const holdout = all.filter(row => row.date >= holdoutFrom && row.label.buyable)
+  log(`  holdout buyable rows ${holdout.length} of ${all.filter(row => row.date >= holdoutFrom).length}`)
+  const segments = (title, keyOf, buckets) => {
+    log(`  ${title}`)
+    for (const bucket of buckets) {
+      const slice = holdout.filter(row => {
+        const value = keyOf(row)
+        return value >= bucket.from && (bucket.to === null || value < bucket.to)
+      })
+      if (slice.length < 25) continue
+      log(`    ${bucket.key.padEnd(7)} n=${String(slice.length).padStart(5)} net=${(slice.reduce((sum, row) => sum + row.label.net, 0) / slice.length).toFixed(2)}% win=${(slice.filter(row => row.label.net > 0).length / slice.length * 100).toFixed(1)}%`)
+    }
+  }
+  const streakBuckets = [
+    { key: 's0', from: -1, to: 0.5 }, { key: 's1', from: 0.5, to: 1.5 }, { key: 's2', from: 1.5, to: 2.5 },
+    { key: 's3', from: 2.5, to: 3.5 }, { key: 's4', from: 3.5, to: null },
+  ]
+  const regimeBuckets = [
+    { key: 'cold', from: -1, to: 33 }, { key: 'normal', from: 33, to: 67 }, { key: 'hot', from: 67, to: null },
+  ]
+  segments('by streak', row => row.vector.streak, streakBuckets)
+  segments('by regime', row => row.vector.hotShare, regimeBuckets)
+  for (const regime of regimeBuckets) {
+    for (const streak of streakBuckets) {
+      const slice = holdout.filter(row => row.vector.streak >= streak.from && (streak.to === null || row.vector.streak < streak.to)
+        && row.vector.hotShare >= regime.from && (regime.to === null || row.vector.hotShare < regime.to))
+      if (slice.length < 40) continue
+      const net = slice.reduce((sum, row) => sum + row.label.net, 0) / slice.length
+      if (net <= 0) continue
+      log(`  edge ${regime.key}/${streak.key} n=${slice.length} net=${net.toFixed(2)}% win=${(slice.filter(row => row.label.net > 0).length / slice.length * 100).toFixed(1)}%`)
+    }
+  }
+
+  // Does a gate beat a ranker? A ranker must order the whole population; a
+  // gate is allowed to refuse most of it. The segment table above says the
+  // population is not homogeneous, so this is the test that matters.
+  const gates = [
+    ['all', () => true],
+    ['hot', row => row.hot >= 67],
+    ['s4', row => row.streak >= 3.5],
+    ['hot|s4', row => row.hot >= 67 || row.streak >= 3.5],
+  ]
+  for (const [name, gate] of gates) {
+    const gated = expected.filter(gate)
+    if (!gated.length) continue
+    for (const k of [2, 3, 5, 999]) {
+      const metrics = evaluateRanking(gated, k)
+      log(`  gate ${name.padEnd(6)} k=${String(k).padEnd(3)} days ${metrics.days} trades ${metrics.trades} win ${metrics.winRate.toFixed(1)}% avg ${metrics.avgNet.toFixed(2)}% total ${metrics.total.toFixed(1)}% maxDD ${metrics.maxDrawdown.toFixed(1)}% IC ${metrics.ic.toFixed(3)}`)
+    }
+  }
+
+  log(`state ${state.sessions} sessions asOf ${state.asOf} calibration a=${state.calibration.a.toFixed(3)} b=${state.calibration.b.toFixed(3)}`)
+  const ranking = names
+    .map((name, index) => ({ name, ic: state.ic[index], ir: state.icSpread[index] > 0 ? state.ic[index] / Math.sqrt(state.icSpread[index]) : 0 }))
+    .sort((left, right) => right.ic - left.ic)
+  for (const factor of ranking.slice(0, 8)) {
+    log(`  factor ${factor.name.padEnd(13)} ic ${factor.ic.toFixed(3)} ir ${factor.ir.toFixed(2)}`)
+  }
+
+  if (!args.values.profile) {
+    log('no --profile given: state updated in memory but not written')
+    return
+  }
+  const directory = path.join(path.resolve(args.values.profile), '.dsh-x-finance')
+  await writeFactorState(directory, state)
+  log(`wrote ${path.join(path.relative(root, directory), FACTOR_STATE_FILE)} (trainedThrough ${lastDate})`)
 }
 
 const number = value => Number.isFinite(value) ? Number(value.toPrecision(7)) : 0
@@ -701,9 +883,9 @@ async function scanStage() {
   }
 }
 
-const stages = { fetch: fetchStage, fit: fitStage, scan: scanStage }
+const stages = { fetch: fetchStage, fit: fitStage, evolve: evolveStage, scan: scanStage }
 if (!stages[command]) {
-  console.error('usage: node scripts/finance-research.mjs <fetch|fit|scan> [--limit N] [--bars N] [--top N]')
+  console.error('usage: node scripts/finance-research.mjs <fetch|fit|evolve|scan> [--limit N] [--bars N] [--profile DIR] [--top N]')
   process.exit(1)
 }
 await stages[command]()

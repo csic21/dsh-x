@@ -1,0 +1,18 @@
+// GENERATED FILE — do not edit by hand.
+//
+// Produced by `node scripts/finance-research.mjs fit`. It ranks the net return
+// of the trade the screen proposes, which is the quantity the screen is paid on.
+import type { ReturnModel } from './return-model.ts'
+
+export const RETURN_MODEL: ReturnModel = {
+  version: 1,
+  trainedThrough: '2026-10-23',
+  features: ["streak","limitUp","distLimit","ret1","ret5","ret20","gap","amplitude","closePos","volRatio5","amtRatio20","ma5Dist","ma20Dist","burst5","limitCount20","fromHigh20","oneWord","upShare","hotShare","medianChange","streakHot"],
+  mean: [1.22668, 0.8902371, -0.0265841, 11.08003, 18.41367, 26.62217, 2.866494, 9.782788, 0.991159, 2.165752, 2.977901, 10.94123, 18.7265, 0.2468088, 2.095105, -3.272324, 0.06824239, 46.01126, 49.5086, 45.9095, 57.04158],
+  scale: [0.9307724, 0.312605, 0.4204054, 3.125387, 15.60399, 32.27253, 4.414294, 4.760913, 0.03238463, 1.743078, 2.588214, 5.746683, 16.26303, 0.4959314, 1.781913, 6.701591, 0.2521702, 27.26204, 26.5248, 27.52222, 55.91371],
+  intercept: -0.7412372,
+  coef: [0.4118485, 0.1856657, 0.227891, 0.7058065, -0.1172086, -0.1860294, -0.682972, -0.6877796, -0.1043817, 1.11191, -0.9102394, -0.541058, 0.4836001, 0.2169255, 0.1653819, -0.188922, 0.01748079, 0.1321091, -0.3184892, 0.1167769, 0.3840525],
+  lambda: 30,
+  clip: 15,
+  sample: { rows: 14258, from: '2024-03-29', to: '2026-10-23', sessions: 620 },
+}

@@ -38,13 +38,13 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         status: string;
         source: null;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -58,13 +58,13 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         status: string;
         quantScan: import("./quant-scan.ts").QuantScanResult | null;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -78,13 +78,13 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         status: string;
         overview: import("./market.ts").MarketOverview;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -98,13 +98,13 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         status: string;
         breadth: import("./market.ts").MarketBreadth;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -118,13 +118,13 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         status: string;
         source: string;
         quotes: MarketQuote[];
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -158,12 +158,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         status: string;
         intraday: MarketIntraday;
         holdings?: undefined;
@@ -178,12 +178,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         status: string;
         holdings: import("./holdings.ts").EtfHoldings;
@@ -198,12 +198,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         status: string;
@@ -218,12 +218,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -238,12 +238,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -258,12 +258,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -278,12 +278,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -298,12 +298,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;
@@ -318,12 +318,12 @@ export declare function createMarketHandler({ provider, now }?: {
 } | {
     ok: boolean;
     value: {
+        history?: undefined;
         quantScan?: undefined;
         overview?: undefined;
         breadth?: undefined;
         source?: undefined;
         quotes?: undefined;
-        history?: undefined;
         intraday?: undefined;
         holdings?: undefined;
         fundamentals?: undefined;

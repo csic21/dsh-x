@@ -74,6 +74,7 @@ const result: PredictScanResult = {
   },
   universe: { expected: 5577, covered: 5570, candidates: 88, scored: rows.length, failed: 2, partial: true },
   baseRates: PREDICT_MODEL.baseRates,
+  gate: { applied: true, passed: rows.length, rejected: 0 },
   rows,
 }
 

@@ -16,6 +16,7 @@ import { createScopeRoute, loadProfileScope } from './scope.js';
 import { financeQuoteTool } from './tool.js';
 import { createWatchSignalScheduler, installWatchScheduleTimer } from './watch-signal-scheduler.js';
 import { createWatchScheduleRoute } from './watch-signal-scheduler-rpc.js';
+import { createFactorEvolve } from './factor-evolve.js';
 import { createQuantScanScheduler } from './quant-scan-scheduler.js';
 import { createQuantScheduleRoute } from './quant-scan-scheduler-rpc.js';
 export const name = 'dsh-x-finance';
@@ -65,7 +66,9 @@ export function apply(ctx, config = {}) {
             marketController = createMarketController({
                 forced: marketForced,
                 store,
-                createProvider: () => createTencentMarketProvider(),
+                // The daily factor state lives in the profile store; without it the
+                // screen falls back to the frozen model unchanged.
+                createProvider: () => createTencentMarketProvider({ profileDirectory: host.profileContext.dir }),
             });
             const controller = marketController;
             marketController = {
@@ -138,6 +141,14 @@ export function apply(ctx, config = {}) {
                 watchRunning: async (scope) => (await scheduler.request({ action: 'get', scope })).running,
             });
             quantScheduler = quant;
+            // The daily correction rides the same official timer: it only labels
+            // sessions the journal already holds, so it costs at most a bounded
+            // number of history requests and catches up by itself after a restart.
+            const evolve = createFactorEvolve({
+                profileDirectory: scheduledHost.profileContext.dir,
+                provider: () => sourceChanges ? Promise.resolve(undefined) : marketController?.getProvider() ?? Promise.resolve(undefined),
+                sourceEnabled: async () => !sourceChanges && await sourceEnabled(),
+            });
             scheduledHost.connection.fetch.register(createWatchScheduleRoute(scheduler));
             scheduledHost.connection.fetch.register(createQuantScheduleRoute(quant));
             // One official ctx-owned timer: admit the watch task first, then let the
@@ -150,9 +161,10 @@ export function apply(ctx, config = {}) {
                     }
                     finally {
                         await quant.tick();
+                        await evolve.tick();
                     }
                 },
-                dispose() { quant.dispose(); scheduler.dispose(); },
+                dispose() { evolve.dispose(); quant.dispose(); scheduler.dispose(); },
             });
             scheduledHost.effect(() => () => {
                 if (watchScheduler === scheduler)
