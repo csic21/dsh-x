@@ -26,6 +26,28 @@ import { MAX_ABSOLUTE_PRICE } from './chart-data.js';
 import { randomUUID } from 'node:crypto';
 import { createQuantScanner, isQuantSymbol, parseQuantScanRequest, QUANT_SCAN_LIMITS } from './quant-scan.js';
 export const MARKET_QUOTE_ENDPOINT = 'https://qt.gtimg.cn/q=';
+/**
+ * Second feed for the watchlist bar. The Tencent host answers the whole batch
+ * in one request, so a blocked or throttled host used to leave every chip
+ * empty. Sina publishes the same three markets (A-share, Hong Kong, US) as one
+ * plain-text list and rejects a request without the finance referer; it is
+ * tried only after the primary fails.
+ */
+export const MARKET_SINA_QUOTE_ENDPOINT = 'https://hq.sinajs.cn/list=';
+const SINA_QUOTE_REFERER = 'https://finance.sina.com.cn/';
+/** Third feed: East Money's JSON batch by secid, covering A shares and Hong Kong. */
+export const MARKET_EASTMONEY_QUOTE_ENDPOINT = 'https://push2.eastmoney.com/api/qt/ulist.np/get';
+/**
+ * A quote feed that just failed is skipped for this long, so a blocked host
+ * costs one timeout every two minutes instead of one timeout per poll.
+ */
+export const MARKET_QUOTE_COOLDOWN_MS = 120_000;
+/**
+ * Shorter budget for the backup feeds: the primary already spent its own
+ * timeout and the bar polls, so a hung backup must not hold the request for the
+ * full 10 s budget again.
+ */
+export const MARKET_QUOTE_FALLBACK_MS = 6_000;
 export const MARKET_BOARD_RANK_ENDPOINT = 'https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank';
 export const MARKET_STOCK_RANK_ENDPOINT = 'https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList';
 /** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
@@ -584,6 +606,196 @@ export function parseStockQuote(key, fields, now) {
         };
     }
     throw new Error('invalid stock quote key');
+}
+const SINA_LINE = /^var hq_str_([A-Za-z0-9_.]+)="([^"]*)";?$/;
+/** Parses the newline-separated `var hq_str_<code>="…";` list. Exported for tests. */
+export function parseSinaBatch(text) {
+    const result = new Map();
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line)
+            continue;
+        const match = SINA_LINE.exec(line);
+        if (!match)
+            continue;
+        const fields = match[2].split(',');
+        if (!fields[0].trim())
+            continue;
+        result.set(match[1], fields);
+    }
+    return result;
+}
+/**
+ * The Sina list key serving one Tencent batch key, or null when that feed
+ * cannot answer for the market. Sina spells the US listing `gb_<ticker>` in
+ * lower case; dotted tickers have no equivalent and stay on the primary.
+ */
+export function sinaQuoteKey(key) {
+    if (/^(?:sh|sz|bj)\d{6}$/.test(key) || /^hk\d{5}$/.test(key))
+        return key;
+    const us = /^us([A-Z][A-Z0-9]{0,5})$/.exec(key);
+    return us ? `gb_${us[1].toLowerCase()}` : null;
+}
+/** East Money's numeric market id for one batch key, or null when it cannot answer. */
+function eastmoneyMarketOf(key) {
+    if (/^sh\d{6}$/.test(key))
+        return 1;
+    if (/^(?:sz|bj)\d{6}$/.test(key))
+        return 0;
+    if (/^hk\d{5}$/.test(key))
+        return 116;
+    return null;
+}
+/**
+ * Decimal width of a price the source padded: Sina states US prices with four
+ * decimals and East Money sends numbers without their trailing zeros, so the
+ * padding is trimmed first and the result never drops below the two-decimal
+ * minimum a mainland or Hong Kong listing is quoted in.
+ */
+function trimmedPrecision(raw) {
+    const text = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' && Number.isFinite(raw) ? String(raw) : '';
+    if (!/^\d+(?:\.\d+)?$/.test(text))
+        return null;
+    const trimmed = text.includes('.') ? text.replace(/0+$/, '') : text;
+    const dot = trimmed.indexOf('.');
+    return Math.min(6, Math.max(2, dot < 0 ? 0 : trimmed.length - dot - 1));
+}
+/** Joins a date and a clock the source reports separately, rejecting impossible combinations. */
+function sinaWallClock(day, clock, now, message) {
+    const date = /^(\d{4})[-/](\d{2})[-/](\d{2})$/.exec(typeof day === 'string' ? day.trim() : '');
+    const time = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(typeof clock === 'string' ? clock.trim() : '');
+    if (!date || !time)
+        throw new Error(message);
+    return parseTencentTimestamp(`${date[1]}${date[2]}${date[3]}${time[1]}${time[2]}${time[3] ?? '00'}`, now);
+}
+/**
+ * Parses one Sina list row. The three markets order their columns differently:
+ * the A-share row has no percentage field at all, so it is derived from price
+ * and previous close and rounded to the two decimals the bar shows; the Hang
+ * Kong and US rows state it themselves. Sina stamps its US rows in Beijing
+ * time (checked against the closed session), which is why that row is read as
+ * Asia/Shanghai instead of as the exchange's own clock. A row with a missing or
+ * impossible field is rejected rather than filled with a guess. Exported for tests.
+ */
+export function parseSinaQuote(key, fields, now) {
+    const ashare = /^(sh|sz|bj)(\d{6})$/.exec(key);
+    if (ashare) {
+        if (fields.length < 32)
+            throw new Error('invalid stock quote');
+        const symbol = `${ashare[1].toUpperCase()}.${ashare[2]}`;
+        validateSymbol(symbol);
+        const name = cleanText(fields[0], 64);
+        const previousClose = finiteNumber(fields[2], 0.0001, 1e9);
+        const price = finiteNumber(fields[3], 0.0001, 1e9);
+        if (!name || price === null || previousClose === null)
+            throw new Error('invalid stock quote');
+        const changePercent = Number((((price - previousClose) / previousClose) * 100).toFixed(2)) || 0;
+        if (Math.abs(changePercent) > 100)
+            throw new Error('invalid stock quote');
+        return {
+            symbol,
+            status: 'available',
+            name,
+            price,
+            pricePrecision: quotePrecision(fields[3]),
+            changePercent,
+            quotedAt: sinaWallClock(fields[30], fields[31], now, 'invalid quote timestamp'),
+            fetchedAt: null,
+            marketStatus: 'unknown',
+        };
+    }
+    const hk = /^hk(\d{5})$/.exec(key);
+    if (hk) {
+        if (fields.length < 19)
+            throw new Error('invalid stock quote');
+        const symbol = `HK.${hk[1]}`;
+        validateWatchSymbol(symbol);
+        const name = cleanText(fields[1], 64);
+        const price = finiteNumber(fields[6], 0.0001, 1e9);
+        const changePercent = finiteNumber(fields[8], -100, 100);
+        if (!name || price === null || changePercent === null)
+            throw new Error('invalid stock quote');
+        return {
+            symbol,
+            status: 'available',
+            name,
+            price,
+            pricePrecision: quotePrecision(fields[6]),
+            changePercent,
+            quotedAt: sinaWallClock(fields[17], fields[18], now, 'invalid hk quote timestamp'),
+            fetchedAt: null,
+            marketStatus: 'unknown',
+        };
+    }
+    const us = /^us([A-Z][A-Z0-9]{0,5})$/.exec(key);
+    if (us) {
+        if (fields.length < 8)
+            throw new Error('invalid stock quote');
+        const symbol = `US.${us[1]}`;
+        validateWatchSymbol(symbol);
+        const name = cleanText(fields[0], 64);
+        const price = finiteNumber(fields[1], 0.0001, 1e9);
+        const changePercent = finiteNumber(fields[2], -100, 100);
+        if (!name || price === null || changePercent === null)
+            throw new Error('invalid stock quote');
+        const quotedAt = zonedQuoteTime(fields[3], 'Asia/Shanghai', now, US_MAX_QUOTE_AGE_MS);
+        if (!quotedAt)
+            throw new Error('invalid us quote timestamp');
+        return {
+            symbol,
+            status: 'available',
+            name,
+            price,
+            pricePrecision: trimmedPrecision(fields[1]),
+            changePercent,
+            quotedAt,
+            fetchedAt: null,
+            marketStatus: 'unknown',
+        };
+    }
+    throw new Error('invalid stock quote key');
+}
+/**
+ * Parses East Money's `ulist` batch. Rows are keyed by code and numeric market
+ * rather than by our symbol, so each row is matched back by code and the
+ * requested market decides whether it belongs to this batch; an unsupported or
+ * mismatched row is dropped instead of being reassigned to another exchange.
+ * Exported for tests.
+ */
+export function parseEastmoneyQuotes(payload, keys, now) {
+    const rows = Array.isArray(payload?.data?.diff) ? payload.data.diff : [];
+    const requested = new Map();
+    for (const key of keys)
+        requested.set(key.slice(key.search(/\d/)), key);
+    const quotes = [];
+    for (const row of rows) {
+        if (!row || typeof row !== 'object')
+            continue;
+        const code = typeof row.f12 === 'string' ? row.f12 : String(row.f12 ?? '');
+        const key = requested.get(code);
+        if (!key || eastmoneyMarketOf(key) !== Number(row.f13))
+            continue;
+        const name = cleanText(row.f14, 64);
+        const price = finiteNumber(row.f2, 0.0001, 1e9);
+        const changePercent = finiteNumber(row.f3, -100, 100);
+        if (!name || price === null || changePercent === null)
+            continue;
+        const quotedAt = globalQuoteTime(row.f124, now);
+        if (!quotedAt)
+            continue;
+        quotes.push({
+            symbol: `${key.slice(0, 2).toUpperCase()}.${key.slice(2)}`,
+            status: 'available',
+            name,
+            price,
+            pricePrecision: trimmedPrecision(price),
+            changePercent,
+            quotedAt,
+            fetchedAt: null,
+            marketStatus: 'unknown',
+        });
+    }
+    return quotes;
 }
 /**
  * Parses the fields the tail scan needs. A missing or malformed field makes the
@@ -1178,6 +1390,8 @@ export function createTencentMarketProvider(options = {}) {
     const globalCooldown = new Map();
     /** Same idea for the 分时 sources: a throttled host is skipped, not retried every poll. */
     const intradayCooldown = new Map();
+    /** Same idea for the watchlist quote feeds; see `MARKET_QUOTE_COOLDOWN_MS`. */
+    const quoteCooldown = new Map();
     async function request(url, encoding, maxBytes, headers = {}, budgetMs = timeoutMs, signal) {
         const controller = new AbortController();
         const abort = () => controller.abort();
@@ -1234,6 +1448,86 @@ export function createTencentMarketProvider(options = {}) {
         if (!result.size && requireAny)
             throw new Error('empty market quote batch');
         return result;
+    }
+    async function loadTencentQuotes(codes) {
+        const batch = await quoteBatch(codes, { requireAny: false });
+        const stamp = now();
+        const quotes = [];
+        for (const [key, fields] of batch) {
+            try {
+                quotes.push(parseStockQuote(key, fields, stamp));
+            }
+            catch { /* one bad line must not hide the others */ }
+        }
+        return quotes;
+    }
+    async function loadSinaQuotes(codes) {
+        const pairs = codes
+            .map(key => [key, sinaQuoteKey(key)])
+            .filter((pair) => pair[1] !== null);
+        if (!pairs.length)
+            throw new Error('sina quote market unsupported');
+        const text = await request(`${MARKET_SINA_QUOTE_ENDPOINT}${pairs.map(pair => pair[1]).join(',')}`, 'gbk', MARKET_MAX_BYTES, { referer: SINA_QUOTE_REFERER }, MARKET_QUOTE_FALLBACK_MS);
+        if (!text.trim())
+            throw new Error('empty market quote response');
+        const parsed = parseSinaBatch(text);
+        const stamp = now();
+        const quotes = [];
+        for (const [key, sinaKey] of pairs) {
+            const fields = parsed.get(sinaKey);
+            if (!fields)
+                continue;
+            try {
+                quotes.push(parseSinaQuote(key, fields, stamp));
+            }
+            catch { /* one bad row must not hide the others */ }
+        }
+        return quotes;
+    }
+    async function loadEastmoneyQuotes(codes) {
+        const supported = codes.filter(key => eastmoneyMarketOf(key) !== null);
+        if (!supported.length)
+            throw new Error('eastmoney quote market unsupported');
+        const query = [
+            'fltt=2',
+            `secids=${supported.map(key => `${eastmoneyMarketOf(key)}.${key.slice(2)}`).join(',')}`,
+            'fields=f2,f3,f12,f13,f14,f124',
+            `ut=${EASTMONEY_UT}`,
+        ].join('&');
+        const payload = await requestJson(`${MARKET_EASTMONEY_QUOTE_ENDPOINT}?${query}`, MARKET_MAX_BYTES, MARKET_QUOTE_FALLBACK_MS);
+        return parseEastmoneyQuotes(payload, supported, now());
+    }
+    const QUOTE_FEEDS = [
+        ['tencent', loadTencentQuotes],
+        ['sina', loadSinaQuotes],
+        ['eastmoney', loadEastmoneyQuotes],
+    ];
+    /**
+     * The watchlist bar no longer depends on one host: Tencent answers the whole
+     * batch normally, and a transport failure falls through to Sina and then to
+     * East Money for the markets those feeds cover. Only a feed that answered is
+     * trusted to answer "no data" — a valid but empty response stops the chain,
+     * so an unknown code stays unknown instead of being asked three times. A
+     * feed that just failed is skipped for `MARKET_QUOTE_COOLDOWN_MS`, which is
+     * what keeps a blocked host from costing a timeout on every poll.
+     */
+    async function loadQuotes(codes) {
+        const stamp = now();
+        let failure = null;
+        for (const [key, load] of QUOTE_FEEDS) {
+            if ((quoteCooldown.get(key) ?? 0) > stamp)
+                continue;
+            try {
+                const quotes = await load(codes);
+                quoteCooldown.delete(key);
+                return quotes;
+            }
+            catch (error) {
+                quoteCooldown.set(key, stamp + MARKET_QUOTE_COOLDOWN_MS);
+                failure = error;
+            }
+        }
+        throw failure ?? new Error('market quote sources unavailable');
     }
     async function fetchBoardRank() {
         const url = `${MARKET_BOARD_RANK_ENDPOINT}?l=200&p=1&t=01/averatio&ordertype=&o=0`;
@@ -2270,7 +2564,8 @@ export function createTencentMarketProvider(options = {}) {
         },
         // Deliberately uncached: the bottom bar is the one place that polls for a
         // live price, and a cached snapshot would make it look fresher than it is.
-        // Concurrent callers still share a single upstream request.
+        // Concurrent callers still share a single upstream request, and a failed
+        // feed falls through to the backup feeds inside `loadQuotes`.
         quotes: (input) => {
             if (!Array.isArray(input) || !input.length || input.length > MARKET_MAX_QUOTES)
                 throw new Error('invalid market quote request');
@@ -2278,18 +2573,7 @@ export function createTencentMarketProvider(options = {}) {
             if (new Set(symbols).size !== symbols.length)
                 throw new Error('invalid market quote request');
             const codes = symbols.map(symbol => `${symbol.slice(0, 2).toLowerCase()}${symbol.slice(3)}`);
-            return getOrLoad(`quotes:${codes.join(',')}`, 0, async () => {
-                const batch = await quoteBatch(codes, { requireAny: false });
-                const stamp = now();
-                const quotes = [];
-                for (const [key, fields] of batch) {
-                    try {
-                        quotes.push(parseStockQuote(key, fields, stamp));
-                    }
-                    catch { /* one bad line must not hide the others */ }
-                }
-                return quotes;
-            });
+            return getOrLoad(`quotes:${codes.join(',')}`, 0, () => loadQuotes(codes));
         },
         // A closed daily bar does not change during the session, so history is
         // cached briefly; the newest (provisional) bar refreshes with it.

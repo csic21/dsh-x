@@ -3,6 +3,27 @@ import type { Csi300Fund, Csi300FundShare, MarketAdjustment, MarketHistory, Mark
 import type { TailMinutePoint } from './tail-scan.ts';
 import type { QuantPage } from './quant-scan.ts';
 export declare const MARKET_QUOTE_ENDPOINT = "https://qt.gtimg.cn/q=";
+/**
+ * Second feed for the watchlist bar. The Tencent host answers the whole batch
+ * in one request, so a blocked or throttled host used to leave every chip
+ * empty. Sina publishes the same three markets (A-share, Hong Kong, US) as one
+ * plain-text list and rejects a request without the finance referer; it is
+ * tried only after the primary fails.
+ */
+export declare const MARKET_SINA_QUOTE_ENDPOINT = "https://hq.sinajs.cn/list=";
+/** Third feed: East Money's JSON batch by secid, covering A shares and Hong Kong. */
+export declare const MARKET_EASTMONEY_QUOTE_ENDPOINT = "https://push2.eastmoney.com/api/qt/ulist.np/get";
+/**
+ * A quote feed that just failed is skipped for this long, so a blocked host
+ * costs one timeout every two minutes instead of one timeout per poll.
+ */
+export declare const MARKET_QUOTE_COOLDOWN_MS = 120000;
+/**
+ * Shorter budget for the backup feeds: the primary already spent its own
+ * timeout and the bar polls, so a hung backup must not hold the request for the
+ * full 10 s budget again.
+ */
+export declare const MARKET_QUOTE_FALLBACK_MS = 6000;
 export declare const MARKET_BOARD_RANK_ENDPOINT = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/mktHs/rank";
 export declare const MARKET_STOCK_RANK_ENDPOINT = "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList";
 /** Daily OHLCV for one symbol. Same opt-in source and same bounded client. */
@@ -205,6 +226,32 @@ export declare function parseHotPage(payload: any): {
  * per board instead of being read as Shanghai wall time.
  */
 export declare function parseStockQuote(key: string, fields: string[], now: number): MarketQuote;
+/** Parses the newline-separated `var hq_str_<code>="…";` list. Exported for tests. */
+export declare function parseSinaBatch(text: string): Map<string, string[]>;
+/**
+ * The Sina list key serving one Tencent batch key, or null when that feed
+ * cannot answer for the market. Sina spells the US listing `gb_<ticker>` in
+ * lower case; dotted tickers have no equivalent and stay on the primary.
+ */
+export declare function sinaQuoteKey(key: string): string | null;
+/**
+ * Parses one Sina list row. The three markets order their columns differently:
+ * the A-share row has no percentage field at all, so it is derived from price
+ * and previous close and rounded to the two decimals the bar shows; the Hang
+ * Kong and US rows state it themselves. Sina stamps its US rows in Beijing
+ * time (checked against the closed session), which is why that row is read as
+ * Asia/Shanghai instead of as the exchange's own clock. A row with a missing or
+ * impossible field is rejected rather than filled with a guess. Exported for tests.
+ */
+export declare function parseSinaQuote(key: string, fields: string[], now: number): MarketQuote;
+/**
+ * Parses East Money's `ulist` batch. Rows are keyed by code and numeric market
+ * rather than by our symbol, so each row is matched back by code and the
+ * requested market decides whether it belongs to this batch; an unsupported or
+ * mismatched row is dropped instead of being reassigned to another exchange.
+ * Exported for tests.
+ */
+export declare function parseEastmoneyQuotes(payload: any, keys: string[], now: number): MarketQuote[];
 /** Extra Tencent quote fields used only by the local tail scan. */
 export interface TailQuote {
     symbol: string;
